@@ -1,0 +1,618 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a0b0d;
+  --bg-soft: #131519;
+  --card: #16181c;
+  --card-hover: #1c1f24;
+  --text: #f5f5f2;
+  --muted: #9a9a94;
+  --accent: #eeb95c;
+  --accent-strong: #f0b23c;
+  --accent-2: #7dd3c0;
+  --success: #34d399;
+  --danger: #f87171;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 32px 80px -20px rgba(0, 0, 0, 0.65);
+  --radius: 20px;
+  --radius-sm: 12px;
+  --nav-bg: rgba(5, 8, 14, 0.82);
+  --menu-bg: rgba(12, 14, 20, 0.98);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(ellipse 1000px 560px at 12% -10%, rgba(240, 178, 60, 0.09), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(240, 178, 60, 0.28);
+  color: #fff;
+}
+
+.container {
+  width: min(1480px, calc(100% - 3rem));
+  margin-inline: auto;
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%), var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease, background 0.25s ease;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-sm);
+  padding: 0.8rem 1.15rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: 0.2s ease;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #c98a2c, var(--accent-strong));
+  color: #221202;
+  box-shadow: 0 8px 24px -8px rgba(240, 178, 60, 0.45);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px -8px rgba(240, 178, 60, 0.55);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+.input,
+.select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  transition: 0.2s ease;
+}
+
+.input::placeholder {
+  color: #5b6b81;
+}
+
+/* İçinde ikon olan arama kutusu (navbar).
+   NOT: `.input` katmansız (unlayered) CSS'tir; Tailwind utility'leri ise
+   `@layer utilities` içindedir ve katmansız kurallar her zaman katmanlıları
+   ezer. Bu yüzden input'a `pl-9` yazmak ÇALIŞMIYOR — padding `.input`ten
+   geliyor ve büyüteç ikonu ilk harfin (Marka'daki "M") üstüne biniyordu.
+   Doğru padding'i burada, aynı katmanda veriyoruz. */
+.input-search {
+  padding-left: 2.4rem;
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+/* Chrome, type="search" için soldaki yerleşik süsleme alanını çizip metni
+   kaydırabiliyor; ikonu biz koyduğumuz için gereksiz. */
+.input-search::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Native <select> açılır listesindeki seçenekler koyu temada beyaz-üstüne-beyaz
+   kalıyordu; option'ları elle koyu zeminli/açık yazılı yapıyoruz. */
+.select option {
+  background-color: #16181c;
+  color: var(--text);
+}
+
+.input:hover,
+.select:hover {
+  border-color: var(--border-strong);
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(240, 178, 60, 0.05);
+  box-shadow: 0 0 0 3px rgba(240, 178, 60, 0.15);
+}
+
+.label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: #9fb0c6;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  color: #c7c7c0;
+  border: 1px solid var(--border-strong);
+}
+
+.badge-accent {
+  /* Dolu amber + koyu yazı: fotoğraf üstünde (kart) dahil her zeminde okunur.
+     Eski soluk hali açık renkli araç fotoğraflarında yılı görünmez yapıyordu. */
+  background: #eab24a;
+  color: #1c160b;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.badge-danger {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.25);
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(640px 360px at 6% 10%, rgba(240, 178, 60, 0.14), transparent 65%);
+}
+
+.hero-grid {
+  display: grid;
+  gap: 1.75rem;
+  grid-template-columns: 1.4fr 1fr;
+}
+
+@media (max-width: 900px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stat-tile {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  transition: 0.2s ease;
+}
+
+.stat-tile:hover {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.stat-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: none;
+  border-radius: 10px;
+  background: rgba(240, 178, 60, 0.14);
+  color: var(--accent);
+}
+
+.stat-tile strong {
+  display: block;
+  font-size: 1.3rem;
+  margin-top: 0.2rem;
+  letter-spacing: -0.01em;
+}
+
+.market-up {
+  color: var(--danger);
+}
+
+/* --- İlan haritası (Leaflet) --- */
+.map-pin-wrapper {
+  background: none;
+  border: none;
+}
+
+.map-price-pin {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent, #f0b23c);
+  color: #14100a;
+  font-size: 12px;
+  font-weight: 800;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transform: translate(6px, 6px);
+  transition: transform 0.12s ease;
+}
+
+.map-price-pin:hover {
+  transform: translate(6px, 6px) scale(1.12);
+}
+
+/* Şehir grubu işareti: sayaç + şehir adı + en düşük fiyat */
+.map-city-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  padding: 4px 12px 4px 5px;
+  border-radius: 999px;
+  background: #171e2b;
+  border: 2px solid var(--accent, #f0b23c);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.map-city-pin:hover {
+  transform: scale(1.08);
+}
+
+.map-city-pin-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--accent, #f0b23c);
+  color: #14100a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.map-city-pin-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.map-city-pin-body b {
+  color: #f4f7fc;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.map-city-pin-body i {
+  color: var(--accent, #f0b23c);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #10151f;
+  color: #e6ebf5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px;
+}
+
+.map-popup {
+  width: 240px;
+}
+
+.map-popup-city {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--accent, #f0b23c);
+  margin-bottom: 8px;
+}
+
+.map-popup-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.map-popup-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: border-color 0.12s ease;
+}
+
+.map-popup-row:hover {
+  border-color: rgba(240, 178, 60, 0.5);
+}
+
+.map-popup-row img {
+  width: 64px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex: none;
+}
+
+.map-popup-row-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.map-popup-row-info b {
+  color: #f4f7fc;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-popup-row-info i {
+  color: #93a1b8;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.map-popup-row-info em {
+  color: var(--accent, #f0b23c);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+/* Küme içeriği tıklandığında sunucudan çekilir; bekleme/boş/hata durumu */
+.map-popup-empty {
+  padding: 14px 4px;
+  color: #8794a8;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Kullanıcının kendi konumu */
+.map-me-pin {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #3b82f6;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.25);
+}
+
+.market-down {
+  color: var(--success);
+}
+
+.nav-link {
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.85rem;
+  color: #b7c3d6;
+  font-weight: 500;
+  transition: 0.2s ease;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+}
+
+.user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(240, 178, 60, 0.25);
+  background: rgba(240, 178, 60, 0.08);
+  padding: 0.45rem 0.9rem 0.45rem 0.7rem;
+  color: #f3c877;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* =====================================================================
+   AÇIK TEMA — data-theme="light" (bkz. ThemeToggle.tsx, layout.tsx'teki
+   flash-önleyici script). Buradaki [class~="..."] seçim tekniği BİLİNÇLİ:
+   siteye yüzlerce yerde serpiştirilmiş ham Tailwind renk sınıflarını
+   (text-slate-400, border-white/10 vb.) tek tek her bileşeni değiştirmeden
+   ezmek için kullanılıyor. attribute-selector class listesinde AYNEN o
+   token'ı arıyor; Tailwind'in "/" içeren sınıf adlarını CSS seçicisinde
+   kaçırma (escape) derdi olmadan çalışıyor. Sadece koyu zemine göre
+   tasarlanmış "beyaz üstüne şeffaflık" ve soluk vurgu renkleri hedeflendi;
+   harita/lightbox gibi kasıtlı hep-koyu kalan yüzeyler dokunulmadı.
+   ===================================================================== */
+[data-theme="light"] {
+  --bg: #f5f2ec;
+  --bg-soft: #ece7dc;
+  --card: #ffffff;
+  --card-hover: #faf7f1;
+  --text: #241a0d;
+  --muted: #6b6255;
+  --accent: #b9790f;
+  --accent-strong: #a5690a;
+  --accent-2: #157a63;
+  --success: #0f9d63;
+  --danger: #c8281f;
+  --border: rgba(20, 15, 5, 0.1);
+  --border-strong: rgba(20, 15, 5, 0.22);
+  --shadow: 0 20px 50px -12px rgba(30, 20, 10, 0.12);
+  --shadow-lg: 0 32px 80px -20px rgba(30, 20, 10, 0.16);
+  --nav-bg: rgba(255, 255, 255, 0.86);
+  --menu-bg: rgba(255, 255, 255, 0.98);
+}
+
+[data-theme="light"] ::selection {
+  background: rgba(185, 121, 15, 0.22);
+  color: #241a0d;
+}
+
+[data-theme="light"] .select option {
+  background-color: #ffffff;
+  color: var(--text);
+}
+
+[data-theme="light"] .label {
+  color: #7c6f5c;
+}
+
+[data-theme="light"] .badge {
+  background: rgba(20, 15, 5, 0.05);
+  color: #4b4335;
+  border-color: var(--border-strong);
+}
+
+[data-theme="light"] .btn-secondary {
+  background: rgba(20, 15, 5, 0.03);
+  color: var(--text);
+}
+
+[data-theme="light"] .btn-secondary:hover {
+  background: rgba(20, 15, 5, 0.07);
+  border-color: rgba(20, 15, 5, 0.3);
+}
+
+[data-theme="light"] .input,
+[data-theme="light"] .select {
+  background: rgba(20, 15, 5, 0.025);
+}
+
+[data-theme="light"] .input::placeholder {
+  color: #8a8171;
+}
+
+[data-theme="light"] .stat-tile {
+  background: rgba(20, 15, 5, 0.025);
+}
+
+[data-theme="light"] .stat-tile:hover {
+  background: rgba(20, 15, 5, 0.045);
+}
+
+[data-theme="light"] .nav-link {
+  color: #5a5142;
+}
+
+[data-theme="light"] .nav-link:hover {
+  background: rgba(20, 15, 5, 0.06);
+  color: #1c1408;
+}
+
+[data-theme="light"] .user-pill {
+  color: #8a5a09;
+}
+
+/* Ham Tailwind metin renkleri: koyu zemin için seçilmiş soluk/açık tonlar
+   beyaz zeminde okunmaz hâle geliyordu — koyulaştırılmış eşdeğerleri. */
+[data-theme="light"] [class~="text-slate-100"] { color: #241a0d; }
+[data-theme="light"] [class~="text-slate-200"] { color: #2e2416; }
+[data-theme="light"] [class~="text-slate-300"],
+[data-theme="light"] [class~="hover:text-slate-300"]:hover { color: #3a2f1f; }
+[data-theme="light"] [class~="text-slate-400"] { color: #5c5142; }
+[data-theme="light"] [class~="text-slate-500"] { color: #6b6255; }
+[data-theme="light"] [class~="text-slate-600"] { color: #7c7364; }
+[data-theme="light"] [class~="text-amber-50"] { color: #7a4e08; }
+[data-theme="light"] [class~="text-amber-100"] { color: #7a4e08; }
+[data-theme="light"] [class~="text-amber-200"],
+[data-theme="light"] [class~="hover:text-amber-200"]:hover { color: #8a5a09; }
+[data-theme="light"] [class~="text-amber-300"],
+[data-theme="light"] [class~="hover:text-amber-300"]:hover { color: #a5690a; }
+[data-theme="light"] [class~="text-emerald-200"] { color: #0f7a52; }
+[data-theme="light"] [class~="text-emerald-300"] { color: #0f9d63; }
+[data-theme="light"] [class~="text-emerald-400"] { color: #0c8a55; }
+[data-theme="light"] [class~="text-red-200"] { color: #b3261e; }
+[data-theme="light"] [class~="text-red-300"] { color: #c8281f; }
+[data-theme="light"] [class~="text-red-400"],
+[data-theme="light"] [class~="hover:text-red-400"]:hover { color: #b3261e; }
+
+/* "Beyaz üstüne %opaklık" ile çizilen hairline border / hover yüzeyleri:
+   dolgusuz koyu zeminde görünür, beyaz zeminde neredeyse tamamen kaybolur. */
+[data-theme="light"] [class~="border-white/5"] { border-color: rgba(20, 15, 5, 0.06); }
+[data-theme="light"] [class~="border-white/10"] { border-color: rgba(20, 15, 5, 0.1); }
+[data-theme="light"] [class~="border-white/15"] { border-color: rgba(20, 15, 5, 0.14); }
+[data-theme="light"] [class~="border-white/20"] { border-color: rgba(20, 15, 5, 0.18); }
+[data-theme="light"] [class~="border-white/30"],
+[data-theme="light"] [class~="hover:border-white/30"]:hover { border-color: rgba(20, 15, 5, 0.26); }
+[data-theme="light"] [class~="bg-white/5"],
+[data-theme="light"] [class~="hover:bg-white/5"]:hover { background-color: rgba(20, 15, 5, 0.035); }
+[data-theme="light"] [class~="bg-white/10"],
+[data-theme="light"] [class~="hover:bg-white/10"]:hover { background-color: rgba(20, 15, 5, 0.06); }
+[data-theme="light"] [class~="bg-white/25"],
+[data-theme="light"] [class~="hover:bg-white/25"]:hover { background-color: rgba(20, 15, 5, 0.14); }
+[data-theme="light"] [class~="bg-white/45"] { background-color: rgba(20, 15, 5, 0.22); }
+[data-theme="light"] [class~="bg-white/[0.02]"] { background-color: rgba(20, 15, 5, 0.02); }
+[data-theme="light"] [class~="bg-white/[0.03]"] { background-color: rgba(20, 15, 5, 0.03); }
+[data-theme="light"] [class~="ring-white/10"] { --tw-ring-color: rgba(20, 15, 5, 0.1); }
+[data-theme="light"] [class~="divide-white/5"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(20, 15, 5, 0.06);
+}

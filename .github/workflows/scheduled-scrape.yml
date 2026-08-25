@@ -1,0 +1,64 @@
+name: Otomatik Veri Çekme
+
+
+on:
+  schedule:
+    - cron: "30 3 * * *"   # her gün 03:30 UTC (TR 06:30)
+    - cron: "30 15 * * *"  # her gün 15:30 UTC (TR 18:30)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Tarama modu (otomerkezi / quick / wide / models)"
+        required: false
+        default: "otomerkezi"
+
+# Aynı anda iki tarama çakışmasın
+concurrency:
+  group: scheduled-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60   # serbest dakika sınırını korumak için üst sınır
+    env:
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      SCRAPE_RUN_SECRET: ${{ secrets.SCRAPE_RUN_SECRET }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # Varsayılan: yalnızca Otomerkezi (Arabam bulut IP'sini Cloudflare ile
+      # engelliyor → boşa dakika harcamasın). Arabam için evde scrape.bat / proxy.
+      SCRAPE_MODE: ${{ github.event.inputs.mode || 'otomerkezi' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Playwright tarayıcısı (yalnızca Chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Next sunucusunu başlat (arka planda)
+        run: |
+          npm run dev > server.log 2>&1 &
+          echo "Sunucu başlatıldı, hazır olması bekleniyor..."
+          for i in $(seq 1 60); do
+            if curl -s -o /dev/null http://localhost:3000/; then
+              echo "Sunucu hazır."; exit 0
+            fi
+            sleep 3
+          done
+          echo "Sunucu 3 dakikada hazır olmadı."; cat server.log; exit 1
+
+      - name: Taramayı çalıştır
+        run: node scripts/cloud-scrape.mjs
+
+      - name: Sunucu loglarını göster (hata ayıklama)
+        if: always()
+        run: tail -n 40 server.log || true

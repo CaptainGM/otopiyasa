@@ -1,0 +1,8 @@
+# Vercel'e yüklenmesi gereksiz olanlar (upload küçük kalsın)
+# NOT: scripts/ hariç tutulamaz — package.json postinstall'u scripts/postinstall.mjs çağırır
+mobile
+logs
+.github
+*.bat
+DEPLOY.md
+README.md

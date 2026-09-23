@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "811262425634",
+    "project_id": "otopiyasa-8a8b9",
+    "storage_bucket": "otopiyasa-8a8b9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:811262425634:android:50fd957890f3023103a87b",
+        "android_client_info": {
+          "package_name": "com.otopiyasa.otopiyasa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBJYs4qbJ-iStnLQBUqx8AwwQmhURfQZCI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

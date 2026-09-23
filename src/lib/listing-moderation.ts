@@ -1,0 +1,101 @@
+import { Car } from "@/models/Car";
+import {
+  moderateListing as aiModerate,
+  analyzeCarPhoto,
+  isGeminiConfigured,
+} from "@/lib/gemini";
+import { checkPriceFloor, median, type ListingInput } from "@/lib/listing-validation";
+import { turkishSearchRegex, levenshtein } from "@/lib/utils";
+
+
+function brandsMatch(a: string, b: string): boolean {
+  const norm = (s: string) =>
+    s.toLocaleLowerCase("tr-TR").replace(/[^a-zçğıöşü0-9]/g, "");
+  const x = norm(a);
+  const y = norm(b);
+  if (!x || !y) return true; 
+  if (x === y || x.includes(y) || y.includes(x)) return true;
+ 
+  return levenshtein(x, y) <= 2;
+}
+
+
+function dataUriToInput(uri: string): { data: string; mimeType: string } | null {
+  const m = uri.match(/^data:(image\/[a-z]+);base64,(.+)$/i);
+  if (!m) return null;
+  return { mimeType: m[1], data: m[2] };
+}
+
+export type ModerationStatus = "approved" | "pending" | "rejected";
+
+export interface ModerationOutcome {
+  status: ModerationStatus;
+  reason: string;
+}
+
+
+export async function comparableMedianPrice(
+  brand: string,
+  model: string
+): Promise<number | null> {
+  const docs = await Car.find({
+    brand: { $regex: turkishSearchRegex(brand), $options: "i" },
+    $or: [
+      { model: { $regex: turkishSearchRegex(model), $options: "i" } },
+      { title: { $regex: turkishSearchRegex(model), $options: "i" } },
+    ],
+  })
+    .select("price")
+    .limit(200)
+    .lean<{ price: number }[]>();
+  return median(docs.map((d) => d.price));
+}
+
+
+export async function moderateNewListing(
+  input: ListingInput & { brand: string; model: string; year: number; price: number; mileage: number; city: string; description?: string; images?: string[] }
+): Promise<ModerationOutcome> {
+ 
+  const cmp = await comparableMedianPrice(input.brand, input.model);
+  const priceCheck = checkPriceFloor(input.price, cmp);
+  if (!priceCheck.ok) {
+    return { status: "rejected", reason: priceCheck.reason || "Fiyat kabul edilebilir aralıkta değil." };
+  }
+
+
+  const photos = (input.images || [])
+    .map(dataUriToInput)
+    .filter((p): p is { data: string; mimeType: string } => !!p)
+    .slice(0, 3);
+  if (isGeminiConfigured() && photos.length > 0) {
+    const analysis = await analyzeCarPhoto(photos);
+    if (analysis?.brand && !brandsMatch(analysis.brand, input.brand)) {
+      return {
+        status: "rejected",
+        reason: `Girdiğin marka (${input.brand}) fotoğraftaki araçla uyuşmuyor — yapay zeka fotoğrafta "${analysis.brand}" gördü. Doğru markayı seçip tekrar dene.`,
+      };
+    }
+  }
+
+
+  if (isGeminiConfigured()) {
+    const ai = await aiModerate({
+      brand: input.brand,
+      model: input.model,
+      year: input.year,
+      price: input.price,
+      mileage: input.mileage,
+      city: input.city,
+      description: input.description || "",
+    });
+    if (ai && !ai.approved) {
+      return {
+        status: "rejected",
+        reason: ai.reason || "İlan içeriği yayın kurallarına uygun bulunmadı.",
+      };
+    }
+   
+  }
+
+  return { status: "approved", reason: "" };
+}

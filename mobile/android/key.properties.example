@@ -1,0 +1,6 @@
+# Copy this file to key.properties and replace every placeholder locally.
+# Never commit key.properties or the keystore file.
+storePassword=REPLACE_ME
+keyPassword=REPLACE_ME
+keyAlias=upload
+storeFile=upload-keystore.jks

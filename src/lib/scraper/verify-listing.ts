@@ -50,39 +50,6 @@ const GONE_TEXTS = [
 ];
 
 /**
- * Arabam `/ikinci-el?searchText=<ilanNo>` yanıtını sınıflandırır.
- * Canlı ilanda Arabam doğrudan ilan sayfasına 302 yapar; ilan yoksa arama
- * sayfası "Sonuç bulunamadı." yazar (ikisi de canlı sitede ölçüldü). Bunların
- * dışındaki her yanıt belirsizdir: eski kod her 200'ü "ölü" sayıyor, bu da
- * engel/oran sınırı sayfalarında canlı ilanları arşive atıyordu.
- */
-export function classifyArabamSearchResponse(status: number, location: string, body: string): VerifyListingResult {
-  if ((status === 301 || status === 302) && location.includes("/ilan/")) {
-    return {
-      status: "active",
-      statusCode: 200,
-      finalUrl: location.startsWith("http") ? location : `https://www.arabam.com${location}`,
-      reason: "İlan orijinal sitede canlı ve yayında (Doğrulandı).",
-    };
-  }
-  if (status === 404 || status === 410) {
-    return { status: "gone", statusCode: status, reason: `HTTP ${status}: İlan bulunamadı.` };
-  }
-  if (status === 403 || status === 429) {
-    return { status: "blocked", statusCode: status, reason: `Erişim engeli (HTTP ${status}).` };
-  }
-  if (status === 200) {
-    if (isCloudflareChallenge(body)) {
-      return { status: "blocked", statusCode: 200, reason: "Cloudflare doğrulama sayfası döndü (ilan korunur)." };
-    }
-    if (body.includes("Sonuç bulunamadı")) {
-      return { status: "gone", statusCode: 200, reason: "Arabam aramasında ilan numarası bulunamadı." };
-    }
-  }
-  return { status: "error", statusCode: status, reason: `Belirsiz yanıt (HTTP ${status}); ilan korunur.` };
-}
-
-/**
  * Otokoç, satılan ilanın sayfasını HTTP 200 ile "404 | Sayfa Bulunamadı" (soft 404)
  * olarak döndürüyor; eski doğrulayıcı bunları "canlı" sayıyordu (en eski 40 aktif
  * ilanın 27'si böyleydi, DB'deki 1.657 aktif ilanın yalnızca ~1.250'si sitede).
@@ -174,30 +141,11 @@ export async function verifySingleListing(car: {
   }
 
   if (car.sourceSite === "arabam") {
-    const idMatch = url.match(/\/(\d{7,10})(?:$|\?)/);
-    const arabamId = idMatch ? idMatch[1] : (car.externalId || "").replace(/\D/g, "");
-    if (!arabamId) {
-      return { status: "error", reason: "Arabam ilan numarası tespit edilemedi." };
-    }
-    try {
-      const searchRes = await fetch(`https://www.arabam.com/ikinci-el?searchText=${arabamId}`, {
-        headers: {
-          "User-Agent": pickUserAgent(),
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8",
-        },
-        redirect: "manual",
-        signal: AbortSignal.timeout(8000),
-      });
-      const body = searchRes.status === 200 ? await searchRes.text() : "";
-      const result = classifyArabamSearchResponse(searchRes.status, searchRes.headers.get("location") || "", body);
-      if (result.status === "active" || result.status === "gone") return result;
-    } catch {
-      // ağ hatası: tarayıcıyla ilan sayfasının kendisine bakılır
-    }
+    // Yalnızca ilanın KENDİ sayfası açılır. Eskiden `/ikinci-el?searchText=<no>` aranıyordu; Arabam'ın
+    // robots.txt'i bu deseni (ve `?sort=`) yasaklıyor. İlan sayfası yasaklı değil; Cloudflare nedeniyle
+    // gerçek tarayıcı ve Türkiye ev IP'si gerekir, aksi hâlde sonuç "blocked" olur ve ilana dokunulmaz.
     return verifyArabamWithBrowser(url);
   }
-
   try {
     const res = await fetch(url, {
       headers: {

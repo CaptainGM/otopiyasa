@@ -51,8 +51,12 @@ async function main() {
     "../src/lib/scraper/browser-scrape.js"
   );
   const { archiveListings } = await import("../src/lib/scraper/listing-lifecycle.js");
+  const { arabamDetailSet } = await import("../src/lib/scraper/enrich-arabam.js");
 
-  // Yalnızca detayları tamamlanmamış (tek fotoğraflı) aktif arabam araçlarını getir
+  // Detayı tamamlanmamış aktif arabam araçları: tek fotoğraflılar ve liste sayfasından birkaç
+  // fotoğrafla gelip ilan sayfası hiç okunmamış olanlar (satıcı tipi/ilan tarihi yok). Eskiden
+  // yalnızca tek fotoğraflılar seçildiği için ikinci gruptaki ilanlar açıklamasız ve hasar
+  // bilgisiz kalıyordu.
   const candidates = await Car.find(
     {
       sourceSite: "arabam",
@@ -62,9 +66,10 @@ async function main() {
         { images: { $size: 0 } },
         { images: { $size: 1 } },
         { images: { $exists: false } },
+        { detailCheckedAt: { $exists: false }, sellerType: { $in: ["", null] } },
       ],
     },
-    { _id: 1, title: 1, listingUrl: 1, brand: 1, model: 1, year: 1, price: 1, imageUrl: 1 }
+    { _id: 1, title: 1, listingUrl: 1, brand: 1, model: 1, year: 1, price: 1, imageUrl: 1, city: 1, address: 1, features: 1 }
   )
     .limit(batchLimit)
     .lean();
@@ -216,28 +221,15 @@ async function main() {
           ...(priceChanged ? { $push: { priceHistory: { price: listing.price, recordedAt: new Date() } } } : {}),
           $set: {
             ...(priceChanged ? { price: listing.price } : {}),
-            ...(listing.images && listing.images.length > 0
-              ? { images: listing.images, imageUrl: listing.imageUrl || listing.images[0] }
-              : {}),
-            ...(listing.description ? { description: listing.description } : {}),
-            ...(listing.damageParts && Object.keys(listing.damageParts).length > 0
-              ? { damageParts: listing.damageParts }
-              : {}),
-            ...(listing.damageFlag !== undefined ? { damageFlag: listing.damageFlag } : {}),
-            ...(listing.paintChange ? { paintChange: listing.paintChange } : {}),
-            ...(listing.sellerType ? { sellerType: listing.sellerType } : {}),
-            ...(listing.listingDate ? { listingDate: listing.listingDate } : {}),
-            ...(listing.features?.engineSize ? { "features.engineSize": listing.features.engineSize } : {}),
-            ...(listing.features?.horsepower ? { "features.horsepower": listing.features.horsepower } : {}),
-            ...(listing.features?.drivetrain ? { "features.drivetrain": listing.features.drivetrain } : {}),
-            ...(listing.features?.avgFuelConsumption
-              ? { "features.avgFuelConsumption": listing.features.avgFuelConsumption }
-              : {}),
+            // Galeri, açıklama, hasar, satıcı ve teknik alanlar panel/ilan sayfasıyla aynı kuralla yazılır.
+            ...arabamDetailSet(listing, car),
             lastVerifiedAt: new Date(),
             lastVerifyAttemptAt: new Date(),
           },
           $unset: { missingSince: 1, missingChecks: 1 },
-        }
+        },
+        // updatedAt ilanın son içerik değişikliğidir: yalnızca fiyat değiştiyse ilerler.
+        { timestamps: priceChanged }
       );
       enrichedCount++;
 

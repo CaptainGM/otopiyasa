@@ -290,21 +290,26 @@ export interface BackfillResult {
  */
 export async function runDetailBackfill(
   limit = 20,
-  options: { source?: DetailSource; log?: (msg: string) => void; delayMs?: number } = {}
+  options: { source?: DetailSource; log?: (msg: string) => void; delayMs?: number; ids?: unknown[] } = {}
 ): Promise<BackfillResult> {
   const now = new Date();
   const retryBefore = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const sources = options.source ? [options.source] : [...DETAIL_SOURCES];
 
-  const docs = await Car.find({
-    sourceSite: { $in: sources },
-    status: "active",
-    listingUrl: { $nin: ["", null] },
-    $or: [
-      { detailCheckedAt: { $exists: false } },
-      { "images.1": { $exists: false }, detailCheckedAt: { $lt: retryBefore } },
-    ],
-  })
+  // ids verilirse (eksik detay taraması) sıra seçimi atlanır, yalnızca o ilanlar işlenir.
+  const docs = await Car.find(
+    options.ids
+      ? { _id: { $in: options.ids }, sourceSite: { $in: sources }, status: "active", listingUrl: { $nin: ["", null] } }
+      : {
+          sourceSite: { $in: sources },
+          status: "active",
+          listingUrl: { $nin: ["", null] },
+          $or: [
+            { detailCheckedAt: { $exists: false } },
+            { "images.1": { $exists: false }, detailCheckedAt: { $lt: retryBefore } },
+          ],
+        }
+  )
     .sort({ detailCheckedAt: 1, createdAt: -1 })
     .limit(limit)
     .select("_id sourceSite listingUrl images description features")

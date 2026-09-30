@@ -167,10 +167,11 @@ class _DetailScreenState extends State<DetailScreen> {
             itemBuilder: (context, index) {
               final imgUrl = allImages[index];
               final isFirst = index == 0;
+              // Tam genişlik galeri: 480 px çözüm yüksek yoğunluklu ekranlarda bulanık görünüyordu.
               final child = ListingImage(
                 url: imgUrl,
                 fit: BoxFit.cover,
-                cacheWidth: 480,
+                cacheWidth: 1080,
               );
               return isFirst
                   ? Hero(tag: 'car-img-${car.id}', child: child)
@@ -513,7 +514,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: car.similarCars.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final similar = car.similarCars[index];
                       return _buildSimilarCarRow(context, similar);

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
@@ -86,6 +88,82 @@ class _MapScreenState extends State<MapScreen> {
     if (price >= 1000) return '${(price / 1000).round()}B';
     return price.toString();
   }
+
+  /// Bu yakınlığın altında ilçeler il bazında toplanır: ülke görünümünde 560+ ilçe
+  /// işaretçisi üst üste biniyor ve okunmuyordu.
+  static const double _districtZoom = 7.0;
+
+  /// Dikey telefon ekranında Türkiye'nin genişliği (~19 boylam) bu yakınlıkta sığar.
+  static const _turkeyCenter = LatLng(39.0, 35.3);
+  static const double _turkeyZoom = 5.0;
+  double _zoom = _turkeyZoom;
+
+  /// İlçe kümelerini il bazında birleştirir (konum: ilan sayısına göre ağırlıklı ortalama).
+  List<Map<String, dynamic>> _provinceClusters() {
+    final byCity = <String, Map<String, dynamic>>{};
+    for (final c in _clusters) {
+      final city = c['city']?.toString() ?? '';
+      final count = (c['count'] as num?)?.toInt() ?? 0;
+      final p = byCity.putIfAbsent(city, () => {'count': 0, 'lat': 0.0, 'lng': 0.0});
+      p['count'] = (p['count'] as int) + count;
+      p['lat'] = (p['lat'] as double) + ((c['lat'] as num?)?.toDouble() ?? 0) * count;
+      p['lng'] = (p['lng'] as double) + ((c['lng'] as num?)?.toDouble() ?? 0) * count;
+    }
+    return byCity.values.where((p) => (p['count'] as int) > 0).map((p) {
+      final count = p['count'] as int;
+      return {'count': count, 'lat': (p['lat'] as double) / count, 'lng': (p['lng'] as double) / count};
+    }).toList();
+  }
+
+  /// Uzak görünüm: il başına yalnızca ilan sayısını gösteren, sayıya göre büyüyen baloncuk.
+  /// Büyükler üstte çizilsin diye küçükten büyüğe sıralanır; dokununca ilin ilçelerine yakınlaşır.
+  List<Marker> _provinceBubbles() {
+    final items = _provinceClusters()..sort((a, b) => (a['count'] as int).compareTo(b['count'] as int));
+    final maxCount = items.isEmpty ? 1 : items.last['count'] as int;
+    return items.map((p) {
+      final count = p['count'] as int;
+      final point = LatLng(p['lat'] as double, p['lng'] as double);
+      final size = 28.0 + 20.0 * (math.log(count + 1) / math.log(maxCount + 1));
+      final color = _densityColor(count);
+      return Marker(
+        point: point,
+        width: size,
+        height: size,
+        child: GestureDetector(
+          onTap: () => _mapController.move(point, _districtZoom + 1.2),
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xE60A0F18),
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 1.5),
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 6)],
+            ),
+            child: FittedBox(
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Text(
+                  count >= 1000 ? '${(count / 1000).toStringAsFixed(1)}B' : '$count',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: color),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  /// OSM karolarını gri tonlayıp ters çevirir: uygulamanın koyu temasına uyan sade altlık.
+  Widget _darkTile(BuildContext context, Widget tileWidget, TileImage tile) => ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          -0.17, -0.57, -0.06, 0, 225, //
+          -0.17, -0.57, -0.06, 0, 228,
+          -0.17, -0.57, -0.06, 0, 238,
+          0, 0, 0, 1, 0,
+        ]),
+        child: tileWidget,
+      );
 
   Color _densityColor(int count) {
     if (count >= 500) return const Color(0xFFF59E0B); // Amber / Gold
@@ -182,28 +260,40 @@ class _MapScreenState extends State<MapScreen> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: LatLng(39.0, 35.0),
-              initialZoom: 5.6,
+            options: MapOptions(
+              initialCenter: _turkeyCenter,
+              initialZoom: _turkeyZoom,
               minZoom: 4.5,
               maxZoom: 16.0,
+              onPositionChanged: (camera, _) {
+                final crossed = (camera.zoom < _districtZoom) != (_zoom < _districtZoom);
+                _zoom = camera.zoom;
+                if (crossed) setState(() {});
+              },
             ),
             children: [
+              // Carto'nun ücretsiz karoları artık API anahtarı istiyor ("API KEY REQUIRED" karosu
+              // dönüyordu); web'deki haritayla aynı OpenStreetMap karoları, koyu temaya uyacak
+              // şekilde gri tonlanıp ters çevrilerek kullanılır.
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c'],
-                userAgentPackageName: 'app.otopiyasa',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.otopiyasa.otopiyasa',
+                tileBuilder: _darkTile,
               ),
               MarkerLayer(
-                markers: _clusters.map((c) {
+                markers: _zoom < _districtZoom
+                    ? _provinceBubbles()
+                    : _clusters.map((c) {
                   final lat = (c['lat'] as num?)?.toDouble() ?? 0;
                   final lng = (c['lng'] as num?)?.toDouble() ?? 0;
                   final count = (c['count'] as num?)?.toInt() ?? 0;
                   final minPrice = (c['minPrice'] as num?)?.toInt() ?? 0;
                   final clusterKey = c['key']?.toString() ?? '';
                   final isProvinceLevel = c['level'] == 'province' && (c['district']?.toString().isEmpty ?? true);
-                  final label = (c['district']?.toString().isNotEmpty ?? false)
-                      ? c['district'].toString()
+                  // districtLabel: sunucunun verdiği Türkçe yazılış ("Çerkezköy"); eski sunucuda yoksa ham ad.
+                  final districtName = (c['districtLabel'] ?? c['district'])?.toString() ?? '';
+                  final label = districtName.isNotEmpty
+                      ? districtName
                       : (isProvinceLevel ? '${c['city']} (İl Geneli)' : c['city']?.toString() ?? '');
 
                   final accentColor = _densityColor(count);
@@ -211,7 +301,7 @@ class _MapScreenState extends State<MapScreen> {
                   return Marker(
                     point: LatLng(lat, lng),
                     width: 96,
-                    height: 46,
+                    height: 54,
                     child: GestureDetector(
                       onTap: () {
                         // Eğer il düzeyinde ve uzaksa yakınlaştır
@@ -264,6 +354,11 @@ class _MapScreenState extends State<MapScreen> {
                   );
                 }).toList(),
               ),
+              // OSM karo kullanım koşulu: kaynak belirtilmeli.
+              const SimpleAttributionWidget(
+                source: Text('OpenStreetMap katkıcıları', style: TextStyle(fontSize: 10, color: Colors.white70)),
+                backgroundColor: Color(0x99000000),
+              ),
             ],
           ),
 
@@ -274,7 +369,7 @@ class _MapScreenState extends State<MapScreen> {
             child: FloatingActionButton.extended(
               heroTag: 'reset_map',
               onPressed: () {
-                _mapController.move(const LatLng(39.0, 35.0), 5.6);
+                _mapController.move(_turkeyCenter, _turkeyZoom);
               },
               icon: const Text('🇹🇷', style: TextStyle(fontSize: 14)),
               label: const Text('Tüm Türkiye', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),

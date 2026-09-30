@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 
+final _arabamSize = RegExp(r'_\d{2,4}x\d{2,4}\.(jpe?g|png|webp)', caseSensitive: false);
+
+bool _isArabamCdn(String url) => url.contains('mncdn.com/ilanfotograflari/');
+
+String _arabamSized(String url, String size) =>
+    url.replaceFirstMapped(_arabamSize, (m) => '_$size.${m.group(1)}');
+
 /// Kart küçük resmi için daha hafif varyant (web'deki cardImageUrl ile aynı kurallar).
 /// Kaynak sitelerin galeri görselleri 1920 px geliyor; kartta ~480 px yeter:
-/// Carvak 266 KB → 65 KB, Otoplus 135 KB → 66 KB, Otokoç 52 KB → 34 KB.
+/// Carvak 266 KB → 65 KB, Otoplus 135 KB → 66 KB, Otokoç 52 KB → 34 KB,
+/// Arabam 357 KB → 61 KB (580x435; CDN'in sunduğu ara boyutlar 800x600, 580x435, 240x180).
 String cardImageUrl(String url) {
   if (url.contains('img.carvak.co/') && url.contains('w_1920,h_1080')) {
     return url.replaceFirst('w_1920,h_1080', 'w_640,h_360');
@@ -13,7 +21,24 @@ String cardImageUrl(String url) {
   if (url.contains('2el-cdn.otokoc.com.tr/') && url.contains('/car/640x/')) {
     return url.replaceFirst('/car/640x/', '/car/450x/');
   }
+  if (_isArabamCdn(url) && _arabamSize.hasMatch(url)) {
+    return _arabamSized(url, '580x435');
+  }
   return url;
+}
+
+/// Denenecek adresler, sırayla: hafif varyant (kartta), orijinal, ve Arabam'da 800x600.
+/// CDN eski ilanlarda 1920x1080 üretmiyor; o durumda 800x600 çoğunlukla mevcut.
+List<String> imageCandidates(String url, {required bool small}) {
+  final out = <String>[];
+  void add(String u) {
+    if (u.isNotEmpty && !out.contains(u)) out.add(u);
+  }
+
+  if (small) add(cardImageUrl(url));
+  add(url);
+  if (_isArabamCdn(url) && _arabamSize.hasMatch(url)) add(_arabamSized(url, '800x600'));
+  return out;
 }
 
 /// Hızlı, CDN başlıkları korumalı ve bellek önbelleğinden anında beslenen araç görsel bileşeni.
@@ -57,14 +82,8 @@ class ListingImage extends StatelessWidget {
         ),
       );
 
-  @override
-  Widget build(BuildContext context) {
-    if (url.isEmpty) return _placeholder();
-
-    // Küçük önizlemelerde (kart) hafif varyant; yüklenemezse aşağıda orijinale düşülür.
-    final small = (cacheWidth ?? 9999) <= 700;
-    final requestUrl = small ? cardImageUrl(url) : url;
-
+  Widget _attempt(List<String> candidates, int index) {
+    final requestUrl = candidates[index];
     return Image.network(
       requestUrl,
       fit: fit,
@@ -76,30 +95,17 @@ class ListingImage extends StatelessWidget {
         }
         return _placeholder();
       },
-      errorBuilder: (_, _, _) {
-        // Hafif varyant yüklenemediyse orijinal adresi dene.
-        if (requestUrl != url) {
-          return Image.network(
-            url,
-            fit: fit,
-            cacheWidth: cacheWidth,
-            headers: _headersFor(url),
-            errorBuilder: (_, _, _) => _placeholder(),
-          );
-        }
-        // Eğer Arabam görseli _800x600 ile hata verdiyse _1920x1080 boyutunu dene
-        if (url.contains('_800x600.')) {
-          final fallbackUrl = url.replaceFirst('_800x600.', '_1920x1080.');
-          return Image.network(
-            fallbackUrl,
-            fit: fit,
-            cacheWidth: cacheWidth,
-            headers: _headersFor(fallbackUrl),
-            errorBuilder: (_, _, _) => _placeholder(),
-          );
-        }
-        return _placeholder();
-      },
+      // Adres yüklenemezse sıradaki adaya geçilir; hepsi biterse yer tutucu kalır.
+      errorBuilder: (_, _, _) =>
+          index + 1 < candidates.length ? _attempt(candidates, index + 1) : _placeholder(),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.isEmpty) return _placeholder();
+    // Küçük önizlemelerde (kart) hafif varyant; tam ekran galeride orijinal.
+    final small = (cacheWidth ?? 9999) <= 700;
+    return _attempt(imageCandidates(url, small: small), 0);
   }
 }

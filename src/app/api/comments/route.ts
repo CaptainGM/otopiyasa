@@ -11,6 +11,7 @@ import { analyzeSentiment, summarizeSentiments } from "@/lib/sentiment";
 import { createNotification } from "@/lib/notify";
 import { isMailerConfigured, sendNewCommentEmail } from "@/lib/mailer";
 import { sendPushToUsers, isPushConfigured } from "@/lib/web-push";
+import { checkPublicText } from "@/lib/content-filter";
 
 /**
  * İlan bir üye ilanıysa (ownerId var) ve yorumu sahibinden BAŞKASI yaptıysa,
@@ -112,6 +113,11 @@ export async function POST(request: Request) {
 
     if (!Types.ObjectId.isValid(String(carId))) {
       return NextResponse.json({ error: "Geçersiz ilan kimliği." }, { status: 400 });
+    }
+
+    const textCheck = checkPublicText(String(text));
+    if (!textCheck.ok) {
+      return NextResponse.json({ error: textCheck.reason }, { status: 400 });
     }
 
     await connectDB();

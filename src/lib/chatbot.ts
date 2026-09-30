@@ -2,6 +2,15 @@ import { Car } from "@/models/Car";
 import { formatPrice, turkishSearchRegex } from "@/lib/utils";
 import { classifyIntent, isGeminiConfigured, GeminiIntent } from "@/lib/gemini";
 import { cached, CACHE_TTL } from "@/lib/cache";
+import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { ABSOLUTE_PRICE_FLOOR } from "@/lib/listing-validation";
+
+/**
+ * Asistanın gösterebileceği ilanlar: yalnızca herkese açık (aktif, onaylı) ve makul fiyatlı olanlar.
+ * Eskiden hiçbir sorguda görünürlük filtresi yoktu: "en ucuz BMW" arşive alınmış, satılmış ya da
+ * reddedilmiş bir ilanı gösterebiliyordu ("kaç ilan var" da arşivdekileri sayıyordu).
+ */
+const VISIBLE = { ...PUBLIC_LISTING_FILTER, price: { $gte: ABSOLUTE_PRICE_FLOOR } };
 
 
 export interface ChatContext {
@@ -232,7 +241,7 @@ async function detectBrand(message: string): Promise<string | undefined> {
   const brands = await cached(
     "chat:brands",
     CACHE_TTL.long,
-    () => Car.distinct("brand") as Promise<string[]>
+    () => Car.distinct("brand", PUBLIC_LISTING_FILTER) as Promise<string[]>
   );
   const m = message.toLocaleLowerCase("tr-TR");
   const sorted = [...brands].filter(Boolean).sort((a, b) => b.length - a.length);
@@ -245,7 +254,7 @@ async function detectCity(message: string): Promise<string | undefined> {
     "chat:cities",
     CACHE_TTL.long,
     async () =>
-      ((await Car.distinct("city")) as string[]).filter((c) => c && c !== "Türkiye")
+      ((await Car.distinct("city", PUBLIC_LISTING_FILTER)) as string[]).filter((c) => c && c !== "Türkiye")
   );
   const m = message.toLocaleLowerCase("tr-TR");
   const sorted = [...cities].sort((a, b) => b.length - a.length);
@@ -362,7 +371,7 @@ export function extractSearchTerm(message: string): string {
 }
 
 async function findExtreme(brand: string, direction: 1 | -1): Promise<CarLite | null> {
-  return Car.findOne({ brand: { $regex: turkishSearchRegex(brand), $options: "i" } })
+  return Car.findOne({ ...VISIBLE, brand: { $regex: turkishSearchRegex(brand), $options: "i" } })
     .sort({ price: direction })
     .select("title price brand imageUrl")
     .lean<CarLite | null>();
@@ -381,7 +390,7 @@ async function tryDataQuery(
 ): Promise<ChatReply | null> {
 
   if (/kaç\s+(ilan|araç|arac)/.test(message)) {
-    const count = await Car.countDocuments();
+    const count = await Car.countDocuments(PUBLIC_LISTING_FILTER);
     return { reply: `Şu anda veritabanında toplam ${count} ilan var.` };
   }
 
@@ -409,7 +418,7 @@ async function tryDataQuery(
     const brand = avgMatch[1].trim().split(/\s+/).pop();
     if (brand) {
       const stats = await Car.aggregate([
-        { $match: { brand: { $regex: turkishSearchRegex(brand), $options: "i" } } },
+        { $match: { ...VISIBLE, brand: { $regex: turkishSearchRegex(brand), $options: "i" } } },
         { $group: { _id: null, avgPrice: { $avg: "$price" }, count: { $sum: 1 } } },
       ]);
       if (stats.length && stats[0].count > 0) {
@@ -437,8 +446,9 @@ async function tryDataQuery(
         .find((w) => w.length >= 2 && !stop.has(w));
       if (brand) {
         const car = await Car.findOne({
+          ...VISIBLE,
           brand: { $regex: turkishSearchRegex(brand), $options: "i" },
-          price: { $lte: amount },
+          price: { $gte: ABSOLUTE_PRICE_FLOOR, $lte: amount },
         })
           .sort({ price: -1 })
           .select("title price brand imageUrl")
@@ -513,8 +523,8 @@ async function buildSiteContext(): Promise<string> {
   }
   try {
     const [total, brands] = await Promise.all([
-      Car.countDocuments(),
-      Car.distinct("brand"),
+      Car.countDocuments(PUBLIC_LISTING_FILTER),
+      Car.distinct("brand", PUBLIC_LISTING_FILTER),
     ]);
     const brandList = (brands as string[])
       .filter(Boolean)
@@ -600,14 +610,14 @@ async function handleIntent(
     }
 
     case "count": {
-      const count = await Car.countDocuments();
+      const count = await Car.countDocuments(PUBLIC_LISTING_FILTER);
       return { reply: `Şu anda veritabanında toplam ${count} ilan var.` };
     }
 
     case "average": {
       if (!term) return { reply: intent.reply || FALLBACK_ANSWER };
       const stats = await Car.aggregate([
-        { $match: { brand: { $regex: turkishSearchRegex(term), $options: "i" } } },
+        { $match: { ...VISIBLE, brand: { $regex: turkishSearchRegex(term), $options: "i" } } },
         { $group: { _id: null, avgPrice: { $avg: "$price" }, count: { $sum: 1 } } },
       ]);
       if (stats.length && stats[0].count > 0) {
@@ -622,7 +632,8 @@ async function handleIntent(
 
     case "open": {
       if (context?.carId) {
-        const car = await Car.findById(context.carId)
+        // context.carId istemciden geliyor; yalnızca herkese açık ilan gösterilir.
+        const car = await Car.findOne({ _id: context.carId, ...PUBLIC_LISTING_FILTER })
           .select("title price brand imageUrl")
           .lean<CarLite | null>()
           .catch(() => null);

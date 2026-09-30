@@ -5,6 +5,7 @@ import {
   isGeminiConfigured,
 } from "@/lib/gemini";
 import { checkPriceFloor, median, type ListingInput } from "@/lib/listing-validation";
+import { checkListingText } from "@/lib/content-filter";
 import { turkishSearchRegex, levenshtein } from "@/lib/utils";
 
 
@@ -53,9 +54,27 @@ export async function comparableMedianPrice(
 
 
 export async function moderateNewListing(
-  input: ListingInput & { brand: string; model: string; year: number; price: number; mileage: number; city: string; description?: string; images?: string[] }
+  input: ListingInput & {
+    brand: string;
+    model: string;
+    year: number;
+    price: number;
+    mileage: number;
+    city: string;
+    district?: string;
+    color?: string;
+    description?: string;
+    images?: string[];
+  }
 ): Promise<ModerationOutcome> {
- 
+  // 1. Katman: kural tabanlı içerik filtresi. Yapay zekadan bağımsız çalışır; Gemini yanıt
+  // vermese de (anahtar yok, kota bitti, zaman aşımı) küfür/kapora/dış bağlantı geçemez.
+  // Marka/model/şehir gibi serbest metin alanları da taranır: ilan başlığı bunlardan üretilir.
+  const textCheck = checkListingText([input.brand, input.model, input.city, input.district, input.color, input.description]);
+  if (!textCheck.ok) {
+    return { status: "rejected", reason: textCheck.reason || "İlan içeriği yayın kurallarına uygun bulunmadı." };
+  }
+
   const cmp = await comparableMedianPrice(input.brand, input.model);
   const priceCheck = checkPriceFloor(input.price, cmp);
   if (!priceCheck.ok) {
@@ -94,7 +113,9 @@ export async function moderateNewListing(
         reason: ai.reason || "İlan içeriği yayın kurallarına uygun bulunmadı.",
       };
     }
-   
+    // ai === null: yapay zeka yanıt vermedi. Kural tabanlı filtreyi zaten geçtiği için
+    // ilan yayınlanır; incelenecek bir "beklemede" kuyruğu olmadığından bloklamak
+    // ilanı sonsuza dek askıda bırakırdı.
   }
 
   return { status: "approved", reason: "" };

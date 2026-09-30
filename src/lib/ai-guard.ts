@@ -90,6 +90,10 @@ export function resetAiBudget() {
 }
 
 
+export const ABUSE_REPLY =
+  "Küfür ya da hakaret içeren mesajlara yanıt veremem. Araç aramak, fiyat sormak ya da " +
+  "site özellikleri hakkında yardım istemek için yazabilirsin 🙂";
+
 export const JUNK_REPLY =
   "Tam anlayamadım 🙂 Araç aramak, fiyat sormak ya da öneri istemek için " +
   'yazabilirsin — örneğin "1 milyon altı dizel araba öner" ya da "en ucuz BMW".';

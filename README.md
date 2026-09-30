@@ -104,10 +104,9 @@ taraması eksik/şüpheliyse (yarıda kesildi, aktiflerin %50'sinden fazlası ka
 
 ### Çalıştırma
 
-- **Sunucuda (pm2):** `pm2 start ecosystem.config.cjs`. Yeni kod için:
-  `git fetch origin && git reset --hard origin/main && npm install && pm2 restart daemon`.
-  Depo "Initial commit" üzerine force-push ile güncellendiğinden `git pull` çalışmaz; daemon kendi kendini
-  `fetch + reset --hard` ile günceller.
+- **Sunucuda (pm2):** `pm2 start ecosystem.config.cjs`. Yeni kod için sunucuda `bash scripts/update-server.sh`
+  (`git fetch` + `reset --hard origin/main` + `npm install` + `pm2 restart daemon`). Eskiden geçmiş yeniden yazıldığı
+  için `git pull` çalışmıyordu; daemon artık kendi kendini `fetch + reset --hard` ile de güncelliyor.
 - **Elle:** `scrape.bat` — `11` Arabam doğrula, `S` Arabam sitemap, `E` kurumsal envanter senkronu, `T` turbo çekim.
   `temizle-olu-ilanlari.bat` → `6` kurumsal envanter senkronu.
 - `npm run daemon`, `npm run reconcile [kaynak]`, `npm run arabam-sitemap`.

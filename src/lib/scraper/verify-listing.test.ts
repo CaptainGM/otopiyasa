@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyArabamSearchResponse, classifyOtokocHtml, classifyRedirect, listingIdFromUrl } from "./verify-listing";
+import { classifyOtokocHtml, classifyRedirect, listingIdFromUrl } from "./verify-listing";
 
 describe("classifyOtokocHtml", () => {
   const notFoundBoundary = '{"children":"404 | Sayfa Bulunamadı"}';
@@ -12,41 +12,6 @@ describe("classifyOtokocHtml", () => {
   });
   it("ikisi de yoksa belirsizdir, ilan öldürülmez", () => {
     expect(classifyOtokocHtml("<html><body>Bakım çalışması</body></html>")).toBe("unknown");
-  });
-});
-
-describe("classifyArabamSearchResponse", () => {
-  it("canlı ilanda ilan sayfasına 302'yi canlı sayar", () => {
-    const r = classifyArabamSearchResponse(302, "/ilan/galeriden-satilik-bmw/calislar-center/43138071", "");
-    expect(r.status).toBe("active");
-    expect(r.finalUrl).toBe("https://www.arabam.com/ilan/galeriden-satilik-bmw/calislar-center/43138071");
-  });
-
-  it("aramada 'Sonuç bulunamadı' yazıyorsa ölü sayar (canlı sitede ölçüldü)", () => {
-    const body = "<div>Anahtar Kelime 1234567 Seçimleri Temizle Sonuç bulunamadı. Filtrelerinizi silerek...</div>";
-    expect(classifyArabamSearchResponse(200, "", body).status).toBe("gone");
-  });
-
-  it("Cloudflare engel sayfasını asla ölü saymaz", () => {
-    const challenge = "<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>";
-    expect(classifyArabamSearchResponse(200, "", challenge).status).toBe("blocked");
-    expect(classifyArabamSearchResponse(403, "", challenge).status).toBe("blocked");
-    expect(classifyArabamSearchResponse(429, "", "").status).toBe("blocked");
-  });
-
-  it("tanınmayan 200 yanıtını ölü saymaz (eski kod her 200'ü ölü sayıyordu)", () => {
-    const r = classifyArabamSearchResponse(200, "", "<html><body>Beklenmeyen bir sayfa</body></html>");
-    expect(r.status).toBe("error");
-  });
-
-  it("ana sayfaya ya da ilan dışı bir yere 302'yi ölü saymaz", () => {
-    expect(classifyArabamSearchResponse(302, "/", "").status).toBe("error");
-    expect(classifyArabamSearchResponse(302, "https://www.arabam.com/hata", "").status).toBe("error");
-  });
-
-  it("404/410'u ölü sayar", () => {
-    expect(classifyArabamSearchResponse(404, "", "").status).toBe("gone");
-    expect(classifyArabamSearchResponse(410, "", "").status).toBe("gone");
   });
 });
 

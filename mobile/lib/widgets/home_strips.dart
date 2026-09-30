@@ -26,9 +26,8 @@ Widget _miniCard(BuildContext context, CarListing car, {String? badge, Color? ba
             children: [
               AspectRatio(
                 aspectRatio: 16 / 10,
-                child: car.imageUrl.isEmpty
-                    ? Container(color: Colors.white10, child: const Icon(Icons.directions_car))
-                    : ListingImage(url: car.imageUrl, cacheWidth: 480),
+                // İlk fotoğraf kaynakta silinmişse ilanın diğer fotoğrafı denenir.
+                child: ListingImage(url: car.imageUrl, fallbacks: car.images, cacheWidth: 480),
               ),
               if (badge != null)
                 Positioned(

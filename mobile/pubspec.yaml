@@ -59,6 +59,7 @@ dependencies:
   # GÜVENLİK: JWT token'ı SharedPreferences yerine Android Keystore / iOS
   # Keychain üzerinden şifrelenmiş depolama alanında tutulur.
   flutter_secure_storage: ^9.2.4
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:

@@ -35,6 +35,7 @@ import { detectPriceAnomaly } from "@/lib/anomaly";
 import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
+import { resolvePlacement } from "@/lib/district-coords";
 import { getCurrentUser } from "@/lib/auth";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
@@ -161,6 +162,11 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
 
   const market = marketMap.get(segmentKey(brand, model, year));
   const car = serializeCar(carDoc, market);
+  // Derlenen ilanların çoğunda kayıtlı koordinat yok; harita ve "yakınımdaki" ekranlarıyla aynı
+  // yaklaşık konum (ilçe, yoksa il merkezi) şehir/adres/açıklamadan hesaplanır.
+  const mapPoint = car.location?.lat
+    ? { lat: car.location.lat, lng: car.location.lng }
+    : resolvePlacement(car.city || "", car.address, 0, car.description);
 
   /**
    * Üye ilanına özel veriler: ilanı veren kişinin adı ve gelen teklif sayısı.
@@ -502,10 +508,10 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
             )}
           </div>
 
-          {car.location && car.location.lat && (
+          {mapPoint && (
             <div className="mt-5">
               <h3 className="mb-2 text-sm text-slate-500">Konum</h3>
-              <MiniMap lat={car.location.lat} lng={car.location.lng} />
+              <MiniMap lat={mapPoint.lat} lng={mapPoint.lng} />
             </div>
           )}
         </div>

@@ -45,6 +45,7 @@ echo    11 - Arabam Dogrula     (Tum Arabam ilanlari: fiyat esitle, satilani ars
 echo                             yanlislikla arsivlenenleri geri al; once sitemap)
 echo    8  - Fiyat Taramasi     (En uzun suredir dogrulanmayan 800 Arabam ilani)
 echo    9  - Adres Tamamlama    (Ilcesi eksik ilanlarin adresini doldur - Harita)
+echo    N  - Arabam Yeni Ilanlar (sitemap'ten en yeni ilanlari bul ve tam detayla ekle)
 echo    S  - Arabam Sitemap     (32 sitemap dosyasi, ~2 dk; dogrulama onceligi icin)
 echo    E  - Kurumsal Envanter  (Otokoc, DOD, VavaCars... tum envanteri senkronla)
 echo.
@@ -52,7 +53,7 @@ echo    G  - GALERI ^& ACIKLAMA  (Arabam + Otokoc + Otoplus: tum fotograf, acikl
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, G, S, E, 1-19 veya P, varsayilan T): "
+set /p secim="Secimin (T, G, N, S, E, 1-19 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo
@@ -64,6 +65,7 @@ rem 10 ve 14 eski "tam yenileme / stealth" modlariydi; artik ayni isi 11 yapiyor
 if "%secim%"=="10" goto :mod11
 if "%secim%"=="14" goto :mod11
 if /i "%secim%"=="S" goto :sitemap
+if /i "%secim%"=="N" goto :yeniilan
 if /i "%secim%"=="E" goto :envanter
 
 echo.
@@ -185,6 +187,23 @@ echo.
 pause
 goto :eof
 
+
+:yeniilan
+echo.
+echo ====================================================================
+echo   ARABAM YENI ILANLAR (SITEMAP)
+echo   - Arabam'in sitemap'inden bizde olmayan EN YENI ilanlar bulunur.
+echo   - Her ilanin detay sayfasi gercek tarayiciyla acilir: tum fotograflar,
+echo     aciklama, hasar/boya bilgisi. (robots.txt'e uygun: kategori gezilmez.)
+echo   - Ev IP'si gerekir. Kuyruk bos ise once sitemap okunur (~2 dk).
+echo ====================================================================
+echo.
+set /p nlimit="Kac yeni ilan eklensin? (Varsayilan 200): "
+if "%nlimit%"=="" set nlimit=200
+npx tsx scripts\arabam-discover.ts %nlimit%
+echo.
+pause
+goto :eof
 
 :sitemap
 echo.

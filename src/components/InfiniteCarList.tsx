@@ -70,7 +70,7 @@ export function InfiniteCarList({
     <div className="space-y-3">
       <p className="text-right text-xs text-slate-500" aria-live="polite">{items.length} / {total} ilan yüklendi</p>
       <div className="space-y-2" aria-live="polite">
-        {items.map((car) => <CarCard key={car._id} car={car} />)}
+        {items.map((car, i) => <CarCard key={car._id} car={car} priority={i < 3} />)}
       </div>
       {page < totalPages ? (
         <div ref={sentinelRef} className="flex min-h-16 flex-col items-center justify-center gap-2 py-3">

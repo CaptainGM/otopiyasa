@@ -11,6 +11,7 @@ export function FallbackImage({
   fallback,
   maxPhotos,
   loading = "lazy",
+  priority = false,
   preferSize,
   sizes,
   style,
@@ -24,6 +25,8 @@ export function FallbackImage({
   fallback?: React.ReactNode;
   maxPhotos?: number;
   loading?: "lazy" | "eager";
+  /** İlk ekrandaki görsel: tembel yükleme yok, yüksek ağ önceliği. */
+  priority?: boolean;
   preferSize?: string;
   sizes?: string;
   style?: React.CSSProperties;
@@ -51,7 +54,8 @@ export function FallbackImage({
     <img
       src={safeUrl}
       alt={alt}
-      loading={loading}
+      loading={priority ? "eager" : loading}
+      fetchPriority={priority ? "high" : undefined}
       decoding="async"
       sizes={sizes}
       referrerPolicy="no-referrer"

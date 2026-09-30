@@ -15,6 +15,8 @@ type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> 
   marketListingCount?: number;
 };
 
+export const CARD_PHOTO_LIMIT = 6;
+
 export function serializeCarListItem(car: CarListSource): CarListItem {
   return {
     _id: car._id.toString(),
@@ -24,7 +26,8 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
     mileage: car.mileage,
     city: car.city,
     imageUrl: car.imageUrl ?? "",
-    images: (car.images ?? []).filter(Boolean).slice(0, 4),
+    // Kartta gezdirilecek fotoğraf sayısı; liste yükünü şişirmemek için sınırlı.
+    images: (car.images ?? []).filter(Boolean).slice(0, CARD_PHOTO_LIMIT),
     damageFlag: car.damageFlag,
     sourceSite: car.sourceSite ?? "demo",
     status: car.status ?? "active",

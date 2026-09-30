@@ -522,7 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ValueListenableBuilder<int>(
             valueListenable: _api.authRevision,
-            builder: (context, _, __) => Row(
+            builder: (context, _, _) => Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (_api.isLoggedIn) ...[
@@ -562,7 +562,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ValueListenableBuilder<int>(
             valueListenable: _api.authRevision,
-            builder: (context, _, __) => IconButton(
+            builder: (context, _, _) => IconButton(
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.all(4),
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -963,7 +963,7 @@ class _SearchablePickerSheetState extends State<_SearchablePickerSheet> {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _popularBrands.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final brand = _popularBrands[index];
                       final val = brand == 'Tümü' ? '' : brand;

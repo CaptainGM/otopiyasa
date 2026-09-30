@@ -126,6 +126,7 @@ export async function getArabamSessionCookies(): Promise<string> {
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(15000),
     });
     const setCookies = res.headers.getSetCookie
       ? res.headers.getSetCookie()
@@ -177,6 +178,8 @@ export async function fetchPageHtml(url: string) {
         fetch(url, {
           headers,
           cache: "no-store",
+          // Zaman aşımı olmayan istek 7/24 daemon'u sonsuza kadar kilitleyebiliyordu.
+          signal: AbortSignal.timeout(20000),
         }),
       { label: `fetch ${hostname}`, retries: 1 }
     );
@@ -199,7 +202,7 @@ export async function fetchPageHtml(url: string) {
       if (freshCookies) {
         headers["Cookie"] = freshCookies;
         try {
-          const retryRes = await fetch(url, { headers, cache: "no-store" });
+          const retryRes = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(20000) });
           if (retryRes.ok) {
             return {
               ok: true,
@@ -224,26 +227,43 @@ export async function fetchPageHtml(url: string) {
     }
 
     try {
-      const browserHtml = await fetchPageHtmlWithBrowser(url, true);
-      if (browserHtml && browserHtml.length > 1000) {
-        return {
-          ok: true,
-          status: 200,
-          html: browserHtml,
-          finalUrl: url,
-        };
+      // Tarayıcının vardığı GERÇEK adres döndürülür: kaldırılmış bir Arabam ilanı
+      // model kategori sayfasına yönlenir; adres kaybolursa ilan canlı sanılıyordu.
+      const page = await fetchPageWithBrowser(url, true);
+      if (isCloudflareChallenge(page.html)) {
+        return { ok: false, status: 403, html: "", finalUrl: page.finalUrl };
+      }
+      if (page.html.length > 1000) {
+        return { ok: page.status < 400, status: page.status, html: page.html, finalUrl: page.finalUrl };
       }
     } catch (browserErr: any) {
       console.warn(`  ⚠️ Yerel tarayıcı hatası:`, browserErr?.message || browserErr);
     }
   }
 
+  const html = await response.text();
+  if (response.ok && isCloudflareChallenge(html)) {
+    return { ok: false, status: 403, html: "", finalUrl: response.url || url };
+  }
   return {
     ok: response.ok,
     status: response.status,
-    html: await response.text(),
+    html,
     finalUrl: response.url || url,
   };
+}
+
+/** Cloudflare "Just a moment..." / challenge sayfası mı? Bu sayfa asla ilan içeriği değildir. */
+export function isCloudflareChallenge(html: string): boolean {
+  if (!html) return false;
+  const head = html.slice(0, 6000);
+  return (
+    /<title>\s*Just a moment/i.test(head) ||
+    /<title>\s*Attention Required/i.test(head) ||
+    head.includes("challenges.cloudflare.com") ||
+    head.includes("cf-chl-") ||
+    head.includes("_cf_chl_opt")
+  );
 }
 
 let sharedBrowser: any = null;
@@ -295,6 +315,14 @@ async function getSharedContext(hostname: string) {
 }
 
 export async function fetchPageHtmlWithBrowser(url: string, skipWait = false) {
+  return (await fetchPageWithBrowser(url, skipWait)).html;
+}
+
+/** Sayfayı gerçek Chromium ile açar; HTML ile birlikte yönlendirme sonrası adresi ve HTTP kodunu döndürür. */
+export async function fetchPageWithBrowser(
+  url: string,
+  skipWait = false
+): Promise<{ html: string; finalUrl: string; status: number }> {
   const hostname = new URL(url).hostname;
   if (!skipWait) {
     await waitForSlot(hostname);
@@ -305,11 +333,11 @@ export async function fetchPageHtmlWithBrowser(url: string, skipWait = false) {
       const context = await getSharedContext(hostname);
       const page = await context.newPage();
       try {
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
+        const response = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
         // Sadece DOM'un oturması için kısa bir bekleme (500-900ms)
         await page.waitForTimeout(500 + Math.random() * 400);
         const html = await page.content();
-        return html;
+        return { html, finalUrl: page.url() || url, status: response?.status() ?? 200 };
       } catch (err) {
         if (sharedBrowser && !sharedBrowser.isConnected()) {
           sharedBrowser = null;
@@ -535,10 +563,20 @@ const ARABAM_PROPERTY_LABELS = [
  */
 export function isListingGone(html: string, finalUrl = ""): boolean {
   if (finalUrl) {
-    // Arabam veya kurumsal sitelerde /ilan/ linki aranırken /ikinci-el, /vasita veya kategori sayfalarına yönlendirildiyse ilan kesin ölüdür
+    // /ilan/ linki kategori/arama sayfasına yönlendiyse ilan kaldırılmıştır
+    // (Arabam kaldırılan ilanı model kategorisine yönlendiriyor, ölçüldü).
+    // Ana sayfaya yönlendirme ise KANIT DEĞİLDİR: bot/bölge filtresi de aynı şeyi yapar.
+    let path = "";
+    try {
+      path = new URL(finalUrl).pathname;
+    } catch {
+      path = "";
+    }
+    const isRoot = path === "" || path === "/";
     const isSearchRedirect =
-      (!/\/ilan\//.test(finalUrl) && /\/(ikinci-el|vasita|arac-arama|satilik-araba)(\/|\?|$)/.test(finalUrl)) ||
-      (finalUrl.endsWith("/") && !/\/ilan\//.test(finalUrl));
+      !isRoot &&
+      !/\/ilan\//.test(finalUrl) &&
+      /\/(ikinci-el|vasita|arac-arama|satilik-araba)(\/|\?|$)/.test(finalUrl);
     if (isSearchRedirect) return true;
   }
   const text = (html || "").toLocaleLowerCase("tr-TR");

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { setDaemonControl, setDaemonMode, getDaemonControl } from "@/models/ScrapeMetric";
-import { runScrapeJob } from "@/lib/scraper/run-scrape";
 
 export const dynamic = "force-dynamic";
 
@@ -58,45 +57,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Buton yalnızca daemon'a komut bırakır; taramayı daemon yapar. Eskiden burada
+    // Vercel üzerinde "arka planda" doğrulama + tarama başlatılıyordu: yanıt
+    // döndükten sonra sunucusuz fonksiyon kesilebildiği için yarım kalıyor ve
+    // Arabam dahil tüm ilanları tarayıcı olmayan ortamda "doğruluyordu".
     if (action === "stop") {
       await setDaemonControl("stop", "🛑 Durduruldu (Panelden 'Motoru Başlat' ile çalıştırılabilir)");
     } else {
       await setDaemonControl("run", "🚀 Otonom Motor Devrede: Canlı Taranıyor...");
-      // Telefondan veya panelden tıklandığında (bilgisayar kapalı olsa dahi) sunucuda doğrudan bulut taraması & ölü kontrolü tetikle
-      void (async () => {
-        try {
-          const { sweepAndCleanDeadListings } = await import("@/lib/scraper/verify-listing");
-          const { recordHourlyMetric } = await import("@/models/ScrapeMetric");
-
-          // 1. Canlı ölü ilan kontrolü ve temizliği
-          const sweepRes = await sweepAndCleanDeadListings({ limit: 30, concurrency: 2 });
-          if (sweepRes.checked > 0) {
-            await recordHourlyMetric({
-              source: "other",
-              scanned: sweepRes.checked,
-              inserted: 0,
-              updated: 0,
-              deleted: sweepRes.archived,
-            });
-          }
-
-          // 2. Çoklu kaynak canlı yeni araç çekimi
-          const scrapeRes = await runScrapeJob({ source: "all", query: "", limit: 16 });
-          if (Array.isArray(scrapeRes.sources)) {
-            for (const s of scrapeRes.sources) {
-              await recordHourlyMetric({
-                source: s.source,
-                scanned: s.fetched || 0,
-                inserted: s.saved || 0,
-                updated: 0,
-                deleted: 0,
-              });
-            }
-          }
-        } catch (err) {
-          console.error("[Daemon Control] Arka plan bulut tarama hatası:", err);
-        }
-      })();
     }
 
     const status = await getDaemonControl();

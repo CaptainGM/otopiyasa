@@ -2,13 +2,13 @@ import { cityToCoords } from "@/lib/city-coords";
 import { normalizeBrand } from "@/lib/normalize-brand";
 import { fetchPageHtml } from "@/lib/scraper/browser-scrape";
 import { reportProgress } from "@/lib/scraper/progress";
-import { ScrapedListing } from "@/lib/scraper/types";
+import { CrawlReport, ScrapedListing } from "@/lib/scraper/types";
 
 
 
 const LIST_URL = "https://www.otomerkezi.net/ikinci-el";
 const ITEMS_PER_PAGE = 15;
-const MAX_PAGES = 20;
+const MAX_PAGES = 40;
 
 const FUEL_MAP: Record<string, string> = {
   gasoline: "Benzin",
@@ -268,7 +268,8 @@ function parseOtomerkeziLdJson(html: string): ScrapedListing[] {
 export async function scrapeOtomerkeziListings(
   limit: number,
   onListing: (listing: ScrapedListing) => Promise<void>,
-  pageOffset = 1
+  pageOffset = 1,
+  report?: CrawlReport
 ): Promise<number> {
   const startPage = Math.max(1, pageOffset);
   const maxPagesToScan = Math.ceil(limit / ITEMS_PER_PAGE) + 2;
@@ -280,10 +281,29 @@ export async function scrapeOtomerkeziListings(
     reportProgress(`Otomerkezi sayfaları çekiliyor (Sf.${page})`, page - startPage + 1, maxPagesToScan);
     const url = page === 1 ? LIST_URL : `${LIST_URL}?page=${page}`;
     const result = await fetchPageHtml(url);
-    if (!result.ok) break;
+    if (!result.ok) {
+      if (report) {
+        if (result.status === 404 && page > 1) report.endedNaturally = true;
+        else report.error = `HTTP ${result.status} (Sf.${page})`;
+      }
+      break;
+    }
+    if (report) report.pages += 1;
 
     const pageListings = parseOtomerkeziListHtml(result.html);
-    if (pageListings.length === 0) break;
+    if (pageListings.length === 0) {
+      // Son sayfanın ötesi boş döner (ölçüldü: ?page=999 → 0 araç).
+      if (report) {
+        if (page > 1) report.endedNaturally = true;
+        else report.error = "İlk sayfada araç bulunamadı (site yapısı değişmiş olabilir).";
+      }
+      break;
+    }
+    // ld+json yedeği araç kimliği taşımıyor (slug/foto no ile kimlik uyduruluyor);
+    // bu kimliklerle yapılan envanter karşılaştırması aynı aracı "kayıp" sanar.
+    if (report && !result.html.includes('\\"vehicle\\":{')) {
+      report.error = `Sf.${page} araç kimlikleri okunamadı (RSC verisi yok); envanter karşılaştırması yapılmayacak.`;
+    }
 
 
     for (const listing of pageListings) {

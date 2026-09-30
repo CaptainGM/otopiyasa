@@ -20,6 +20,7 @@ import { Report } from "@/models/Report";
 import { Subscription } from "@/models/Subscription";
 import { User } from "@/models/User";
 import { DaemonHeartbeat, HourlyScrapeStat } from "@/models/ScrapeMetric";
+import { describeDaemon } from "@/lib/daemon-status";
 import { ManualScrapeLog } from "@/models/ManualScrapeLog";
 import { ListingSource } from "@/types";
 import { cached, CACHE_TTL } from "@/lib/cache";
@@ -228,29 +229,7 @@ export default async function AdminPage() {
     }
   }
 
-  const lastHeartbeat = heartbeat?.lastHeartbeat
-    ? new Date(heartbeat.lastHeartbeat)
-    : null;
-  const isOnline =
-    heartbeat?.status !== "stopped" && heartbeat?.command !== "stop";
-
-  const rawPhase = heartbeat?.currentPhase || "";
-  const initialPhase = isOnline
-    ? (rawPhase && !rawPhase.includes("run-daemon") && !rawPhase.includes("Bağlantı Kesildi")
-        ? rawPhase
-        : "🚀 Otonom Motor Aktif & Taranıyor...")
-    : "🛑 Durduruldu (Panelden 'Motoru Başlat' ile çalıştırılabilir)";
-
-  const initialDaemon = {
-    isOnline,
-    host: heartbeat?.host || "Oracle Cloud Always Free (Frankfurt)",
-    currentPhase: initialPhase,
-    cycle: heartbeat?.cycle || 1,
-    memoryMb: isOnline ? (heartbeat?.memoryMb || 45) : 0,
-    uptimeSeconds: isOnline ? (heartbeat?.uptimeSeconds || 0) : 0,
-    lastHeartbeat: heartbeat?.lastHeartbeat ? new Date(heartbeat.lastHeartbeat).toISOString() : new Date().toISOString(),
-    status: (isOnline ? (heartbeat?.status || "online") : "stopped") as any,
-  };
+  const initialDaemon = describeDaemon(heartbeat);
 
   const initialToday = {
     date: todayStr,

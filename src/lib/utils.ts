@@ -14,6 +14,23 @@ export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+/** "3 saat önce", "2 gün önce" gibi kısa Türkçe göreli zaman. Mobildeki relativeTimeTr ile aynı kurallar. */
+export function formatRelativeTr(value: string | Date | undefined | null, now: Date = new Date()): string {
+  if (!value) return "";
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return "";
+  const minutes = Math.max(0, Math.floor((now.getTime() - time) / 60000));
+  if (minutes < 1) return "az önce";
+  if (minutes < 60) return `${minutes} dk önce`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} saat önce`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} gün önce`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} ay önce`;
+  return `${Math.floor(days / 365)} yıl önce`;
+}
+
 /**
  * Türkiye Saati (UTC+3, Europe/Istanbul) referans alınarak DD.MM.YYYY formatında tarih döndürür.
  * Sunucu nerede (Vercel UTC, Frankfurt UTC+1, vb.) olursa olsun her zaman Türkiye takvim gününü verir.

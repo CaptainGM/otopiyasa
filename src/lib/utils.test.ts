@@ -1,5 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { escapeRegExp, turkishSearchRegex, levenshtein } from "./utils";
+import { escapeRegExp, turkishSearchRegex, levenshtein, formatRelativeTr } from "./utils";
+
+describe("formatRelativeTr", () => {
+  const now = new Date("2026-09-30T12:00:00Z");
+  it("kısa Türkçe göreli zaman üretir", () => {
+    expect(formatRelativeTr(new Date("2026-09-30T11:59:40Z"), now)).toBe("az önce");
+    expect(formatRelativeTr(new Date("2026-09-30T11:15:00Z"), now)).toBe("45 dk önce");
+    expect(formatRelativeTr(new Date("2026-09-30T07:00:00Z"), now)).toBe("5 saat önce");
+    expect(formatRelativeTr(new Date("2026-09-27T12:00:00Z"), now)).toBe("3 gün önce");
+    expect(formatRelativeTr("2026-06-30T12:00:00Z", now)).toBe("3 ay önce");
+  });
+  it("boş/geçersiz değerde boş döner", () => {
+    expect(formatRelativeTr(undefined, now)).toBe("");
+    expect(formatRelativeTr("bozuk", now)).toBe("");
+  });
+});
 
 describe("levenshtein", () => {
   it("düzenleme mesafesini doğru hesaplar", () => {

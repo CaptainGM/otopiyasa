@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { verifySingleListing } from "@/lib/scraper/verify-listing";
+import { archiveListings, markSeenAlive } from "@/lib/scraper/listing-lifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,8 @@ export async function POST(req: NextRequest) {
     // Manuel Arşive Kaldırma İşlemi
     if (action === "archive") {
       car.status = "removed";
-      car.updatedAt = new Date();
+      car.removedAt = new Date();
+      car.removedReason = `manuel: ${admin.email || "yönetici"}`;
       await car.save();
       return NextResponse.json({
         success: true,
@@ -53,13 +55,10 @@ export async function POST(req: NextRequest) {
 
     let archived = false;
     if ((checkResult.status === "gone" || checkResult.status === "redirected") && autoArchive) {
-      car.status = "removed";
-      car.updatedAt = new Date();
-      await car.save();
-      archived = true;
+      archived = (await archiveListings([car._id], `${car.sourceSite}: ${checkResult.reason}`)) > 0;
     } else if (checkResult.status === "active") {
-      car.updatedAt = new Date();
-      await car.save();
+      // Canlı teyit updatedAt'i ("son değişiklik") oynatmaz.
+      await markSeenAlive([car._id]);
     }
 
     return NextResponse.json({

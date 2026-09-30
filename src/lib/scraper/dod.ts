@@ -1,10 +1,11 @@
 import { cityToCoords } from "@/lib/city-coords";
 import { normalizeBrand, isNonCarBrand } from "@/lib/normalize-brand";
 import { reportProgress } from "@/lib/scraper/progress";
-import { ScrapedListing } from "@/lib/scraper/types";
+import { CrawlReport, ScrapedListing } from "@/lib/scraper/types";
 import { Car } from "@/models/Car";
 
-const SITEMAP_URL = "https://www.dod.com.tr/sitemap.xml";
+// www.dod.com.tr her isteği dod.com.tr'ye 301 ile yönlendiriyor.
+const SITEMAP_URL = "https://dod.com.tr/sitemap.xml";
 
 const MOBILE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
@@ -23,10 +24,31 @@ interface DodCarSchema {
   };
 }
 
+/**
+ * Sitemap'teki adresi kullanılabilir hâle getirir. XML içinde `&` karakteri
+ * `&amp;` olarak kaçışlanır; ham okununca adres `...s&amp;s-style...` olarak
+ * kaydediliyordu (35 ilanda bozuk link). Alan adı da yönlendirmesiz hâline çekilir.
+ */
+export function normalizeDodUrl(raw: string): string {
+  return raw
+    .trim()
+    .replace(/&amp;/g, "&")
+    .replace(/&#38;/g, "&")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/^https?:\/\/www\.dod\.com\.tr/i, "https://dod.com.tr");
+}
+
+export function dodExternalIdFromUrl(url: string): string | null {
+  const match = url.match(/(\d{6,})$/);
+  return match ? `dod-${match[1]}` : null;
+}
+
 let cachedDodUrls: string[] = [];
 let lastDodSitemapFetch = 0;
 
-async function fetchDodCarUrls(): Promise<string[]> {
+/** DOD'un yayındaki tüm araç adresleri (sitemap = güncel envanter). */
+export async function fetchDodCarUrls(): Promise<string[]> {
   const now = Date.now();
   if (cachedDodUrls.length > 0 && now - lastDodSitemapFetch < 1000 * 60 * 60) {
     return cachedDodUrls;
@@ -43,8 +65,8 @@ async function fetchDodCarUrls(): Promise<string[]> {
 
     if (!res.ok) return [];
     const text = await res.text();
-    const urls = [...text.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    const carUrls = urls.filter((u) => u.includes("/arac-detay/") && /\d{6,}/.test(u));
+    const urls = [...text.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => normalizeDodUrl(m[1]));
+    const carUrls = [...new Set(urls.filter((u) => u.includes("/arac-detay/") && dodExternalIdFromUrl(u)))];
     if (carUrls.length > 0) {
       cachedDodUrls = carUrls;
       lastDodSitemapFetch = now;
@@ -56,44 +78,16 @@ async function fetchDodCarUrls(): Promise<string[]> {
   }
 }
 
-export async function scrapeDodListings(
-  limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
-  skipExisting = true
+/** Verilen DOD araç sayfalarını açıp ilan verisine çevirir. */
+export async function scrapeDodDetails(
+  items: Array<{ url: string; externalId: string }>,
+  onListing: (listing: ScrapedListing) => Promise<void>
 ): Promise<number> {
-  const carUrls = await fetchDodCarUrls();
-  if (carUrls.length === 0) return 0;
-
-  // İlan ID'lerini çıkar
-  const urlWithIds = carUrls.map((url) => {
-    const match = url.match(/(\d{6,})$/);
-    return {
-      url,
-      externalId: match ? `dod-${match[1]}` : `dod-${encodeURIComponent(url.slice(-20))}`,
-    };
-  });
-
-  let candidates = urlWithIds;
-
-  if (skipExisting) {
-    const existingIds = new Set(
-      (
-        await Car.find(
-          { externalId: { $in: urlWithIds.map((u) => u.externalId) } },
-          { externalId: 1 }
-        ).lean<{ externalId: string }[]>()
-      ).map((d) => d.externalId)
-    );
-
-    candidates = candidates.filter((c) => !existingIds.has(c.externalId));
-  }
-
   let fetched = 0;
-  const totalToFetch = Math.min(limit, candidates.length);
 
-  for (let i = 0; i < totalToFetch; i++) {
-    const item = candidates[i];
-    reportProgress("DOD araçları taranıyor", i + 1, totalToFetch);
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    reportProgress("DOD araçları taranıyor", i + 1, items.length);
 
     try {
       const res = await fetch(item.url, {
@@ -210,4 +204,36 @@ export async function scrapeDodListings(
   }
 
   return fetched;
+}
+
+export async function scrapeDodListings(
+  limit: number,
+  onListing: (listing: ScrapedListing) => Promise<void>,
+  skipExisting = true,
+  report?: CrawlReport
+): Promise<number> {
+  const carUrls = await fetchDodCarUrls();
+  if (report) {
+    report.pages = 1;
+    if (carUrls.length > 0) report.endedNaturally = true;
+    else report.error = "DOD sitemap okunamadı ya da boş.";
+  }
+  if (carUrls.length === 0) return 0;
+
+  let candidates = carUrls.map((url) => ({ url, externalId: dodExternalIdFromUrl(url) as string }));
+
+  if (skipExisting) {
+    const existingIds = new Set(
+      (
+        await Car.find(
+          { externalId: { $in: candidates.map((u) => u.externalId) } },
+          { externalId: 1 }
+        ).lean<{ externalId: string }[]>()
+      ).map((d) => d.externalId)
+    );
+
+    candidates = candidates.filter((c) => !existingIds.has(c.externalId));
+  }
+
+  return scrapeDodDetails(candidates.slice(0, limit), onListing);
 }

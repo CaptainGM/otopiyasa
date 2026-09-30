@@ -1,190 +1,161 @@
+import type { Types } from "mongoose";
 import { Car } from "@/models/Car";
-import { pickUserAgent } from "@/lib/scraper/browser-scrape";
+import { fetchPageWithBrowser, isCloudflareChallenge, isListingGone, pickUserAgent } from "@/lib/scraper/browser-scrape";
+import {
+  LIFECYCLE,
+  SCRAPED_SOURCE_FILTER,
+  archiveListings,
+  breakerTripped,
+  markSeenAlive,
+  markVerifyAttempt,
+} from "@/lib/scraper/listing-lifecycle";
 
 export interface VerifyListingResult {
+  /**
+   * active     → ilan kaynakta yayında (pozitif kanıt)
+   * gone       → ilan kaldırılmış (404/410, "satıldı" yazısı, "sonuç bulunamadı")
+   * redirected → ilan adresi başka bir sayfaya yönlendi (ilan artık yok)
+   * blocked    → bot koruması / bölge filtresi / oran sınırı: HİÇBİR ŞEY KANITLAMAZ
+   * error      → zaman aşımı veya anlaşılamayan yanıt: HİÇBİR ŞEY KANITLAMAZ
+   */
   status: "active" | "gone" | "redirected" | "blocked" | "error";
   statusCode?: number;
   reason: string;
   finalUrl?: string;
 }
 
-let sharedArabamBrowser: any = null;
-let sharedArabamContext: any = null;
-let arabamBrowserLaunchPromise: Promise<any> | null = null;
+/**
+ * Tek adres üzerinden doğrulanamayan kaynaklar; yalnızca tam envanter senkronuyla
+ * (reconcile.ts) doğrulanır:
+ *  - VavaCars, Carvak, İkinciyeni: tek sayfalık uygulama; her adres canlı da olsa
+ *    satılmış da olsa aynı boş kabuğu döndürür (Carvak'ta 9 örnekte de 23.220 bayt).
+ *  - Otomerkezi: aynı model-yıl için tek slug kullanılıyor, aynı adresi 7 farklı
+ *    araç paylaşabiliyor.
+ *  - DOD: sitemap'in kendisi envanterdir; detay sayfası bot korumasına takılıyor.
+ */
+export const INVENTORY_ONLY_SOURCES = new Set(["vavacars", "otomerkezi", "carvak", "ikinciyeni", "dod"]);
 
-async function getArabamBrowserContext() {
-  if (process.env.DISABLE_PLAYWRIGHT === "true" || process.env.VERCEL) {
-    return null;
-  }
-  if (sharedArabamBrowser && sharedArabamBrowser.isConnected() && sharedArabamContext) {
-    return sharedArabamContext;
-  }
-  if (arabamBrowserLaunchPromise) {
-    return arabamBrowserLaunchPromise;
-  }
-  arabamBrowserLaunchPromise = (async () => {
-    try {
-      let launchTimeoutId: any;
-      const launchTimeout = new Promise<never>((_, reject) => {
-        launchTimeoutId = setTimeout(() => reject(new Error("Playwright başlatma zaman aşımı (5sn)")), 5000);
-      });
+const MOBILE_UA =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
 
-      const launchPromise = (async () => {
-        const { chromium } = await import("playwright");
-        if (!sharedArabamBrowser || !sharedArabamBrowser.isConnected()) {
-          sharedArabamBrowser = await chromium.launch({
-            headless: true,
-            args: [
-              "--disable-blink-features=AutomationControlled",
-              "--no-sandbox",
-              "--disable-dev-shm-usage",
-              "--disable-gpu",
-              "--single-process",
-            ],
-          });
-        }
-        sharedArabamContext = await sharedArabamBrowser.newContext({
-          userAgent:
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-          locale: "tr-TR",
-        });
-        return sharedArabamContext;
-      })();
-
-      return await Promise.race([launchPromise, launchTimeout]).finally(() => clearTimeout(launchTimeoutId));
-    } catch {
-      sharedArabamBrowser = null;
-      sharedArabamContext = null;
-      return null;
-    } finally {
-      arabamBrowserLaunchPromise = null;
-    }
-  })();
-  return arabamBrowserLaunchPromise;
-}
+const GONE_TEXTS = [
+  "araç satılmıştır",
+  "bu araç satıldı",
+  "araç satıldı",
+  "ilan bulunamadı",
+  "ilan yayından kaldırılmıştır",
+  "bu ilan yayında değildir",
+  "aradığınız ilan bulunamamıştır",
+  "böyle bir ilan bulunamadı",
+];
 
 /**
- * Cloudflare 403/429 durumlarında gerçek Chromium tarayıcısıyla
- * arama sayfasına gidip ilanın canlı olup olmadığını kesin olarak doğrular.
+ * Arabam `/ikinci-el?searchText=<ilanNo>` yanıtını sınıflandırır.
+ * Canlı ilanda Arabam doğrudan ilan sayfasına 302 yapar; ilan yoksa arama
+ * sayfası "Sonuç bulunamadı." yazar (ikisi de canlı sitede ölçüldü). Bunların
+ * dışındaki her yanıt belirsizdir: eski kod her 200'ü "ölü" sayıyor, bu da
+ * engel/oran sınırı sayfalarında canlı ilanları arşive atıyordu.
  */
-export async function verifyArabamWithBrowser(arabamId: string): Promise<VerifyListingResult> {
-  try {
-    let checkTimeoutId: any;
-    const checkTimeout = new Promise<never>((_, reject) => {
-      checkTimeoutId = setTimeout(() => reject(new Error("Tarayıcı arama zaman aşımı (7sn)")), 7000);
-    });
-
-    const checkPromise = (async (): Promise<VerifyListingResult> => {
-      const context = await getArabamBrowserContext();
-      if (!context) {
-        return {
-          status: "blocked",
-          reason: "Bulut ortamında tarayıcı desteği pasif (İlan canlı korundu).",
-        };
-      }
-      const page = await context.newPage();
-      try {
-        const searchUrl = `https://www.arabam.com/ikinci-el?searchText=${arabamId}`;
-        await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 6000 });
-        const finalUrl = page.url();
-        const title = await page.title();
-        const isLive = finalUrl.includes("/ilan/");
-
-        if (isLive) {
-          return {
-            status: "active",
-            statusCode: 200,
-            finalUrl,
-            reason: `İlan orijinal sitede canlı ve yayında (Doğrulandı: ${title.slice(0, 50)})`,
-          };
-        }
-
-        const content = await page.content();
-        const lower = content.toLowerCase();
-        const isGone =
-          finalUrl.includes("/ikinci-el") ||
-          title.includes("Satılık 2.El Araçlar") ||
-          lower.includes("ilan bulunamadı") ||
-          lower.includes("bu ilan yayında değildir");
-
-        if (isGone) {
-          return {
-            status: "gone",
-            statusCode: 200,
-            finalUrl,
-            reason: "İlan yayından kaldırılmış (Arabam arama motorunda bulunamadı).",
-          };
-        }
-
-        return {
-          status: "gone",
-          statusCode: 200,
-          finalUrl,
-          reason: "İlan yayından kaldırılmış (Kategori/arama sayfasına yönlendi).",
-        };
-      } finally {
-        await page.close().catch(() => {});
-      }
-    })();
-
-    return await Promise.race([checkPromise, checkTimeout]).finally(() => clearTimeout(checkTimeoutId));
-  } catch (err: any) {
+export function classifyArabamSearchResponse(status: number, location: string, body: string): VerifyListingResult {
+  if ((status === 301 || status === 302) && location.includes("/ilan/")) {
     return {
-      status: "blocked",
-      reason: `Bulut ortamında doğrulama atlandı (İlan korundu): ${err?.message || err}`,
+      status: "active",
+      statusCode: 200,
+      finalUrl: location.startsWith("http") ? location : `https://www.arabam.com${location}`,
+      reason: "İlan orijinal sitede canlı ve yayında (Doğrulandı).",
     };
   }
-}
-
-let dodSitemapCache: string | null = null;
-let lastDodFetchTime = 0;
-
-/**
- * DOD (Doğuş Otomotiv) ilanını Cloudflare 403 engeline takılmadan
- * DOD'un resmi sitemap.xml arşivi üzerinden 1 milisaniyede %100 kesin doğrular.
- */
-async function verifyDodWithSitemap(url: string, externalId?: string): Promise<boolean> {
-  const now = Date.now();
-  if (!dodSitemapCache || now - lastDodFetchTime > 30 * 60 * 1000) {
-    try {
-      const res = await fetch("https://www.dod.com.tr/sitemap.xml", {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-          Accept: "text/xml,application/xml,text/html,*/*",
-        },
-        signal: AbortSignal.timeout(12000),
-      });
-      if (res.ok) {
-        dodSitemapCache = await res.text();
-        lastDodFetchTime = now;
-      }
-    } catch {
-      // sitemap fetch error
+  if (status === 404 || status === 410) {
+    return { status: "gone", statusCode: status, reason: `HTTP ${status}: İlan bulunamadı.` };
+  }
+  if (status === 403 || status === 429) {
+    return { status: "blocked", statusCode: status, reason: `Erişim engeli (HTTP ${status}).` };
+  }
+  if (status === 200) {
+    if (isCloudflareChallenge(body)) {
+      return { status: "blocked", statusCode: 200, reason: "Cloudflare doğrulama sayfası döndü (ilan korunur)." };
+    }
+    if (body.includes("Sonuç bulunamadı")) {
+      return { status: "gone", statusCode: 200, reason: "Arabam aramasında ilan numarası bulunamadı." };
     }
   }
+  return { status: "error", statusCode: status, reason: `Belirsiz yanıt (HTTP ${status}); ilan korunur.` };
+}
 
-  if (!dodSitemapCache) return true; // sitemap çekilemezse silmeyip aktif kabul et
+/**
+ * Otokoç, satılan ilanın sayfasını HTTP 200 ile "404 | Sayfa Bulunamadı" (soft 404)
+ * olarak döndürüyor; eski doğrulayıcı bunları "canlı" sayıyordu (en eski 40 aktif
+ * ilanın 27'si böyleydi, DB'deki 1.657 aktif ilanın yalnızca ~1.250'si sitede).
+ * DİKKAT: "404 | Sayfa Bulunamadı" metni CANLI sayfalarda da gömülü (Next.js not-found
+ * bileşeni), bu yüzden tek başına ayırt edici değildir. Belirleyici olan, gerçek
+ * ilan verisinin (Product/Car ld+json) bulunup bulunmamasıdır.
+ */
+export function classifyOtokocHtml(html: string): "live" | "gone" | "unknown" {
+  if (/"@type"\s*:\s*"(Product|Car|Vehicle)"/.test(html)) return "live";
+  if (/404 \| Sayfa Bulunamad/.test(html)) return "gone";
+  return "unknown";
+}
 
-  // URL'deki veya externalId'deki ilan numarasını bul (örn: 263505924)
-  const idMatch = url.match(/(\d{6,})(?:$|[/?#])/);
-  const targetId = idMatch ? idMatch[1] : (externalId || "").replace(/\D/g, "");
+/** Adresin sonundaki (ya da ?id= içindeki) ilan numarası. */
+export function listingIdFromUrl(url: string): string | null {
+  const q = url.match(/[?&]id=(\d{3,})/);
+  if (q) return q[1];
+  const m = url.match(/(\d{5,})\/?(?:[?#].*)?$/);
+  return m ? m[1] : null;
+}
 
-  if (targetId && targetId.length >= 6) {
-    return dodSitemapCache.includes(targetId);
-  }
-
-  // URL'nin son parçasını ara
+/**
+ * Yönlendirme sonrası adres ilanı hâlâ temsil ediyor mu? İlan numarası
+ * kaybolduysa (ör. Otoplus satılan ilanı model kataloğuna yönlendiriyor:
+ * `.../-574590` → `/kia/sportage`) ilan artık yoktur. Ana sayfaya yönlendirme
+ * bot/bölge filtresi de olabileceği için kanıt sayılmaz.
+ */
+export function classifyRedirect(originalUrl: string, finalUrl: string): "same" | "root" | "lost-id" | "moved" {
+  if (!finalUrl || finalUrl === originalUrl) return "same";
+  let path = "";
   try {
-    const pathname = new URL(url).pathname;
-    return dodSitemapCache.includes(pathname);
+    path = new URL(finalUrl).pathname.replace(/\/+$/, "");
   } catch {
-    return true;
+    return "moved";
+  }
+  if (path === "") return "root";
+  const id = listingIdFromUrl(originalUrl);
+  if (id && !finalUrl.includes(id)) return "lost-id";
+  return "moved";
+}
+
+async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListingResult> {
+  if (process.env.DISABLE_PLAYWRIGHT === "true" || process.env.VERCEL) {
+    return { status: "blocked", reason: "Bu ortamda tarayıcı yok; doğrulama atlandı (ilan korunur)." };
+  }
+  try {
+    const page = await fetchPageWithBrowser(listingUrl, true);
+    if (isCloudflareChallenge(page.html)) {
+      return { status: "blocked", finalUrl: page.finalUrl, reason: "Cloudflare doğrulama sayfası (ilan korunur)." };
+    }
+    if (page.status === 404 || page.status === 410) {
+      return { status: "gone", statusCode: page.status, finalUrl: page.finalUrl, reason: `HTTP ${page.status}: İlan bulunamadı.` };
+    }
+    if (isListingGone(page.html, page.finalUrl)) {
+      return {
+        status: "gone",
+        statusCode: page.status,
+        finalUrl: page.finalUrl,
+        reason: "İlan sayfası kaldırılmış (kategori sayfasına yönlendi ya da 'yayında değil' yazıyor).",
+      };
+    }
+    if (/\/ilan\//.test(page.finalUrl) && /"@type"\s*:\s*"Car"/.test(page.html)) {
+      return { status: "active", statusCode: page.status, finalUrl: page.finalUrl, reason: "İlan sayfası canlı (tarayıcıyla doğrulandı)." };
+    }
+    return { status: "error", statusCode: page.status, finalUrl: page.finalUrl, reason: "İlan sayfası tanınamadı (ilan korunur)." };
+  } catch (err: any) {
+    return { status: "blocked", reason: `Tarayıcı doğrulaması başarısız (ilan korunur): ${err?.message || err}` };
   }
 }
 
 /**
- * Tek bir ilanın orijinal sitede (Arabam veya Kurumsal platformlar)
- * hala yayında olup olmadığını test eder.
+ * Tek bir ilanın kaynakta hâlâ yayında olup olmadığını test eder. Yalnızca
+ * pozitif kanıt "gone/redirected" döndürür; belirsiz her durum "blocked/error"dur.
  */
 export async function verifySingleListing(car: {
   sourceSite?: string;
@@ -193,24 +164,21 @@ export async function verifySingleListing(car: {
 }): Promise<VerifyListingResult> {
   const url = car.listingUrl;
   if (!url) {
+    return { status: "error", reason: "İlan bağlantısı (listingUrl) bulunamadı." };
+  }
+  if (car.sourceSite && INVENTORY_ONLY_SOURCES.has(car.sourceSite)) {
     return {
       status: "error",
-      reason: "İlan bağlantısı (listingUrl) bulunamadı.",
+      reason: "Bu kaynak tek adresten doğrulanamıyor; tam envanter senkronuyla doğrulanır.",
     };
   }
 
-  // 1. ARABAM.COM DOĞRULAMA MOTORU (Hızlı 302 + Zırhlı Playwright Fallback)
   if (car.sourceSite === "arabam") {
     const idMatch = url.match(/\/(\d{7,10})(?:$|\?)/);
     const arabamId = idMatch ? idMatch[1] : (car.externalId || "").replace(/\D/g, "");
-
     if (!arabamId) {
-      return {
-        status: "error",
-        reason: "Arabam ilan numarası tespit edilemedi.",
-      };
+      return { status: "error", reason: "Arabam ilan numarası tespit edilemedi." };
     }
-
     try {
       const searchRes = await fetch(`https://www.arabam.com/ikinci-el?searchText=${arabamId}`, {
         headers: {
@@ -221,371 +189,198 @@ export async function verifySingleListing(car: {
         redirect: "manual",
         signal: AbortSignal.timeout(8000),
       });
-
-      const location = searchRes.headers.get("location") || "";
-
-      // 1. Canlı İlan: Arabam doğrudan 301/302 ile o ilanın sayfasına yönlendirir
-      if ((searchRes.status === 301 || searchRes.status === 302) && location.includes("/ilan/")) {
-        return {
-          status: "active",
-          statusCode: 200,
-          finalUrl: location.startsWith("http") ? location : `https://www.arabam.com${location}`,
-          reason: "İlan orijinal sitede canlı ve yayında (Doğrulandı).",
-        };
-      }
-
-      // 2. Ölü İlan: Arabam 302 vermez (HTTP 200 döner) veya arama/kategori sayfasına yönlendirir
-      if (
-        searchRes.status === 200 ||
-        ((searchRes.status === 301 || searchRes.status === 302) && !location.includes("/ilan/"))
-      ) {
-        return {
-          status: "gone",
-          statusCode: 200,
-          reason: "İlan yayından kaldırılmış (Arabam arama motorunda bulunamadı).",
-        };
-      }
-
-      if (searchRes.status === 404 || searchRes.status === 410) {
-        return {
-          status: "gone",
-          statusCode: searchRes.status,
-          reason: "HTTP 404: İlan bulunamadı.",
-        };
-      }
-
-      // HTTP 403 / 429 gibi Cloudflare challenge durumlarında gerçek tarayıcıya devret!
-      if (searchRes.status === 403 || searchRes.status === 429) {
-        return await verifyArabamWithBrowser(arabamId);
-      }
-
-      return {
-        status: "error",
-        statusCode: searchRes.status,
-        reason: `Sunucu yanıtı: HTTP ${searchRes.status}`,
-      };
+      const body = searchRes.status === 200 ? await searchRes.text() : "";
+      const result = classifyArabamSearchResponse(searchRes.status, searchRes.headers.get("location") || "", body);
+      if (result.status === "active" || result.status === "gone") return result;
     } catch {
-      // Ağ veya zaman aşımı durumunda tarayıcı fallback'i dene
-      return await verifyArabamWithBrowser(arabamId);
+      // ağ hatası: tarayıcıyla ilan sayfasının kendisine bakılır
     }
+    return verifyArabamWithBrowser(url);
   }
 
-  // 2. DOD (DOĞUŞ OTOMOTİV) DOĞRULAMA (Sitemap tabanlı 0-Cloudflare, %100 kesin sonuç)
-  if (car.sourceSite === "dod") {
-    try {
-      const isLive = await verifyDodWithSitemap(url, car.externalId);
-      if (isLive) {
-        return {
-          status: "active",
-          statusCode: 200,
-          reason: "DOD resmi sitemap envanterinde mevcut ve yayında (Canlı).",
-        };
-      } else {
-        return {
-          status: "gone",
-          statusCode: 404,
-          reason: "DOD resmi sitemap envanterinden kaldırılmış / satılmış (Ölü).",
-        };
-      }
-    } catch {
-      return {
-        status: "active",
-        statusCode: 200,
-        reason: "DOD doğrulaması sitemap hatası nedeniyle pas geçildi (Canlı korundu).",
-      };
-    }
-  }
-
-  // 3. DİĞER KURUMSAL KAYNAKLAR (Otokoç, VavaCars, Otomerkezi, Carvak, Otoplus, İkinciyeni vb.)
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": pickUserAgent(),
+        "User-Agent": car.sourceSite === "dod" ? MOBILE_UA : pickUserAgent(),
         "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
       redirect: "follow",
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(10000),
     });
-
     const finalUrl = res.url || url;
 
     if (res.status === 404 || res.status === 410) {
-      return {
-        status: "gone",
-        statusCode: res.status,
-        finalUrl,
-        reason: "HTTP 404: İlan yayından kaldırılmış.",
-      };
+      return { status: "gone", statusCode: res.status, finalUrl, reason: `HTTP ${res.status}: İlan yayından kaldırılmış.` };
+    }
+    if (res.status === 429 || res.status === 403) {
+      return { status: "blocked", statusCode: res.status, finalUrl, reason: `Erişim engeli (HTTP ${res.status}).` };
+    }
+    if (!res.ok) {
+      return { status: "error", statusCode: res.status, finalUrl, reason: `Sunucu yanıtı: HTTP ${res.status}` };
     }
 
-    if (res.status === 429 || res.status === 403) {
+    const redirect = classifyRedirect(url, finalUrl);
+    if (redirect === "root") {
       return {
         status: "blocked",
         statusCode: res.status,
         finalUrl,
-        reason: `Erişim engeli (HTTP ${res.status}).`,
+        reason: "Ana sayfaya yönlendirildi (bot/bölge filtresi olabilir; ilan korunur).",
       };
     }
-
-    if (res.ok) {
-      let finalPath = "";
-      try {
-        finalPath = new URL(finalUrl).pathname.replace(/\/+$/, "") || "/";
-      } catch {
-        finalPath = "";
-      }
-
-      // 1. Sunucu ana sayfaya (root '/') yönlendirdiyse:
-      // Bu kesinlikle bir araç satışı DEĞİL, bot koruması / WAF / yurt dışı IP filtrelemesidir.
-      // Canlı ilanları kazara öldürmemek için 'blocked' olarak işaretlenir (asla arşivlenmez).
-      if (finalUrl !== url && finalPath === "/") {
-        return {
-          status: "blocked",
-          statusCode: res.status,
-          finalUrl,
-          reason: "Sunucu ana sayfaya yönlendirdi (Bot/WAF veya bölge kısıtlaması, ilan canlı korundu).",
-        };
-      }
-
-      // 2. Arama/Katalog sayfasına yönlendirme kontrolü:
-      // Otomerkezi'nde listing URL: /ikinci-el/araba/...
-      // Arama sayfası ise: /ikinci-el (araba/ içermez!)
-      const isRedirectedToSearch =
-        finalUrl &&
-        finalUrl !== url &&
-        (
-          (car.sourceSite === "otomerkezi" && finalPath === "/ikinci-el") ||
-          (car.sourceSite === "vavacars" && (finalPath === "/araba-al" || finalPath === "/buy-used-cars")) ||
-          (car.sourceSite === "otokoc" && finalPath === "/ikinci-el-araba") ||
-          (car.sourceSite === "carvak" && finalPath === "/tr/satilik-araclar") ||
-          /^\/(arac-arama|arama|vasita|satilik-araba)$/.test(finalPath)
-        );
-
-      let textTimeoutId: any;
-      const textTimeout = new Promise<string>((_, reject) => {
-        textTimeoutId = setTimeout(() => reject(new Error("HTML okuma zaman aşımı (5 sn)")), 5000);
-      });
-      const html = await Promise.race([res.text(), textTimeout]).finally(() => clearTimeout(textTimeoutId));
-      const lower = html.toLocaleLowerCase("tr-TR");
-
-      const containsGoneText =
-        lower.includes("araç satılmıştır") ||
-        lower.includes("bu araç satıldı") ||
-        lower.includes("araç satıldı") ||
-        lower.includes("ilan bulunamadı") ||
-        lower.includes("ilan yayından kaldırılmıştır") ||
-        lower.includes("bu ilan yayında değildir") ||
-        lower.includes("aradığınız ilan bulunamamıştır") ||
-        lower.includes("böyle bir ilan bulunamadı");
-
-      if (isRedirectedToSearch) {
-        return {
-          status: "redirected",
-          statusCode: res.status,
-          finalUrl,
-          reason: "İlan arama sayfasına yönlendirildi (Satılmış/kapanmış).",
-        };
-      }
-
-      if (containsGoneText) {
-        return {
-          status: "gone",
-          statusCode: res.status,
-          finalUrl,
-          reason: "Sayfada 'araç satılmıştır / ilan bulunamadı' ibaresi tespit edildi.",
-        };
-      }
-
+    if (redirect === "lost-id") {
       return {
-        status: "active",
+        status: "redirected",
         statusCode: res.status,
         finalUrl,
-        reason: "İlan orijinal sitede canlı ve yayında (HTTP 200 OK).",
+        reason: "İlan adresi, ilan numarasını içermeyen bir sayfaya yönlendi (satılmış/kaldırılmış).",
       };
     }
 
-    return {
-      status: "error",
-      statusCode: res.status,
-      finalUrl,
-      reason: `Sunucu yanıtı: HTTP ${res.status}`,
-    };
+    const html = await Promise.race([
+      res.text(),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error("HTML okuma zaman aşımı")), 6000)),
+    ]);
+    if (isCloudflareChallenge(html)) {
+      return { status: "blocked", statusCode: res.status, finalUrl, reason: "Bot doğrulama sayfası (ilan korunur)." };
+    }
+    if (car.sourceSite === "otokoc") {
+      const kind = classifyOtokocHtml(html);
+      if (kind === "gone") {
+        return { status: "gone", statusCode: res.status, finalUrl, reason: "Otokoç ilan sayfası '404 | Sayfa Bulunamadı' döndürüyor (satılmış)." };
+      }
+      if (kind === "unknown") {
+        return { status: "error", statusCode: res.status, finalUrl, reason: "Otokoç sayfasında ilan verisi bulunamadı (ilan korunur)." };
+      }
+      return { status: "active", statusCode: res.status, finalUrl, reason: "İlan verisi sayfada mevcut (canlı)." };
+    }
+    const lower = html.toLocaleLowerCase("tr-TR");
+    const goneText = GONE_TEXTS.find((t) => lower.includes(t));
+    if (goneText) {
+      return { status: "gone", statusCode: res.status, finalUrl, reason: `Sayfada '${goneText}' ibaresi var.` };
+    }
+    return { status: "active", statusCode: res.status, finalUrl, reason: "İlan orijinal sitede canlı ve yayında (HTTP 200)." };
   } catch (err: any) {
-    return {
-      status: "error",
-      reason: `Ağ hatası: ${err?.message || "Bağlantı zaman aşımına uğradı"}`,
-    };
+    return { status: "error", reason: `Ağ hatası: ${err?.message || "Bağlantı zaman aşımına uğradı"}` };
   }
 }
 
+type SweepDetail = { id: string; title: string; source: string; status: string; reason: string };
+
 /**
- * Veritabanındaki en eski taranmamış ilanları havuzdan çeker,
- * canlı testten geçirir ve ölü olanları anında 'removed' (Piyasa Arşivi) yapar.
+ * Sıradaki (en uzun süredir doğrulanmamış) ilanları kaynaklarında tek tek
+ * kontrol eder. Kaldırılanlar arşive taşınır; canlılar "doğrulandı" işaretlenir;
+ * belirsizler dokunulmadan bırakılır (yalnızca deneme zamanı yazılır).
  */
 export async function sweepAndCleanDeadListings(options: {
   limit?: number;
   source?: string;
   excludeSource?: string;
   concurrency?: number;
+  maxDurationMs?: number;
   onProgress?: (processed: number, total: number, archived: number) => void;
-} = {}): Promise<{
-  checked: number;
-  archived: number;
-  active: number;
-  errors: number;
-  details: Array<{
-    id: string;
-    title: string;
-    source: string;
-    status: string;
-    reason: string;
-  }>;
-}> {
+} = {}): Promise<{ checked: number; archived: number; active: number; errors: number; breaker: string[]; details: SweepDetail[] }> {
   const limit = Math.min(options.limit || 50, 250);
-  const concurrency = Math.min(options.concurrency || 4, 8);
+  const concurrency = Math.min(options.concurrency || 3, 8);
+  const now = new Date();
+  const cooldown = new Date(now.getTime() - LIFECYCLE.attemptCooldownMs);
 
-  const query: Record<string, any> = {
-    status: { $ne: "removed" },
-    listingUrl: { $nin: ["", null] },
-  };
+  const sourceFilter: Record<string, unknown> =
+    options.source && options.source !== "all"
+      ? { sourceSite: options.source }
+      : { sourceSite: { $nin: [...INVENTORY_ONLY_SOURCES, ...(options.excludeSource ? [options.excludeSource] : [])] } };
 
-  if (options.source && options.source !== "all") {
-    query.sourceSite = options.source;
-  } else if (options.excludeSource) {
-    query.sourceSite = { $ne: options.excludeSource };
-  }
-
-  // En eski güncellenenleri (en uzun süredir kontrol edilmeyenleri) önceliklendir
-  const candidates = await Car.find(query)
-    .sort({ updatedAt: 1 })
+  const candidates = await Car.find({
+    $and: [
+      { status: "active", listingUrl: { $nin: ["", null] } },
+      SCRAPED_SOURCE_FILTER,
+      sourceFilter,
+      { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
+    ],
+  })
+    .sort({ lastVerifiedAt: 1 })
     .limit(limit)
     .select("_id title sourceSite listingUrl externalId")
     .maxTimeMS(8000)
-    .lean();
+    .lean<Array<{ _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string }>>();
 
-  if (candidates.length === 0) {
-    return { checked: 0, archived: 0, active: 0, errors: 0, details: [] };
-  }
+  const details: SweepDetail[] = [];
+  if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, errors: 0, breaker: [], details };
+
+  const aliveIds: Types.ObjectId[] = [];
+  const attemptedIds: Types.ObjectId[] = [];
+  const goneBySource = new Map<string, Array<{ id: Types.ObjectId; reason: string }>>();
+  const checkedBySource = new Map<string, number>();
+  let errorCount = 0;
+  let processed = 0;
+  const started = Date.now();
+  const maxDuration = options.maxDurationMs ?? 5 * 60 * 1000;
+
+  const queue = [...candidates];
+  await Promise.all(
+    Array.from({ length: concurrency }).map(async () => {
+      while (queue.length > 0 && Date.now() - started < maxDuration) {
+        const item = queue.shift();
+        if (!item) break;
+        const source = item.sourceSite || "bilinmiyor";
+        const timeoutMs = source === "arabam" ? 45000 : 15000;
+        let result: VerifyListingResult;
+        try {
+          result = await Promise.race([
+            verifySingleListing(item),
+            new Promise<VerifyListingResult>((_, reject) => setTimeout(() => reject(new Error("İlan doğrulama zaman aşımı")), timeoutMs)),
+          ]);
+        } catch (err: any) {
+          result = { status: "error", reason: err?.message || "zaman aşımı" };
+        }
+
+        checkedBySource.set(source, (checkedBySource.get(source) || 0) + 1);
+        if (result.status === "active") {
+          aliveIds.push(item._id);
+        } else if (result.status === "gone" || result.status === "redirected") {
+          const list = goneBySource.get(source) || [];
+          list.push({ id: item._id, reason: result.reason });
+          goneBySource.set(source, list);
+        } else {
+          attemptedIds.push(item._id);
+          errorCount++;
+        }
+        details.push({ id: String(item._id), title: item.title, source, status: result.status, reason: result.reason });
+        processed++;
+        options.onProgress?.(processed, candidates.length, [...goneBySource.values()].reduce((s, l) => s + l.length, 0));
+      }
+    })
+  );
+
+  await markSeenAlive(aliveIds, now);
+  await markVerifyAttempt(attemptedIds, now);
 
   let archivedCount = 0;
-  let activeCount = 0;
-  let errorCount = 0;
-  const details: Array<{
-    id: string;
-    title: string;
-    source: string;
-    status: string;
-    reason: string;
-  }> = [];
-
-  const sweepStartTime = Date.now();
-  const MAX_SWEEP_DURATION_MS = 30000; // En fazla 30 saniye süpür, kalanları sonraki tura aktar
-
-  // Havuz üzerinde kontrollü eşzamanlılık (Concurrency Pool)
-  const queue = [...candidates];
-  const workers = Array.from({ length: concurrency }).map(async () => {
-    while (queue.length > 0) {
-      if (Date.now() - sweepStartTime > MAX_SWEEP_DURATION_MS) {
-        queue.length = 0;
-        break;
-      }
-      const item = queue.shift();
-      if (!item) break;
-
-      try {
-        let itemTimeoutId: any;
-        const itemTimeout = new Promise<VerifyListingResult>((_, reject) => {
-          itemTimeoutId = setTimeout(() => reject(new Error("İlan doğrulama zaman aşımı (6 sn)")), 6000);
-        });
-        const result = await Promise.race([
-          verifySingleListing(item as any),
-          itemTimeout,
-        ]).finally(() => clearTimeout(itemTimeoutId));
-
-        if (result.status === "gone" || result.status === "redirected") {
-          await Car.updateOne(
-            { _id: item._id },
-            {
-              $set: {
-                status: "removed",
-                updatedAt: new Date(),
-              },
-            }
-          ).maxTimeMS(4000);
-          archivedCount++;
-          details.push({
-            id: String(item._id),
-            title: item.title,
-            source: item.sourceSite || "bilinmiyor",
-            status: "archived",
-            reason: result.reason,
-          });
-        } else if (result.status === "active") {
-          // Canlı ilan: updatedAt'i güncelle ki kuyruk ilerlesin
-          await Car.updateOne(
-            { _id: item._id },
-            {
-              $set: { updatedAt: new Date() },
-            }
-          ).maxTimeMS(4000);
-          activeCount++;
-          details.push({
-            id: String(item._id),
-            title: item.title,
-            source: item.sourceSite || "bilinmiyor",
-            status: "active",
-            reason: result.reason,
-          });
-        } else {
-          // Erişim engeli (403/429) veya sunucu hatasında kuyruğun kilitlenmemesi için updatedAt ötelenir
-          await Car.updateOne(
-            { _id: item._id },
-            {
-              $set: { updatedAt: new Date() },
-            }
-          ).maxTimeMS(4000);
-          errorCount++;
-          details.push({
-            id: String(item._id),
-            title: item.title,
-            source: item.sourceSite || "bilinmiyor",
-            status: result.status,
-            reason: result.reason,
-          });
-        }
-      } catch (err: any) {
-        await Car.updateOne(
-          { _id: item._id },
-          {
-            $set: { updatedAt: new Date() },
-          }
-        ).maxTimeMS(4000).catch(() => {});
-        errorCount++;
-        details.push({
-          id: String(item._id),
-          title: item.title,
-          source: item.sourceSite || "bilinmiyor",
-          status: "error",
-          reason: err.message,
-        });
-      }
-
-      options.onProgress?.(
-        archivedCount + activeCount + errorCount,
-        candidates.length,
-        archivedCount
-      );
+  const breaker: string[] = [];
+  for (const [source, gone] of goneBySource) {
+    const checked = checkedBySource.get(source) || 0;
+    if (breakerTripped(checked, gone.length)) {
+      breaker.push(`${source}: ${gone.length}/${checked} ölü göründü, arşivleme durduruldu`);
+      await markVerifyAttempt(gone.map((g) => g.id), now);
+      continue;
     }
-  });
-
-  await Promise.all(workers);
+    for (const g of gone) {
+      archivedCount += await archiveListings([g.id], `${source}: ${g.reason}`, now);
+    }
+  }
+  for (const d of details) {
+    if ((d.status === "gone" || d.status === "redirected") && !breaker.some((b) => b.startsWith(`${d.source}:`))) {
+      d.status = "archived";
+    }
+  }
 
   return {
-    checked: candidates.length,
+    checked: processed,
     archived: archivedCount,
-    active: activeCount,
+    active: aliveIds.length,
     errors: errorCount,
+    breaker,
     details,
   };
 }

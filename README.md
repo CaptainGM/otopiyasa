@@ -35,18 +35,23 @@ Türkiye'deki araç ilan sitelerinden fiyat toplayıp analiz eden **full-stack a
 - **Yorum & puanlama** — otomatik duygu (sentiment) etiketi
 - **Kullanıcı profili**, şifre değiştirme, şifre sıfırlama (e-posta)
 - **Admin paneli** (`/admin`) — istatistikler, scrape paneli, gece scrape log'u, kullanıcı/araç yönetimi
-- **PWA** (yüklenebilir) · **CI** (GitHub Actions) · **gece zamanlı scrape** (Windows Task Scheduler)
+- **PWA** (yüklenebilir) · **7/24 otonom veri motoru** (keşif + tam envanter senkronu + arşivleme)
 - **Flutter mobil uygulama** — oturum kalıcılığı, favoriler, filtreler, fiyat grafiği
 
 ## Veri kaynakları
 
-| Kaynak | Durum |
-|--------|-------|
-| Arabam.com | ✅ Çalışıyor — ilan detay sayfasından schema.org `Car` ld+json parse edilir |
-| Otomerkezi.net | ✅ Çalışıyor — RSC (`__next_f`) payload'ından parse edilir |
-| VavaCars.com | ✅ Çalışıyor — kurumsal envanter doğrudan arama motoru üzerinden parse edilir |
-| Otoplus.com | ✅ Çalışıyor — kurumsal ekspertizli envanter schema.org `Vehicle` ld+json parse edilir |
-| Carvak.com | ✅ Çalışıyor — garantili sertifikalı envanter schema.org katalog yapısından parse edilir |
+| Kaynak | Yöntem | Doğrulama (satıldı mı?) |
+|--------|--------|--------------------------|
+| Arabam.com | İlan detayında schema.org `Car` ld+json. Cloudflare nedeniyle gerçek Chromium ve **Türkiye ev IP'si** gerekir | Sitemap + detay sayfası (`scrape.bat` 11) |
+| Otokoç 2. El | Liste sayfası kartları (`data-*` öznitelikleri) | Tam envanter senkronu + ilan sayfası (soft 404: ilan verisi yoksa satılmış) |
+| Otoplus | Liste sayfası schema.org ld+json | Tam envanter senkronu + ilan sayfası (satılınca model kataloğuna yönlenir) |
+| VavaCars | Kendi arama API'si | Tam envanter senkronu |
+| Carvak | Angular sunucu durumu (`serverApp-state`) | Tam envanter senkronu |
+| Otomerkezi | Next.js RSC yükü | Tam envanter senkronu |
+| DOD | Sitemap + ilan sayfası ld+json | Sitemap = envanter |
+| İkinciyeni | Açık ihale API'si | Tam envanter senkronu |
+
+Sahibinden.com Cloudflare nedeniyle taranamıyor (bilinen kısıt).
 
 ## Kurulum (yerel geliştirme)
 
@@ -80,11 +85,39 @@ flutter run -d windows        # veya Android emülatör (API otomatik 10.0.2.2:3
 
 ## Scraping
 
-- **`scrape.bat`** (kök dizin) — menü: 1) Hızlı güncelleme, 2) Geniş tarama, 3) Otomerkezi tam.
-  Gerekirse dev sunucusunu kendi başlatır, `x-scrape-secret` ile `/api/scrape/run`'a POST atar,
-  ilerlemeyi (`logs/scrape-progress.txt`) canlı gösterir. Adapter'lar **artımlı kaydeder** (kesilse
-  bile o ana kadarki ilanlar DB'ye yazılır).
-- **Gece zamanlı scrape** — `scripts/scheduled-scrape.mjs`, Windows Task Scheduler ("OtoPiyasa Gece Scrape", 03:30). Dev sunucusunun açık olmasını gerektirir.
+### 7/24 otonom motor (`scripts/daemon.ts`)
+
+Her tur (varsayılan 5 dk aralık):
+
+1. **Keşif** — kurumsal kaynakların ilk sayfalarından yeni ilanlar.
+2. **Tam envanter senkronu** — sırası gelen *tek* kaynağın tüm ilan listesi baştan sona taranır
+   (`src/lib/scraper/reconcile.ts`): fiyat/km/foto değişiklikleri işlenir, satılanlar **Piyasa Arşivi**'ne
+   taşınır, arşivdeyken sitede yeniden görünenler geri açılır. Aralıklar: VavaCars 6 sa, Otokoç ve DOD 24 sa, diğerleri 12 sa.
+3. **Arabam sitemap** (günde 1) — Arabam'ın açık sitemap dosyalarından öncelik işaretleri (`arabam-sitemap.ts`).
+4. **Arabam detay taraması** — yalnızca `EXCLUDE_ARABAM=false` iken (Türkiye ev IP'si olan makinede).
+
+**Arşiv kuralları** (`src/lib/scraper/listing-lifecycle.ts`): kesin kanıt (ilan sayfası 404, ilan numarası kaybolan
+yönlendirme, soft 404) tek gözlemle arşivler; "tam envanterde görünmedi" gibi zayıf kanıt en az iki gözlem ve 6 saat ister.
+Engel, zaman aşımı ve anlaşılamayan yanıt **asla** ilanı arşivlemez. Bir partide ölü oranı anormalse (%35+) ya da envanter
+taraması eksik/şüpheliyse (yarıda kesildi, aktiflerin %50'sinden fazlası kayıp) **hiçbir şey arşivlenmez** (devre kesici).
+`lastVerifiedAt` ilanın kaynakta son teyit edildiği anı, `updatedAt` içeriğin son değişimini tutar.
+
+### Çalıştırma
+
+- **Sunucuda (pm2):** `pm2 start ecosystem.config.cjs`. Yeni kod için:
+  `git fetch origin && git reset --hard origin/main && npm install && pm2 restart daemon`.
+  Depo "Initial commit" üzerine force-push ile güncellendiğinden `git pull` çalışmaz; daemon kendi kendini
+  `fetch + reset --hard` ile günceller.
+- **Elle:** `scrape.bat` — `11` Arabam doğrula, `S` Arabam sitemap, `E` kurumsal envanter senkronu, `T` turbo çekim.
+  `temizle-olu-ilanlari.bat` → `6` kurumsal envanter senkronu.
+- `npm run daemon`, `npm run reconcile [kaynak]`, `npm run arabam-sitemap`.
+
+### Arabam ve Cloudflare
+
+Arabam ilan detay ve liste sayfaları Cloudflare doğrulaması gösteriyor; düz `curl`/Node isteği Türkiye ev IP'sinden bile
+403 alıyor (TLS parmak izi). Gerçek Chromium ev IP'sinde geçiyor, veri merkezi ve yurtdışı IP'lerinde geçmiyor. Bu yüzden
+Arabam bulut sunucuda kapalıdır. Sitemap dosyaları (`/sitemap/advert_N.xml`, ~1,3 milyon ilan) ise doğrulamasız erişilebilir.
+Sitemap'te olmamak tek başına ilanı öldürmez (ölçümde eksik olabildiği görüldü); yalnızca detay taramasında öne alır.
 
 ## Test
 
@@ -103,8 +136,8 @@ cd mobile && flutter test && flutter analyze
 ```
 src/app/          Next.js sayfaları + API route'ları + admin paneli
 src/components/    React bileşenleri (kart, grafik, harita, chatbot, formlar…)
-src/lib/           İş mantığı (scraper, regresyon, piyasa, mailer, auth, yardımcılar)
-src/models/        Mongoose şemaları (Car, User, Comment, Subscription)
+src/lib/           İş mantığı (scraper + ilan yaşam döngüsü, regresyon, piyasa, mailer, auth, yardımcılar)
+src/models/        Mongoose şemaları (Car, User, Offer, SourceSyncState, ScrapeMetric …)
 mobile/            Flutter uygulaması
 scripts/           seed, migrasyon, zamanlı scrape, mail testi
 ```

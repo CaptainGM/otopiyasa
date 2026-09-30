@@ -1,7 +1,7 @@
 import { cityToCoords } from "@/lib/city-coords";
 import { normalizeBrand, isNonCarBrand } from "@/lib/normalize-brand";
 import { reportProgress } from "@/lib/scraper/progress";
-import { ScrapedListing } from "@/lib/scraper/types";
+import { CrawlReport, ScrapedListing } from "@/lib/scraper/types";
 import { Car } from "@/models/Car";
 
 const IKINCIYENI_API_URL = "https://apigw.ikinciyeni.com";
@@ -28,7 +28,8 @@ interface IkinciyeniVehicle {
 export async function scrapeIkinciyeniListings(
   limit: number,
   onListing: (listing: ScrapedListing) => Promise<void>,
-  skipExisting = true
+  skipExisting = true,
+  report?: CrawlReport
 ): Promise<number> {
   let fetched = 0;
   reportProgress("İkinciyeni.com araçları sorgulanıyor", 1, 2);
@@ -36,6 +37,7 @@ export async function scrapeIkinciyeniListings(
   // ListedVehicles returns the source records used below; the auction list
   // endpoint was an unused extra request, so skip it.
   const vehicleList: IkinciyeniVehicle[] = [];
+  const pageSize = Math.min(limit, 50);
 
   // Genel listeleme sorgusu
   try {
@@ -49,19 +51,30 @@ export async function scrapeIkinciyeniListings(
       },
       body: JSON.stringify({
         page: 1,
-        pageSize: Math.min(limit, 50),
+        pageSize,
       }),
       signal: AbortSignal.timeout(12000),
     });
 
     if (res.ok) {
       const json = await res.json();
-      const list = json?.data?.vehiclesList || json?.data?.fallBackList || [];
+      // fallBackList "öneri" listesidir, gerçek envanter değil → envanter karşılaştırmasında kullanılmaz.
+      const primary = json?.data?.vehiclesList;
+      const list = primary || json?.data?.fallBackList || [];
       if (Array.isArray(list)) {
         vehicleList.push(...list);
       }
+      if (report) {
+        report.pages = 1;
+        if (Array.isArray(primary) && primary.length > 0 && primary.length < pageSize) report.endedNaturally = true;
+        else if (!Array.isArray(primary) || primary.length === 0) report.error = "Açık ihale listesi boş (ihale saati dışında olabilir).";
+        else report.error = "Liste tek sayfaya sığmadı; tam envanter doğrulanamadı.";
+      }
+    } else if (report) {
+      report.error = `HTTP ${res.status}`;
     }
   } catch (err) {
+    if (report) report.error = err instanceof Error ? err.message : "istek hatası";
     console.warn("[İkinciyeni] ListedVehicles hatası:", err instanceof Error ? err.message : err);
   }
 

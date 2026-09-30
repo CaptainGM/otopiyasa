@@ -9,6 +9,7 @@ import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/widgets/listing_interaction.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/utils/relative_time.dart';
 import 'package:otopiyasa/widgets/market_badge.dart';
 import 'package:otopiyasa/widgets/price_histogram.dart';
 import 'package:otopiyasa/widgets/damage_diagram.dart';
@@ -310,6 +311,15 @@ class _DetailScreenState extends State<DetailScreen> {
                         'Bu araç orijinal sitede (${car.sourceSite.toUpperCase()}) yayından kalkmıştır.',
                         style: const TextStyle(color: Colors.white70, fontSize: 12),
                       ),
+                      if (car.removedAt != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'Arşive taşındı: ${relativeTimeTr(car.removedAt!)}'
+                            '${car.removedReason.isNotEmpty ? ' — ${car.removedReason}' : ''}',
+                            style: const TextStyle(color: Colors.white54, fontSize: 11),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -352,6 +362,13 @@ class _DetailScreenState extends State<DetailScreen> {
                 '👁 ${car.viewCount} görüntülenme  •  ♥ ${car.favoriteCount} favori',
                 style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
+              if (car.verifiedLabel.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '✓ ${car.verifiedLabel}',
+                  style: TextStyle(color: Colors.greenAccent.withValues(alpha: 0.7), fontSize: 12),
+                ),
+              ],
               if (!car.isActive && car.status == 'sold') ...[
                 const SizedBox(height: 12),
                 Container(

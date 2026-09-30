@@ -1,3 +1,5 @@
+import 'package:otopiyasa/utils/relative_time.dart';
+
 class PricePoint {
   PricePoint({required this.price, required this.recordedAt});
 
@@ -83,6 +85,9 @@ class CarListing {
     this.priceHistory = const [],
     this.address = '',
     this.status = 'active',
+    this.lastVerifiedAt,
+    this.removedAt,
+    this.removedReason = '',
     this.viewCount = 0,
     this.favoriteCount = 0,
     this.priceBins = const [],
@@ -118,6 +123,13 @@ class CarListing {
 
   /// active | sold | removed — eski kayıtlarda alan yok, "active" varsayılır.
   final String status;
+
+  /// Kaynağa gidilip ilanın yayında olduğunun son teyit edildiği an (yoksa null).
+  final DateTime? lastVerifiedAt;
+
+  /// Kaynaktan kaldırıldığı için arşive taşındığı an (yalnızca arşivdeki ilanlarda).
+  final DateTime? removedAt;
+  final String removedReason;
   final int viewCount;
   final int favoriteCount;
   final List<PriceBin> priceBins;
@@ -129,6 +141,12 @@ class CarListing {
   final List<CarListing> similarCars;
 
   bool get isActive => status == 'active';
+
+  /// "Kaynakta son kontrol: 3 saat önce" satırı; kaynak ilanları için yoksa boş.
+  String get verifiedLabel {
+    if (sourceSite == 'user' || !isActive || lastVerifiedAt == null) return '';
+    return 'Kaynakta son kontrol: ${relativeTimeTr(lastVerifiedAt!)}';
+  }
 
   String get statusLabel {
     switch (status) {
@@ -172,6 +190,9 @@ class CarListing {
           .toList(),
       address: json['address'] as String? ?? '',
       status: json['status'] as String? ?? 'active',
+      lastVerifiedAt: DateTime.tryParse(json['lastVerifiedAt']?.toString() ?? ''),
+      removedAt: DateTime.tryParse(json['removedAt']?.toString() ?? ''),
+      removedReason: json['removedReason'] as String? ?? '',
       viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
       favoriteCount: (json['favoriteCount'] as num?)?.toInt() ?? 0,
       priceBins: (json['priceBins'] as List<dynamic>? ?? [])

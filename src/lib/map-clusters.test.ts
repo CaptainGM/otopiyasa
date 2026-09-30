@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildClusters, buildMapQuery, clusterKeyFor, distanceKm } from "./map-clusters";
+import { buildClusters, buildMapQuery, clusterKeyFor, distanceKm, prettyDistrict } from "./map-clusters";
 
 const car = (city: string, address: string, price: number) => ({ city, address, price });
 
@@ -101,5 +101,22 @@ describe("distanceKm", () => {
 
   it("aynı nokta için 0 döner", () => {
     expect(distanceKm({ lat: 41, lng: 29 }, { lat: 41, lng: 29 })).toBe(0);
+  });
+});
+
+describe("prettyDistrict", () => {
+  it("sade anahtarı Türkçe yazılışa çevirir", () => {
+    expect(prettyDistrict("cerkezkoy")).toBe("Çerkezköy");
+    expect(prettyDistrict("beyoglu")).toBe("Beyoğlu");
+    expect(prettyDistrict("mustafakemalpasa")).toBe("Mustafakemalpaşa");
+  });
+
+  it("listede olmayan adın baş harflerini büyütür", () => {
+    expect(prettyDistrict("yeni bolge")).toBe("Yeni Bolge");
+  });
+
+  it("kümelerde görünen adı da verir", () => {
+    const { clusters } = buildClusters([car("İstanbul", "X Mh. Kadıköy, İstanbul", 1_000_000)]);
+    expect(clusters[0].districtLabel).toBe("Kadıköy");
   });
 });

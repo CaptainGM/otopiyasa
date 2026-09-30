@@ -2,6 +2,7 @@ import { resolvePlacement } from "@/lib/district-coords";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
+import { TR_GEO } from "@/lib/tr-geo";
 
 
 
@@ -19,6 +20,8 @@ export interface MapCluster {
   city: string;
   
   district: string;
+  /** İlçenin Türkçe yazılışı ("cerkezkoy" → "Çerkezköy"); il geneli kümelerde boş. */
+  districtLabel: string;
   lat: number;
   lng: number;
   count: number;
@@ -72,6 +75,7 @@ export function buildClusters(cars: ClusterInput[]): {
         key: placed.key,
         city: car.city,
         district: placed.district,
+        districtLabel: placed.district ? prettyDistrict(placed.district) : "",
         lat: placed.lat,
         lng: placed.lng,
         count: 1,
@@ -131,7 +135,30 @@ export function buildMapQuery(params: URLSearchParams): Record<string, unknown> 
 }
 
 
+const foldName = (s: string) =>
+  s
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u")
+    .replace(/[^a-z0-9]/g, "");
+
+let displayNames: Map<string, string> | null = null;
+
+/**
+ * Koordinat tablosu ilçeleri sade anahtarla tutuyor ("cerkezkoy"); görünen ad il/ilçe listesindeki
+ * Türkçe yazılıştan alınır, listede yoksa kelimelerin baş harfi büyütülür.
+ */
 export function prettyDistrict(name: string): string {
+  if (!displayNames) {
+    displayNames = new Map();
+    for (const list of Object.values(TR_GEO)) {
+      for (const district of list) {
+        const key = foldName(district);
+        if (!displayNames.has(key)) displayNames.set(key, district);
+      }
+    }
+  }
+  const known = displayNames.get(foldName(name));
+  if (known) return known;
   return name
     .split(/[\s-]+/)
     .filter(Boolean)

@@ -1,0 +1,643 @@
+import mongoose from "mongoose";
+import { Car } from "@/models/Car";
+import {
+  arabamAdapter,
+  demoImportAdapter,
+  otomerkeziAdapter,
+  sahibindenAdapter,
+  vavacarsAdapter,
+  otoplusAdapter,
+  carvakAdapter,
+  otokocAdapter,
+  dodAdapter,
+  ikinciyeniAdapter,
+  scrapeArabamForBrands,
+  scrapeArabamForModels,
+  refetchArabamDetails,
+  POPULAR_BRANDS,
+} from "@/lib/scraper/adapters";
+import { normalizeBrand } from "@/lib/normalize-brand";
+import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
+import { checkSubscriptions } from "@/lib/subscriptions";
+import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
+import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
+import { fetchDetailPatch, isDetailSource, isUnknownValue, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
+import { ListingSource } from "@/types";
+
+function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
+  if (source === "sahibinden") return [sahibindenAdapter];
+  if (source === "arabam") return [arabamAdapter];
+  if (source === "otomerkezi") return [otomerkeziAdapter];
+  if (source === "vavacars") return [vavacarsAdapter];
+  if (source === "otoplus") return [otoplusAdapter];
+  if (source === "carvak") return [carvakAdapter];
+  if (source === "otokoc") return [otokocAdapter];
+  if (source === "dod") return [dodAdapter];
+  if (source === "ikinciyeni") return [ikinciyeniAdapter];
+
+  // Dağıtık rotasyon: Hızlı ve temiz kurumsal kaynaklar (Otokoç, VavaCars, Otoplus, DOD vb.)
+  // arasına yayılarak Arabam'a tek seferde aşırı yük binmesi ve Cloudflare tetiklenmesi önlenir.
+  return [
+    otokocAdapter,
+    vavacarsAdapter,
+    otoplusAdapter,
+    dodAdapter,
+    otomerkeziAdapter,
+    carvakAdapter,
+    ikinciyeniAdapter,
+    arabamAdapter,
+  ];
+}
+
+
+function hasImages(listing: ScrapedListing): boolean {
+  return Array.isArray(listing.images) && listing.images.length > 0;
+}
+
+export type SaveResult = "inserted" | "updated" | "reactivated" | "unchanged" | "skipped";
+
+/** Değişmeyen ilanda "canlı görüldü" yazımını seyreltmek için (her keşif turunda yazmasın). */
+const SEEN_WRITE_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * Kaynakta görülen bir ilanı kaydeder. Kaynakta görüldüğü için ilan aynı zamanda
+ * "canlı teyit edildi" sayılır (lastVerifiedAt). `markVerified: false` toplu
+ * işaretleme yapan çağıranlar (envanter senkronu) içindir.
+ */
+export async function saveListing(
+  listing: ScrapedListing,
+  options: { markVerified?: boolean } = {}
+): Promise<SaveResult> {
+  const markVerified = options.markVerified !== false;
+  const now = new Date();
+  const existing = await Car.findOne({
+    sourceSite: listing.sourceSite,
+    externalId: listing.externalId,
+  });
+
+  if (existing) {
+    // Detayı ilan sayfasından tamamlanmış kurumsal ilanlarda liste sayfasındaki şablon açıklama,
+    // tek fotoğraf ve "Belirtilmemiş" alanlar zengin veriyi ezmemeli (aksi hâlde her tarama
+    // galeriyi ve açıklamayı geri siliyordu).
+    const detailKept = isDetailSource(listing.sourceSite) && Boolean((existing as any).detailCheckedAt);
+
+    const oldPrice = existing.price;
+    const newPrice = listing.price > 0 ? listing.price : existing.price;
+    const priceChanged = existing.price !== newPrice && listing.price > 0;
+    const mileageChanged = listing.mileage > 0 && Math.abs(existing.mileage - listing.mileage) > 50;
+    const descChanged = Boolean(
+      !detailKept &&
+      listing.description &&
+      listing.description !== existing.description &&
+      listing.description.length > 20 &&
+      Math.abs(listing.description.length - (existing.description?.length || 0)) > 5
+    );
+    const damageChanged = Boolean(
+      listing.damageParts &&
+      listing.damageParts.length > 0 &&
+      JSON.stringify(listing.damageParts) !== JSON.stringify(existing.damageParts)
+    );
+    const imagesEnriched = Boolean(
+      hasImages(listing) &&
+      (!existing.images || existing.images.length === 0 || ((listing.images?.length || 0) > (existing.images?.length || 0) && (existing.images?.length || 0) <= 1))
+    );
+    const statusReactivated = existing.status === "removed" && listing.price > 0;
+    // Kaynak adres formatını değiştirdiğinde (ör. VavaCars → tr.vava.cars) kayıt kendini onarsın.
+    const urlChanged = Boolean(listing.listingUrl && listing.listingUrl !== existing.listingUrl);
+
+    const hasAnyChange =
+      priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged;
+
+    // GERÇEKTE HİÇBİR ŞEY DEĞİŞMEDİYSE içerik yazılmaz (updatedAt oynamaz);
+    // yalnızca "canlı görüldü" bilgisi seyrek olarak işlenir.
+    if (!hasAnyChange) {
+      const lastSeen = existing.lastVerifiedAt ? new Date(existing.lastVerifiedAt).getTime() : 0;
+      if (markVerified && (existing.missingSince || now.getTime() - lastSeen > SEEN_WRITE_INTERVAL_MS)) {
+        await Car.updateOne(
+          { _id: existing._id },
+          { $set: { lastVerifiedAt: now, lastVerifyAttemptAt: now }, $unset: { missingSince: 1, missingChecks: 1 } },
+          { timestamps: false }
+        );
+      }
+      return "unchanged";
+    }
+
+    existing.title = listing.title || existing.title;
+    existing.brand = listing.brand || existing.brand;
+    existing.model = listing.model || existing.model;
+    if (listing.year > 0) existing.year = listing.year;
+    existing.price = newPrice;
+    if (listing.mileage > 0) existing.mileage = listing.mileage;
+    existing.city = listing.city || existing.city;
+    if (listing.address) existing.address = listing.address;
+    if (listing.description && !detailKept) existing.description = listing.description;
+
+    // Galeri hiçbir zaman küçülmez: liste sayfası tek fotoğraf verirken ilan sayfasından gelen galeri korunur.
+    if (hasImages(listing) && (listing.images as string[]).length >= (existing.images?.length ?? 0)) {
+      existing.images = listing.images as string[];
+      existing.imageUrl = listing.imageUrl || (listing.images as string[])[0];
+    }
+    if (listing.damageFlag !== undefined && !detailKept) existing.damageFlag = listing.damageFlag;
+
+    if (listing.damageParts && listing.damageParts.length > 0) {
+      existing.damageParts = listing.damageParts;
+    }
+    if (listing.location) existing.location = listing.location;
+    if (listing.features) {
+      if (detailKept) {
+        // Yalnızca listeden güvenilir gelenleri güncelle; detaydan gelen renk/kasa/motor kalsın.
+        if (!isUnknownValue(listing.features.fuelType)) existing.set("features.fuelType", listing.features.fuelType);
+        if (!isUnknownValue(listing.features.transmission)) existing.set("features.transmission", listing.features.transmission);
+      } else {
+        existing.features = listing.features;
+      }
+    }
+    existing.listingUrl = listing.listingUrl || existing.listingUrl;
+    existing.source = listing.sourceSite;
+
+    if (priceChanged) {
+      existing.priceHistory.push({
+        price: newPrice,
+        recordedAt: new Date(),
+      });
+    }
+
+    if (statusReactivated) {
+      existing.status = "active";
+      existing.removedAt = undefined;
+      existing.removedReason = undefined;
+      existing.needsRecheck = undefined;
+    }
+    if (markVerified) {
+      existing.lastVerifiedAt = now;
+      existing.lastVerifyAttemptAt = now;
+      existing.missingSince = undefined;
+      existing.missingChecks = undefined;
+    }
+
+    if (descChanged || mileageChanged || damageChanged || imagesEnriched) {
+      const changedParts: string[] = [];
+      if (descChanged) changedParts.push("Açıklama");
+      if (mileageChanged) changedParts.push("Kilometre");
+      if (damageChanged) changedParts.push("Hasar/Ekspertiz");
+      if (imagesEnriched) changedParts.push("Fotoğraflar");
+
+      (existing as any).lastDetailChange = {
+        field: changedParts.join(", "),
+        summary: `${changedParts.join(", ")} güncellendi`,
+        changedAt: new Date(),
+      };
+    }
+
+    if (priceChanged && newPrice < oldPrice) {
+      try {
+        await notifyFavoritePriceDrop(existing, oldPrice);
+      } catch (error) {
+        console.error("Fiyat düşüşü bildirimi başarısız:", error);
+      }
+    }
+
+    await existing.save();
+    return statusReactivated ? "reactivated" : "updated";
+  }
+
+  if (!(listing.price > 0)) {
+    return "skipped";
+  }
+
+  // Yeni Otokoç/Otoplus ilanı: liste sayfası tek fotoğraf ve şablon açıklama verir; galeri,
+  // teknik bilgi ve tramer için ilan sayfası da okunur. Okunamazsa ilan yine eklenir ve
+  // arka plan tamamlayıcısı (runDetailBackfill) sonra yeniden dener.
+  let toCreate = listing;
+  let detailCheckedAt: Date | undefined;
+  if (isDetailSource(listing.sourceSite)) {
+    try {
+      const patch = await fetchDetailPatch(listing.sourceSite, listing.listingUrl);
+      if (patch) {
+        toCreate = mergeDetailIntoListing(listing, patch);
+        detailCheckedAt = now;
+      }
+    } catch {
+      // ilan sayfası okunamadı: liste verisiyle devam
+    }
+  }
+
+  await Car.create({
+    ...toCreate,
+    source: listing.sourceSite,
+    priceHistory: [{ price: listing.price, recordedAt: now }],
+    lastVerifiedAt: now,
+    lastVerifyAttemptAt: now,
+    detailCheckedAt,
+  });
+  return "inserted";
+}
+
+/** SaveResult'ları tek yerde sayar (her çağıran aynı sayacı tutuyordu). */
+export function createSaveCounter() {
+  const counts = { inserted: 0, updated: 0, reactivated: 0, unchanged: 0, saved: 0 };
+  return {
+    counts,
+    add(result: SaveResult) {
+      if (result === "inserted") counts.inserted += 1;
+      if (result === "updated" || result === "reactivated") counts.updated += 1;
+      if (result === "reactivated") counts.reactivated += 1;
+      if (result === "unchanged") counts.unchanged += 1;
+      if (result !== "skipped") counts.saved += 1;
+    },
+  };
+}
+
+export async function runScrapeJob(options: {
+  source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all" | "demo";
+  query: string;
+  limit?: number;
+  pageOffset?: number;
+}): Promise<ScrapeJobResult> {
+  const adapters =
+    options.source === "demo"
+      ? [demoImportAdapter]
+      : pickAdapters(options.source);
+
+  let inserted = 0;
+  let updated = 0;
+  let unchanged = 0;
+  let reactivated = 0;
+  const sources: ScrapeJobResult["sources"] = [];
+  const errors: string[] = [];
+  const sampleVehicles: NonNullable<ScrapeJobResult["sampleVehicles"]> = [];
+
+  for (const adapter of adapters) {
+    let saved = 0;
+
+    const onListing = async (listing: ScrapedListing) => {
+      const result = await saveListing(listing);
+      if (result === "inserted") inserted += 1;
+      if (result === "updated" || result === "reactivated") updated += 1;
+      if (result === "reactivated") reactivated += 1;
+      if (result === "unchanged") unchanged += 1;
+      if (result !== "skipped" && result !== "unchanged") {
+        saved += 1;
+        if (sampleVehicles.length < 16) {
+          sampleVehicles.push({
+            brand: listing.brand,
+            model: listing.model,
+            year: listing.year,
+            price: listing.price,
+            source: listing.sourceSite,
+            title: listing.title,
+            imageUrl: listing.imageUrl || (listing.images && listing.images[0]),
+          });
+        }
+      }
+    };
+
+    try {
+      const { fetched } = await adapter.scrape(
+        options.query,
+        options.limit || 12,
+        onListing,
+        options.pageOffset
+      );
+      sources.push({ source: adapter.id as ListingSource, fetched, saved });
+    } catch (error) {
+      errors.push(
+        `${adapter.label}: ${
+          error instanceof Error ? error.message : "bilinmeyen hata"
+        }`
+      );
+
+      if (saved > 0) {
+        sources.push({ source: adapter.id as ListingSource, fetched: saved, saved });
+      }
+    }
+  }
+
+  if (sources.length === 0 && errors.length > 0) {
+    throw new Error(errors.join(" | "));
+  }
+
+
+  if (inserted > 0 || updated > 0) {
+    try {
+      const { invalidateCache } = await import("@/lib/cache");
+      invalidateCache("home:deals");
+    } catch (_) {}
+  }
+
+  if (inserted > 0) {
+    try {
+      await checkSubscriptions();
+    } catch (error) {
+      console.error("Abonelik bildirimi kontrolü başarısız:", error);
+    }
+  }
+
+  return {
+    success: true,
+    message:
+      errors.length > 0
+        ? `Kısmi başarı. ${errors.join(" | ")}`
+        : "Scrape tamamlandı.",
+    inserted,
+    updated,
+    unchanged,
+    reactivated,
+    sources,
+    sampleVehicles,
+  };
+}
+
+
+
+export async function runRareBrandScrape(
+  threshold = 40,
+  perBrandPages = 12
+): Promise<ScrapeJobResult> {
+  const brandCounts = await Car.aggregate<{ _id: string; count: number }>([
+    { $group: { _id: "$brand", count: { $sum: 1 } } },
+  ]);
+  const countMap = new Map<string, number>();
+  for (const c of brandCounts) countMap.set(normalizeBrand(c._id || ""), c.count);
+
+
+  const rareBrands = POPULAR_BRANDS.filter(
+    (b) => (countMap.get(normalizeBrand(b)) || 0) < threshold
+  );
+
+  const counter = createSaveCounter();
+  const onListing = async (listing: ScrapedListing) => {
+    counter.add(await saveListing(listing));
+  };
+  const { counts } = counter;
+
+  let fetched = 0;
+  const errors: string[] = [];
+  try {
+    fetched = await scrapeArabamForBrands(rareBrands, perBrandPages, onListing);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
+  }
+
+  if (counts.inserted > 0) {
+    try {
+      await checkSubscriptions();
+    } catch (error) {
+      console.error("Abonelik bildirimi kontrolü başarısız:", error);
+    }
+  }
+
+  return {
+    success: true,
+    message:
+      `Nadir-marka taraması: ${rareBrands.length} marka tarandı` +
+      (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
+    inserted: counts.inserted,
+    updated: counts.updated,
+    reactivated: counts.reactivated,
+    sources: [{ source: "arabam", fetched, saved: counts.saved }],
+  };
+}
+
+
+const RARE_MODEL_PAGES = 2;
+
+const RARE_MODEL_LIMIT = 120;
+
+const RARE_MODEL_MAX_LISTINGS = 1500;
+
+
+export async function runRareModelScrape(
+  threshold = 10,
+  perModelPages = RARE_MODEL_PAGES,
+  maxSegments = RARE_MODEL_LIMIT,
+  maxListings = RARE_MODEL_MAX_LISTINGS
+): Promise<ScrapeJobResult> {
+  
+  const segments = await Car.aggregate<{ _id: { brand: string; model: string }; count: number }>([
+    { $group: { _id: { brand: "$brand", model: "$model" }, count: { $sum: 1 } } },
+    { $match: { count: { $lt: threshold } } },
+    
+    { $sort: { count: 1 } },
+    { $limit: maxSegments },
+  ]);
+
+  const targets = segments
+    .map((s) => ({ brand: s._id?.brand || "", model: s._id?.model || "" }))
+    .filter((s) => s.brand && s.model && s.model !== "Model" && s.model !== "Bilinmiyor");
+
+  const counter = createSaveCounter();
+  const { counts } = counter;
+  const sampleVehicles: NonNullable<ScrapeJobResult["sampleVehicles"]> = [];
+  const onListing = async (listing: ScrapedListing) => {
+    const result = await saveListing(listing);
+    counter.add(result);
+    if (result !== "skipped") {
+      if (sampleVehicles.length < 16) {
+        sampleVehicles.push({
+          brand: listing.brand,
+          model: listing.model,
+          year: listing.year,
+          price: listing.price,
+          source: listing.sourceSite,
+          title: listing.title,
+          imageUrl: listing.imageUrl || (listing.images && listing.images[0]),
+        });
+      }
+    }
+  };
+
+  let fetched = 0;
+  const errors: string[] = [];
+  try {
+    fetched = await scrapeArabamForModels(targets, perModelPages, onListing, maxListings);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
+  }
+
+  if (counts.inserted > 0) {
+    try {
+      await checkSubscriptions();
+    } catch (error) {
+      console.error("Abonelik bildirimi kontrolü başarısız:", error);
+    }
+  }
+
+  return {
+    success: true,
+    message:
+      `Nadir-model taraması: ${threshold} ilandan az olan ${targets.length} model tarandı` +
+      (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
+    inserted: counts.inserted,
+    updated: counts.updated,
+    reactivated: counts.reactivated,
+    sources: [{ source: "arabam", fetched, saved: counts.saved }],
+    sampleVehicles,
+  };
+}
+
+export async function arabamRefreshStatus(): Promise<{
+  total: number;
+  missingDamageParts: number;
+  needsRecheck: number;
+  neverVerified: number;
+}> {
+  const [total, missingDamageParts, needsRecheck, neverVerified] = await Promise.all([
+    Car.countDocuments({ sourceSite: "arabam", status: { $ne: "removed" } }),
+    Car.countDocuments({ sourceSite: "arabam", status: { $ne: "removed" }, "damageParts.0": { $exists: false } }),
+    Car.countDocuments({ sourceSite: "arabam", status: "removed", needsRecheck: true }),
+    Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $exists: false } }),
+  ]);
+  return { total, missingDamageParts, needsRecheck, neverVerified };
+}
+
+type QueueRow = { _id: mongoose.Types.ObjectId; listingUrl: string; status?: string };
+
+/**
+ * Arabam detay taraması için sıradaki ilanlar, önem sırasıyla:
+ *  1. Arşivde olup kaynakta hâlâ yayında görünenler (yanlış arşivlenmiş olabilir),
+ *  2. Sitemap'te görünmeyen aktif ilanlar (ölme ihtimali yüksek; ölçümde ~1/3'ü ölü),
+ *  3. En uzun süredir doğrulanmamış aktif ilanlar.
+ * Son 6 saatte denenmiş (ör. engellenmiş) ilanlar atlanır ki kuyruk takılmasın.
+ */
+export async function pickArabamRefreshQueue(limit: number, now = new Date()): Promise<QueueRow[]> {
+  const cooldown = new Date(now.getTime() - LIFECYCLE.attemptCooldownMs);
+  const picked: QueueRow[] = [];
+  const take = async (conditions: Record<string, unknown>[], sort: Record<string, 1 | -1>, max: number) => {
+    if (max <= 0) return;
+    const rows = await Car.find({
+      $and: [
+        { sourceSite: "arabam", listingUrl: { $nin: ["", null] } },
+        { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
+        { _id: { $nin: picked.map((p) => p._id) } },
+        ...conditions,
+      ],
+    })
+      .sort(sort)
+      .limit(max)
+      .select("_id listingUrl status")
+      .lean<QueueRow[]>();
+    picked.push(...rows);
+  };
+
+  await take([{ status: "removed" }, { needsRecheck: true }], { removedAt: -1 }, Math.ceil(limit * 0.25));
+  await take(
+    [
+      { status: "active" },
+      { sitemapMissingSince: { $exists: true } },
+      { $expr: { $lt: [{ $ifNull: ["$lastVerifiedAt", new Date(0)] }, "$sitemapMissingSince"] } },
+    ],
+    { lastVerifiedAt: 1 },
+    Math.ceil(limit * 0.25)
+  );
+  await take([{ status: "active" }], { lastVerifiedAt: 1 }, limit - picked.length);
+  return picked;
+}
+
+export async function runPriceRefresh(limit = 500, progressOffset?: number, progressTotal?: number): Promise<ScrapeJobResult> {
+  const queue = await pickArabamRefreshQueue(limit);
+  const { result, aliveIds, goneIds } = await refetchByUrls(queue, "Fiyat taraması", progressOffset, progressTotal);
+
+  await markVerifyAttempt(queue.map((d) => d._id));
+  // Yeniden kontrol bayrağını yalnızca KESİN sonuç alınan arşiv kayıtlarında kaldır;
+  // engellenen denemeler bir sonraki turda tekrar sıraya girsin.
+  const decided = new Set([...aliveIds, ...goneIds].map(String));
+  const settledRechecks = queue.filter((d) => d.status === "removed" && decided.has(String(d._id))).map((d) => d._id);
+  if (settledRechecks.length > 0) {
+    await Car.updateMany({ _id: { $in: settledRechecks } }, { $unset: { needsRecheck: 1 } }, { timestamps: false });
+  }
+
+  return result;
+}
+
+
+export async function runAddressBackfill(limit = 2000): Promise<ScrapeJobResult> {
+  const missing = await Car.find({
+    sourceSite: "arabam",
+    listingUrl: { $nin: ["", null] },
+    $or: [{ address: "" }, { address: null }, { address: { $exists: false } }],
+  })
+    .limit(limit)
+    .select("listingUrl")
+    .lean<{ listingUrl: string }[]>();
+
+  return (await refetchByUrls(missing, "Adres tamamlama")).result;
+}
+
+
+async function refetchByUrls(
+  docs: { listingUrl: string; _id?: mongoose.Types.ObjectId }[],
+  label: string,
+  progressOffset?: number,
+  progressTotal?: number
+): Promise<{ result: ScrapeJobResult; aliveIds: mongoose.Types.ObjectId[]; goneIds: mongoose.Types.ObjectId[] }> {
+  const hrefToId = new Map<string, mongoose.Types.ObjectId>();
+  const hrefs = docs
+    .map((c) => {
+      try {
+        const href = new URL(c.listingUrl).pathname;
+        if (c._id) hrefToId.set(href, c._id);
+        return href;
+      } catch {
+        return null;
+      }
+    })
+    .filter((h): h is string => !!h);
+
+  const counter = createSaveCounter();
+  const { counts } = counter;
+  const aliveIds: mongoose.Types.ObjectId[] = [];
+  const onListing = async (listing: ScrapedListing) => {
+    counter.add(await saveListing(listing));
+    try {
+      const id = hrefToId.get(new URL(listing.listingUrl).pathname);
+      if (id) aliveIds.push(id);
+    } catch {
+      // geçersiz URL: sayaç yine de işlendi
+    }
+  };
+
+  const goneIds: mongoose.Types.ObjectId[] = [];
+  const onGone = (href: string) => {
+    const id = hrefToId.get(href);
+    if (id) goneIds.push(id);
+  };
+
+  let fetched = 0;
+  const errors: string[] = [];
+  try {
+    fetched = await refetchArabamDetails(hrefs, onListing, onGone, progressOffset, progressTotal);
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
+  }
+
+  // Arşivleme: ilan sayfası 404/410 verdi, kategori sayfasına yönlendi ya da
+  // "yayında değil" yazıyor (güçlü kanıt). Yine de partinin büyük kısmı ölü
+  // görünüyorsa bu bir engel/site değişikliğidir; hiçbir şey arşivlenmez.
+  let archived = 0;
+  let breakerNote = "";
+  if (breakerTripped(fetched + goneIds.length, goneIds.length)) {
+    breakerNote = ` DEVRE KESİCİ: ${goneIds.length}/${fetched + goneIds.length} ilan ölü göründü, arşivleme yapılmadı.`;
+  } else {
+    archived = await archiveListings(goneIds, "arabam: ilan sayfası kaldırılmış / kategoriye yönlendirilmiş");
+  }
+
+  return {
+    aliveIds,
+    goneIds: breakerNote ? [] : goneIds,
+    result: {
+      success: true,
+      message:
+        `${label}: ${hrefs.length} ilan kontrol edildi, ${counts.updated} güncellendi` +
+        (counts.reactivated > 0 ? `, ${counts.reactivated} arşivden geri alındı` : "") +
+        (archived > 0 ? `, ${archived} kaynaktan kaldırılmış olarak arşivlendi` : "") +
+        breakerNote +
+        (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
+      inserted: counts.inserted,
+      updated: counts.updated,
+      reactivated: counts.reactivated,
+      deleted: archived,
+      sources: [{ source: "arabam", fetched, saved: counts.saved }],
+    },
+  };
+}

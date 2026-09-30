@@ -48,7 +48,7 @@ echo    9  - Adres Tamamlama    (Ilcesi eksik ilanlarin adresini doldur - Harita
 echo    S  - Arabam Sitemap     (32 sitemap dosyasi, ~2 dk; dogrulama onceligi icin)
 echo    E  - Kurumsal Envanter  (Otokoc, DOD, VavaCars... tum envanteri senkronla)
 echo.
-echo    G  - GALERI ^& ACIKLAMA  (Mevcut ilanlarin 20 HD fotograf ve aciklamasini cek)
+echo    G  - GALERI ^& ACIKLAMA  (Arabam + Otokoc + Otoplus: tum fotograf, aciklama, tramer/boya)
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
@@ -136,16 +136,21 @@ goto :eof
 :galeri
 echo.
 echo ====================================================================
-echo   ARABAM TAM DETAY, GALERI ^& HASAR TAMAMLAMA MOTORU
-echo   Veritabanindaki ilanlarin eksiksiz TUM fotograflarini,
-echo   saticinin gercek detayli aciklamasini, boya/degisen hasar matrisini,
-echo   motor gucu, hacmi ve diger tum ozelliklerini paralel olarak ceker.
+echo   TAM DETAY, GALERI ^& HASAR TAMAMLAMA MOTORU
+echo   1) Kurumsal kaynaklar (Otokoc, Otoplus): ilan sayfasindan tum fotograflar,
+echo      tramer, boya/degisen, renk, kasa tipi ve motor hacmi.
+echo   2) Arabam: tum fotograflar, saticinin aciklamasi, boya/degisen hasar matrisi.
+echo   (Bu islem 7/24 motorda da kucuk partilerle kendiliginden yapilir.)
 echo ====================================================================
 echo.
 set /p glimit="Kac aracin detaylari tamamlansin? (Varsayilan 35000 - Tum DB, Enter'a bas): "
 if "%glimit%"=="" set glimit=35000
 echo.
-echo [BASLATILIYOR] %glimit% arac icin eksiksiz tum detaylar cekilip veritabanina kaydediliyor...
+echo [1/2] Kurumsal kaynaklar (Otokoc, Otoplus) tamamlaniyor...
+echo.
+npx tsx scripts\enrich-details.ts %glimit%
+echo.
+echo [2/2] Arabam tamamlaniyor (ev IP'si gerekir)...
 echo.
 npx tsx scripts\enrich-arabam.ts %glimit%
 echo.

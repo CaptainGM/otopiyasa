@@ -2,7 +2,9 @@
 // OtoPiyasa - 7/24 Otonom Veri Motoru (Daemon)
 // ============================================================================
 // Her tur:
-//   1. KEŞİF       Kurumsal kaynakların ilk sayfalarından yeni ilanlar (her tur).
+//   1. KEŞİF       Kurumsal kaynakların ilk sayfalarından yeni ilanlar (her tur); yeni
+//                  Otokoç/Otoplus ilanları ilan sayfasından tam galeri ve detayla eklenir,
+//                  eskiler her turda küçük partilerle tamamlanır (enrich-detail.ts).
 //   2. SENKRON     Sırası gelen TEK kaynağın tüm envanteri baştan sona taranır:
 //                  fiyat/km/foto güncellenir, satılanlar arşive taşınır, geri
 //                  dönenler geri açılır (src/lib/scraper/reconcile.ts).
@@ -36,6 +38,7 @@ const REST_SECONDS: Record<Mode, number> = { hybrid: 300, new_only: 180, sweep_o
 const WATCHDOG_STALL_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 10 * 60 * 1000;
 const ARABAM_REFRESH_BATCH = 150;
+const DETAIL_BATCH = 20;
 
 type Mode = "hybrid" | "new_only" | "sweep_only";
 type DiscoverySource = "dod" | "otokoc" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "ikinciyeni" | "arabam";
@@ -97,6 +100,7 @@ async function main() {
   const { runScrapeJob, runPriceRefresh } = await import("@/lib/scraper/run-scrape");
   const { reconcileSource, pickDueReconcileSource } = await import("@/lib/scraper/reconcile");
   const { syncArabamSitemap, isSitemapSyncDue } = await import("@/lib/scraper/arabam-sitemap");
+  const { runDetailBackfill } = await import("@/lib/scraper/enrich-detail");
   const { recordHourlyMetric, updateDaemonHeartbeat, getDaemonControl, setDaemonControl, DaemonHeartbeat } = await import(
     "@/models/ScrapeMetric"
   );
@@ -244,6 +248,13 @@ async function main() {
             : `${targets[i].source} HATA: ${(r.reason as Error)?.message?.slice(0, 60)}`
         );
         log(`🚗 [KEŞİF] ${parts.join(" | ")}`);
+      }
+
+      // ------------------------------------------------- 1b. DETAY TAMAMLAMA
+      // Otokoç/Otoplus: ilan sayfasından galeri, tramer, boya ve teknik bilgi (her turda küçük parti).
+      if (currentMode !== "sweep_only") {
+        currentPhase = "🖼️ İlan detayları tamamlanıyor";
+        await runDetailBackfill(DETAIL_BATCH, { log: logAndTouch });
       }
 
       // -------------------------------------------------------------- 2. SENKRON

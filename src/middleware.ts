@@ -22,8 +22,11 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get("auth_token")?.value;
-  if (token) {
-    const secretStr = process.env.JWT_SECRET || "dev-secret-change-me";
+  // Production'da gizli anahtar yoksa varsayılan anahtarla imzalanmış sahte çerezler kabul edilmesin.
+  const secretStr =
+    process.env.JWT_SECRET ||
+    (process.env.NODE_ENV === "production" ? "" : "dev-secret-change-me");
+  if (token && secretStr) {
     try {
       await jwtVerify(token, new TextEncoder().encode(secretStr));
       return NextResponse.next();

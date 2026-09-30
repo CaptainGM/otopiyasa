@@ -226,7 +226,7 @@ içeriğin son değişimini tutar; ilan detay sayfasında "kaynakta son kontrol"
 **Arabam gerçeği:** Arabam detay ve liste sayfaları Cloudflare doğrulaması gösteriyor; düz
 HTTP isteği Türkiye ev IP'sinden bile 403 alıyor, gerçek Chromium ise yalnızca ev IP'sinde
 geçiyor (veri merkezi ve yurtdışı IP'lerinde geçmiyor). Bu yüzden Arabam bulut sunucuda kapalıdır
-ve ev bilgisayarından `scrape.bat` ile beslenir. Arabam'ın açık sitemap dosyaları (~1,3 milyon
+ve ev bilgisayarından `scrape.bat` ile beslenir. **Yeni ilan keşfi** robots.txt'e uygundur: Arabam'ın sitemap dosyalarından (ilan numaraları zamanla arttığı için) bizde olmayan en yeni ilanlar aday kuyruğuna alınır ve her birinin detay sayfası gerçek tarayıcıyla okunur; kategori/sıralama sayfaları gezilmez. `scrape.bat` → `N`. Arabam'ın açık sitemap dosyaları (~1,3 milyon
 ilan adresi) ise doğrulamasız erişilebilir ve doğrulama sırasını belirlemekte kullanılır.
 
 ---

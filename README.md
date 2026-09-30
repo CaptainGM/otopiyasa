@@ -94,7 +94,7 @@ Her tur (varsayılan 5 dk aralık):
    (`src/lib/scraper/reconcile.ts`): fiyat/km/foto değişiklikleri işlenir, satılanlar **Piyasa Arşivi**'ne
    taşınır, arşivdeyken sitede yeniden görünenler geri açılır. Aralıklar: VavaCars 6 sa, Otokoç ve DOD 24 sa, diğerleri 12 sa.
 3. **Arabam sitemap** (günde 1) — Arabam'ın açık sitemap dosyalarından öncelik işaretleri (`arabam-sitemap.ts`).
-4. **Arabam detay taraması** — yalnızca `EXCLUDE_ARABAM=false` iken (Türkiye ev IP'si olan makinede).
+4. **Arabam** — yalnızca `EXCLUDE_ARABAM=false` iken (Türkiye ev IP'si olan makinede): yeni ilanlar sitemap'ten bulunan aday kuyruğundan (`arabam-discovery.ts`), mevcutların fiyat/durum kontrolü detay sayfasından yapılır.
 
 **Arşiv kuralları** (`src/lib/scraper/listing-lifecycle.ts`): kesin kanıt (ilan sayfası 404, ilan numarası kaybolan
 yönlendirme, soft 404) tek gözlemle arşivler; "tam envanterde görünmedi" gibi zayıf kanıt en az iki gözlem ve 6 saat ister.
@@ -107,7 +107,11 @@ taraması eksik/şüpheliyse (yarıda kesildi, aktiflerin %50'sinden fazlası ka
 - **Sunucuda (pm2):** `pm2 start ecosystem.config.cjs`. Yeni kod için sunucuda `bash scripts/update-server.sh`
   (`git fetch` + `reset --hard origin/main` + `npm install` + `pm2 restart daemon`). Eskiden geçmiş yeniden yazıldığı
   için `git pull` çalışmıyordu; daemon artık kendi kendini `fetch + reset --hard` ile de güncelliyor.
-- **Elle:** `scrape.bat` — `11` Arabam doğrula, `S` Arabam sitemap, `E` kurumsal envanter senkronu, `T` turbo çekim.
+- **Sunucu notu (SELinux):** Oracle Linux'ta SELinux açıkken systemd `pm2-<kullanıcı>.service` içindeki `PIDFile`'ı okuyamaz;
+  servis sürekli "başarısız" sayılıp yeniden başlatılır ve motor her ~90 saniyede bir öldürülür. Çözüm:
+  `sudo sed -i '/^PIDFile=/d' /etc/systemd/system/pm2-opc.service && sudo systemctl daemon-reload && sudo systemctl restart pm2-opc`.
+  Kullanılmayan `pm2-root.service` kapatılmalıdır (`sudo systemctl disable --now pm2-root`). Kontrol: `pm2 list` çalışma süresi dakikalarca artmalı.
+- **Elle:** `scrape.bat` — `11` Arabam doğrula, `N` Arabam yeni ilanlar (sitemap), `S` Arabam sitemap, `E` kurumsal envanter senkronu, `G` galeri/detay tamamlama, `T` turbo çekim.
   `temizle-olu-ilanlari.bat` → `6` kurumsal envanter senkronu.
 - `npm run daemon`, `npm run reconcile [kaynak]`, `npm run arabam-sitemap`.
 

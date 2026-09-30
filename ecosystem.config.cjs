@@ -1,31 +1,24 @@
+// pm2 ile 7/24 veri motoru. Sunucuda bu dosyayla çalışan uygulamanın adı `otopiyasa-daemon`.
+// Gereksinim: tsx global kurulu olmalı (`sudo npm i -g tsx pm2`).
 module.exports = {
   apps: [
     {
-      name: "daemon",
-      script: "npx",
-      args: "tsx scripts/daemon.ts",
+      name: "otopiyasa-daemon",
+      script: "tsx",
+      args: "scripts/daemon.ts",
       cwd: __dirname,
-      // Otomatik yeniden başlatma ayarları
-      autorestart: true,
-      max_restarts: 999999,       // Sınırsız yeniden başlatma
-      min_uptime: "10s",          // 10 saniyeden kısa yaşayan süreç = crash
-      restart_delay: 15000,       // Crash sonrası 15 saniye bekle
-      max_memory_restart: "500M", // 500MB RAM aşarsa yeniden başlat
-      // Loglama
-      error_file: "./logs/daemon-error.log",
-      out_file: "./logs/daemon-out.log",
-      log_date_format: "DD.MM.YYYY HH:mm:ss",
-      merge_logs: true,
-      // Ortam değişkenleri (WARP proxy ile çalışıyorsa)
       env: {
         NODE_ENV: "production",
         DISABLE_ZENROWS: "true",
+        SCRAPE_CONCURRENCY: "1",
+        SCRAPE_MIN_INTERVAL_MS: "4500",
       },
-      // process.exit(0) durumunu crash olarak sayma
-      stop_exit_codes: [0],
-      // Cron ile gece 4'te yeniden başlat (hafıza temizliği)
-      cron_restart: "0 4 * * *",
-      // Watch modunu kapat (git pull kendi kendine halleder)
+      autorestart: true,
+      restart_delay: 5000,
+      // 1 GB RAM'li sunucuda şişen süreci yeniden başlat.
+      max_memory_restart: "600M",
+      log_date_format: "DD.MM.YYYY HH:mm:ss",
+      merge_logs: true,
       watch: false,
     },
   ],

@@ -114,6 +114,10 @@ const CarSchema = new Schema(
     sitemapMissingSince: { type: Date, default: undefined },
     // Arşivde ama kaynakta hâlâ yayında olabilir → bir sonraki detay taramasında yeniden kontrol et.
     needsRecheck: { type: Boolean, default: undefined },
+    // "Keşfet" akışı için kalıcı rastgele sayı [0,1). İstemci her yenilemede yeni bir tohum gönderir,
+    // sunucu tohumdan bir başlangıç noktası seçip bu alan üzerinden (indeksli) sıralar: herkes ve her
+    // yenileme farklı bir akış görür, sayfalar arası tutarlılık korunur (bkz. lib/car-mix.ts).
+    rand: { type: Number, default: () => Math.random() },
     // İlan sayfasından galeri/açıklama/teknik bilgi en son ne zaman tamamlanmaya çalışıldı
     // (Otokoç, Otoplus; bkz. scraper/enrich-detail.ts).
     detailCheckedAt: { type: Date, default: undefined },
@@ -136,6 +140,7 @@ CarSchema.index({ status: 1, city: 1, updatedAt: -1 });
 CarSchema.index({ status: 1, brand: 1, model: 1, year: 1 });
 CarSchema.index({ status: 1, moderationStatus: 1, price: 1 });
 CarSchema.index({ status: 1, price: 1 });
+CarSchema.index({ status: 1, rand: 1 });
 // Ana sayfa varsayılan akışı { createdAt: -1, _id: -1 } ile sıralanıyor; _id'yi
 // içermeyen indeksle Mongo 28 bin belgeyi bellekte sıralıyordu (~1,1 sn → ~5 ms).
 CarSchema.index({ status: 1, createdAt: -1, _id: -1 });

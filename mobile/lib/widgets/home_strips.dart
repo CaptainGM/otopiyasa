@@ -74,7 +74,8 @@ Widget _stripShell({required String title, required List<Widget> children}) {
       Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
       const SizedBox(height: 8),
       SizedBox(
-        height: 152,
+        // Kart yüksekliği yazı tipi ölçeğine göre değişir; sabit 152 px bazı cihazlarda taşıyordu.
+        height: 172,
         child: ListView(scrollDirection: Axis.horizontal, children: children),
       ),
       const SizedBox(height: 20),

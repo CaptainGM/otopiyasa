@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/favorites_screen.dart';
@@ -68,6 +70,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _totalPages = 1;
   int _refreshSignal = 0;
   int _carsRequestId = 0;
+  final _random = Random();
+  // Her yenilemede (aşağı çekme, filtre değişimi, ilk açılış) yeni tohum: akış her seferinde
+  // farklıdır, aynı yenilemenin sonraki sayfaları tutarlı kalır.
+  int _feedSeed = 1 + Random().nextInt(2147483646);
 
   String _brand = '';
   String _model = '';
@@ -143,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadCars({required bool reset}) async {
     final requestId = ++_carsRequestId;
     if (reset) {
+      _feedSeed = 1 + _random.nextInt(2147483646);
       setState(() {
         _loading = true;
         _loadingMore = false;
@@ -165,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
         sort: _sort,
         discountOnly: _discountOnly,
         page: nextPage,
+        seed: _feedSeed,
       );
       if (!mounted || requestId != _carsRequestId) return;
       setState(() {

@@ -549,9 +549,9 @@ class ApiService {
   // YAKINIMDAKİ İLANLAR
   // ---------------------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> fetchNearby(double lat, double lng) async {
+  Future<List<Map<String, dynamic>>> fetchNearby(double lat, double lng, {int limit = 24}) async {
     final response = await http.get(
-      _uri('/api/nearby', {'lat': '$lat', 'lng': '$lng'}),
+      _uri('/api/nearby', {'lat': '$lat', 'lng': '$lng', 'limit': '$limit'}),
       headers: _headers,
     );
     if (response.statusCode != 200) {
@@ -877,6 +877,7 @@ class ApiService {
   /// Dönen `options` (brands/cities/fuels) filtre açılır listelerini doldurur.
   Future<Map<String, dynamic>> fetchMap({
     String? brand,
+    String? model,
     String? city,
     String? fuel,
     int? minPrice,
@@ -886,6 +887,7 @@ class ApiService {
     final response = await http.get(
       _uri('/api/map', {
         if (brand != null && brand.isNotEmpty) 'brand': brand,
+        if (model != null && model.isNotEmpty) 'model': model,
         if (city != null && city.isNotEmpty) 'city': city,
         if (fuel != null && fuel.isNotEmpty) 'fuel': fuel,
         if (minPrice != null && minPrice > 0) 'minPrice': '$minPrice',
@@ -905,9 +907,11 @@ class ApiService {
     required String key,
     String? sort,
     bool wholeCity = false,
+    Map<String, String> filters = const {},
   }) async {
     final response = await http.get(
       _uri('/api/map/cars', {
+        ...filters,
         'key': key,
         'sort': ?sort,
         if (wholeCity) 'scope': 'city',

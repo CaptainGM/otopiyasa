@@ -82,7 +82,17 @@ class ListingImage extends StatelessWidget {
         ),
       );
 
-  Widget _attempt(List<String> candidates, int index) {
+  /// Tam boy fotoğraf yüklenirken gösterilecek hafif sürüm (karttan gelindiyse önbellekte).
+  Widget _preview(String previewUrl) => Image.network(
+        previewUrl,
+        fit: fit,
+        cacheWidth: 480,
+        headers: _headersFor(previewUrl),
+        frameBuilder: (context, child, frame, sync) => sync || frame != null ? child : _placeholder(),
+        errorBuilder: (_, _, _) => _placeholder(),
+      );
+
+  Widget _attempt(List<String> candidates, int index, {String? previewUrl}) {
     final requestUrl = candidates[index];
     return Image.network(
       requestUrl,
@@ -93,19 +103,26 @@ class ListingImage extends StatelessWidget {
         if (wasSynchronouslyLoaded || frame != null) {
           return child;
         }
-        return _placeholder();
+        return previewUrl != null ? _preview(previewUrl) : _placeholder();
       },
       // Adres yüklenemezse sıradaki adaya geçilir; hepsi biterse yer tutucu kalır.
-      errorBuilder: (_, _, _) =>
-          index + 1 < candidates.length ? _attempt(candidates, index + 1) : _placeholder(),
+      errorBuilder: (_, _, _) => index + 1 < candidates.length
+          ? _attempt(candidates, index + 1, previewUrl: previewUrl)
+          : _placeholder(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (url.isEmpty) return _placeholder();
-    // Küçük önizlemelerde (kart) hafif varyant; tam ekran galeride orijinal.
+    // Küçük önizlemelerde (kart) hafif varyant; tam ekran galeride orijinal. Galeride orijinal
+    // (Arabam'da ~357 KB) yüklenene kadar hafif sürüm gösterilir, boş kutu beklenmez.
     final small = (cacheWidth ?? 9999) <= 700;
-    return _attempt(imageCandidates(url, small: small), 0);
+    final light = cardImageUrl(url);
+    return _attempt(
+      imageCandidates(url, small: small),
+      0,
+      previewUrl: !small && light != url ? light : null,
+    );
   }
 }

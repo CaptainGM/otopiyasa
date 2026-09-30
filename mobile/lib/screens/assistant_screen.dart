@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/screens/search_results_screen.dart';
+import 'package:intl/intl.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/widgets/listing_image.dart';
 
 /// SOHBET ASİSTANI — web'deki sağ alttaki widget'ın mobil karşılığı.
 ///
@@ -16,9 +18,12 @@ class AssistantScreen extends StatefulWidget {
 }
 
 class _ChatMessage {
-  const _ChatMessage({required this.text, required this.mine, this.href, this.label});
+  const _ChatMessage({required this.text, required this.mine, this.href, this.label, this.cards = const []});
   final String text;
   final bool mine;
+
+  /// Önerilen ilanlar (başlık, fiyat, görsel, `/cars/<id>` adresi).
+  final List<Map<String, dynamic>> cards;
 
   /// Sunucunun önerdiği site içi adres (`/?priceMax=…` ya da `/cars/<id>`) ve buton yazısı.
   final String? href;
@@ -70,14 +75,17 @@ class _AssistantScreenState extends State<AssistantScreen> {
       final reply = result['reply']?.toString() ?? 'Yanıt alınamadı.';
       final link = result['link'] as Map<String, dynamic>?;
       final card = result['card'] as Map<String, dynamic>?;
-      // Önerilen ilan kartı varsa ona, yoksa arama bağlantısına giden buton gösterilir.
-      final href = (card?['href'] ?? link?['href'])?.toString();
-      final label = card != null
-          ? card['title']?.toString()
-          : link?['label']?.toString().replaceAll('→', '').trim();
+      // Tek ilan önerisi ya da arama yanıtındaki öne çıkan ilanlar kart olarak gösterilir;
+      // arama bağlantısı "Tümünü gör" butonu olur.
+      final cards = [
+        ?card,
+        ...(result['cards'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>(),
+      ];
+      final href = link?['href']?.toString();
+      final label = link?['label']?.toString().replaceAll('→', '').trim();
 
       setState(() {
-        _messages.add(_ChatMessage(text: reply, mine: false, href: href, label: label));
+        _messages.add(_ChatMessage(text: reply, mine: false, href: href, label: label, cards: cards));
       });
     } catch (e) {
       setState(() => _messages.add(_ChatMessage(
@@ -101,6 +109,47 @@ class _AssistantScreenState extends State<AssistantScreen> {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SearchResultsScreen(params: uri.queryParameters, title: 'Asistanın önerisi'),
     ));
+  }
+
+  static final _money = NumberFormat.decimalPattern('tr_TR');
+
+  Widget _cardTile(Map<String, dynamic> card) {
+    final href = card['href']?.toString() ?? '';
+    final price = (card['price'] as num?)?.toInt() ?? 0;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: href.isEmpty ? null : () => _openHref(href),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 72,
+                height: 52,
+                child: ListingImage(url: card['imageUrl']?.toString() ?? '', cacheWidth: 200),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(card['title']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                  if ((card['subtitle']?.toString() ?? '').isNotEmpty)
+                    Text(card['subtitle'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                  Text('${_money.format(price)} ₺',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFFF5B942))),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _scrollToEnd() {
@@ -134,20 +183,23 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    constraints: const BoxConstraints(maxWidth: 300),
+                    constraints: BoxConstraints(maxWidth: m.cards.isEmpty ? 300 : 340),
                     decoration: BoxDecoration(
                       color: m.mine
                           ? theme.colorScheme.primaryContainer
                           : theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: m.href == null
+                    child: m.href == null && m.cards.isEmpty
                         ? SelectableText(m.text)
                         : Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SelectableText(m.text),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
+                              ...m.cards.map(_cardTile),
+                              if (m.href != null) const SizedBox(height: 6),
+                              if (m.href != null)
                               OutlinedButton.icon(
                                 onPressed: () => _openHref(m.href!),
                                 icon: Icon(m.href!.startsWith('/cars/') ? Icons.directions_car : Icons.search, size: 18),

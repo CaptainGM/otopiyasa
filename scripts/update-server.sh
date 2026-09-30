@@ -19,9 +19,10 @@ git log --oneline -1
 echo "→ Bağımlılıklar..."
 npm install --no-audit --no-fund
 
-echo "→ Motor yeniden başlatılıyor..."
-if pm2 describe daemon >/dev/null 2>&1; then
-  pm2 restart daemon --update-env
+APP="${PM2_APP:-otopiyasa-daemon}"
+echo "→ Motor yeniden başlatılıyor ($APP)..."
+if pm2 describe "$APP" >/dev/null 2>&1; then
+  pm2 restart "$APP" --update-env
 else
   pm2 start ecosystem.config.cjs
 fi
@@ -29,4 +30,4 @@ pm2 save
 
 sleep 8
 echo "→ Son loglar:"
-pm2 logs daemon --lines 40 --nostream
+pm2 logs "$APP" --lines 40 --nostream

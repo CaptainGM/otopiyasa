@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -44,7 +46,20 @@ class _NearbyScreenState extends State<NearbyScreen> {
     if (permission == LocationPermission.deniedForever) {
       throw Exception('Konum izni kalıcı reddedilmiş. Ayarlardan izin vermen gerekiyor.');
     }
-    return Geolocator.getCurrentPosition();
+    // Kapalı alanda/emülatörde taze konum gelmeyebilir; zaman sınırı yokken ekran sonsuza dek
+    // yükleniyordu. Mesafe zaten ilçe düzeyinde yaklaşık, orta doğruluk ve son bilinen konum yeter.
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+    } on TimeoutException {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return last;
+      throw Exception('Konum alınamadı. Biraz sonra ya da açık bir alanda tekrar dene.');
+    }
   }
 
   Future<void> _load() async {

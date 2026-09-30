@@ -4,6 +4,28 @@ const ARABAM_SIZE_RE = /_(\d{2,4}x\d{2,4})(\.(?:jpe?g|png|webp))(\?.*)?$/i;
 
 export const CARD_IMAGE_SIZE = "800x600";
 
+/**
+ * Kart küçük resmi için daha hafif varyant. Kartta en çok ~480 px genişlik gösterilir; kaynak
+ * sitelerin galeri görselleri ise 1920 px geliyor (ölçüldü):
+ *  - Carvak   w_1920,h_1080 → w_640,h_360     266 KB → 65 KB
+ *  - Otoplus  _1920x1080    → _1280x720       135 KB → 66 KB (daha küçük boyutlar 403 veriyor)
+ *  - Otokoç   /car/640x/    → /car/450x/       52 KB → 34 KB
+ * Varyant yüklenemezse çağıran orijinal adresi yedek olarak verir (bkz. CardGallery).
+ */
+export function cardImageUrl(url: string): string {
+  if (!url) return url;
+  if (url.includes("img.carvak.co/") && url.includes("w_1920,h_1080")) {
+    return url.replace("w_1920,h_1080", "w_640,h_360");
+  }
+  if (url.includes("cdn.otoplus.com/") && /_1920x1080.(jpe?g|webp|png)/i.test(url)) {
+    return url.replace("_1920x1080.", "_1280x720.");
+  }
+  if (url.includes("2el-cdn.otokoc.com.tr/") && url.includes("/car/640x/")) {
+    return url.replace("/car/640x/", "/car/450x/");
+  }
+  return url;
+}
+
 export function sanitizeImageUrl(url: string | undefined): string {
   if (!url || typeof url !== "string") return "";
   const trimmed = url.trim();

@@ -9,6 +9,7 @@ import { checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { appBaseUrl } from "@/lib/app-url";
 import { createNotification } from "@/lib/notify";
 import { isMailerConfigured, sendQuestionAnsweredEmail } from "@/lib/mailer";
+import { checkPublicText } from "@/lib/content-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const body = await request.json().catch(() => ({}));
     const answer = String(body.answer || "").trim().slice(0, 1000);
     if (!answer) return NextResponse.json({ error: "Cevap boş olamaz." }, { status: 400 });
+    const answerCheck = checkPublicText(answer);
+    if (!answerCheck.ok) return NextResponse.json({ error: answerCheck.reason }, { status: 400 });
 
     question.answer = answer;
     question.answeredAt = new Date();

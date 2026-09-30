@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { answerQuery, ChatContext, ChatHistoryItem } from "@/lib/chatbot";
-import { checkAiRateLimit, isJunkMessage, JUNK_REPLY } from "@/lib/ai-guard";
+import { checkAiRateLimit, isJunkMessage, JUNK_REPLY, ABUSE_REPLY } from "@/lib/ai-guard";
+import { containsProfanity } from "@/lib/content-filter";
 
 /**
  * Vercel'de sunucusuz fonksiyonun varsayılan süresi 10 sn. Gemini sınıflandırma
@@ -62,8 +63,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ reply: JUNK_REPLY });
     }
 
+    // Küfür/hakaret de yapay zekaya gitmez (kota harcamaz, model kışkırtılamaz).
+    if (containsProfanity(message)) {
+      return NextResponse.json({ reply: ABUSE_REPLY });
+    }
+
     await connectDB();
     const result = await answerQuery(message, context, history);
+
+    // Model çıktısı da denetlenir: geçmiş/bağlam metinleri modele girdiği için çıktı güvenilir sayılmaz.
+    if (containsProfanity(result.reply)) {
+      return NextResponse.json({ reply: JUNK_REPLY });
+    }
 
     return NextResponse.json(result);
   } catch (error) {

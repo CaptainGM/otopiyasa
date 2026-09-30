@@ -11,6 +11,7 @@ import { createNotification } from "@/lib/notify";
 import { isMailerConfigured, sendOfferDecisionEmail } from "@/lib/mailer";
 import { canRespond, canSendMessage, chatExpiryFrom } from "@/lib/offers";
 import { serializeOffer } from "@/lib/serialize-offer";
+import { checkPublicText } from "@/lib/content-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +122,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
       const text = String(body.text || "").trim().slice(0, 1000);
       if (!text) return NextResponse.json({ error: "Mesaj boş olamaz." }, { status: 400 });
+      const textCheck = checkPublicText(text);
+      if (!textCheck.ok) return NextResponse.json({ error: textCheck.reason }, { status: 400 });
 
       offer.events.push({ kind: "message", author: authUser.userId, text, createdAt: now });
       if (isSeller) offer.buyerSeenAt = null;

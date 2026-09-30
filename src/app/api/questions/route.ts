@@ -10,6 +10,7 @@ import { appBaseUrl } from "@/lib/app-url";
 import { createNotification } from "@/lib/notify";
 import { maskName } from "@/lib/form-options";
 import { isMailerConfigured, sendNewQuestionEmail } from "@/lib/mailer";
+import { checkPublicText } from "@/lib/content-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Geçersiz ilan." }, { status: 400 });
     }
     if (!text) return NextResponse.json({ error: "Soru boş olamaz." }, { status: 400 });
+    const textCheck = checkPublicText(text);
+    if (!textCheck.ok) return NextResponse.json({ error: textCheck.reason }, { status: 400 });
 
     await connectDB();
     const car = await Car.findById(carId).select("title ownerId sourceSite moderationStatus status").lean<{

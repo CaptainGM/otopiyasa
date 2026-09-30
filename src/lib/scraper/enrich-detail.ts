@@ -2,6 +2,8 @@ import * as cheerio from "cheerio";
 import { Car } from "@/models/Car";
 import { foldForFilter } from "@/lib/content-filter";
 import type { ScrapedListing } from "@/lib/scraper/types";
+import { classifyOtokocHtml, classifyRedirect } from "@/lib/scraper/verify-listing";
+import { archiveListings, breakerTripped } from "@/lib/scraper/listing-lifecycle";
 
 /**
  * KURUMSAL KAYNAKLARDA İLAN DETAYI
@@ -212,16 +214,43 @@ export function parseOtoplusDetail(html: string): DetailPatch | null {
 const DETAIL_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-export async function fetchDetailPatch(source: string, url: string): Promise<DetailPatch | null> {
-  if (!isDetailSource(source) || !url) return null;
+/**
+ * ok     → ilan sayfası okundu
+ * gone   → ilan kaldırılmış (güçlü kanıt: 404/410, Otokoç'un "Sayfa Bulunamadı" sayfası,
+ *          Otoplus'un ilan numarasını kaybeden yönlendirmesi)
+ * failed → ağ hatası, engel ya da anlaşılamayan sayfa: hiçbir şey kanıtlamaz
+ */
+export type DetailOutcome =
+  | { kind: "ok"; patch: DetailPatch }
+  | { kind: "gone"; reason: string }
+  | { kind: "failed"; reason: string };
+
+export async function fetchDetail(source: string, url: string): Promise<DetailOutcome> {
+  if (!isDetailSource(source) || !url) return { kind: "failed", reason: "desteklenmeyen kaynak" };
   const res = await fetch(url, {
     headers: { "User-Agent": DETAIL_UA, "Accept-Language": "tr-TR,tr;q=0.9" },
     redirect: "follow",
     signal: AbortSignal.timeout(15000),
   });
-  if (!res.ok) return null;
+  if (res.status === 404 || res.status === 410) return { kind: "gone", reason: `HTTP ${res.status}` };
+  if (!res.ok) return { kind: "failed", reason: `HTTP ${res.status}` };
+  if (source === "otoplus" && classifyRedirect(url, res.url || url) === "lost-id") {
+    return { kind: "gone", reason: "ilan adresi ilan numarası olmayan bir sayfaya yönlendi" };
+  }
   const html = await res.text();
-  return source === "otokoc" ? parseOtokocDetail(html) : parseOtoplusDetail(html);
+  const patch = source === "otokoc" ? parseOtokocDetail(html) : parseOtoplusDetail(html);
+  if (patch) return { kind: "ok", patch };
+  // 2026-09 ölçümü: okunamayan Otokoç sayfalarının hepsi HTTP 200 ile dönen "Sayfa Bulunamadı"
+  // kabuğuydu (satılmış ilan); eskiden bunlar yalnızca "okunamadı" sayılıp aktif kalıyordu.
+  if (source === "otokoc" && classifyOtokocHtml(html) === "gone") {
+    return { kind: "gone", reason: "ilan sayfası 'Sayfa Bulunamadı' döndürüyor (satılmış)" };
+  }
+  return { kind: "failed", reason: "ilan verisi bulunamadı" };
+}
+
+export async function fetchDetailPatch(source: string, url: string): Promise<DetailPatch | null> {
+  const outcome = await fetchDetail(source, url);
+  return outcome.kind === "ok" ? outcome.patch : null;
 }
 
 /** Yeni ilan kaydedilmeden önce detay bilgisini listeleme verisine işler. */
@@ -249,6 +278,9 @@ export interface BackfillResult {
   checked: number;
   enriched: number;
   imagesAdded: number;
+  /** Sayfası kaldırılmış görünen ilanlar (arşivlenenler + fren nedeniyle bekletilenler). */
+  gone: number;
+  archived: number;
   failed: number;
 }
 
@@ -287,16 +319,23 @@ export async function runDetailBackfill(
       }>
     >();
 
-  const result: BackfillResult = { checked: 0, enriched: 0, imagesAdded: 0, failed: 0 };
+  const result: BackfillResult = { checked: 0, enriched: 0, imagesAdded: 0, gone: 0, archived: 0, failed: 0 };
+  const perSource = new Map<string, { checked: number; alive: number; gone: Array<{ id: unknown; reason: string }> }>();
   for (const doc of docs) {
     result.checked++;
-    let patch: DetailPatch | null = null;
+    let outcome: DetailOutcome;
     try {
-      patch = await fetchDetailPatch(doc.sourceSite, doc.listingUrl);
-    } catch {
-      patch = null;
+      outcome = await fetchDetail(doc.sourceSite, doc.listingUrl);
+    } catch (err) {
+      outcome = { kind: "failed", reason: err instanceof Error ? err.message : "istek hatası" };
     }
+    const stats = perSource.get(doc.sourceSite) || { checked: 0, alive: 0, gone: [] };
+    stats.checked++;
+    if (outcome.kind === "ok") stats.alive++;
+    if (outcome.kind === "gone") stats.gone.push({ id: doc._id, reason: outcome.reason });
+    perSource.set(doc.sourceSite, stats);
 
+    const patch = outcome.kind === "ok" ? outcome.patch : null;
     const set: Record<string, unknown> = { detailCheckedAt: now };
     if (patch) {
       const f = doc.features || {};
@@ -315,6 +354,8 @@ export async function runDetailBackfill(
       if (patch.paintChange !== undefined) set.paintChange = patch.paintChange;
       if (patch.damageFlag !== undefined) set.damageFlag = patch.damageFlag;
       result.enriched++;
+    } else if (outcome.kind === "gone") {
+      result.gone++;
     } else {
       result.failed++;
     }
@@ -324,9 +365,28 @@ export async function runDetailBackfill(
     await new Promise((r) => setTimeout(r, options.delayMs ?? 700));
   }
 
+  // Kaldırılmış sayfalar güçlü kanıttır; yine de partide yeterince canlı sayfa okunmadıysa
+  // (site değişmiş/engel) arşivlenmez. Yanlışlıkla arşivlenen ilan, envanter senkronunda
+  // görüldüğünde kendiliğinden geri açılır.
+  const held: string[] = [];
+  for (const [source, stats] of perSource) {
+    if (stats.gone.length === 0) continue;
+    if (breakerTripped(stats.checked, stats.gone.length, stats.alive)) {
+      held.push(source);
+      continue;
+    }
+    for (const g of stats.gone) {
+      result.archived += await archiveListings([g.id as string], `${source}: ${g.reason}`, now);
+    }
+  }
+
   if (result.checked > 0) {
+    const goneText =
+      result.gone > 0
+        ? `, ${result.gone} satılmış/kaldırılmış (${result.archived} arşive taşındı${held.length ? `; güvenlik freni: ${held.join(", ")}` : ""})`
+        : "";
     options.log?.(
-      `🖼️ [DETAY] ${result.checked} ilan kontrol edildi: ${result.enriched} zenginleştirildi (+${result.imagesAdded} fotoğraf), ${result.failed} okunamadı.`
+      `🖼️ [DETAY] ${result.checked} ilan kontrol edildi: ${result.enriched} zenginleştirildi (+${result.imagesAdded} fotoğraf)${goneText}, ${result.failed} okunamadı.`
     );
   }
   return result;

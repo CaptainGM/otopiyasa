@@ -25,6 +25,14 @@ export const LIFECYCLE = {
   minMissingSpanMs: 6 * 60 * 60 * 1000,
   breakerRatio: 0.35,
   breakerMinSample: 8,
+  /**
+   * Ölü oranı yüksek ama aynı partide bu kadar (ve bu oranda) sayfa ilan verisiyle "canlı"
+   * okunduysa sınıflandırıcı çalışıyor demektir; oran gerçektir. Otokoç'un eski stokunda
+   * satılmış ilanlar birikiyor (en eski 40 ilanın 27'si), sabit oran freni orada hiçbir
+   * ilanı arşivletmiyordu.
+   */
+  breakerMinAlive: 5,
+  breakerMinAliveRatio: 0.25,
   /** Tam envanter taraması aktif ilanların en az bu oranını bulmalı; yoksa tarama şüphelidir. */
   minCrawlCoverage: 0.5,
   /** Envanterde görünmeyen ilan oranı bunu aşarsa arşivleme yapılmaz. */
@@ -53,9 +61,14 @@ export function shouldArchiveMissing(state: MissingState, now: Date): boolean {
   return checksIncludingThis >= LIFECYCLE.missingChecksToArchive && span >= LIFECYCLE.minMissingSpanMs;
 }
 
-/** Bir doğrulama partisinde ölü oranı güvenilmeyecek kadar yüksek mi? */
-export function breakerTripped(checked: number, gone: number): boolean {
-  return checked >= LIFECYCLE.breakerMinSample && gone / checked > LIFECYCLE.breakerRatio;
+/**
+ * Bir doğrulama partisinde ölü oranı güvenilmeyecek kadar yüksek mi? `alive`, aynı partide
+ * pozitif kanıtla canlı okunan sayfa sayısıdır (verilmezse yalnızca oran bakılır).
+ */
+export function breakerTripped(checked: number, gone: number, alive = 0): boolean {
+  if (checked < LIFECYCLE.breakerMinSample || gone / checked <= LIFECYCLE.breakerRatio) return false;
+  const controlsOk = alive >= LIFECYCLE.breakerMinAlive && alive / checked >= LIFECYCLE.breakerMinAliveRatio;
+  return !controlsOk;
 }
 
 /**

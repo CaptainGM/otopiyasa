@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:otopiyasa/screens/detail_screen.dart';
+import 'package:otopiyasa/screens/search_results_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 
 /// SOHBET ASİSTANI — web'deki sağ alttaki widget'ın mobil karşılığı.
@@ -14,9 +16,13 @@ class AssistantScreen extends StatefulWidget {
 }
 
 class _ChatMessage {
-  const _ChatMessage({required this.text, required this.mine});
+  const _ChatMessage({required this.text, required this.mine, this.href, this.label});
   final String text;
   final bool mine;
+
+  /// Sunucunun önerdiği site içi adres (`/?priceMax=…` ya da `/cars/<id>`) ve buton yazısı.
+  final String? href;
+  final String? label;
 }
 
 class _AssistantScreenState extends State<AssistantScreen> {
@@ -62,20 +68,16 @@ class _AssistantScreenState extends State<AssistantScreen> {
           : history);
 
       final reply = result['reply']?.toString() ?? 'Yanıt alınamadı.';
-      final link = (result['link'] as Map<String, dynamic>?)?['href']?.toString();
-      final card = (result['card'] as Map<String, dynamic>?)?['title']?.toString();
+      final link = result['link'] as Map<String, dynamic>?;
+      final card = result['card'] as Map<String, dynamic>?;
+      // Önerilen ilan kartı varsa ona, yoksa arama bağlantısına giden buton gösterilir.
+      final href = (card?['href'] ?? link?['href'])?.toString();
+      final label = card != null
+          ? card['title']?.toString()
+          : link?['label']?.toString().replaceAll('→', '').trim();
 
       setState(() {
-        _messages.add(_ChatMessage(
-          text: [
-            reply,
-            if (card != null) '\n🚗 $card',
-            // Web'de tıklanabilir bağlantı; mobilde ilgili ekran henüz
-            // eşlenmediği için yalnızca bilgi olarak gösteriliyor.
-            if (link != null) '\n🔗 otopiyasa.app$link',
-          ].join(),
-          mine: false,
-        ));
+        _messages.add(_ChatMessage(text: reply, mine: false, href: href, label: label));
       });
     } catch (e) {
       setState(() => _messages.add(_ChatMessage(
@@ -86,6 +88,19 @@ class _AssistantScreenState extends State<AssistantScreen> {
       if (mounted) setState(() => _sending = false);
       _scrollToEnd();
     }
+  }
+
+  /// Site içi adresi uygulama ekranına çevirir: `/cars/<id>` → ilan detayı, `/?…` → arama sonuçları.
+  void _openHref(String href) {
+    final uri = Uri.parse(href);
+    final segments = uri.pathSegments.where((p) => p.isNotEmpty).toList();
+    if (segments.length == 2 && segments[0] == 'cars') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailScreen(carId: segments[1])));
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SearchResultsScreen(params: uri.queryParameters, title: 'Asistanın önerisi'),
+    ));
   }
 
   void _scrollToEnd() {
@@ -126,7 +141,24 @@ class _AssistantScreenState extends State<AssistantScreen> {
                           : theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: SelectableText(m.text),
+                    child: m.href == null
+                        ? SelectableText(m.text)
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SelectableText(m.text),
+                              const SizedBox(height: 8),
+                              OutlinedButton.icon(
+                                onPressed: () => _openHref(m.href!),
+                                icon: Icon(m.href!.startsWith('/cars/') ? Icons.directions_car : Icons.search, size: 18),
+                                label: Text(
+                                  m.label?.isNotEmpty == true ? m.label! : 'İlanları gör',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
                 );
               },

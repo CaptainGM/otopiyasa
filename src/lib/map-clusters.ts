@@ -103,6 +103,10 @@ export function buildMapQuery(params: URLSearchParams): Record<string, unknown> 
   const brand = params.get("brand");
   if (brand) query.brand = { $in: brandStorageAliases(brand) };
 
+  // Ana listedeki filtreyle aynı: model tam adıyla eşleşir (marka seçiliyken).
+  const model = params.get("model");
+  if (model) query.model = model;
+
   const city = params.get("city");
   if (city) query.city = { $in: cityStorageAliases(city) };
 

@@ -606,19 +606,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                // Üç kart yan yana dar kalıyor ("182 …", "Çalışma…"); metin kesilmek yerine sığacak kadar küçülür.
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 11, color: Colors.white54),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.white54), maxLines: 1),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    value,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), maxLines: 1),
                   ),
                 ],
               ),

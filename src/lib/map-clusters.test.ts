@@ -4,6 +4,12 @@ import { buildClusters, buildMapQuery, clusterKeyFor, distanceKm, prettyDistrict
 const car = (city: string, address: string, price: number) => ({ city, address, price });
 
 describe("buildMapQuery", () => {
+  it("filters by model when given", () => {
+    const query = buildMapQuery(new URLSearchParams("brand=Fiat&model=Egea&minPrice=500000")) as { model: string; price: { $gte: number } };
+    expect(query.model).toBe("Egea");
+    expect(query.price.$gte).toBe(500000);
+  });
+
   it("canonical brand/city filters match stored spelling variants", () => {
     const query = buildMapQuery(new URLSearchParams("brand=KG%20Mobility&city=Elaz%C4%B1%C4%9F")) as {
       brand: { $in: string[] };

@@ -164,6 +164,19 @@ class ApiService {
     );
   }
 
+  /// Hazır sorgu parametreleriyle arama (asistanın önerdiği "/?priceMax=…&fuelType=…" gibi
+  /// bağlantılar; fiyat/yıl/şehir filtreleri ana sayfanın filtre çubuğunda yok).
+  Future<CarsResponse> fetchCarsByQuery(Map<String, String> params, {int page = 1, int limit = 24}) async {
+    final response = await http.get(
+      _uri('/api/cars', {...params, 'page': '$page', 'limit': '$limit', 'compact': '1'}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Araçlar yüklenemedi (${response.statusCode})');
+    }
+    return CarsResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   /// Marka seçilince o markanın gerçek modelleriyle dolan filtre listesi —
   /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
   Future<Map<String, dynamic>> fetchBrandModels() async {
@@ -536,9 +549,9 @@ class ApiService {
   // YAKINIMDAKİ İLANLAR
   // ---------------------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> fetchNearby(double lat, double lng) async {
+  Future<List<Map<String, dynamic>>> fetchNearby(double lat, double lng, {int limit = 24}) async {
     final response = await http.get(
-      _uri('/api/nearby', {'lat': '$lat', 'lng': '$lng'}),
+      _uri('/api/nearby', {'lat': '$lat', 'lng': '$lng', 'limit': '$limit'}),
       headers: _headers,
     );
     if (response.statusCode != 200) {
@@ -864,6 +877,7 @@ class ApiService {
   /// Dönen `options` (brands/cities/fuels) filtre açılır listelerini doldurur.
   Future<Map<String, dynamic>> fetchMap({
     String? brand,
+    String? model,
     String? city,
     String? fuel,
     int? minPrice,
@@ -873,6 +887,7 @@ class ApiService {
     final response = await http.get(
       _uri('/api/map', {
         if (brand != null && brand.isNotEmpty) 'brand': brand,
+        if (model != null && model.isNotEmpty) 'model': model,
         if (city != null && city.isNotEmpty) 'city': city,
         if (fuel != null && fuel.isNotEmpty) 'fuel': fuel,
         if (minPrice != null && minPrice > 0) 'minPrice': '$minPrice',
@@ -892,9 +907,11 @@ class ApiService {
     required String key,
     String? sort,
     bool wholeCity = false,
+    Map<String, String> filters = const {},
   }) async {
     final response = await http.get(
       _uri('/api/map/cars', {
+        ...filters,
         'key': key,
         'sort': ?sort,
         if (wholeCity) 'scope': 'city',

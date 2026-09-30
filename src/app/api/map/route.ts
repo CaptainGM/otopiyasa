@@ -6,6 +6,7 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { isNonCarBrand, normalizeBrand } from "@/lib/normalize-brand";
 import { normalizeCity } from "@/lib/normalize-city";
+import { getDefaultMapClusters } from "@/lib/nearby";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +33,7 @@ export async function GET(request: Request) {
               .lean()) as unknown as ClusterInput[];
             return buildClusters(cars);
           })()
-        : cached("map:default_clusters", CACHE_TTL.long, async () => {
-            const cars = (await Car.find(PUBLIC_LISTING_FILTER, { _id: 0, city: 1, address: 1, price: 1 })
-              .lean()) as unknown as ClusterInput[];
-            return buildClusters(cars);
-          }),
+        : getDefaultMapClusters(),
 
       cached("map:options", CACHE_TTL.long, async () => {
         const [brands, cities, fuels] = await Promise.all([

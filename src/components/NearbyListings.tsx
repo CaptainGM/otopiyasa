@@ -11,7 +11,9 @@ interface NearbyCar {
   title: string;
   year: number;
   city: string;
+  district?: string;
   price: number;
+  mileage?: number;
   imageUrl: string;
   images?: string[];
   distanceKm: number;
@@ -47,11 +49,19 @@ export function NearbyListings() {
           setState("error");
         }
       },
-      () => {
-        setError("Konum izni verilmedi. Tarayıcı ayarlarından izin verip tekrar dene.");
+      (err) => {
+        // Eskiden her hata "izin verilmedi" deniyordu; masaüstünde en sık görülen aslında
+        // konumun bulunamaması ya da zaman aşımı.
+        setError(
+          err.code === err.PERMISSION_DENIED
+            ? "Konum izni verilmedi. Tarayıcı ayarlarından izin verip tekrar dene."
+            : err.code === err.TIMEOUT
+              ? "Konum zamanında alınamadı. Tekrar dene."
+              : "Konumun belirlenemedi (bilgisayarda Wi-Fi/konum servisi kapalı olabilir). Tekrar dene."
+        );
         setState("error");
       },
-      { timeout: 10000 }
+      { timeout: 15000, maximumAge: 10 * 60 * 1000, enableHighAccuracy: false }
     );
   }
 
@@ -98,14 +108,16 @@ export function NearbyListings() {
                 className="object-cover transition duration-500 group-hover:scale-105"
               />
               <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-bold text-slate-200">
-                📍 {car.approximate ? "~" : ""}
-                {car.distanceKm} km
+                📍 {car.district ? `${car.district} · ` : ""}
+                {car.approximate ? "~" : ""}
+                {car.distanceKm.toLocaleString("tr-TR")} km
               </span>
             </div>
             <div className="space-y-1 p-3">
               <p className="line-clamp-1 text-sm font-semibold">{car.title}</p>
               <p className="text-xs text-slate-500">
                 {car.year} • {car.city}
+                {car.mileage ? ` • ${car.mileage.toLocaleString("tr-TR")} km` : ""}
               </p>
               <p className="text-lg font-black text-amber-300">{formatPrice(car.price)}</p>
             </div>

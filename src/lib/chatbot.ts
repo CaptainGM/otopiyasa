@@ -42,6 +42,8 @@ export interface ChatReply {
   reply: string;
   link?: ChatLink;
   card?: ChatCard;
+  /** Arama yanıtlarında kriterlere uyan ilanlardan öne çıkanlar (bkz. lib/chat-picks.ts). */
+  cards?: ChatCard[];
   
   context?: ChatContext;
 }
@@ -663,6 +665,33 @@ async function handleIntent(
 }
 
 export async function answerQuery(
+  rawMessage: string,
+  context?: ChatContext,
+  history?: ChatHistoryItem[]
+): Promise<ChatReply> {
+  const reply = await answerQueryInner(rawMessage, context, history);
+  // Arama bağlantısı binlerce ilan açabiliyor; yanına en mantıklı birkaç öneri eklenir.
+  if (reply.link?.href.startsWith("/?") && !reply.card && !reply.cards) {
+    try {
+      const { pickTopCars } = await import("@/lib/chat-picks");
+      const { cards, total } = await pickTopCars(reply.link.href);
+      if (cards.length > 0) {
+        return {
+          ...reply,
+          reply: `${reply.reply.replace(/:s*$/, "")} — ${total.toLocaleString("tr-TR")} ilan var, öne çıkan ${cards.length} tanesi:`,
+          cards,
+          link: { ...reply.link, label: `Tümünü gör (${total.toLocaleString("tr-TR")}) →` },
+        };
+      }
+      if (total === 0) return { reply: "Bu kriterlere uyan aktif ilan şu an yok. Bütçeyi ya da yılı biraz esnetmeyi deneyebilirsin." };
+    } catch {
+      // öneri hesaplanamazsa yalnızca bağlantı döner
+    }
+  }
+  return reply;
+}
+
+async function answerQueryInner(
   rawMessage: string,
   context?: ChatContext,
   history?: ChatHistoryItem[]

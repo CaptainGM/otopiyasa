@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
@@ -44,6 +45,7 @@ class _CarCardState extends State<CarCard> {
   }
 
   void _openDetail() {
+    HapticFeedback.selectionClick();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DetailScreen(carId: widget.car.id, initialCar: widget.car),

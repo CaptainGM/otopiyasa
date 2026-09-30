@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 final _arabamSize = RegExp(r'_\d{2,4}x\d{2,4}\.(jpe?g|png|webp)', caseSensitive: false);
@@ -41,18 +42,23 @@ List<String> imageCandidates(String url, {required bool small}) {
   return out;
 }
 
-/// Hızlı, CDN başlıkları korumalı ve bellek önbelleğinden anında beslenen araç görsel bileşeni.
+/// CDN başlıkları korumalı araç görseli. Fotoğraflar diske de önbelleklenir: eskiden yalnızca
+/// bellekte tutuldukları için uygulama her açılışta bütün kart görsellerini yeniden indiriyordu.
 class ListingImage extends StatelessWidget {
   const ListingImage({
     super.key,
     required this.url,
     this.fit = BoxFit.cover,
     this.cacheWidth = 480,
+    this.fallbacks = const [],
   });
 
   final String url;
   final BoxFit fit;
   final int? cacheWidth;
+
+  /// İlk fotoğraf kaynakta silinmişse (404) denenecek diğer fotoğraflar.
+  final List<String> fallbacks;
 
   static Map<String, String> _headersFor(String url) {
     final uri = Uri.tryParse(url);
@@ -82,47 +88,42 @@ class ListingImage extends StatelessWidget {
         ),
       );
 
-  /// Tam boy fotoğraf yüklenirken gösterilecek hafif sürüm (karttan gelindiyse önbellekte).
-  Widget _preview(String previewUrl) => Image.network(
-        previewUrl,
+  Widget _image(String requestUrl, {int? width, required Widget Function() loading, required Widget Function() failed}) =>
+      CachedNetworkImage(
+        imageUrl: requestUrl,
+        httpHeaders: _headersFor(requestUrl),
         fit: fit,
-        cacheWidth: 480,
-        headers: _headersFor(previewUrl),
-        frameBuilder: (context, child, frame, sync) => sync || frame != null ? child : _placeholder(),
-        errorBuilder: (_, _, _) => _placeholder(),
+        memCacheWidth: width,
+        fadeInDuration: const Duration(milliseconds: 150),
+        fadeOutDuration: Duration.zero,
+        placeholder: (_, _) => loading(),
+        errorWidget: (_, _, _) => failed(),
       );
 
-  Widget _attempt(List<String> candidates, int index, {String? previewUrl}) {
-    final requestUrl = candidates[index];
-    return Image.network(
-      requestUrl,
-      fit: fit,
-      cacheWidth: cacheWidth,
-      headers: _headersFor(requestUrl),
-      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-        if (wasSynchronouslyLoaded || frame != null) {
-          return child;
-        }
-        return previewUrl != null ? _preview(previewUrl) : _placeholder();
-      },
-      // Adres yüklenemezse sıradaki adaya geçilir; hepsi biterse yer tutucu kalır.
-      errorBuilder: (_, _, _) => index + 1 < candidates.length
-          ? _attempt(candidates, index + 1, previewUrl: previewUrl)
-          : _placeholder(),
-    );
-  }
+  /// Tam boy fotoğraf yüklenirken gösterilecek hafif sürüm (karttan gelindiyse önbellekte).
+  Widget _preview(String previewUrl) => _image(previewUrl, width: 480, loading: _placeholder, failed: _placeholder);
+
+  Widget _attempt(List<String> candidates, int index, {String? previewUrl}) => _image(
+        candidates[index],
+        width: cacheWidth,
+        loading: () => previewUrl != null ? _preview(previewUrl) : _placeholder(),
+        // Adres yüklenemezse sıradaki adaya geçilir; hepsi biterse yer tutucu kalır.
+        failed: () => index + 1 < candidates.length ? _attempt(candidates, index + 1, previewUrl: previewUrl) : _placeholder(),
+      );
 
   @override
   Widget build(BuildContext context) {
-    if (url.isEmpty) return _placeholder();
+    if (url.isEmpty && fallbacks.isEmpty) return _placeholder();
     // Küçük önizlemelerde (kart) hafif varyant; tam ekran galeride orijinal. Galeride orijinal
     // (Arabam'da ~357 KB) yüklenene kadar hafif sürüm gösterilir, boş kutu beklenmez.
     final small = (cacheWidth ?? 9999) <= 700;
-    final light = cardImageUrl(url);
-    return _attempt(
-      imageCandidates(url, small: small),
-      0,
-      previewUrl: !small && light != url ? light : null,
-    );
+    final primary = url.isNotEmpty ? url : fallbacks.first;
+    final light = cardImageUrl(primary);
+    final candidates = <String>[
+      ...imageCandidates(primary, small: small),
+      for (final other in fallbacks)
+        if (other.isNotEmpty && other != primary) ...imageCandidates(other, small: small).take(1),
+    ];
+    return _attempt(candidates, 0, previewUrl: !small && light != primary ? light : null);
   }
 }

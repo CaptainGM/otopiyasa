@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/favorites_screen.dart';
 import 'package:otopiyasa/screens/offers_screen.dart';
@@ -579,7 +580,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () => _loadCars(reset: true),
+        onRefresh: () {
+          HapticFeedback.mediumImpact();
+          return _loadCars(reset: true);
+        },
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),

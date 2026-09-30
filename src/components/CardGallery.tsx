@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { CarThumb } from "@/components/CarThumb";
+import { cardImageUrl } from "@/lib/image-url";
 
 /**
  * Kart üzerindeki fotoğraf galerisi.
@@ -104,7 +105,9 @@ export function CardGallery({
             >
               {warm.has(i) && (
                 <CarThumb
-                  src={src}
+                  src={cardImageUrl(src)}
+                  // Hafif varyant yüklenemezse orijinal görsele düş.
+                  fallbacks={[src]}
                   alt={i === 0 ? alt : `${alt} — fotoğraf ${i + 1}`}
                   className="object-cover transition duration-500 group-hover:scale-105"
                   sizes="(max-width: 640px) 128px, (max-width: 1024px) 240px, (max-width: 1280px) 36vw, 480px"

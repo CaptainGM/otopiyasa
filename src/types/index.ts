@@ -119,6 +119,8 @@ export interface CarFilters {
   transmission?: string;
   sort?: "mixed" | "price_asc" | "price_desc" | "year_desc" | "newest" | "views";
   discountOnly?: boolean;
+  /** "Keşfet" akışı tohumu: istemci her yenilemede yeni bir sayı gönderir, sayfalar aynı tohumu kullanır. */
+  seed?: number;
   page?: number;
   limit?: number;
 }

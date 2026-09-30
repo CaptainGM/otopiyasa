@@ -66,3 +66,30 @@ describe("mixedSortStages", () => {
     expect(json).not.toContain("$rand");
   });
 });
+
+describe("Keşfet akışı tohumu", () => {
+  it("aynı tohum aynı başlangıcı, farklı tohumlar farklı başlangıçları verir", async () => {
+    const { seedToStart } = await import("./car-mix");
+    expect(seedToStart(12345)).toBe(seedToStart(12345));
+    const starts = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => seedToStart(s).toFixed(6)));
+    expect(starts.size).toBe(10);
+  });
+
+  it("başlangıç noktası [0, 0.5) aralığında kalır (sayfa sonuna gelip başa sarmak gerekmez)", async () => {
+    const { seedToStart } = await import("./car-mix");
+    for (let seed = 1; seed < 2000; seed += 7) {
+      const start = seedToStart(seed);
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(start).toBeLessThan(0.5);
+    }
+    expect(seedToStart(2_147_483_647)).toBeLessThan(0.5);
+  });
+
+  it("tohum yoksa (eski istemci) 30 dakikalık ortak tohuma düşer", async () => {
+    const { resolveFeedSeed, dailyMixSeed } = await import("./car-mix");
+    const now = Date.UTC(2026, 8, 30, 12, 0, 0);
+    expect(resolveFeedSeed(undefined, now)).toBe(dailyMixSeed(now));
+    expect(resolveFeedSeed(0, now)).toBe(dailyMixSeed(now));
+    expect(resolveFeedSeed(987, now)).toBe(987);
+  });
+});

@@ -44,3 +44,16 @@ describe("parseCarFilters — sayfalama güvenliği", () => {
     expect(filtersFrom("").sort).toBe("mixed");
   });
 });
+
+describe("parseCarFilters — akış tohumu", () => {
+  it("geçerli tohumu alır, eksik/bozuk değeri yok sayar", () => {
+    expect(filtersFrom("seed=12345").seed).toBe(12345);
+    expect(filtersFrom("").seed).toBeUndefined();
+    expect(filtersFrom("seed=abc").seed).toBeUndefined();
+    expect(filtersFrom("seed=-4").seed).toBeUndefined();
+  });
+
+  it("çok büyük tohumu üst sınıra çeker", () => {
+    expect(filtersFrom("seed=99999999999999").seed).toBe(2_147_483_647);
+  });
+});

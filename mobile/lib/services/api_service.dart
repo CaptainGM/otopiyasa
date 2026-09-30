@@ -134,9 +134,12 @@ class ApiService {
     bool discountOnly = false,
     int page = 1,
     int limit = 24,
+    // "Keşfet" akışı tohumu: her yenilemede yeni bir sayı; aynı yenilemenin sayfaları aynı tohumu kullanır.
+    int? seed,
   }) async {
     final response = await http.get(
       _uri('/api/cars', {
+        if (seed != null && seed > 0) 'seed': '$seed',
         if (q != null && q.isNotEmpty) 'q': q,
         if (brand != null && brand.isNotEmpty) 'brand': brand,
         if (model != null && model.isNotEmpty) 'model': model,

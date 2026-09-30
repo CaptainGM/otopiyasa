@@ -103,6 +103,7 @@ async function main() {
   const { syncArabamSitemap, isSitemapSyncDue } = await import("@/lib/scraper/arabam-sitemap");
   const { runDetailBackfill } = await import("@/lib/scraper/enrich-detail");
   const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
+  const { backfillMissingRand } = await import("@/lib/feed-rand");
   const { recordHourlyMetric, updateDaemonHeartbeat, getDaemonControl, setDaemonControl, DaemonHeartbeat } = await import(
     "@/models/ScrapeMetric"
   );
@@ -250,6 +251,10 @@ async function main() {
         );
         log(`🚗 [KEŞİF] ${parts.join(" | ")}`);
       }
+
+      // Eski kodla eklenmiş ilanlar "Keşfet" akışından dışlanmasın (Car.rand eksikse yaz).
+      const randFixed = await backfillMissingRand().catch(() => 0);
+      if (randFixed > 0) log(`🎲 [AKIŞ] ${randFixed} ilana rastgele akış değeri yazıldı.`);
 
       // ------------------------------------------------- 1b. DETAY TAMAMLAMA
       // Otokoç/Otoplus: ilan sayfasından galeri, tramer, boya ve teknik bilgi (her turda küçük parti).

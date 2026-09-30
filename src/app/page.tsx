@@ -45,11 +45,16 @@ export default async function HomePage({ searchParams }: HomeProps) {
   });
 
   const filters = parseCarFilters(urlParams);
+  // "Keşfet" akışı: her sayfa yüklemesinde (tarayıcı yenileme dahil) yeni tohum; aynı tohum
+  // sonsuz kaydırmadaki sonraki sayfalara da gider, böylece sayfalar arasında tekrar/atlama olmaz.
+  const feedSeed = filters.seed ?? 1 + Math.floor(Math.random() * 2_147_483_646);
+  filters.seed = feedSeed;
   const pageSize = filters.limit || 48;
   filters.limit = pageSize;
   const listParams = new URLSearchParams(urlParams);
   listParams.delete("page");
   listParams.set("limit", String(pageSize));
+  listParams.set("seed", String(feedSeed));
   let items: CarType[] = [];
   let total = 0;
   let totalPages = 1;

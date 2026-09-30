@@ -178,11 +178,12 @@ async function fetchArabamSearchHrefs(searchText: string, page: number): Promise
 
   if (!isGeneral) {
     const base = await resolveArabamBase(arabamBrandSlug(searchText));
-    const brandHrefs = await hrefsFromUrl(`${base}?sort=date_desc&page=${page}`);
+    // robots.txt `?sort=` desenini yasaklıyor; sıralama parametresi kullanılmaz (yeni ilan keşfi sitemap ile).
+    const brandHrefs = await hrefsFromUrl(`${base}?page=${page}`);
     if (brandHrefs.length > 0) return brandHrefs;
   }
 
-  const searchUrl = `https://www.arabam.com/ikinci-el/otomobil?sort=date_desc&page=${page}`;
+  const searchUrl = `https://www.arabam.com/ikinci-el/otomobil?page=${page}`;
   return hrefsFromUrl(searchUrl);
 }
 
@@ -493,6 +494,11 @@ export async function scrapeArabamForBrands(
   return fetchAndSaveArabamDetails(hrefs, onListing);
 }
 
+
+/** Verilen ilan adreslerinin (yol kısmı) detayını okuyup kaydeder; bizde olanlar atlanır. */
+export async function fetchArabamByHrefs(hrefs: string[], onListing: OnListing): Promise<number> {
+  return fetchAndSaveArabamDetails(hrefs, onListing, true);
+}
 
 export async function refetchArabamDetails(
   hrefs: string[],

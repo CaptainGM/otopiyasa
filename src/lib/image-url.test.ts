@@ -88,3 +88,30 @@ describe("imageCandidates", () => {
     expect(imageCandidates("", [""])).toEqual([]);
   });
 });
+
+describe("cardImageUrl", () => {
+  it("Carvak, Otoplus ve Otokoç için kart boyutunda daha hafif varyant seçer", async () => {
+    const { cardImageUrl } = await import("@/lib/image-url");
+    expect(cardImageUrl("https://img.carvak.co/image/upload/w_1920,h_1080,c_thumb,g_auto/uploads/1.jpg")).toBe(
+      "https://img.carvak.co/image/upload/w_640,h_360,c_thumb,g_auto/uploads/1.jpg"
+    );
+    expect(cardImageUrl("https://cdn.otoplus.com/img/u/v/d6/arac-1_1920x1080.jpg")).toBe(
+      "https://cdn.otoplus.com/img/u/v/d6/arac-1_1280x720.jpg"
+    );
+    expect(cardImageUrl("https://2el-cdn.otokoc.com.tr/otokoc2el/car/640x/a.webp")).toBe(
+      "https://2el-cdn.otokoc.com.tr/otokoc2el/car/450x/a.webp"
+    );
+  });
+
+  it("tanınmayan adreslere ve Arabam'a dokunmaz", async () => {
+    const { cardImageUrl } = await import("@/lib/image-url");
+    for (const url of [
+      "https://arbimg1.mncdn.com/ilanfotograflari/2026/x_800x600.jpg",
+      "https://images.dod.com.tr/dodvehicle2/1705291_1_800x600.jpg",
+      "https://example.com/photo_1920x1080.jpg",
+      "",
+    ]) {
+      expect(cardImageUrl(url)).toBe(url);
+    }
+  });
+});

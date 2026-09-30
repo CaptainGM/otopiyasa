@@ -1,6 +1,7 @@
 import type { Types } from "mongoose";
 import { Car } from "@/models/Car";
 import { SourceSyncState } from "@/models/SourceSyncState";
+import { DiscoveryCandidate } from "@/models/DiscoveryCandidate";
 
 /**
  * ARABAM SITEMAP SENKRONU
@@ -17,6 +18,10 @@ import { SourceSyncState } from "@/models/SourceSyncState";
  *    ilanın 15'i de yayındaydı (eski doğrulama hatasıyla arşive düşmüşlerdi).
  *    Bunlar "yeniden kontrol et" olarak işaretlenir; detay taraması (evden,
  *    scrape.bat) canlıysa geri açar.
+ *  - YENİ İLAN KEŞFİ: ilan numaraları zamanla artıyor; bizdeki en büyük numaradan büyük
+ *    olanlar (en yeniler) aday kuyruğuna yazılır, ev ağındaki motor onları detay
+ *    sayfasından okur (arabam-discovery.ts). Eskiden keşif `?sort=date_desc` ile kategori
+ *    sayfalarını geziyordu; robots.txt `?sort=` desenini yasaklıyor.
  *  - `lastmod` fiyat değişimini göstermiyor (değişimlerin yarısı lastmod'dan
  *    sonra); bu yüzden fiyat taramasını önceliklendirmekte kullanılmaz,
  *    yalnızca "arşivden sonra güncellenmiş mi" kontrolünde işe yarar.
@@ -28,15 +33,17 @@ const UA =
 const MIN_EXPECTED_ENTRIES = 500_000;
 export const SITEMAP_STATE_KEY = "arabam-sitemap";
 export const SITEMAP_INTERVAL_MS = 20 * 60 * 60 * 1000;
+/** Kuyrukta tutulacak en yeni aday sayısı. */
+export const DISCOVERY_QUEUE_CAP = 5000;
 
 /** Parça parça gelen XML'den <loc>…/ilan/…/ID</loc><lastmod>…</lastmod> çiftlerini çıkarır. */
-export function createSitemapParser(onEntry: (id: string, lastmod: string) => void) {
-  const re = /<loc>https:\/\/www\.arabam\.com\/ilan\/[^<]*?\/(\d+)<\/loc>\s*<lastmod>([^<]*)<\/lastmod>/g;
+export function createSitemapParser(onEntry: (id: string, lastmod: string, url: string) => void) {
+  const re = /<loc>(https:\/\/www\.arabam\.com\/ilan\/[^<]*?\/(\d+))<\/loc>\s*<lastmod>([^<]*)<\/lastmod>/g;
   let carry = "";
   const scan = (text: string) => {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) onEntry(m[1], m[2]);
+    while ((m = re.exec(text)) !== null) onEntry(m[2], m[3], m[1]);
   };
   return {
     push(chunk: string) {
@@ -56,7 +63,7 @@ export function createSitemapParser(onEntry: (id: string, lastmod: string) => vo
   };
 }
 
-async function streamSitemapFile(url: string, onEntry: (id: string, lastmod: string) => void): Promise<void> {
+async function streamSitemapFile(url: string, onEntry: (id: string, lastmod: string, url: string) => void): Promise<void> {
   const res = await fetch(url, {
     headers: { "User-Agent": UA, "Accept-Encoding": "gzip", Accept: "application/xml,text/xml,*/*" },
     signal: AbortSignal.timeout(180_000),
@@ -74,8 +81,44 @@ async function streamSitemapFile(url: string, onEntry: (id: string, lastmod: str
   parser.end();
 }
 
+/**
+ * Sitemap'teki adreslerden, bizde olmayan EN YENİ ilanları (numarası bilinen en büyük
+ * numaradan büyük) ayıklar. Bellekte en fazla `cap` kadar tutar.
+ */
+export class NewestCandidates {
+  private items: Array<{ id: string; num: number; url: string; lastmod: string }> = [];
+  constructor(private readonly minExclusive: number, private readonly cap: number, private readonly known: ReadonlySet<string>) {}
+
+  add(id: string, lastmod: string, url: string) {
+    const num = Number(id);
+    if (!Number.isFinite(num) || num <= this.minExclusive || this.known.has(id)) return;
+    this.items.push({ id, num, url, lastmod });
+    if (this.items.length > this.cap * 4) this.compact();
+  }
+
+  private compact() {
+    this.items.sort((a, b) => b.num - a.num);
+    this.items.length = Math.min(this.items.length, this.cap);
+  }
+
+  result() {
+    this.compact();
+    return this.items;
+  }
+}
+
+/** İlan adresinin yol kısmı ("/ilan/…/123"); bozuk adreste null. */
+export function hrefFromUrl(url: string): string | null {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return null;
+  }
+}
+
 export interface SitemapSyncResult {
   status: "ok" | "failed";
+  queued?: number;
   message: string;
   files: number;
   entries: number;
@@ -151,12 +194,16 @@ export async function syncArabamSitemap(options: { log?: (msg: string) => void }
 
   // 3) Dosyaları akış olarak oku
   const lastmodById = new Map<string, string>();
+  let maxKnown = 0;
+  for (const id of byId.keys()) maxKnown = Math.max(maxKnown, Number(id) || 0);
+  const candidates = new NewestCandidates(maxKnown, DISCOVERY_QUEUE_CAP, new Set(byId.keys()));
   let entries = 0;
   try {
     for (const [i, file] of files.entries()) {
-      await streamSitemapFile(file, (id, lastmod) => {
+      await streamSitemapFile(file, (id, lastmod, url) => {
         entries++;
         if (byId.has(id)) lastmodById.set(id, lastmod);
+        else candidates.add(id, lastmod, url);
       });
       log(`   📄 Sitemap ${i + 1}/${files.length} okundu (${entries.toLocaleString("tr-TR")} adres)`);
       await new Promise((r) => setTimeout(r, 1000));
@@ -196,8 +243,24 @@ export async function syncArabamSitemap(options: { log?: (msg: string) => void }
   await inChunks(absentActiveUnflagged, 5000, (ids) => Car.updateMany({ _id: { $in: ids } }, { $set: { sitemapMissingSince: now } }, opts));
   await inChunks(recheck, 5000, (ids) => Car.updateMany({ _id: { $in: ids } }, { $set: { needsRecheck: true } }, opts));
 
+  // 5) Yeni ilan adaylarını kuyruğa yaz (idempotent; aynı aday tekrar eklenmez)
+  const fresh = candidates.result();
+  if (fresh.length > 0) {
+    await DiscoveryCandidate.bulkWrite(
+      fresh.map((c) => ({
+        updateOne: {
+          filter: { source: "arabam", externalId: c.id },
+          update: { $setOnInsert: { source: "arabam", externalId: c.id, numericId: c.num, url: c.url, lastmod: c.lastmod, attempts: 0 } },
+          upsert: true,
+        },
+      })),
+      { ordered: false }
+    );
+  }
+
   return finish({
     status: "ok",
+    queued: fresh.length,
     files: files.length,
     entries,
     activePresent,
@@ -208,7 +271,8 @@ export async function syncArabamSitemap(options: { log?: (msg: string) => void }
     message:
       `${files.length} dosya, ${entries.toLocaleString("tr-TR")} adres okundu. Aktif ilanlarımızdan ${activePresent} sitemap'te var, ` +
       `${activeMissing} yok (detay taramasında öne alındı; tek başına arşiv sebebi değil). ` +
-      `Arşivde olup yayında görünen ${recheck.length} ilan yeniden kontrol için işaretlendi.`,
+      `Arşivde olup yayında görünen ${recheck.length} ilan yeniden kontrol için işaretlendi. ` +
+      `Yeni ilan adayı (numarası ${maxKnown.toLocaleString("tr-TR")} üstü): ${fresh.length}.`,
   });
 }
 

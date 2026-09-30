@@ -162,6 +162,7 @@ class _DetailScreenState extends State<DetailScreen> {
         children: [
           PageView.builder(
             itemCount: allImages.length,
+            allowImplicitScrolling: true,
             onPageChanged: (idx) => setState(() => _activeImageIndex = idx),
             itemBuilder: (context, index) {
               final imgUrl = allImages[index];

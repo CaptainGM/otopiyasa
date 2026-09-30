@@ -133,6 +133,8 @@ class _CarCardState extends State<CarCard> {
                       child: PageView.builder(
                         controller: _pageController,
                         physics: const BouncingScrollPhysics(),
+                        // Komşu fotoğraf önceden hazırlanır: kaydırınca boş kare görünmez.
+                        allowImplicitScrolling: true,
                         itemCount: images.length,
                         onPageChanged: (idx) {
                           setState(() => _activeImageIndex = idx);

@@ -130,7 +130,8 @@ topladığı ya da bir kullanıcının verdiği ilan, hem web hem mobilde anınd
 
 ### 4.3 Yapay zeka (Google Gemini)
 - **Sohbet asistanı** — kullanıcının doğal dildeki mesajını niyet sınıflandırmasıyla (arama/filtre/en ucuz/en pahalı/sayım/ortalama/yönlendirme/genel soru) anlar, gerçek veritabanı sorgusuyla yanıtlar (Gemini asla sayı/fiyat uydurmaz — yalnızca niyeti anlar, veriyi sistem çeker). Konu dışı isteklere (ödev, kod, genel kültür) kibarca sınır koyar.
-- **İlan içerik denetimi** — yeni/düzenlenen ilan; önce fiyat tabanı kontrolünden, sonra (varsa fotoğraf) yapay zeka görsel marka doğrulamasından, sonra metin içerik denetiminden geçer. Uygunsuz/şüpheli/marka uyuşmayan ilanlar otomatik reddedilir.
+- **İlan içerik denetimi (iki katman)** — yeni/düzenlenen ilan sırayla: (1) **kural tabanlı içerik filtresi** (küfür/hakaret, kapora/ön ödeme/IBAN, dış bağlantı ve mesajlaşma uygulaması yönlendirmesi; marka, model, şehir ve açıklama taranır), (2) fiyat tabanı kontrolü, (3) varsa fotoğraf için yapay zeka görsel marka doğrulaması, (4) yapay zeka metin denetimi. Uygunsuz/şüpheli/marka uyuşmayan ilanlar otomatik reddedilir. İlk katman yapay zekadan bağımsızdır: Gemini yanıt vermese bile (anahtar yok, günlük kota bitti, zaman aşımı) küfürlü ilan yayınlanamaz.
+- **Asistan güvenliği** — küfürlü mesajlar yapay zekaya gitmeden kibarca reddedilir (kota harcanmaz), model çıktısı da denetlenir, ilan metinleri talimat değil veri olarak işlenir. Asistanın gösterdiği ilanlar (en ucuz/en pahalı, sayım, ortalama) yalnızca herkese açık, aktif ve onaylı ilanlardan gelir.
 - **Fotoğraftan araç tanıma** — marka/model/yıl tahmini + hasar/boya durumu tespiti (fiyat tahmini formunda ve ilan denetiminde kullanılır).
 - **Karşılaştırma AI özeti** — karşılaştırılan araçlar için hangisinin neden daha mantıklı olduğunu somut verilerle (km, yıl, hasar, fiyat) açıklayan doğal dil özeti.
 
@@ -163,7 +164,9 @@ topladığı ya da bir kullanıcının verdiği ilan, hem web hem mobilde anınd
 
 ### 4.9 Admin paneli
 - İstatistik kartları (ilan/kullanıcı/abonelik/yorum sayıları).
-- Scrape kontrol paneli + gece scrape log görüntüleyici.
+- 7/24 motor durumu (taze kalp atışına göre; sinyal kesilirse "SİNYAL YOK"), canlı log, çalışma modu.
+- **Kaynak senkron durumu** — her kaynağın tüm envanterinin en son ne zaman doğrulandığı, kaç ilanın güncellendiği, geri alındığı ve arşive taşındığı.
+- Scrape kontrol paneli + manuel tarama denetim kayıtları (web ve mobil).
 - Kullanıcı ve ilan yönetim tabloları (silme, moderasyon).
 - İşletme hesabı başvuru onay/red kuyruğu.
 - Şikayet inceleme kuyruğu.
@@ -208,6 +211,8 @@ satılanları Piyasa Arşivi'ne taşır, arşivdeyken sitede yeniden görünenle
 yöntem (her ilanın adresine tek tek "hâlâ açılıyor mu?" diye bakmak) günde ~20 kez yoklama
 yapıyor ama Otokoç gibi satılan ilanı HTTP 200 ile döndüren sitelerde satılanı hiç yakalamıyordu.
 
+**İlan detayı:** Otokoç ve Otoplus liste sayfaları ilan başına tek fotoğraf ve şablon açıklama verir. Yeni ilanlar kaydedilirken ilan sayfası da okunur: tam fotoğraf galerisi (Otokoç 12'ye kadar, Otoplus ~20), renk, kasa tipi, motor hacmi, tramer ve boya/değişen durumu alınır. Bu sitelerde satıcı açıklaması yoktur; açıklama sayfadaki verilerden derlenir, uydurma bilgi eklenmez. Mevcut ilanlar 7/24 motorda her turda küçük partilerle, ya da `scrape.bat` → `G` ile toplu tamamlanır. Kartlarda kaynak sitelerin 1920 px görselleri yerine CDN'lerin sunduğu daha hafif varyantlar yüklenir.
+
 **Arşiv güvenliği:** yalnızca kesin kanıt (404, ilan numarası kaybolan yönlendirme, soft 404) tek
 gözlemle arşivler; zayıf kanıt (envanterde görünmedi) iki gözlem ve 6 saat ister; engel/zaman
 aşımı asla ilanı öldürmez; bir partide ölü oranı anormalse ya da envanter taraması eksik
@@ -247,7 +252,9 @@ yazılmıştır (yoklama tabanlı bildirim her koşulda çalışır).
 - **Sayfa erişim kontrolü**: `requirePageAuth()` sunucu bileşenlerinde gerçek JWT doğrulaması yapar (yalnızca middleware'e güvenilmez — sahte cookie ile içerik sayfalarına erişim engellenir).
 - **Rate limiting**: giriş, kayıt, şifre sıfırlama, fiyat tahmini gibi hassas uçlarda IP+bucket bazlı sınırlama.
 - **ReDoS koruması**: kullanıcı girdisi arama sorgularında (`$regex`) `escapeRegExp` ile kaçışlanır.
-- **İçerik moderasyonu**: yapay zeka destekli ilan/fotoğraf denetimi + kural tabanlı fiyat tabanı kontrolü.
+- **İçerik moderasyonu**: kural tabanlı içerik filtresi (küfür, kapora, dış bağlantı; `src/lib/content-filter.ts`) + yapay zeka destekli ilan/fotoğraf denetimi + fiyat tabanı kontrolü. Filtre soru, cevap, yorum, teklif mesajı ve asistan girdisi/çıktısı için de uygulanır. Büyük/küçük harf, Türkçe karakter, rakamla (s1kt1r), harf harf (a m k) ve uzatılmış yazımlar yakalanır; "sıkıntısız", "Amasya", "Mercedes-AMG" gibi meşru ifadeler engellenmez (testli).
+- **Otomatik arşivleme güvenliği**: engel/zaman aşımı hiçbir ilanı arşive taşımaz; tek gözlemle yalnızca kesin kanıt, zayıf kanıt iki gözlemle arşivler; anormal ölü oranında devre kesici çalışır (bkz. Bölüm 5).
+- **Kaynak sitelere saygı**: Arabam'ın `robots.txt` dosyasında yasak olan `?searchText=` deseni doğrulamada artık kullanılmıyor; ilan yalnızca kendi sayfası üzerinden doğrulanıyor.
 - **Sohbet güvenliği**: platform dışı yönlendirme/kapora tespiti, kademeli otomatik susturma.
 - **E-posta doğrulama** zorunlu; geçici/tek kullanımlık e-posta adresleri reddedilir.
 
@@ -314,4 +321,4 @@ kararlardır**:
 
 ---
 
-*Bu doküman, projenin 2026-08-09 tarihli kod tabanı üzerinden otomatik olarak derlenmiştir.*
+*Son güncelleme: 2026-09-30. Otonom veri motoru, ilan yaşam döngüsü, detay zenginleştirme ve içerik denetimi bölümleri bu tarihteki kod tabanına göre yazılmıştır.*

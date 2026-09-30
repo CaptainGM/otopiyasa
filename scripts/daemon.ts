@@ -39,6 +39,7 @@ const WATCHDOG_STALL_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 10 * 60 * 1000;
 const ARABAM_REFRESH_BATCH = 150;
 const DETAIL_BATCH = 20;
+const DISCOVERY_BATCH = 30;
 
 type Mode = "hybrid" | "new_only" | "sweep_only";
 type DiscoverySource = "dod" | "otokoc" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "ikinciyeni" | "arabam";
@@ -101,6 +102,7 @@ async function main() {
   const { reconcileSource, pickDueReconcileSource } = await import("@/lib/scraper/reconcile");
   const { syncArabamSitemap, isSitemapSyncDue } = await import("@/lib/scraper/arabam-sitemap");
   const { runDetailBackfill } = await import("@/lib/scraper/enrich-detail");
+  const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
   const { recordHourlyMetric, updateDaemonHeartbeat, getDaemonControl, setDaemonControl, DaemonHeartbeat } = await import(
     "@/models/ScrapeMetric"
   );
@@ -225,7 +227,6 @@ async function main() {
           { source: "carvak", limit: 25 },
           { source: "ikinciyeni", limit: 25 },
           { source: "dod", limit: 20 },
-          ...(EXCLUDE_ARABAM ? [] : [{ source: "arabam" as const, limit: 25 }]),
         ];
         currentPhase = `🚗 Yeni ilan keşfi (${targets.length} kaynak)`;
         const results = await Promise.allSettled(
@@ -280,6 +281,12 @@ async function main() {
 
         // ------------------------------------------------------ 4. ARABAM DETAY
         if (!EXCLUDE_ARABAM) {
+          // Yeni ilanlar: sitemap kuyruğundan (kategori sayfası gezmek robots.txt'e aykırıydı).
+          currentPhase = "🆕 Arabam yeni ilanlar (sitemap kuyruğu)";
+          const found = await runSitemapDiscovery(DISCOVERY_BATCH);
+          if (found.picked > 0) log(`🆕 [ARABAM] ${found.message}`);
+          await recordHourlyMetric({ source: "arabam", scanned: found.picked, inserted: found.inserted, updated: 0, deleted: 0 });
+
           currentPhase = `📊 Arabam detay taraması (${ARABAM_REFRESH_BATCH} ilan)`;
           const res = await runPriceRefresh(ARABAM_REFRESH_BATCH);
           log(`📊 [ARABAM] ${res.message}`);

@@ -114,6 +114,9 @@ const CarSchema = new Schema(
     sitemapMissingSince: { type: Date, default: undefined },
     // Arşivde ama kaynakta hâlâ yayında olabilir → bir sonraki detay taramasında yeniden kontrol et.
     needsRecheck: { type: Boolean, default: undefined },
+    // İlan sayfasından galeri/açıklama/teknik bilgi en son ne zaman tamamlanmaya çalışıldı
+    // (Otokoç, Otoplus; bkz. scraper/enrich-detail.ts).
+    detailCheckedAt: { type: Date, default: undefined },
   },
   { timestamps: true }
 );

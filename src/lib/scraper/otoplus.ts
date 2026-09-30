@@ -48,7 +48,8 @@ function detectBodyType(name: string): string {
   if (/station|wagon/i.test(lower)) return "Station Wagon";
   if (/coupe|coupé/i.test(lower)) return "Coupe";
   if (/cabrio|cabriolet/i.test(lower)) return "Cabrio";
-  return "Sedan";
+  // Eskiden varsayılan "Sedan"dı: Doblo, Rifter, 2008 gibi araçlar yanlışlıkla sedan görünüyordu.
+  return "Belirtilmemiş";
 }
 
 export async function scrapeOtoplusListings(

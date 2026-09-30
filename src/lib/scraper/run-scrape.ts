@@ -21,6 +21,7 @@ import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
+import { fetchDetailPatch, isDetailSource, isUnknownValue, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
 import { ListingSource } from "@/types";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
@@ -75,11 +76,17 @@ export async function saveListing(
   });
 
   if (existing) {
+    // Detayı ilan sayfasından tamamlanmış kurumsal ilanlarda liste sayfasındaki şablon açıklama,
+    // tek fotoğraf ve "Belirtilmemiş" alanlar zengin veriyi ezmemeli (aksi hâlde her tarama
+    // galeriyi ve açıklamayı geri siliyordu).
+    const detailKept = isDetailSource(listing.sourceSite) && Boolean((existing as any).detailCheckedAt);
+
     const oldPrice = existing.price;
     const newPrice = listing.price > 0 ? listing.price : existing.price;
     const priceChanged = existing.price !== newPrice && listing.price > 0;
     const mileageChanged = listing.mileage > 0 && Math.abs(existing.mileage - listing.mileage) > 50;
     const descChanged = Boolean(
+      !detailKept &&
       listing.description &&
       listing.description !== existing.description &&
       listing.description.length > 20 &&
@@ -123,19 +130,28 @@ export async function saveListing(
     if (listing.mileage > 0) existing.mileage = listing.mileage;
     existing.city = listing.city || existing.city;
     if (listing.address) existing.address = listing.address;
-    if (listing.description) existing.description = listing.description;
+    if (listing.description && !detailKept) existing.description = listing.description;
 
-    if (hasImages(listing)) {
+    // Galeri hiçbir zaman küçülmez: liste sayfası tek fotoğraf verirken ilan sayfasından gelen galeri korunur.
+    if (hasImages(listing) && (listing.images as string[]).length >= (existing.images?.length ?? 0)) {
       existing.images = listing.images as string[];
       existing.imageUrl = listing.imageUrl || (listing.images as string[])[0];
     }
-    if (listing.damageFlag !== undefined) existing.damageFlag = listing.damageFlag;
+    if (listing.damageFlag !== undefined && !detailKept) existing.damageFlag = listing.damageFlag;
 
     if (listing.damageParts && listing.damageParts.length > 0) {
       existing.damageParts = listing.damageParts;
     }
     if (listing.location) existing.location = listing.location;
-    if (listing.features) existing.features = listing.features;
+    if (listing.features) {
+      if (detailKept) {
+        // Yalnızca listeden güvenilir gelenleri güncelle; detaydan gelen renk/kasa/motor kalsın.
+        if (!isUnknownValue(listing.features.fuelType)) existing.set("features.fuelType", listing.features.fuelType);
+        if (!isUnknownValue(listing.features.transmission)) existing.set("features.transmission", listing.features.transmission);
+      } else {
+        existing.features = listing.features;
+      }
+    }
     existing.listingUrl = listing.listingUrl || existing.listingUrl;
     existing.source = listing.sourceSite;
 
@@ -189,12 +205,30 @@ export async function saveListing(
     return "skipped";
   }
 
+  // Yeni Otokoç/Otoplus ilanı: liste sayfası tek fotoğraf ve şablon açıklama verir; galeri,
+  // teknik bilgi ve tramer için ilan sayfası da okunur. Okunamazsa ilan yine eklenir ve
+  // arka plan tamamlayıcısı (runDetailBackfill) sonra yeniden dener.
+  let toCreate = listing;
+  let detailCheckedAt: Date | undefined;
+  if (isDetailSource(listing.sourceSite)) {
+    try {
+      const patch = await fetchDetailPatch(listing.sourceSite, listing.listingUrl);
+      if (patch) {
+        toCreate = mergeDetailIntoListing(listing, patch);
+        detailCheckedAt = now;
+      }
+    } catch {
+      // ilan sayfası okunamadı: liste verisiyle devam
+    }
+  }
+
   await Car.create({
-    ...listing,
+    ...toCreate,
     source: listing.sourceSite,
     priceHistory: [{ price: listing.price, recordedAt: now }],
     lastVerifiedAt: now,
     lastVerifyAttemptAt: now,
+    detailCheckedAt,
   });
   return "inserted";
 }

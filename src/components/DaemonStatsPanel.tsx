@@ -1,22 +1,43 @@
 "use client";
 
-import { useEffect, useState, useTransition, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { HourlyDetailModal } from "@/components/HourlyDetailModal";
-import { getTurkeyDateStr, getTurkeyYesterdayStr } from "@/lib/utils";
+import { formatRelativeTr, getTurkeyDateStr, getTurkeyYesterdayStr } from "@/lib/utils";
+import type { DaemonStatus } from "@/lib/daemon-status";
 
-interface DaemonInfo {
-  isOnline: boolean;
-  host: string;
-  currentPhase: string;
-  cycle: number;
-  memoryMb: number;
-  uptimeSeconds: number;
-  lastHeartbeat: string | null;
-  status: "online" | "idle" | "stopped";
-  mode?: "hybrid" | "new_only" | "sweep_only";
-  command?: "run" | "stop";
-  recentLogs?: string[];
+type DaemonInfo = DaemonStatus;
+
+interface SyncState {
+  source: string;
+  lastRunAt: string | null;
+  lastSuccessAt: string | null;
+  lastStatus: "ok" | "incomplete" | "breaker" | "failed" | null;
+  lastMessage: string;
+  seen: number | null;
+  inserted: number;
+  updated: number;
+  reactivated: number;
+  archived: number;
+  markedMissing: number;
 }
+
+const SYNC_LABELS: Record<string, string> = {
+  vavacars: "VavaCars",
+  carvak: "Carvak",
+  otoplus: "Otoplus",
+  otomerkezi: "Otomerkezi",
+  ikinciyeni: "İkinciyeni",
+  otokoc: "Otokoç",
+  dod: "DOD",
+  "arabam-sitemap": "Arabam sitemap",
+};
+
+const SYNC_STATUS: Record<string, { label: string; cls: string }> = {
+  ok: { label: "Tamam", cls: "text-emerald-300 bg-emerald-500/10 border-emerald-500/30" },
+  incomplete: { label: "Eksik tarama", cls: "text-amber-300 bg-amber-500/10 border-amber-500/30" },
+  breaker: { label: "Güvenlik freni", cls: "text-orange-300 bg-orange-500/10 border-orange-500/30" },
+  failed: { label: "Başarısız", cls: "text-rose-300 bg-rose-500/10 border-rose-500/30" },
+};
 
 interface TodayTotals {
   date: string;
@@ -61,7 +82,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
   const [selectedSlot, setSelectedSlot] = useState<HourlyStat | null>(null);
   const [loading, setLoading] = useState(!initialDaemon && !initialHourly?.length);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-  const [isPending, startTransition] = useTransition();
+  const [syncStates, setSyncStates] = useState<SyncState[]>([]);
 
   // Son manuel buton tıklamasını takip et (arka plan sorgusu arayüzü geri döndürmesin)
   const pendingActionRef = useRef<"start" | "stop" | "restart" | null>(null);
@@ -125,6 +146,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
         setDaemon(data.daemon);
         setToday(data.today);
         setHourly(data.hourly || []);
+        setSyncStates(data.syncStates || []);
         setLastRefreshed(new Date());
 
         // Üst sayaçları sayfayı F5 yapmaya gerek kalmadan canlı güncelle
@@ -147,24 +169,11 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
   }
 
   useEffect(() => {
-    // Sunucu tarafı veri sağlamamışsa hemen çek, aksi halde ilk çekimi 25sn sonraya bırak
-    if (!initialDaemon && !initialHourly?.length) {
-      fetchStats();
-    }
+    // Kaynak senkron tablosu sunucudan gelmediği için ilk yüklemede hemen çekilir.
+    fetchStats();
     const timer = setInterval(fetchStats, 25000);
     return () => clearInterval(timer);
   }, []);
-
-  async function handleSeedSample() {
-    startTransition(async () => {
-      try {
-        const res = await fetch("/api/admin/daemon-stats", { method: "POST" });
-        if (res.ok) {
-          await fetchStats();
-        }
-      } catch {}
-    });
-  }
 
   const [controlling, setControlling] = useState(false);
   const currentMode = daemon?.mode || "hybrid";
@@ -188,18 +197,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
                   : "🚀 Otonom Motor Başlatılıyor & Canlı Taramalar Devrede...",
               lastHeartbeat: new Date().toISOString(),
             }
-          : {
-              isOnline: true,
-              host: "Oracle Cloud Always Free (Frankfurt)",
-              currentPhase: "🚀 Otonom Motor Başlatılıyor & Canlı Taramalar Devrede...",
-              cycle: 1,
-              memoryMb: 45,
-              uptimeSeconds: 1,
-              lastHeartbeat: new Date().toISOString(),
-              status: "online",
-              command: "run",
-              mode: "hybrid",
-            }
+          : null
       );
     } else {
       setDaemon((prev) =>
@@ -232,7 +230,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
             ? {
                 ...prev,
                 command: data.command,
-                status: data.status,
+                status: isStop ? "stopped" : prev.status === "stopped" || prev.status === "offline" ? "online" : prev.status,
                 isOnline: !isStop,
                 mode: data.mode || prev.mode,
                 currentPhase: isStop
@@ -300,7 +298,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
                     : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
                 }`}
               >
-                {daemon?.isOnline ? "7/24 CANLI AKTİF" : "DURDURULDU"}
+                {daemon?.isOnline ? "7/24 CANLI AKTİF" : daemon?.status === "stopped" ? "DURDURULDU" : "SİNYAL YOK"}
               </span>
               <span
                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider border ${
@@ -319,7 +317,8 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              {daemon?.host} • Bellek: {daemon?.memoryMb || 45} MB RAM • Döngü: #{daemon?.cycle || 1}
+              {daemon?.host || "bilinmiyor"} • Bellek: {daemon?.memoryMb != null ? `${daemon.memoryMb} MB` : "—"} • Döngü: #
+              {daemon?.cycle || 0}
             </p>
           </div>
         </div>
@@ -358,17 +357,6 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
             </button>
           )}
 
-          {hourly.length === 0 && (
-            <button
-              onClick={handleSeedSample}
-              disabled={isPending}
-              className="rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition"
-              title="Grafik ve tabloyu hemen görmek için örnek saatlik veri oluşturur"
-            >
-              {isPending ? "Oluşturuluyor..." : "⚡ Örnek Geçmiş Üret"}
-            </button>
-          )}
-
           <button
             onClick={() => fetchStats()}
             className="flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300 transition"
@@ -389,17 +377,17 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
           <span className="text-[11px] text-slate-400">
             {currentMode === "new_only" && (
               <span className="text-amber-300 font-semibold">
-                🚀 Sadece Yeni İlanlar (Ölü temizliği atlanır, 100% kapasite taze araç keşfine ayrılır)
+                🚀 Sadece yeni ilan keşfi (envanter senkronu ve doğrulama atlanır)
               </span>
             )}
             {currentMode === "sweep_only" && (
               <span className="text-purple-300 font-semibold">
-                🧹 Sadece Ölü İlan Temizliği (Yeni çekme durdurulur, eski ilanlar denetlenir)
+                🧹 Sadece envanter senkronu ve doğrulama (yeni ilan keşfi durur)
               </span>
             )}
             {currentMode === "hybrid" && (
               <span className="text-emerald-300 font-semibold">
-                ⚖️ Hibrit (Hem yeni araçlar taranır hem eski ilanlar doğrulanır)
+                ⚖️ Hibrit (her tur yeni ilan keşfi + sırası gelen kaynağın tam envanter senkronu)
               </span>
             )}
           </span>
@@ -451,22 +439,6 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
         </div>
       </div>
 
-      {/* Sadece Yeni İlan Modu İçin Bilgilendirici İpucu */}
-      {currentMode === "new_only" && (
-        <div className="rounded-xl bg-amber-950/20 border border-amber-500/30 p-3 text-xs text-amber-200/90 flex items-center justify-between gap-3 animate-fade-in">
-          <div className="flex items-center gap-2.5">
-            <span className="text-base shrink-0">💡</span>
-            <span>
-              <strong>Tavsiye Edilen Çalışma:</strong> Bilgisayarınızda{" "}
-              <code className="text-white bg-black/40 px-1 py-0.5 rounded font-mono">
-                temizle-olu-ilanlari.bat
-              </code>{" "}
-              çalışırken otonom motor arka planda yalnızca yeni araçları çeker. Böylece 13.000+ boşa tarama önlenir ve havuz sürekli yeni ilanlarla beslenir!
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Güncel Aşama Bilgi Şeridi */}
       <div className="rounded-xl bg-emerald-950/30 border border-emerald-500/20 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-2">
@@ -483,6 +455,55 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
               : "Bilinmiyor"}
           </span>
         </div>
+      </div>
+
+      {/* Kaynak Senkron Durumu: her kaynağın tüm envanteri en son ne zaman doğrulandı */}
+      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-3.5 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-white">🔎 Kaynak Senkron Durumu</h3>
+          <span className="text-[11px] text-slate-400">
+            Her kaynağın tüm ilan listesi belirli aralıklarla baştan sona taranır; satılanlar arşive, geri gelenler yayına alınır.
+          </span>
+        </div>
+        {syncStates.length === 0 ? (
+          <p className="text-xs text-slate-400">Henüz senkron kaydı yok (motor ilk turunu tamamlayınca görünür).</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-400">
+                  <th className="py-1.5 pr-3 font-semibold">Kaynak</th>
+                  <th className="py-1.5 pr-3 font-semibold">Son çalışma</th>
+                  <th className="py-1.5 pr-3 font-semibold">Durum</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Görülen</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Güncellenen</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Geri alınan</th>
+                  <th className="py-1.5 pr-3 font-semibold text-right">Arşivlenen</th>
+                  <th className="py-1.5 font-semibold text-right">İzlemede</th>
+                </tr>
+              </thead>
+              <tbody>
+                {syncStates.map((s) => {
+                  const st = s.lastStatus ? SYNC_STATUS[s.lastStatus] : null;
+                  return (
+                    <tr key={s.source} className="border-t border-white/5 align-top" title={s.lastMessage}>
+                      <td className="py-1.5 pr-3 font-semibold text-slate-200">{SYNC_LABELS[s.source] || s.source}</td>
+                      <td className="py-1.5 pr-3 text-slate-300">{s.lastRunAt ? formatRelativeTr(s.lastRunAt) : "—"}</td>
+                      <td className="py-1.5 pr-3">
+                        {st ? <span className={`rounded-md border px-1.5 py-0.5 font-semibold ${st.cls}`}>{st.label}</span> : "—"}
+                      </td>
+                      <td className="py-1.5 pr-3 text-right text-slate-200">{s.seen ?? "—"}</td>
+                      <td className="py-1.5 pr-3 text-right text-sky-300">{s.updated}</td>
+                      <td className="py-1.5 pr-3 text-right text-emerald-300">{s.reactivated}</td>
+                      <td className="py-1.5 pr-3 text-right text-rose-300">{s.archived}</td>
+                      <td className="py-1.5 text-right text-amber-300">{s.markedMissing}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Canlı Terminal & Sunucu Logları (PM2 Canlı Akış Konsolu) */}

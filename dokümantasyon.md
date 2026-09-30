@@ -48,8 +48,7 @@ ve her ilan orijinal kaynağına bağlantı verir.
 | Tarayıcı bildirimi | `web-push` (VAPID) | Sekme kapalıyken bile tarayıcı bildirimi |
 | Mobil bildirim | `firebase-admin` (FCM) | Uygulama tamamen kapalıyken Android bildirimi |
 | Yapay zeka | Google Gemini API (`gemini-flash-lite-latest`) | Chatbot, ilan/fotoğraf denetimi, karşılaştırma özeti |
-| Test | Vitest | Birim testleri (319 test / 37 dosya) |
-| CI/CD | GitHub Actions | Otomatik tip kontrolü + test + zamanlı bulut scrape |
+| Test | Vitest | Birim testleri (373 test / 44 dosya) |
 | Deploy | Vercel | Web + API sunucusuz barındırma |
 | Domain | Namecheap (GitHub Student Pack) | `otopiyasa.app` |
 
@@ -74,9 +73,8 @@ ve her ilan orijinal kaynağına bağlantı verir.
 
 - **Vercel** — web/API canlı barındırma, bölge Atlas ile eşleşecek şekilde `fra1` (Frankfurt).
 - **MongoDB Atlas** — tek, paylaşılan bulut veritabanı; hem web hem mobil hem yerel scraper aynı veriyi okur/yazar.
-- **GitHub Actions** — (a) her push'ta TypeScript tip kontrolü + Vitest + Flutter analyze/test; (b) günde 2 kez otomatik bulut scrape (PC kapalıyken bile Otomerkezi verisi tazelenir).
-- **Windows Task Scheduler** — yerel PC açıkken gece 03:30'da otomatik tam scrape (Arabam dahil).
-- **`scrape.bat`** — kullanıcı için tek tıkla scrape menüsü (hızlı/geniş/tam yenileme), ilerlemeyi canlı gösterir, kesintiye dayanıklı (artımlı kayıt).
+- **7/24 daemon (pm2)** — Oracle Cloud sunucusunda sürekli çalışır; yeni ilan keşfi, kaynakların tam envanter senkronu ve arşivleme. Kalp atışı panelde görünür; sinyal kesilirse panel "SİNYAL YOK" gösterir.
+- **`scrape.bat`** — kullanıcı için tek tıkla menü: Arabam doğrulama (11), Arabam sitemap (S), kurumsal envanter (E), turbo çekim. Kesintiye dayanıklı (artımlı kayıt).
 
 ---
 
@@ -192,21 +190,39 @@ profil, oturum kalıcılığı, açık/koyu tema, anasayfa şeritleri (fırsatla
 
 ## 5. Veri Kaynakları ve Scraping
 
-| Kaynak | Durum | Yöntem |
-|---|---|---|
-| **Arabam.com** | ✅ Çalışıyor | İlan detay sayfasındaki schema.org `Car` ld+json + spec listesi parse edilir. Yalnızca ev/açık ağdan erişilebilir. |
-| **Otomerkezi.net** | ✅ Çalışıyor | Sayfa 1 ld+json, sonraki sayfalar Next.js RSC (`__next_f`) payload'ından parse edilir. Cloudflare koruması yok, bulut ortamından da çalışır. |
-| **Sahibinden.com** | ❌ Engelli | Cloudflare bot koruması nedeniyle headless tarayıcıyla dahi taranamıyor — bilinen ve kabul edilmiş bir kısıt. |
+| Kaynak | Durum | Yöntem | Satıldı mı? (doğrulama) |
+|---|---|---|---|
+| **Arabam.com** | ✅ Ev IP'sinden | İlan detayı schema.org `Car` ld+json + spec listesi; gerçek Chromium gerekir | Sitemap + detay sayfası (`scrape.bat` 11) |
+| **Otokoç 2. El** | ✅ Bulutta çalışır | Liste sayfası kartları (`data-*`) | Tam envanter + ilan sayfası (soft 404) |
+| **Otoplus** | ✅ Bulutta çalışır | Liste sayfası ld+json | Tam envanter + ilan sayfası (model kataloğuna yönlenir) |
+| **VavaCars** | ✅ Bulutta çalışır | Kendi arama API'si | Tam envanter |
+| **Carvak** | ✅ Bulutta çalışır | Angular sunucu durumu | Tam envanter |
+| **Otomerkezi** | ✅ Bulutta çalışır | Next.js RSC yükü | Tam envanter |
+| **DOD** | ✅ Bulutta çalışır | Sitemap + ilan sayfası ld+json | Sitemap = envanter |
+| **İkinciyeni** | ✅ Bulutta çalışır | Açık ihale API'si | Tam envanter |
+| **Sahibinden.com** | ❌ Engelli | Cloudflare bot koruması — bilinen ve kabul edilmiş kısıt | — |
+
+**Otonom motor** (`scripts/daemon.ts`, 7/24 sunucuda çalışır) her turda yeni ilan keşfeder ve
+sırası gelen bir kaynağın **tüm envanterini baştan sona tarar**: fiyat değişimlerini işler,
+satılanları Piyasa Arşivi'ne taşır, arşivdeyken sitede yeniden görünenleri geri açar. Eski
+yöntem (her ilanın adresine tek tek "hâlâ açılıyor mu?" diye bakmak) günde ~20 kez yoklama
+yapıyor ama Otokoç gibi satılan ilanı HTTP 200 ile döndüren sitelerde satılanı hiç yakalamıyordu.
+
+**Arşiv güvenliği:** yalnızca kesin kanıt (404, ilan numarası kaybolan yönlendirme, soft 404) tek
+gözlemle arşivler; zayıf kanıt (envanterde görünmedi) iki gözlem ve 6 saat ister; engel/zaman
+aşımı asla ilanı öldürmez; bir partide ölü oranı anormalse ya da envanter taraması eksik
+kalmışsa devre kesici hiçbir şeyi arşivlemez. Arşive taşınan ilanlar silinmez: fiyat geçmişi,
+hasar ve teknik özellikler fiyat tahmini/piyasa ortalaması için saklanır.
 
 Scraper'lar **artımlı kaydeder**: bir tarama yarıda kesilse bile o ana kadar işlenen ilanlar
-veritabanına yazılmış olur, kaldığı yerden devam edilebilir. Fiyat/hasar bilgisi zamanla
-değiştiği için ayrı bir **"fiyat yenileme" modu** en bayat (en eski güncellenen) ilanları
-periyodik olarak yeniden ziyaret eder.
+veritabanına yazılmış olur. `lastVerifiedAt` ilanın kaynakta son teyit edildiği anı, `updatedAt`
+içeriğin son değişimini tutar; ilan detay sayfasında "kaynakta son kontrol" olarak gösterilir.
 
-**Bulut scraping gerçeği:** GitHub Actions üzerinden (PC kapalıyken) çalıştırılan otomatik
-tarama yalnızca Otomerkezi'ni tazeleyebilir — Arabam'ın Cloudflare koruması GitHub/Azure veri
-merkezi IP'lerini engelliyor. Arabam taraması bu yüzden yalnızca ev/açık ağdan (yerel PC,
-`scrape.bat`) çalıştırılabiliyor.
+**Arabam gerçeği:** Arabam detay ve liste sayfaları Cloudflare doğrulaması gösteriyor; düz
+HTTP isteği Türkiye ev IP'sinden bile 403 alıyor, gerçek Chromium ise yalnızca ev IP'sinde
+geçiyor (veri merkezi ve yurtdışı IP'lerinde geçmiyor). Bu yüzden Arabam bulut sunucuda kapalıdır
+ve ev bilgisayarından `scrape.bat` ile beslenir. Arabam'ın açık sitemap dosyaları (~1,3 milyon
+ilan adresi) ise doğrulamasız erişilebilir ve doğrulama sırasını belirlemekte kullanılır.
 
 ---
 
@@ -239,10 +255,10 @@ yazılmıştır (yoklama tabanlı bildirim her koşulda çalışır).
 
 ## 8. Test & Kalite
 
-- **319 birim testi / 37 test dosyası** (Vitest) — scraper parser'ları, regresyon/istatistik yardımcıları, fiyat/tarih ayrıştırma, güvenlik yardımcıları, chatbot niyet ayrıştırma vb.
+- **373 birim testi / 44 test dosyası** (Vitest) — scraper parser'ları, ilan yaşam döngüsü ve arşiv kuralları, doğrulama sınıflandırıcıları, regresyon/istatistik yardımcıları, güvenlik yardımcıları, chatbot niyet ayrıştırma vb.
 - **Flutter test** — model/birim testleri, `flutter analyze` ile statik analiz.
 - **TypeScript** — `tsc --noEmit` ile tüm proje tip güvenliği.
-- **CI (GitHub Actions)** — her push'ta web (tip kontrolü + test) ve mobil (analyze + test) otomatik doğrulanır.
+- **CI** — henüz kurulu değil (planlanan: her push'ta tip kontrolü + Vitest + Flutter analyze/test).
 
 ---
 
@@ -281,7 +297,7 @@ kararlardır**:
 - **iOS sürümü test edilmedi** — Flutter kod tabanı platformdan bağımsızdır ama geliştirme/derleme yalnızca Android üzerinde yapıldı ve doğrulandı.
 - **Detaylı harita hassasiyeti sınırlı** — ilçe düzeyinde koordinat yalnızca İstanbul ve İzmir için elle girildi; diğer illerde il merkezine gruplanır (uydurma dağıtım yapılmaz, dürüst gösterim tercih edildi).
 - **Üst hız/0-100/güvenlik donanımı kataloğu boş** — veri alanları modelde hazır ama güvenilir/ücretsiz bir Türkiye-pazarı veri kaynağı bulunamadığı için doldurulmadı.
-- **Bulut ortamından tam otomatik scraping mümkün değil** — Arabam'ın Cloudflare koruması nedeniyle Arabam taraması yalnızca ev/açık ağdan tetiklenebiliyor (bkz. Bölüm 5).
+- **Arabam bulut ortamından otomatik taranamıyor** — Cloudflare koruması nedeniyle Arabam yalnızca Türkiye ev IP'sinden ve gerçek tarayıcıyla taranabiliyor; diğer 7 kaynak tam otonom (bkz. Bölüm 5).
 - **Tek, ücretsiz katman veritabanı** — MongoDB Atlas M0 (512MB); büyük ölçekte yükseltme gerekecek bir mimari sınır olarak biliniyor.
 - **Mobil kapalıyken bildirim (FCM)** — kod tarafı tam hazır; sunucu tarafı Firebase servis hesabı anahtarının canlıya eklenmesi bu oturumda tamamlanıyor (bkz. proje ilerleme notları).
 

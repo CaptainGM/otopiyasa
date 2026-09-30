@@ -16,7 +16,9 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const limit = Math.min(100, Math.max(10, parseInt(searchParams.get("limit") || "50", 10)));
     const source = searchParams.get("source") || "all";
-    const sortBy = searchParams.get("sortBy") || "updatedAt"; // "updatedAt" | "createdAt"
+    // "updatedAt" eski istemciler için kabul edilir; artık "en uzun süredir
+    // DOĞRULANMAYAN" anlamında lastVerifiedAt'e göre sıralanır.
+    const sortBy = searchParams.get("sortBy") || "lastVerifiedAt";
 
     await connectDB();
 
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
     }
 
     const sortOption: Record<string, 1 | -1> =
-      sortBy === "createdAt" ? { createdAt: 1 } : { updatedAt: 1 };
+      sortBy === "createdAt" ? { createdAt: 1 } : { lastVerifiedAt: 1 };
 
     const skip = (page - 1) * limit;
 
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
         .sort(sortOption)
         .skip(skip)
         .limit(limit)
-        .select("title brand model year price mileage city imageUrl sourceSite listingUrl externalId createdAt updatedAt")
+        .select("title brand model year price mileage city imageUrl sourceSite listingUrl externalId createdAt updatedAt lastVerifiedAt")
         .lean(),
     ]);
 

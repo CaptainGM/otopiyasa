@@ -94,6 +94,26 @@ const CarSchema = new Schema(
       summary: { type: String, default: "" },
       changedAt: { type: Date, default: undefined },
     },
+
+    // --- İlan yaşam döngüsü (doğrulama) ---
+    // updatedAt yalnızca "ilanın içeriği değişti" demektir. Kaynağa gidip ilanın
+    // hâlâ yayında olduğunu teyit ettiğimiz an ayrı tutulur; aksi hâlde her
+    // kontrol updatedAt'i oynatıp "son değişiklik" bilgisini bozuyordu.
+    lastVerifiedAt: { type: Date, default: undefined },
+    // Son doğrulama DENEMESİ (başarılı ya da engellenmiş). Kuyruğun aynı
+    // erişilemeyen ilanlarda takılı kalmaması için kullanılır.
+    lastVerifyAttemptAt: { type: Date, default: undefined },
+    // Zayıf "kaynakta yok" sinyali (ör. tam envanterde görünmedi). Tek başına
+    // arşivletmez; tekrar eden gözlemle teyit edilir (bkz. listing-lifecycle.ts).
+    missingSince: { type: Date, default: undefined },
+    missingChecks: { type: Number, default: undefined },
+    removedAt: { type: Date, default: undefined },
+    removedReason: { type: String, default: undefined },
+    // Arabam sitemap'inde görünmediği ilk an: yalnızca detay taramasını önceliklendirir,
+    // arşiv kararı vermez (sitemap eksik; ölçümde görünmeyenlerin çoğu hâlâ yayındaydı).
+    sitemapMissingSince: { type: Date, default: undefined },
+    // Arşivde ama kaynakta hâlâ yayında olabilir → bir sonraki detay taramasında yeniden kontrol et.
+    needsRecheck: { type: Boolean, default: undefined },
   },
   { timestamps: true }
 );
@@ -113,6 +133,10 @@ CarSchema.index({ status: 1, city: 1, updatedAt: -1 });
 CarSchema.index({ status: 1, brand: 1, model: 1, year: 1 });
 CarSchema.index({ status: 1, moderationStatus: 1, price: 1 });
 CarSchema.index({ status: 1, price: 1 });
+// Ana sayfa varsayılan akışı { createdAt: -1, _id: -1 } ile sıralanıyor; _id'yi
+// içermeyen indeksle Mongo 28 bin belgeyi bellekte sıralıyordu (~1,1 sn → ~5 ms).
+CarSchema.index({ status: 1, createdAt: -1, _id: -1 });
+CarSchema.index({ sourceSite: 1, status: 1, lastVerifiedAt: 1 });
 
 export const Car = models.Car || model("Car", CarSchema);
 

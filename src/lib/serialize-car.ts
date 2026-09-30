@@ -29,6 +29,9 @@ export type LeanCarDoc = {
   moderationStatus?: "approved" | "pending" | "rejected";
   rejectionReason?: string;
   status?: "active" | "sold" | "removed";
+  lastVerifiedAt?: Date;
+  removedAt?: Date;
+  removedReason?: string;
   viewCount?: number;
   contactPhone?: string;
   minOffer?: number;
@@ -38,6 +41,8 @@ export type LeanCarDoc = {
   createdAt?: Date;
   updatedAt?: Date;
 };
+
+const toIso = (value?: Date | string) => (value ? new Date(value).toISOString() : undefined);
 
 /**
  * Tam serializasyon — owner/admin bağlamında (kendi ilanlarım, admin paneli)
@@ -81,6 +86,9 @@ export function serializeCar(
     moderationStatus: doc.moderationStatus,
     rejectionReason: doc.rejectionReason || "",
     status: doc.status || "active",
+    lastVerifiedAt: toIso(doc.lastVerifiedAt),
+    removedAt: toIso(doc.removedAt),
+    removedReason: doc.removedReason || "",
     viewCount: doc.viewCount || 0,
     contactPhone: doc.contactPhone || "",
     minOffer: doc.minOffer || 0,
@@ -122,6 +130,7 @@ export function serializeCarPublic(
     moderationStatus: undefined,
     rejectionReason: "",
     minOffer: 0,
+    removedReason: "",
   };
 }
 

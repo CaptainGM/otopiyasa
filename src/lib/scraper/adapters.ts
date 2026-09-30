@@ -49,7 +49,7 @@ async function mapPool<T>(
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run));
 }
 
-function enrichListing(listing: ScrapedListing): ScrapedListing {
+export function enrichListing(listing: ScrapedListing): ScrapedListing {
   const resolvedCover = resolveCarImage(listing.brand, listing.features.bodyType, listing.imageUrl);
   return {
     ...listing,
@@ -626,10 +626,13 @@ export const dodAdapter: ScrapeAdapter = {
   id: "dod",
   label: "DOD (Doğuş Otomotiv)",
   async scrape(_query, limit = 40, onListing) {
+    // Keşif yalnızca YENİ ilanları açar. Eskiden her turda sitemap'in aynı ilk
+    // 30 aracının detay sayfası tekrar tekrar çekiliyordu ("Değişmeyen: 30");
+    // mevcut ilanların fiyat/durum kontrolünü envanter senkronu (reconcile.ts) yapar.
     const fetched = await scrapeDodListings(
       limit,
       (listing) => onListing(enrichListing(listing)),
-      false
+      true
     );
     return { fetched };
   },

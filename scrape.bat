@@ -41,28 +41,30 @@ echo    16 - Yalnizca Carvak    (Uluslararasi ekspertizli envanter ~300 ilan)
 echo.
 echo  [D] VERITABANI BAKIM ^& SENKRONIZASYON (Mevcut Ilanlari Guncelleme)
 echo   ------------------------------------------------------------------
-echo    11 - Dogrula ve Yenile  (Olu/satilan ilanlari DB'den kaldir, fiyat esitle)
-echo    8  - Fiyat Taramasi     (En bayat 800 ilanin fiyatini kaynakla esitle)
+echo    11 - Arabam Dogrula     (Tum Arabam ilanlari: fiyat esitle, satilani arsivle,
+echo                             yanlislikla arsivlenenleri geri al; once sitemap)
+echo    8  - Fiyat Taramasi     (En uzun suredir dogrulanmayan 800 Arabam ilani)
 echo    9  - Adres Tamamlama    (Ilcesi eksik ilanlarin adresini doldur - Harita)
-echo    10 - TAM DB Yenileme    (Hasar parcalari + Govde tipi + Fiyat tam revizyon)
-echo    14 - 24 Saat Stealth    (Dakikada 10 ilan, 6 sn insansi aralik, 0 blok)
+echo    S  - Arabam Sitemap     (32 sitemap dosyasi, ~2 dk; dogrulama onceligi icin)
+echo    E  - Kurumsal Envanter  (Otokoc, DOD, VavaCars... tum envanteri senkronla)
 echo.
 echo    G  - GALERI ^& ACIKLAMA  (Mevcut ilanlarin 20 HD fotograf ve aciklamasini cek)
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, G, 1-19 veya P, varsayilan T): "
+set /p secim="Secimin (T, G, S, E, 1-19 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo
 if "%secim%"=="2" goto :turbo
 if /i "%secim%"=="G" goto :galeri
-
-if "%secim%"=="14" (
-    set SCRAPE_MIN_INTERVAL_MS=5500
-    set SCRAPE_CONCURRENCY=1
-    set DISABLE_ZENROWS=true
-)
+if "%secim%"=="11" goto :mod11
+if "%secim%"=="8" goto :mod8
+rem 10 ve 14 eski "tam yenileme / stealth" modlariydi; artik ayni isi 11 yapiyor.
+if "%secim%"=="10" goto :mod11
+if "%secim%"=="14" goto :mod11
+if /i "%secim%"=="S" goto :sitemap
+if /i "%secim%"=="E" goto :envanter
 
 echo.
 echo Sunucu kontrol ediliyor...
@@ -150,4 +152,59 @@ echo.
 pause
 goto :eof
 
+:mod11
+echo.
+echo ====================================================================
+echo   ARABAM TUM ILANLARI DOGRULA VE SENKRONIZE ET
+echo   - Olu/satilan ilanlar tespit edilir ve arsive kaldirilir.
+echo   - Fiyat degisiklikleri kaynakla esitlenir.
+echo   - Harici sunucu / ayri CMD penceresi ACILMAZ, tum islem burada calisir.
+echo   - Istedigin an Ctrl+C ile durdurabilirsin (ilerleme kaydedilir).
+echo ====================================================================
+echo.
+npx tsx scripts\sync-arabam.ts 11
+echo.
+pause
+goto :eof
 
+:mod8
+echo.
+echo ====================================================================
+echo   ARABAM EN BAYAT 800 ILAN FIYAT TARAMASI
+echo   - En uzun suredir guncellenmemis 800 ilan kontrol edilir.
+echo   - Harici sunucu / ayri CMD penceresi ACILMAZ, tum islem burada calisir.
+echo ====================================================================
+echo.
+npx tsx scripts\sync-arabam.ts 8
+echo.
+pause
+goto :eof
+
+
+:sitemap
+echo.
+echo ====================================================================
+echo   ARABAM SITEMAP SENKRONU
+echo   - Arabam'in arama motorlari icin yayinladigi 32 sitemap dosyasi okunur.
+echo   - Arsivde olup hala yayinda gorunen ilanlar yeniden kontrole alinir.
+echo   - Sitemap'te gorunmeyenler dogrulamada one alinir (tek basina silinmez).
+echo ====================================================================
+echo.
+npx tsx scripts\arabam-sitemap.ts
+echo.
+pause
+goto :eof
+
+:envanter
+echo.
+echo ====================================================================
+echo   KURUMSAL KAYNAKLAR TAM ENVANTER SENKRONU
+echo   - Her kaynagin tum ilan listesi bastan sona taranir.
+echo   - Fiyat/km degisiklikleri islenir, satilanlar arsive tasinir,
+echo     geri gelenler yeniden yayina alinir.
+echo ====================================================================
+echo.
+npx tsx scripts\reconcile-sources.ts
+echo.
+pause
+goto :eof

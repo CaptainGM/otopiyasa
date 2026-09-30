@@ -101,7 +101,7 @@ export interface IDaemonHeartbeat extends Document {
   daemonId: string;
   host: string;
   status: "online" | "idle" | "stopped";
-  command?: "run" | "stop";
+  command?: "run" | "stop" | "restart";
   mode?: "hybrid" | "new_only" | "sweep_only";
   currentPhase: string;
   cycle: number;
@@ -114,9 +114,10 @@ export interface IDaemonHeartbeat extends Document {
 const DaemonHeartbeatSchema = new Schema<IDaemonHeartbeat>(
   {
     daemonId: { type: String, required: true, unique: true, default: "primary-daemon" },
-    host: { type: String, default: "Oracle Cloud Always Free (Frankfurt)" },
+    // Daemon kendi makine adını yazar (sabit "Frankfurt" yazısı yanıltıcıydı).
+    host: { type: String, default: "" },
     status: { type: String, enum: ["online", "idle", "stopped"], default: "online" },
-    command: { type: String, enum: ["run", "stop"], default: "run" },
+    command: { type: String, enum: ["run", "stop", "restart"], default: "run" },
     mode: { type: String, enum: ["hybrid", "new_only", "sweep_only"], default: "hybrid" },
     currentPhase: { type: String, default: "Başlatılıyor" },
     cycle: { type: Number, default: 1 },
@@ -226,6 +227,7 @@ export async function updateDaemonHeartbeat({
   uptimeSeconds,
   mode,
   recentLogs,
+  host,
 }: {
   phase: string;
   cycle?: number;
@@ -234,6 +236,7 @@ export async function updateDaemonHeartbeat({
   uptimeSeconds?: number;
   mode?: "hybrid" | "new_only" | "sweep_only";
   recentLogs?: string[];
+  host?: string;
 }) {
   try {
     const memory = memoryMb || Math.round(process.memoryUsage().rss / (1024 * 1024));
@@ -252,6 +255,9 @@ export async function updateDaemonHeartbeat({
     }
     if (recentLogs && recentLogs.length > 0) {
       updatePayload.recentLogs = recentLogs;
+    }
+    if (host) {
+      updatePayload.host = host;
     }
 
     await DaemonHeartbeat.findOneAndUpdate(

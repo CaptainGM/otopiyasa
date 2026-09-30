@@ -32,7 +32,7 @@ import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
 import { detectPriceAnomaly } from "@/lib/anomaly";
-import { formatNumber, formatPrice } from "@/lib/utils";
+import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
 import { getCurrentUser } from "@/lib/auth";
@@ -271,6 +271,12 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
               <p className="mt-1 text-xs text-slate-300 leading-relaxed max-w-2xl">
                 Bu araç orijinal sitede (<strong className="text-rose-200 capitalize">{carDoc.sourceSite}</strong>) yayından kalkmıştır. Fiyat geçmişi, ekspertiz hasar durumu ve teknik özellikleri piyasa analitiği referansı amacıyla görüntülenmektedir.
               </p>
+              {carDoc.removedAt && (
+                <p className="mt-1 text-[11px] text-rose-200/80">
+                  Arşive taşındı: {new Date(carDoc.removedAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
+                  {carDoc.removedReason ? ` — ${carDoc.removedReason}` : ""}
+                </p>
+              )}
             </div>
           </div>
           {carDoc.listingUrl && (
@@ -309,6 +315,14 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
             <p className="mt-2 text-slate-400">
               {car.city} • {formatNumber(car.mileage)} km
             </p>
+            {car.status === "active" && car.sourceSite !== "user" && car.lastVerifiedAt && (
+              <p
+                className="mt-1 text-xs text-emerald-300/80"
+                title={new Date(car.lastVerifiedAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
+              >
+                ✓ Kaynakta son kontrol: {formatRelativeTr(car.lastVerifiedAt)}
+              </p>
+            )}
           </div>
 
           <p className="text-4xl font-black text-[var(--text)]">{formatPrice(car.price)}</p>

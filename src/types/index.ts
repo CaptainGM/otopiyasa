@@ -56,6 +56,12 @@ export interface Car {
   rejectionReason?: string;
 
   status?: "active" | "sold" | "removed";
+  /** Kaynağa gidilip ilanın yayında olduğunun son teyit edildiği an. */
+  lastVerifiedAt?: string;
+  /** Kaynaktan kaldırıldığı tespit edilip arşive taşındığı an. */
+  removedAt?: string;
+  /** Arşive taşınma gerekçesi (yalnızca yönetici görünümünde dolu). */
+  removedReason?: string;
   viewCount?: number;
   contactPhone?: string;
  

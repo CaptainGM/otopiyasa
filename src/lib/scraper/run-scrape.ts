@@ -20,6 +20,7 @@ import { normalizeBrand } from "@/lib/normalize-brand";
 import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
+import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
 import { ListingSource } from "@/types";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
@@ -52,7 +53,22 @@ function hasImages(listing: ScrapedListing): boolean {
   return Array.isArray(listing.images) && listing.images.length > 0;
 }
 
-async function saveListing(listing: ScrapedListing) {
+export type SaveResult = "inserted" | "updated" | "reactivated" | "unchanged" | "skipped";
+
+/** Değişmeyen ilanda "canlı görüldü" yazımını seyreltmek için (her keşif turunda yazmasın). */
+const SEEN_WRITE_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * Kaynakta görülen bir ilanı kaydeder. Kaynakta görüldüğü için ilan aynı zamanda
+ * "canlı teyit edildi" sayılır (lastVerifiedAt). `markVerified: false` toplu
+ * işaretleme yapan çağıranlar (envanter senkronu) içindir.
+ */
+export async function saveListing(
+  listing: ScrapedListing,
+  options: { markVerified?: boolean } = {}
+): Promise<SaveResult> {
+  const markVerified = options.markVerified !== false;
+  const now = new Date();
   const existing = await Car.findOne({
     sourceSite: listing.sourceSite,
     externalId: listing.externalId,
@@ -79,13 +95,24 @@ async function saveListing(listing: ScrapedListing) {
       (!existing.images || existing.images.length === 0 || ((listing.images?.length || 0) > (existing.images?.length || 0) && (existing.images?.length || 0) <= 1))
     );
     const statusReactivated = existing.status === "removed" && listing.price > 0;
+    // Kaynak adres formatını değiştirdiğinde (ör. VavaCars → tr.vava.cars) kayıt kendini onarsın.
+    const urlChanged = Boolean(listing.listingUrl && listing.listingUrl !== existing.listingUrl);
 
-    const hasAnyChange = priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated;
+    const hasAnyChange =
+      priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged;
 
-    // GERÇEKTE HİÇBİR ŞEY DEĞİŞMEDİYSE:
-    // Veritabanına boş yere save() yazma işlemi yapma, updatedAt'i gereksiz güncelleme, 'unchanged' dön!
+    // GERÇEKTE HİÇBİR ŞEY DEĞİŞMEDİYSE içerik yazılmaz (updatedAt oynamaz);
+    // yalnızca "canlı görüldü" bilgisi seyrek olarak işlenir.
     if (!hasAnyChange) {
-      return "unchanged" as const;
+      const lastSeen = existing.lastVerifiedAt ? new Date(existing.lastVerifiedAt).getTime() : 0;
+      if (markVerified && (existing.missingSince || now.getTime() - lastSeen > SEEN_WRITE_INTERVAL_MS)) {
+        await Car.updateOne(
+          { _id: existing._id },
+          { $set: { lastVerifiedAt: now, lastVerifyAttemptAt: now }, $unset: { missingSince: 1, missingChecks: 1 } },
+          { timestamps: false }
+        );
+      }
+      return "unchanged";
     }
 
     existing.title = listing.title || existing.title;
@@ -121,6 +148,15 @@ async function saveListing(listing: ScrapedListing) {
 
     if (statusReactivated) {
       existing.status = "active";
+      existing.removedAt = undefined;
+      existing.removedReason = undefined;
+      existing.needsRecheck = undefined;
+    }
+    if (markVerified) {
+      existing.lastVerifiedAt = now;
+      existing.lastVerifyAttemptAt = now;
+      existing.missingSince = undefined;
+      existing.missingChecks = undefined;
     }
 
     if (descChanged || mileageChanged || damageChanged || imagesEnriched) {
@@ -146,19 +182,36 @@ async function saveListing(listing: ScrapedListing) {
     }
 
     await existing.save();
-    return "updated" as const;
+    return statusReactivated ? "reactivated" : "updated";
   }
 
   if (!(listing.price > 0)) {
-    return "skipped" as const;
+    return "skipped";
   }
 
   await Car.create({
     ...listing,
     source: listing.sourceSite,
-    priceHistory: [{ price: listing.price, recordedAt: new Date() }],
+    priceHistory: [{ price: listing.price, recordedAt: now }],
+    lastVerifiedAt: now,
+    lastVerifyAttemptAt: now,
   });
-  return "inserted" as const;
+  return "inserted";
+}
+
+/** SaveResult'ları tek yerde sayar (her çağıran aynı sayacı tutuyordu). */
+export function createSaveCounter() {
+  const counts = { inserted: 0, updated: 0, reactivated: 0, unchanged: 0, saved: 0 };
+  return {
+    counts,
+    add(result: SaveResult) {
+      if (result === "inserted") counts.inserted += 1;
+      if (result === "updated" || result === "reactivated") counts.updated += 1;
+      if (result === "reactivated") counts.reactivated += 1;
+      if (result === "unchanged") counts.unchanged += 1;
+      if (result !== "skipped") counts.saved += 1;
+    },
+  };
 }
 
 export async function runScrapeJob(options: {
@@ -175,6 +228,7 @@ export async function runScrapeJob(options: {
   let inserted = 0;
   let updated = 0;
   let unchanged = 0;
+  let reactivated = 0;
   const sources: ScrapeJobResult["sources"] = [];
   const errors: string[] = [];
   const sampleVehicles: NonNullable<ScrapeJobResult["sampleVehicles"]> = [];
@@ -185,7 +239,8 @@ export async function runScrapeJob(options: {
     const onListing = async (listing: ScrapedListing) => {
       const result = await saveListing(listing);
       if (result === "inserted") inserted += 1;
-      if (result === "updated") updated += 1;
+      if (result === "updated" || result === "reactivated") updated += 1;
+      if (result === "reactivated") reactivated += 1;
       if (result === "unchanged") unchanged += 1;
       if (result !== "skipped" && result !== "unchanged") {
         saved += 1;
@@ -253,6 +308,7 @@ export async function runScrapeJob(options: {
     inserted,
     updated,
     unchanged,
+    reactivated,
     sources,
     sampleVehicles,
   };
@@ -264,26 +320,22 @@ export async function runRareBrandScrape(
   threshold = 40,
   perBrandPages = 12
 ): Promise<ScrapeJobResult> {
-  const counts = await Car.aggregate<{ _id: string; count: number }>([
+  const brandCounts = await Car.aggregate<{ _id: string; count: number }>([
     { $group: { _id: "$brand", count: { $sum: 1 } } },
   ]);
   const countMap = new Map<string, number>();
-  for (const c of counts) countMap.set(normalizeBrand(c._id || ""), c.count);
+  for (const c of brandCounts) countMap.set(normalizeBrand(c._id || ""), c.count);
 
 
   const rareBrands = POPULAR_BRANDS.filter(
     (b) => (countMap.get(normalizeBrand(b)) || 0) < threshold
   );
 
-  let inserted = 0;
-  let updated = 0;
-  let saved = 0;
+  const counter = createSaveCounter();
   const onListing = async (listing: ScrapedListing) => {
-    const result = await saveListing(listing);
-    if (result === "inserted") inserted += 1;
-    if (result === "updated") updated += 1;
-    if (result !== "skipped") saved += 1;
+    counter.add(await saveListing(listing));
   };
+  const { counts } = counter;
 
   let fetched = 0;
   const errors: string[] = [];
@@ -293,7 +345,7 @@ export async function runRareBrandScrape(
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
 
-  if (inserted > 0) {
+  if (counts.inserted > 0) {
     try {
       await checkSubscriptions();
     } catch (error) {
@@ -306,9 +358,10 @@ export async function runRareBrandScrape(
     message:
       `Nadir-marka taraması: ${rareBrands.length} marka tarandı` +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
-    inserted,
-    updated,
-    sources: [{ source: "arabam", fetched, saved }],
+    inserted: counts.inserted,
+    updated: counts.updated,
+    reactivated: counts.reactivated,
+    sources: [{ source: "arabam", fetched, saved: counts.saved }],
   };
 }
 
@@ -339,16 +392,13 @@ export async function runRareModelScrape(
     .map((s) => ({ brand: s._id?.brand || "", model: s._id?.model || "" }))
     .filter((s) => s.brand && s.model && s.model !== "Model" && s.model !== "Bilinmiyor");
 
-  let inserted = 0;
-  let updated = 0;
-  let saved = 0;
+  const counter = createSaveCounter();
+  const { counts } = counter;
   const sampleVehicles: NonNullable<ScrapeJobResult["sampleVehicles"]> = [];
   const onListing = async (listing: ScrapedListing) => {
     const result = await saveListing(listing);
-    if (result === "inserted") inserted += 1;
-    if (result === "updated") updated += 1;
+    counter.add(result);
     if (result !== "skipped") {
-      saved += 1;
       if (sampleVehicles.length < 16) {
         sampleVehicles.push({
           brand: listing.brand,
@@ -371,7 +421,7 @@ export async function runRareModelScrape(
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
 
-  if (inserted > 0) {
+  if (counts.inserted > 0) {
     try {
       await checkSubscriptions();
     } catch (error) {
@@ -384,42 +434,83 @@ export async function runRareModelScrape(
     message:
       `Nadir-model taraması: ${threshold} ilandan az olan ${targets.length} model tarandı` +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
-    inserted,
-    updated,
-    sources: [{ source: "arabam", fetched, saved }],
+    inserted: counts.inserted,
+    updated: counts.updated,
+    reactivated: counts.reactivated,
+    sources: [{ source: "arabam", fetched, saved: counts.saved }],
     sampleVehicles,
   };
 }
 
-export async function arabamRefreshStatus(): Promise<{ total: number; missingDamageParts: number }> {
-  const [total, missingDamageParts] = await Promise.all([
+export async function arabamRefreshStatus(): Promise<{
+  total: number;
+  missingDamageParts: number;
+  needsRecheck: number;
+  neverVerified: number;
+}> {
+  const [total, missingDamageParts, needsRecheck, neverVerified] = await Promise.all([
     Car.countDocuments({ sourceSite: "arabam", status: { $ne: "removed" } }),
     Car.countDocuments({ sourceSite: "arabam", status: { $ne: "removed" }, "damageParts.0": { $exists: false } }),
+    Car.countDocuments({ sourceSite: "arabam", status: "removed", needsRecheck: true }),
+    Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $exists: false } }),
   ]);
-  return { total, missingDamageParts };
+  return { total, missingDamageParts, needsRecheck, neverVerified };
+}
+
+type QueueRow = { _id: mongoose.Types.ObjectId; listingUrl: string; status?: string };
+
+/**
+ * Arabam detay taraması için sıradaki ilanlar, önem sırasıyla:
+ *  1. Arşivde olup kaynakta hâlâ yayında görünenler (yanlış arşivlenmiş olabilir),
+ *  2. Sitemap'te görünmeyen aktif ilanlar (ölme ihtimali yüksek; ölçümde ~1/3'ü ölü),
+ *  3. En uzun süredir doğrulanmamış aktif ilanlar.
+ * Son 6 saatte denenmiş (ör. engellenmiş) ilanlar atlanır ki kuyruk takılmasın.
+ */
+export async function pickArabamRefreshQueue(limit: number, now = new Date()): Promise<QueueRow[]> {
+  const cooldown = new Date(now.getTime() - LIFECYCLE.attemptCooldownMs);
+  const picked: QueueRow[] = [];
+  const take = async (conditions: Record<string, unknown>[], sort: Record<string, 1 | -1>, max: number) => {
+    if (max <= 0) return;
+    const rows = await Car.find({
+      $and: [
+        { sourceSite: "arabam", listingUrl: { $nin: ["", null] } },
+        { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
+        { _id: { $nin: picked.map((p) => p._id) } },
+        ...conditions,
+      ],
+    })
+      .sort(sort)
+      .limit(max)
+      .select("_id listingUrl status")
+      .lean<QueueRow[]>();
+    picked.push(...rows);
+  };
+
+  await take([{ status: "removed" }, { needsRecheck: true }], { removedAt: -1 }, Math.ceil(limit * 0.25));
+  await take(
+    [
+      { status: "active" },
+      { sitemapMissingSince: { $exists: true } },
+      { $expr: { $lt: [{ $ifNull: ["$lastVerifiedAt", new Date(0)] }, "$sitemapMissingSince"] } },
+    ],
+    { lastVerifiedAt: 1 },
+    Math.ceil(limit * 0.25)
+  );
+  await take([{ status: "active" }], { lastVerifiedAt: 1 }, limit - picked.length);
+  return picked;
 }
 
 export async function runPriceRefresh(limit = 500, progressOffset?: number, progressTotal?: number): Promise<ScrapeJobResult> {
-  const stale = await Car.find({
-    sourceSite: "arabam",
-    status: { $ne: "removed" },
-    listingUrl: { $nin: ["", null] },
-  })
-    .sort({ updatedAt: 1 })
-    .limit(limit)
-    .select("_id listingUrl")
-    .lean<{ _id: mongoose.Types.ObjectId; listingUrl: string }[]>();
+  const queue = await pickArabamRefreshQueue(limit);
+  const { result, aliveIds, goneIds } = await refetchByUrls(queue, "Fiyat taraması", progressOffset, progressTotal);
 
-  const result = await refetchByUrls(stale, "Fiyat taraması", progressOffset, progressTotal);
-
-  // Yalnızca tarama başarılı olduysa ve en azından bazı ilanlar okunduysa/silindiyse
-  // updatedAt'i güncelle ki ağ hatasında veya blokajda kuyruk sahte şekilde ilerlemesin.
-  const hasProgress = (result.sources?.[0]?.fetched || 0) > 0 || (result.deleted || 0) > 0;
-  if (stale.length > 0 && hasProgress) {
-    await Car.updateMany(
-      { _id: { $in: stale.map((d) => d._id) } },
-      { $currentDate: { updatedAt: true } }
-    );
+  await markVerifyAttempt(queue.map((d) => d._id));
+  // Yeniden kontrol bayrağını yalnızca KESİN sonuç alınan arşiv kayıtlarında kaldır;
+  // engellenen denemeler bir sonraki turda tekrar sıraya girsin.
+  const decided = new Set([...aliveIds, ...goneIds].map(String));
+  const settledRechecks = queue.filter((d) => d.status === "removed" && decided.has(String(d._id))).map((d) => d._id);
+  if (settledRechecks.length > 0) {
+    await Car.updateMany({ _id: { $in: settledRechecks } }, { $unset: { needsRecheck: 1 } }, { timestamps: false });
   }
 
   return result;
@@ -436,7 +527,7 @@ export async function runAddressBackfill(limit = 2000): Promise<ScrapeJobResult>
     .select("listingUrl")
     .lean<{ listingUrl: string }[]>();
 
-  return refetchByUrls(missing, "Adres tamamlama");
+  return (await refetchByUrls(missing, "Adres tamamlama")).result;
 }
 
 
@@ -445,7 +536,7 @@ async function refetchByUrls(
   label: string,
   progressOffset?: number,
   progressTotal?: number
-): Promise<ScrapeJobResult> {
+): Promise<{ result: ScrapeJobResult; aliveIds: mongoose.Types.ObjectId[]; goneIds: mongoose.Types.ObjectId[] }> {
   const hrefToId = new Map<string, mongoose.Types.ObjectId>();
   const hrefs = docs
     .map((c) => {
@@ -459,17 +550,19 @@ async function refetchByUrls(
     })
     .filter((h): h is string => !!h);
 
-  let inserted = 0;
-  let updated = 0;
-  let saved = 0;
+  const counter = createSaveCounter();
+  const { counts } = counter;
+  const aliveIds: mongoose.Types.ObjectId[] = [];
   const onListing = async (listing: ScrapedListing) => {
-    const result = await saveListing(listing);
-    if (result === "inserted") inserted += 1;
-    if (result === "updated") updated += 1;
-    if (result !== "skipped") saved += 1;
+    counter.add(await saveListing(listing));
+    try {
+      const id = hrefToId.get(new URL(listing.listingUrl).pathname);
+      if (id) aliveIds.push(id);
+    } catch {
+      // geçersiz URL: sayaç yine de işlendi
+    }
   };
 
-  
   const goneIds: mongoose.Types.ObjectId[] = [];
   const onGone = (href: string) => {
     const id = hrefToId.get(href);
@@ -484,29 +577,33 @@ async function refetchByUrls(
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
 
-  if (goneIds.length > 0) {
-    // İlanı tamamen silmek yerine status: "removed" olarak arşivliyoruz.
-    // Hasar parçaları (damageParts), boya-değişen, fiyat geçmişi ve tüm teknik özellikler korunur.
-    await Car.updateMany(
-      { _id: { $in: goneIds } },
-      {
-        $set: {
-          status: "removed",
-          updatedAt: new Date(),
-        },
-      }
-    );
+  // Arşivleme: ilan sayfası 404/410 verdi, kategori sayfasına yönlendi ya da
+  // "yayında değil" yazıyor (güçlü kanıt). Yine de partinin büyük kısmı ölü
+  // görünüyorsa bu bir engel/site değişikliğidir; hiçbir şey arşivlenmez.
+  let archived = 0;
+  let breakerNote = "";
+  if (breakerTripped(fetched + goneIds.length, goneIds.length)) {
+    breakerNote = ` DEVRE KESİCİ: ${goneIds.length}/${fetched + goneIds.length} ilan ölü göründü, arşivleme yapılmadı.`;
+  } else {
+    archived = await archiveListings(goneIds, "arabam: ilan sayfası kaldırılmış / kategoriye yönlendirilmiş");
   }
 
   return {
-    success: true,
-    message:
-      `${label}: ${hrefs.length} ilan yeniden çekildi, ${updated} güncellendi` +
-      (goneIds.length > 0 ? `, ${goneIds.length} kaynaktan kaldırılmış olarak işaretlendi` : "") +
-      (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
-    inserted,
-    updated,
-    deleted: goneIds.length,
-    sources: [{ source: "arabam", fetched, saved }],
+    aliveIds,
+    goneIds: breakerNote ? [] : goneIds,
+    result: {
+      success: true,
+      message:
+        `${label}: ${hrefs.length} ilan kontrol edildi, ${counts.updated} güncellendi` +
+        (counts.reactivated > 0 ? `, ${counts.reactivated} arşivden geri alındı` : "") +
+        (archived > 0 ? `, ${archived} kaynaktan kaldırılmış olarak arşivlendi` : "") +
+        breakerNote +
+        (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
+      inserted: counts.inserted,
+      updated: counts.updated,
+      reactivated: counts.reactivated,
+      deleted: archived,
+      sources: [{ source: "arabam", fetched, saved: counts.saved }],
+    },
   };
 }

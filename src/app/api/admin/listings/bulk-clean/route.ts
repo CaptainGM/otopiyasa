@@ -4,6 +4,7 @@ import { connectDB } from "@/lib/mongodb";
 import { sweepAndCleanDeadListings } from "@/lib/scraper/verify-listing";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,12 +23,17 @@ export async function POST(req: NextRequest) {
       limit,
       source,
       concurrency: 4,
+      // Sunucusuz fonksiyonun süre sınırına takılmadan cevap dönebilsin.
+      maxDurationMs: 45_000,
     });
 
+    const breakerNote = result.breaker.length > 0 ? ` Güvenlik freni: ${result.breaker.join("; ")}.` : "";
     return NextResponse.json({
       success: true,
       ...result,
-      message: `${result.checked} eski ilan tarandı: ${result.archived} ölü ilan arşive kaldırıldı, ${result.active} canlı ilan doğrulandı.`,
+      message:
+        `${result.checked} ilan kontrol edildi: ${result.archived} kaldırılmış ilan arşive taşındı, ` +
+        `${result.active} canlı doğrulandı, ${result.errors} belirsiz (dokunulmadı).${breakerNote}`,
     });
   } catch (error: any) {
     console.error("Bulk clean API error:", error);

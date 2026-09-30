@@ -5,9 +5,22 @@ import 'package:intl/intl.dart';
 import 'package:otopiyasa/screens/login_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/utils/relative_time.dart';
 
 const _emerald = Color(0xFF10B981);
 const _roseColor = Color(0xFFF43F5E);
+
+/// Kaynak kodlarının ekranda görünen adları (web paneliyle aynı).
+const _sourceNames = <String, String>{
+  'vavacars': 'VavaCars',
+  'carvak': 'Carvak',
+  'otoplus': 'Otoplus',
+  'otomerkezi': 'Otomerkezi',
+  'ikinciyeni': 'İkinciyeni',
+  'otokoc': 'Otokoç',
+  'dod': 'DOD',
+  'arabam-sitemap': 'Arabam sitemap',
+};
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -164,10 +177,27 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     }
   }
 
+  /// Alt sistem çubuğunun (gezinme tuşları / jest çubuğu) üstünde kalması için
+  /// liste alt boşluğu. ListView'e elle `padding` verilince Flutter sistem
+  /// boşluğunu eklemiyor; eskiden son öğeler çubuğun altında kalıyor, panelin
+  /// en altına inilemiyordu.
+  EdgeInsets _listPadding(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewPadding.bottom;
+    return EdgeInsets.fromLTRB(16, 16, 16, 24 + bottom);
+  }
+
+  /// online | idle → canlı, stopped → durdu, offline → motordan sinyal gelmiyor.
+  ({String label, Color color}) _daemonBadge(Map<String, dynamic>? daemon) {
+    final status = daemon?['status']?.toString();
+    if (daemon?['isOnline'] == true) return (label: 'CANLI', color: _emerald);
+    if (status == 'stopped') return (label: 'DURDU', color: Colors.red);
+    return (label: 'SİNYAL YOK', color: Colors.orange);
+  }
+
   @override
   Widget build(BuildContext context) {
     final daemon = _statsData?['daemon'] as Map<String, dynamic>?;
-    final isOnline = daemon?['isOnline'] == true;
+    final badge = _daemonBadge(daemon);
 
     return Scaffold(
       appBar: AppBar(
@@ -178,12 +208,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: isOnline ? _emerald.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2),
+                color: badge.color.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isOnline ? _emerald : Colors.red,
-                  width: 1,
-                ),
+                border: Border.all(color: badge.color, width: 1),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -191,19 +218,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   Container(
                     width: 6,
                     height: 6,
-                    decoration: BoxDecoration(
-                      color: isOnline ? _emerald : Colors.red,
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: BoxDecoration(color: badge.color, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    isOnline ? 'CANLI' : 'DURDU',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: isOnline ? _emerald : Colors.red,
-                    ),
+                    badge.label,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: badge.color),
                   ),
                 ],
               ),
@@ -224,7 +244,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           unselectedLabelColor: Colors.white54,
           indicatorColor: AppTheme.accent,
           tabs: [
-            const Tab(icon: Icon(Icons.speed, size: 18), text: 'Bot & Scraper'),
+            const Tab(icon: Icon(Icons.speed, size: 18), text: 'Motor'),
             Tab(
               icon: const Icon(Icons.report_problem_outlined, size: 18),
               text: 'Şikayetler (${_reports.length})',
@@ -290,30 +310,37 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   }
 
   // ---------------------------------------------------------------------------
-  // TAB 1: BOT & SCRAPER DURUMU (7/24 DAEMON TAKİBİ)
+  // TAB 1: MOTOR (7/24 DAEMON TAKİBİ)
   // ---------------------------------------------------------------------------
   Widget _buildDaemonTab() {
     final daemon = _statsData?['daemon'] as Map<String, dynamic>? ?? {};
     final today = _statsData?['today'] as Map<String, dynamic>? ?? {};
     final hourly = (_statsData?['hourly'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
-    final activeCount = (_statsData?['activeCount'] as num?)?.toInt() ?? 0;
-    final archivedCount = (_statsData?['archivedCount'] as num?)?.toInt() ?? 0;
+    final syncStates = (_statsData?['syncStates'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    // Sayılamayan değer uydurma sayı yerine "—" gösterilir.
+    final activeCount = (_statsData?['activeCount'] as num?)?.toInt();
+    final archivedCount = (_statsData?['archivedCount'] as num?)?.toInt();
 
+    final badge = _daemonBadge(daemon);
     final isOnline = daemon['isOnline'] == true;
-    final currentPhase = daemon['currentPhase']?.toString() ?? 'Aktif Çalışıyor';
-    final host = daemon['host']?.toString() ?? 'Oracle Cloud Always Free (Frankfurt VPS)';
-    final cycle = daemon['cycle'] ?? 1;
-    final memoryMb = daemon['memoryMb'] ?? 52;
+    final currentPhase = daemon['currentPhase']?.toString() ?? '';
+    final host = daemon['host']?.toString() ?? 'bilinmiyor';
+    final cycle = (daemon['cycle'] as num?)?.toInt() ?? 0;
+    final memoryMb = (daemon['memoryMb'] as num?)?.toInt();
     final uptimeSec = (daemon['uptimeSeconds'] as num?)?.toInt() ?? 0;
+    final lastHeartbeat = DateTime.tryParse(daemon['lastHeartbeat']?.toString() ?? '');
 
-    final uptimeStr = uptimeSec > 3600
-        ? '${uptimeSec ~/ 3600} sa ${(uptimeSec % 3600) ~/ 60} dk'
-        : '${uptimeSec ~/ 60} dk ${uptimeSec % 60} sn';
+    final uptimeStr = !isOnline
+        ? '—'
+        : uptimeSec > 3600
+            ? '${uptimeSec ~/ 3600} sa ${(uptimeSec % 3600) ~/ 60} dk'
+            : '${uptimeSec ~/ 60} dk';
 
     return RefreshIndicator(
       onRefresh: _loadAllData,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: _listPadding(context),
         children: [
           // HERO CANLI STATÜ KARTI
           Container(
@@ -327,38 +354,29 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isOnline ? _emerald.withValues(alpha: 0.3) : Colors.red.withValues(alpha: 0.3),
-              ),
+              border: Border.all(color: badge.color.withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          isOnline ? Icons.cloud_done : Icons.cloud_off,
-                          color: isOnline ? _emerald : Colors.redAccent,
-                          size: 20,
+                    Icon(isOnline ? Icons.cloud_done : Icons.cloud_off, color: badge.color, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isOnline
+                            ? 'MOTOR ÇALIŞIYOR'
+                            : badge.label == 'DURDU'
+                                ? 'MOTOR DURDURULDU'
+                                : 'MOTORDAN SİNYAL GELMİYOR',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                          color: badge.color,
                         ),
-                        const SizedBox(width: 8),
-                        Text(
-                          isOnline ? '7/24 MOTOR KESİNTİSİZ ÇALIŞIYOR' : 'MOTOR DURDURULDU',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.5,
-                            color: isOnline ? _emerald : Colors.redAccent,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      'Frankfurt VPS',
-                      style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.5)),
+                      ),
                     ),
                   ],
                 ),
@@ -367,6 +385,14 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   host,
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
+                if (lastHeartbeat != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Son sinyal: ${relativeTimeTr(lastHeartbeat)}',
+                      style: const TextStyle(fontSize: 11, color: Colors.white54),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Container(
                   width: double.infinity,
@@ -382,12 +408,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          currentPhase,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            color: AppTheme.accent,
-                          ),
+                          currentPhase.isEmpty ? '—' : currentPhase,
+                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppTheme.accent),
                         ),
                       ),
                     ],
@@ -398,29 +420,65 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 16),
 
-          // 4'LÜ DONANIM & DÖNGÜ METRİK GRID
+          // DÖNGÜ & DONANIM METRİKLERİ
           Row(
             children: [
-              Expanded(child: _metricCard('Tur / Döngü', '#$cycle', Icons.repeat, AppTheme.accent)),
+              Expanded(child: _metricCard('Tur', cycle > 0 ? '#$cycle' : '—', Icons.repeat, AppTheme.accent)),
               const SizedBox(width: 8),
-              Expanded(child: _metricCard('RAM Tüketimi', '$memoryMb MB', Icons.memory, Colors.lightBlueAccent)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
               Expanded(child: _metricCard('Çalışma Süresi', uptimeStr, Icons.timer, Colors.purpleAccent)),
               const SizedBox(width: 8),
-              Expanded(child: _metricCard('Kalp Atışı', 'Canlı (15s)', Icons.favorite, _roseColor)),
+              Expanded(
+                child: _metricCard('RAM', memoryMb != null ? '$memoryMb MB' : '—', Icons.memory, Colors.lightBlueAccent),
+              ),
             ],
           ),
           const SizedBox(height: 20),
 
-          // BUGÜNÜN İSTATİSTİKLERİ BAŞLIK
-          const Text(
-            'Bugünün İşlem Hacmi',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          // ENVANTER
+          const Text('İlan Envanteri', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _inventoryCounter('Aktif ilanlar', activeCount == null ? '—' : _money.format(activeCount), _emerald),
+                  _inventoryCounter(
+                    'Piyasa arşivi',
+                    archivedCount == null ? '—' : _money.format(archivedCount),
+                    Colors.grey,
+                  ),
+                ],
+              ),
+            ),
           ),
+          const SizedBox(height: 20),
+
+          // KAYNAK SENKRON DURUMU
+          const Text('Kaynak Senkron Durumu', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          const Text(
+            'Her kaynağın tüm ilan listesi belirli aralıklarla taranır; satılanlar arşive, geri gelenler yayına alınır.',
+            style: TextStyle(fontSize: 11, color: Colors.white54),
+          ),
+          const SizedBox(height: 8),
+          if (syncStates.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Henüz senkron kaydı yok (motor ilk turunu tamamlayınca görünür).',
+                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+              ),
+            )
+          else
+            ...syncStates.map(_syncRow),
+          const SizedBox(height: 20),
+
+          // BUGÜNÜN İSTATİSTİKLERİ
+          const Text('Bugünün İşlem Hacmi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -432,81 +490,100 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: _statBox('Fiyat Güncelleme', '${today['updated'] ?? 0}', Colors.amber)),
+              Expanded(child: _statBox('Güncellenen', '${today['updated'] ?? 0}', Colors.amber)),
               const SizedBox(width: 8),
-              Expanded(child: _statBox('Ölü Temizlenen', '${today['deleted'] ?? 0}', Colors.redAccent)),
+              Expanded(child: _statBox('Arşivlenen', '${today['deleted'] ?? 0}', Colors.redAccent)),
             ],
           ),
-          const SizedBox(height: 20),
-
-          // ENVANTER GENEL BAKIŞ
-          const Text(
-            'Veritabanı İlan Envanteri',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _inventoryCounter('Aktif Canlı İlanlar', _money.format(activeCount), _emerald),
-                      _inventoryCounter('Piyasa Arşivi (Satılan/Kaldırılan)', _money.format(archivedCount), Colors.grey),
-                    ],
-                  ),
-                  const Divider(height: 24),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '8 Platformlu Otonom Envanter Havuzu',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white70),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                      children: [
-                        _sourceChip('Arabam', const Color(0xFFC41230)),
-                        _sourceChip('Otokoç', const Color(0xFF1A237E)),
-                        _sourceChip('DOD', const Color(0xFF0277BD)),
-                        _sourceChip('İkinciyeni', const Color(0xFF00897B)),
-                        _sourceChip('VavaCars', const Color(0xFFFF5000)),
-                        _sourceChip('Otoplus', const Color(0xFF00A650)),
-                        _sourceChip('Otomerkezi', const Color(0xFF0066CC)),
-                        _sourceChip('Carvak', const Color(0xFF6B2D90)),
-                      ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
 
           // SAATLİK AKTİVİTE GRAFİĞİ
           if (hourly.isNotEmpty) ...[
+            const SizedBox(height: 20),
             const Text(
-              'Saatlik Aktivite Grafiği (Son 24 Saat)',
+              'Saatlik Aktivite (Taranan İlan)',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: SizedBox(
-                  height: 180,
-                  child: _buildHourlyChart(hourly),
-                ),
+                child: SizedBox(height: 180, child: _buildHourlyChart(hourly)),
               ),
             ),
           ],
-          const SizedBox(height: 24),
-          const Divider(height: 32),
-          _buildManualScrapeSection(),
         ],
+      ),
+    );
+  }
+
+  /// Tek kaynağın envanter senkron satırı.
+  Widget _syncRow(Map<String, dynamic> s) {
+    final source = s['source']?.toString() ?? '';
+    final status = s['lastStatus']?.toString();
+    final lastRun = DateTime.tryParse(s['lastRunAt']?.toString() ?? '');
+    final (String label, Color color) = switch (status) {
+      'ok' => ('Tamam', _emerald),
+      'incomplete' => ('Eksik tarama', Colors.amber),
+      'breaker' => ('Güvenlik freni', Colors.orange),
+      'failed' => ('Başarısız', _roseColor),
+      _ => ('—', Colors.white38),
+    };
+    int n(String key) => (s[key] as num?)?.toInt() ?? 0;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          final message = s['lastMessage']?.toString() ?? '';
+          if (message.isEmpty) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _sourceNames[source] ?? source,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: color.withValues(alpha: 0.4)),
+                    ),
+                    child: Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                lastRun == null ? 'Henüz çalışmadı' : 'Son çalışma: ${relativeTimeTr(lastRun)}',
+                style: const TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  Text('Görülen: ${s['seen'] ?? '—'}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                  Text('Güncel: ${n('updated')}', style: const TextStyle(fontSize: 11, color: Colors.lightBlueAccent)),
+                  Text('Geri alınan: ${n('reactivated')}', style: const TextStyle(fontSize: 11, color: _emerald)),
+                  Text('Arşivlenen: ${n('archived')}', style: const TextStyle(fontSize: 11, color: _roseColor)),
+                  if (n('markedMissing') > 0)
+                    Text('İzlemede: ${n('markedMissing')}', style: const TextStyle(fontSize: 11, color: Colors.amber)),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -582,25 +659,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _sourceChip(String name, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 6),
-          Text(name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildHourlyChart(List<Map<String, dynamic>> hourly) {
     final recent = hourly.take(12).toList().reversed.toList();
     final bars = <BarChartGroupData>[];
@@ -637,8 +695,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               getTitlesWidget: (val, meta) {
                 final idx = val.toInt();
                 if (idx < 0 || idx >= recent.length) return const SizedBox.shrink();
-                final hour = recent[idx]['hour']?.toString() ?? '';
-                return Text('$hour:00', style: const TextStyle(fontSize: 9, color: Colors.white54));
+                // API "hourRange": "14:00 - 15:00" döndürür; başlangıç saati gösterilir.
+                final range = recent[idx]['hourRange']?.toString() ?? '';
+                final hour = range.length >= 5 ? range.substring(0, 5) : '';
+                return Text(hour, style: const TextStyle(fontSize: 9, color: Colors.white54));
               },
             ),
           ),
@@ -667,7 +727,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     return RefreshIndicator(
       onRefresh: _loadReports,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: _listPadding(context),
         itemCount: _reports.length,
         itemBuilder: (context, i) {
           final r = _reports[i];
@@ -753,7 +814,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     return RefreshIndicator(
       onRefresh: _loadBusiness,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: _listPadding(context),
         itemCount: _business.length,
         itemBuilder: (context, i) {
           final b = _business[i];
@@ -803,11 +865,15 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   // TAB 4: MANUEL KONTROL & SCRAPE TETİKLEME
   // ---------------------------------------------------------------------------
   Widget _buildControlsTab() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _buildManualScrapeSection(),
-      ],
+    return RefreshIndicator(
+      onRefresh: _loadManualLogs,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: _listPadding(context),
+        children: [
+          _buildManualScrapeSection(),
+        ],
+      ),
     );
   }
 
@@ -923,53 +989,30 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         ),
         const SizedBox(height: 16),
 
-        // 1. ÇOKLU HIZLI AKSİYONLAR
+        // Arabam ve fiyat eşitleme bu ekrandan tetiklenmez: Arabam yalnızca Türkiye
+        // IP'sinden erişilebiliyor, sunucusuz ortamda (Vercel) çalışamaz. Onları
+        // evdeki bilgisayarda scrape.bat (11 / S) ya da 7/24 motor yürütür.
+        // 1. ÇOKLU KAYNAKTAN YENİ İLAN
         const Text(
-          '1. ÇOKLU KAYNAK ÇEKİMİ (TAVSİYE EDİLEN)',
+          '1. TÜM KURUMSAL KAYNAKLARDAN YENİ İLAN',
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber, letterSpacing: 0.5),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFE65100),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              onPressed: _isScraping ? null : () => _triggerManualScrape(source: 'all', limit: 30),
-              icon: const Icon(Icons.rocket_launch, size: 16),
-              label: const Text('+ 8 Kaynaktan Çek', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF0277BD),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              onPressed: _isScraping ? null : () => _triggerManualScrape(mode: 'price-refresh', limit: 20),
-              icon: const Icon(Icons.sync_alt, size: 16),
-              label: const Text('Fiyatları Eşitle', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF6A1B9A),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              onPressed: _isScraping ? null : () => _triggerManualScrape(mode: 'rare-model', limit: 20),
-              icon: const Icon(Icons.psychology, size: 16),
-              label: const Text('Nadir Modeller (AI)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ],
+        FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE65100),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          onPressed: _isScraping ? null : () => _triggerManualScrape(source: 'all', limit: 30),
+          icon: const Icon(Icons.rocket_launch, size: 16),
+          label: const Text('Tüm kaynaklardan çek', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
         ),
         const SizedBox(height: 16),
 
         // 2. TEKİL KURUMSAL KAYNAKLAR
         const Text(
-          '2. TEKİL KURUMSAL KAYNAKLAR (8 Platform)',
+          '2. TEKİL KAYNAK',
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white70, letterSpacing: 0.5),
         ),
         const SizedBox(height: 8),
@@ -984,7 +1027,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             _quickSourceChip('Otoplus', 'otoplus'),
             _quickSourceChip('Otomerkezi', 'otomerkezi'),
             _quickSourceChip('Carvak', 'carvak'),
-            _quickSourceChip('Arabam.com', 'arabam'),
           ],
         ),
         const SizedBox(height: 16),
@@ -1002,7 +1044,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   initialValue: _selectedSource,
                   decoration: const InputDecoration(labelText: 'Platform'),
                   items: const [
-                    DropdownMenuItem(value: 'all', child: Text('Tüm Platformlar (8 Kaynak)')),
+                    DropdownMenuItem(value: 'all', child: Text('Tüm kurumsal kaynaklar')),
                     DropdownMenuItem(value: 'otokoc', child: Text('Otokoç 2. El (Koç)')),
                     DropdownMenuItem(value: 'dod', child: Text('DOD (Doğuş)')),
                     DropdownMenuItem(value: 'ikinciyeni', child: Text('İkinciyeni (Anadolu)')),
@@ -1010,7 +1052,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     DropdownMenuItem(value: 'otoplus', child: Text('Otoplus')),
                     DropdownMenuItem(value: 'otomerkezi', child: Text('Otomerkezi')),
                     DropdownMenuItem(value: 'carvak', child: Text('Carvak')),
-                    DropdownMenuItem(value: 'arabam', child: Text('Arabam.com')),
                   ],
                   onChanged: (val) => setState(() => _selectedSource = val ?? 'all'),
                 ),
@@ -1115,7 +1156,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             }
 
             return Column(
-              children: filtered.map((log) {
+              children: filtered.take(30).map((log) {
                 final actor = log['actor']?.toString() ?? 'Yönetici';
                 final label = log['label']?.toString() ?? 'Manuel Tarama';
                 final scanned = log['scanned'] ?? 0;

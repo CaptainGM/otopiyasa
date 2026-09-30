@@ -11,8 +11,10 @@
     "seed": "node scripts/seed.mjs",
     "make-admin": "node scripts/make-admin.mjs",
     "test-mail": "node scripts/test-mail.mjs",
-    "daemon": "node scripts/daemon.mjs",
-    "postinstall": "node scripts/postinstall.mjs"
+    "daemon": "npx tsx scripts/daemon.ts",
+    "postinstall": "node scripts/postinstall.mjs",
+    "reconcile": "npx tsx scripts/reconcile-sources.ts",
+    "arabam-sitemap": "npx tsx scripts/arabam-sitemap.ts"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",

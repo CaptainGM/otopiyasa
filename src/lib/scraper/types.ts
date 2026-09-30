@@ -44,6 +44,24 @@ export interface ScrapedListing {
 
 export type OnListing = (listing: ScrapedListing) => Promise<void>;
 
+/**
+ * Bir envanter taramasının nasıl bittiğini raporlar. "Hata yüzünden yarıda
+ * kaldı" ile "son sayfaya ulaşıldı" ayrımı hayati: yalnızca TAMAMLANMIŞ bir
+ * taramada görünmeyen ilan "kaynakta yok" sayılabilir.
+ */
+export interface CrawlReport {
+  pages: number;
+  /** Son sayfanın ötesine geçildi (boş sayfa / 404 / kısa sayfa). */
+  endedNaturally: boolean;
+  error?: string;
+  /** Kaynağın kendi bildirdiği toplam (biliniyorsa). */
+  expectedTotal?: number;
+}
+
+export function newCrawlReport(): CrawlReport {
+  return { pages: 0, endedNaturally: false };
+}
+
 export interface ScrapeAdapter {
   id: ListingSource;
   label: string;
@@ -58,6 +76,8 @@ export interface ScrapeJobResult {
   updated: number;
   unchanged?: number;
   deleted?: number;
+  /** Arşivdeyken kaynakta yeniden görülüp aktife alınan ilanlar. */
+  reactivated?: number;
   sources: Array<{
     source: ListingSource;
     fetched: number;

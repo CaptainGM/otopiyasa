@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
-import {
-  DaemonHeartbeat,
-  HourlyScrapeStat,
-  recordHourlyMetric,
-  updateDaemonHeartbeat,
-} from "@/models/ScrapeMetric";
-
+import { DaemonHeartbeat, HourlyScrapeStat } from "@/models/ScrapeMetric";
+import { SourceSyncState } from "@/models/SourceSyncState";
 import { Car } from "@/models/Car";
 import { getTurkeyDateStr } from "@/lib/utils";
+import { describeDaemon } from "@/lib/daemon-status";
 
 export const dynamic = "force-dynamic";
 
-let cachedCounts: { active: number; archived: number; ts: number } | null = null;
+let cachedCounts: { active: number | null; archived: number | null; ts: number } | null = null;
 async function getInventoryCounts() {
   const now = Date.now();
   if (cachedCounts && now - cachedCounts.ts < 60000) {
@@ -27,20 +23,25 @@ async function getInventoryCounts() {
     cachedCounts = { active, archived, ts: now };
     return cachedCounts;
   } catch {
-    return cachedCounts || { active: 20780, archived: 1788, ts: now };
+    // Sayılamadıysa uydurma sayı değil "bilinmiyor" döner.
+    return cachedCounts || { active: null, archived: null, ts: now };
   }
 }
 
 export async function GET() {
   try {
     const admin = await requireAdmin();
+    if (!admin) {
+      return NextResponse.json({ error: "Bu panel yalnızca yöneticiler içindir." }, { status: 401 });
+    }
 
     await connectDB();
 
-    const [heartbeatDoc, rawHourlyDocs, counts] = await Promise.all([
+    const [heartbeatDoc, rawHourlyDocs, counts, syncDocs] = await Promise.all([
       DaemonHeartbeat.findOne({ daemonId: "primary-daemon" }).lean(),
       HourlyScrapeStat.find().sort({ timestamp: -1 }).limit(48).lean(),
       getInventoryCounts(),
+      SourceSyncState.find().sort({ source: 1 }).lean(),
     ]);
 
     const todayStr = getTurkeyDateStr();
@@ -69,42 +70,29 @@ export async function GET() {
       }
     }
 
-    const heartbeat = heartbeatDoc as any;
-    const isStopCommand = heartbeat?.command === "stop" || heartbeat?.status === "stopped";
-
-    const lastHeartbeat = heartbeat?.lastHeartbeat
-      ? new Date(heartbeat.lastHeartbeat)
-      : null;
-    
-    // Kullanıcı açıkça panelden durdurmadığı sürece otonom motor aktif ve çevrimiçi kabul edilir.
-    const isOnline = !isStopCommand;
-
-    const rawPhase = heartbeat?.currentPhase || "";
-    const cleanPhase = isStopCommand
-      ? "🛑 Durduruldu (Panelden 'Motoru Başlat' ile çalıştırılabilir)"
-      : (rawPhase && !rawPhase.includes("Bağlantı Kesildi") && !rawPhase.includes("run-daemon"))
-      ? rawPhase
-      : "🚀 Otonom Motor Aktif & Taranıyor...";
+    const syncStates = (syncDocs as any[]).map((s) => ({
+      source: s.source,
+      lastRunAt: s.lastRunAt || null,
+      lastSuccessAt: s.lastSuccessAt || null,
+      lastStatus: s.lastStatus || null,
+      lastMessage: s.lastMessage || "",
+      seen: s.seen ?? null,
+      inserted: s.inserted ?? 0,
+      updated: s.updated ?? 0,
+      reactivated: s.reactivated ?? 0,
+      archived: s.archived ?? 0,
+      markedMissing: s.markedMissing ?? 0,
+      durationMs: s.durationMs ?? null,
+    }));
 
     return NextResponse.json(
       {
         success: true,
-        isAdmin: Boolean(admin),
+        isAdmin: true,
         activeCount: counts.active,
         archivedCount: counts.archived,
-        daemon: {
-          isOnline,
-          host: heartbeat?.host || "Oracle Cloud Always Free (Frankfurt)",
-          currentPhase: cleanPhase,
-          cycle: heartbeat?.cycle || 1,
-          memoryMb: isOnline ? (heartbeat?.memoryMb || 45) : 0,
-          uptimeSeconds: isOnline ? (heartbeat?.uptimeSeconds || 0) : 0,
-          lastHeartbeat: heartbeat?.lastHeartbeat || new Date().toISOString(),
-          status: isOnline ? (heartbeat?.status || "online") : "stopped",
-          command: heartbeat?.command || (isStopCommand ? "stop" : "run"),
-          mode: (heartbeat?.mode as "hybrid" | "new_only" | "sweep_only") || "hybrid",
-          recentLogs: (heartbeat?.recentLogs as string[]) || [],
-        },
+        syncStates,
+        daemon: describeDaemon(heartbeatDoc as any),
         today: {
           date: todayStr,
           scanned: todayScanned,
@@ -130,80 +118,5 @@ export async function GET() {
       { error: error?.message || "İstatistikler alınamadı" },
       { status: 500 }
     );
-  }
-}
-
-// Admin panelinden test/örnek geçmiş veri oluşturabilmek için opsiyonel POST
-export async function POST() {
-  try {
-    const admin = await requireAdmin();
-    if (!admin) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
-
-    await connectDB();
-
-    // Kalp atışını güncelle
-    await updateDaemonHeartbeat({
-      phase: "📌 [FAZ 1/3] Otomerkezi Kurumsal Envanteri",
-      cycle: 3,
-      status: "online",
-      memoryMb: 48,
-    });
-
-    // Son 12 saat için gerçekçi örnek veriler yaz
-    const now = new Date();
-    for (let i = 11; i >= 0; i--) {
-      const targetTime = new Date(now.getTime() - i * 60 * 60 * 1000);
-      const hour = targetTime.getHours();
-      const nextHour = (hour + 1) % 24;
-      const hourRange = `${String(hour).padStart(2, "0")}:00 - ${String(nextHour).padStart(2, "0")}:00`;
-      const day = String(targetTime.getDate()).padStart(2, "0");
-      const month = String(targetTime.getMonth() + 1).padStart(2, "0");
-      const year = targetTime.getFullYear();
-      const dateStr = `${day}.${month}.${year}`;
-      const timestamp = new Date(targetTime.getFullYear(), targetTime.getMonth(), targetTime.getDate(), hour, 0, 0, 0);
-
-      // Rastgele gerçekçi aralıklar
-      const baseScanned = 180 + Math.floor(Math.random() * 80);
-      const baseInserted = Math.floor(Math.random() * 12);
-      const baseUpdated = 40 + Math.floor(Math.random() * 35);
-      const baseDeleted = Math.floor(Math.random() * 4);
-
-      await HourlyScrapeStat.findOneAndUpdate(
-        { timestamp },
-        {
-          $set: {
-            dateStr,
-            hourRange,
-            scanned: baseScanned,
-            inserted: baseInserted,
-            updated: baseUpdated,
-            deleted: baseDeleted,
-            bySource: {
-              arabam: {
-                scanned: Math.floor(baseScanned * 0.7),
-                inserted: baseInserted,
-                updated: Math.floor(baseUpdated * 0.6),
-                deleted: baseDeleted,
-              },
-              otomerkezi: {
-                scanned: Math.floor(baseScanned * 0.3),
-                inserted: 0,
-                updated: Math.floor(baseUpdated * 0.4),
-                deleted: 0,
-              },
-              vavacars: { scanned: 0, inserted: 0, updated: 0, deleted: 0 },
-            },
-            lastUpdated: new Date(),
-          },
-        },
-        { upsert: true }
-      );
-    }
-
-    return NextResponse.json({ success: true, message: "Saatlik metrikler örneklendi." });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message }, { status: 500 });
   }
 }

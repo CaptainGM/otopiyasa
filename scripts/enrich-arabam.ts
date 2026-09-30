@@ -50,6 +50,7 @@ async function main() {
   const { fetchPageHtml, parseArabamDetailHtml, isListingGone } = await import(
     "../src/lib/scraper/browser-scrape.js"
   );
+  const { archiveListings } = await import("../src/lib/scraper/listing-lifecycle.js");
 
   // Yalnızca detayları tamamlanmamış (tek fotoğraflı) aktif arabam araçlarını getir
   const candidates = await Car.find(
@@ -186,8 +187,7 @@ async function main() {
 
       if (!detail.ok) {
         if (detail.status === 404 || detail.status === 410) {
-          await Car.updateOne({ _id: car._id }, { $set: { status: "removed", removedAt: new Date() } });
-          removedCount++;
+          removedCount += await archiveListings([car._id], `arabam: HTTP ${detail.status}`);
         } else {
           errorCount++;
         }
@@ -195,8 +195,7 @@ async function main() {
       }
 
       if (isListingGone(detail.html, detail.finalUrl)) {
-        await Car.updateOne({ _id: car._id }, { $set: { status: "removed", removedAt: new Date() } });
-        removedCount++;
+        removedCount += await archiveListings([car._id], "arabam: ilan sayfası kaldırılmış / kategoriye yönlendirilmiş");
         return;
       }
 
@@ -206,11 +205,17 @@ async function main() {
         return;
       }
 
+      // Fiyat değiştiyse fiyat geçmişine de yazılmalı; yoksa grafik ve
+      // "fiyatı düştü" bildirimleri bu değişikliği hiç görmez.
+      const priceChanged = listing.price > 0 && listing.price !== car.price;
+
       // MongoDB'ye eksiksiz tüm detayları yaz
       await Car.updateOne(
         { _id: car._id },
         {
+          ...(priceChanged ? { $push: { priceHistory: { price: listing.price, recordedAt: new Date() } } } : {}),
           $set: {
+            ...(priceChanged ? { price: listing.price } : {}),
             ...(listing.images && listing.images.length > 0
               ? { images: listing.images, imageUrl: listing.imageUrl || listing.images[0] }
               : {}),
@@ -229,7 +234,9 @@ async function main() {
               ? { "features.avgFuelConsumption": listing.features.avgFuelConsumption }
               : {}),
             lastVerifiedAt: new Date(),
+            lastVerifyAttemptAt: new Date(),
           },
+          $unset: { missingSince: 1, missingChecks: 1 },
         }
       );
       enrichedCount++;

@@ -20,6 +20,7 @@ interface CarItem {
   externalId?: string;
   createdAt?: string;
   updatedAt?: string;
+  lastVerifiedAt?: string;
 }
 
 interface PaginationMeta {
@@ -532,13 +533,13 @@ export function OldestListingsPanel() {
                     </td>
                     <td className="py-2.5 px-3 text-slate-400">{car.city || "Türkiye"}</td>
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
-                      {car.updatedAt
-                        ? new Date(car.updatedAt).toLocaleDateString("tr-TR", {
+                      {car.lastVerifiedAt
+                        ? new Date(car.lastVerifiedAt).toLocaleDateString("tr-TR", {
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",
                           })
-                        : "-"}
+                        : "Hiç"}
                     </td>
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
                       {car.createdAt

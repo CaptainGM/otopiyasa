@@ -2,7 +2,7 @@ import * as cheerio from "cheerio";
 import { cityToCoords } from "@/lib/city-coords";
 import { normalizeBrand, isNonCarBrand } from "@/lib/normalize-brand";
 import { reportProgress } from "@/lib/scraper/progress";
-import { ScrapedListing } from "@/lib/scraper/types";
+import { CrawlReport, ScrapedListing } from "@/lib/scraper/types";
 import { Car } from "@/models/Car";
 
 const OTOKOC_BASE_URL = "https://www.otokocikinciel.com";
@@ -12,11 +12,13 @@ export async function scrapeOtokocListings(
   limit: number,
   onListing: (listing: ScrapedListing) => Promise<void>,
   skipExisting = true,
-  pageOffset = 1
+  pageOffset = 1,
+  report?: CrawlReport
 ): Promise<number> {
   let fetched = 0;
   let pageNum = Math.max(1, pageOffset);
-  const maxPagesToScan = Math.ceil(limit / PAGE_SIZE) + 8;
+  // Envanter ~90 sayfa (2026-09 ölçümü); tam tarama için tavan 250 sayfa.
+  const maxPagesToScan = Math.min(Math.ceil(limit / PAGE_SIZE) + 8, 250);
   const maxPage = pageNum + maxPagesToScan;
 
   while (fetched < limit && pageNum <= maxPage) {
@@ -35,17 +37,27 @@ export async function scrapeOtokocListings(
         signal: AbortSignal.timeout(15000),
       });
 
-      if (!res.ok) break;
+      if (!res.ok) {
+        if (report) report.error = `HTTP ${res.status} (Sf.${pageNum})`;
+        break;
+      }
       html = await res.text();
-    } catch {
+    } catch (err) {
+      if (report) report.error = err instanceof Error ? err.message : "istek hatası";
       break;
     }
+    if (report) report.pages += 1;
 
-    if (!html || !html.includes("product-card")) break;
-
-    const $ = cheerio.load(html);
+    const $ = cheerio.load(html || "");
     const articles = $("article[data-testid='product-card']");
-    if (articles.length === 0) break;
+    if (articles.length === 0) {
+      // Son sayfanın ötesi 200 + boş liste döner (ölçüldü: ?page=90 → 0 kart).
+      if (report) {
+        if (pageNum > 1) report.endedNaturally = true;
+        else report.error = "İlk sayfada ilan kartı bulunamadı (site yapısı değişmiş olabilir).";
+      }
+      break;
+    }
 
     const rawItems: Array<{
       id: string;
@@ -216,6 +228,8 @@ export async function scrapeOtokocListings(
       fetched += 1;
     }
 
+    // Tam envanter taramasında siteyi yormamak için sayfalar arası bekleme.
+    if (report) await new Promise((r) => setTimeout(r, 1000));
     pageNum += 1;
   }
 

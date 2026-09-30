@@ -1,11 +1,24 @@
 import { cityToCoords } from "@/lib/city-coords";
 import { normalizeBrand, isNonCarBrand } from "@/lib/normalize-brand";
 import { reportProgress } from "@/lib/scraper/progress";
-import { ScrapedListing } from "@/lib/scraper/types";
+import { CrawlReport, ScrapedListing } from "@/lib/scraper/types";
 import { Car } from "@/models/Car";
 
 const SEARCH_API_URL = "https://app-vava-dtc-search-tr-prod.vava.cars/search";
 const PAGE_SIZE = 20;
+const SITE_URL = "https://tr.vava.cars";
+
+/**
+ * VavaCars ilan adresi. Site www.vava.cars/tr/buy-cars/... adreslerini artık
+ * ana sayfaya yönlendiriyor; güncel rota (sitenin kendi Angular yönlendiricisi)
+ * `/buy/cars/:make/:model/:id` ve `id` aracın UUID'si (vehiclePurchaseId değil).
+ */
+export function vavaListingUrl(item: { id?: string; make?: string; model?: string }): string {
+  if (!item.id) return `${SITE_URL}/buy/cars`;
+  const make = encodeURIComponent((item.make || "").trim() || "arac");
+  const model = encodeURIComponent((item.model || "").trim() || "model");
+  return `${SITE_URL}/buy/cars/${make}/${model}/${item.id}`;
+}
 
 interface VavaCarItem {
   id?: string;
@@ -35,11 +48,12 @@ export async function scrapeVavaCarsListings(
   limit: number,
   onListing: (listing: ScrapedListing) => Promise<void>,
   skipExisting = true,
-  pageOffset = 1
+  pageOffset = 1,
+  report?: CrawlReport
 ): Promise<number> {
   let fetched = 0;
   let pageNum = Math.max(1, pageOffset);
-  const maxPagesToScan = Math.ceil(limit / PAGE_SIZE) + 6;
+  const maxPagesToScan = Math.min(Math.ceil(limit / PAGE_SIZE) + 6, 60);
   const maxPage = pageNum + maxPagesToScan;
 
   while (fetched < limit && pageNum <= maxPage) {
@@ -63,13 +77,25 @@ export async function scrapeVavaCarsListings(
         signal: AbortSignal.timeout(15000),
       });
 
-      if (!res.ok) break;
+      if (!res.ok) {
+        if (report) report.error = `HTTP ${res.status} (Sf.${pageNum})`;
+        break;
+      }
       data = await res.json();
-    } catch {
+    } catch (err) {
+      if (report) report.error = err instanceof Error ? err.message : "istek hatası";
       break;
     }
 
-    if (!data?.items || data.items.length === 0) break;
+    if (report) {
+      report.pages += 1;
+      if (typeof data?.totalCount === "number") report.expectedTotal = data.totalCount;
+    }
+    if (!data?.items || data.items.length === 0) {
+      if (report) report.endedNaturally = true;
+      break;
+    }
+    const isLastPage = data.items.length < PAGE_SIZE;
 
     let itemsToProcess = data.items;
 
@@ -107,11 +133,7 @@ export async function scrapeVavaCarsListings(
 
       const purchaseId = item.vehiclePurchaseId;
       const externalId = purchaseId ? `vavacars-${purchaseId}` : `vavacars-${item.id}`;
-      const slugBrand = rawBrand.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const slugModel = rawModel.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      const listingUrl = purchaseId
-        ? `https://www.vava.cars/tr/buy-cars/${slugBrand}/${slugModel}/${purchaseId}`
-        : "https://www.vava.cars/tr/buy-cars";
+      const listingUrl = vavaListingUrl(item);
 
       const year = Number(item.year) || new Date().getFullYear();
       const mileage = Number(item.mileage) || 0;
@@ -159,6 +181,12 @@ export async function scrapeVavaCarsListings(
       fetched += 1;
     }
 
+    if (isLastPage) {
+      if (report) report.endedNaturally = true;
+      break;
+    }
+    // Tam envanter taramasında siteyi yormamak için sayfalar arası bekleme.
+    if (report) await new Promise((r) => setTimeout(r, 1000));
     pageNum += 1;
   }
 

@@ -260,6 +260,7 @@ export async function sweepAndCleanDeadListings(options: {
   const attemptedIds: Types.ObjectId[] = [];
   const goneBySource = new Map<string, Array<{ id: Types.ObjectId; reason: string }>>();
   const checkedBySource = new Map<string, number>();
+  const aliveBySource = new Map<string, number>();
   let errorCount = 0;
   let processed = 0;
   const started = Date.now();
@@ -286,6 +287,7 @@ export async function sweepAndCleanDeadListings(options: {
         checkedBySource.set(source, (checkedBySource.get(source) || 0) + 1);
         if (result.status === "active") {
           aliveIds.push(item._id);
+          aliveBySource.set(source, (aliveBySource.get(source) || 0) + 1);
         } else if (result.status === "gone" || result.status === "redirected") {
           const list = goneBySource.get(source) || [];
           list.push({ id: item._id, reason: result.reason });
@@ -308,7 +310,7 @@ export async function sweepAndCleanDeadListings(options: {
   const breaker: string[] = [];
   for (const [source, gone] of goneBySource) {
     const checked = checkedBySource.get(source) || 0;
-    if (breakerTripped(checked, gone.length)) {
+    if (breakerTripped(checked, gone.length, aliveBySource.get(source) || 0)) {
       breaker.push(`${source}: ${gone.length}/${checked} ölü göründü, arşivleme durduruldu`);
       await markVerifyAttempt(gone.map((g) => g.id), now);
       continue;

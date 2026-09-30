@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isCloudflareChallenge, isListingGone } from "./browser-scrape";
+import { isCloudflareChallenge, isListingGone, normalizeArabamGallery } from "./browser-scrape";
 
 describe("isListingGone", () => {
   it("detects search redirect URLs as gone", () => {
@@ -31,5 +31,38 @@ describe("isCloudflareChallenge", () => {
     expect(isListingGone("<div>İlan yayından kaldırılmıştır</div>")).toBe(true);
     expect(isListingGone("<div>Aradığınız ilan bulunamamıştır</div>")).toBe(true);
     expect(isListingGone("<div>Sahibinden 2022 Ford Focus Sahibinden Satılık</div>")).toBe(false);
+  });
+});
+
+describe("normalizeArabamGallery", () => {
+  const photo = (uuid: string, size: string, id = "42188516") =>
+    `https://arbstorage.mncdn.com/ilanfotograflari/2026/07/19/${id}/${uuid}_image_for_silan_${id}_${size}.jpg`;
+
+  it("keeps one entry per photo even when the page lists several sizes", () => {
+    const out = normalizeArabamGallery(
+      [photo("a", "120x90"), photo("a", "800x600"), photo("b", "800x600"), photo("a", "1920x1080"), photo("b", "580x435")],
+      "42188516"
+    );
+    expect(out).toEqual([photo("a", "1920x1080"), photo("b", "1920x1080")]);
+  });
+
+  it("drops photos of other listings, placeholders and escaped leftovers", () => {
+    const out = normalizeArabamGallery(
+      [
+        photo("a", "800x600"),
+        photo("z", "800x600", "40000001"),
+        "https://arbimg1.mncdn.com/ilanfotograflari/noImage/01/01/1/noimage5_120x90.jpg",
+        photo("b", "120x90") + "\'",
+        photo("a", "{0}"),
+        photo("c", "{0}"),
+      ],
+      "42188516"
+    );
+    // Şablon adresi ("_{0}") boyutla tamamlanır; aynı fotoğrafın gerçek adresi varsa tekilleşir.
+    expect(out).toEqual([photo("a", "1920x1080"), photo("b", "1920x1080"), photo("c", "1920x1080")]);
+  });
+
+  it("falls back to every photo when none carries the listing number", () => {
+    expect(normalizeArabamGallery([photo("a", "800x600", "1")], "42188516")).toEqual([photo("a", "1920x1080", "1")]);
   });
 });

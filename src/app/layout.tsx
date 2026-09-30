@@ -106,6 +106,14 @@ export default function RootLayout({
   return (
     <html lang="tr" suppressHydrationWarning>
       <head>
+        {/* İlan fotoğrafları üçüncü taraf CDN'lerden geliyor: bağlantıyı önceden kur (ilk görsel gecikmesini azaltır). */}
+        <link rel="preconnect" href="https://arbimg1.mncdn.com" crossOrigin="" />
+        <link rel="preconnect" href="https://2el-cdn.otokoc.com.tr" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://cdn.otoplus.com" />
+        <link rel="dns-prefetch" href="https://img.carvak.co" />
+        <link rel="dns-prefetch" href="https://images.dod.com.tr" />
+        <link rel="dns-prefetch" href="https://dat-tr-prda-ops-vava.azureedge.net" />
+        <link rel="dns-prefetch" href="https://asset.otomerkezi.net" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

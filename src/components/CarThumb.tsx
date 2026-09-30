@@ -34,11 +34,13 @@ export function CarThumb({
   className,
   fallbacks = [],
   sizes = "(max-width: 768px) 100vw, 33vw",
+  priority = false,
 }: {
   src?: string;
   alt: string;
   
   sizes?: string;
+  priority?: boolean;
   className?: string;
  
   fallbacks?: string[];
@@ -51,6 +53,7 @@ export function CarThumb({
       className={`absolute inset-0 h-full w-full ${className || ""}`}
       fallback={<CarThumbPlaceholder />}
       sizes={sizes}
+      priority={priority}
       preferSize={CARD_IMAGE_SIZE}
     />
   );

@@ -18,9 +18,12 @@ function priceDropPercent(car: CarListItem): number | null {
 export function CarCard({
   car,
   layout = "horizontal",
+  priority = false,
 }: {
   car: CarListItem;
   layout?: "horizontal" | "vertical";
+  /** Sayfanın ilk ekranındaki kart: ilk fotoğraf öncelikli yüklenir. */
+  priority?: boolean;
 }) {
   const gallery = car.images?.filter(Boolean) ?? [];
   if (gallery.length === 0 && car.imageUrl) gallery.push(car.imageUrl);
@@ -31,11 +34,11 @@ export function CarCard({
       <article className="card group flex flex-col overflow-hidden transition duration-200 hover:-translate-y-1 hover:border-amber-400/30 hover:bg-white/[0.025]">
         {/* Resim Üstte — tam genişlik, karizmatik 16/10 oran */}
         <div className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-[var(--bg-soft)]">
-          <CardGallery images={gallery} alt={car.title} href={`/cars/${car._id}`} />
+          <CardGallery images={gallery} alt={car.title} href={`/cars/${car._id}`} priority={priority} />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070b12]/80 via-transparent to-transparent" />
 
-          <div className="absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
-            <SourceBadge source={car.sourceSite} />
+          <div className="pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
+            <SourceBadge source={car.sourceSite} overlay />
             <span className="badge badge-accent">{car.year}</span>
             {car.damageFlag && <span className="badge badge-danger">Hasar</span>}
             {priceDrop !== null && (
@@ -83,11 +86,11 @@ export function CarCard({
     <article className="card group overflow-hidden transition duration-200 hover:border-amber-400/30 hover:bg-white/[0.025]">
       <div className="flex min-h-36 sm:min-h-48 lg:min-h-[240px]">
         <div className="relative w-32 shrink-0 overflow-hidden bg-[var(--bg-soft)] sm:w-60 lg:w-[36%] lg:min-w-[320px] lg:max-w-[480px]">
-          <CardGallery images={gallery} alt={car.title} href={`/cars/${car._id}`} />
+          <CardGallery images={gallery} alt={car.title} href={`/cars/${car._id}`} priority={priority} />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070b12]/75 via-transparent to-transparent" />
 
-          <div className="absolute left-3 top-3 hidden flex-wrap gap-2 sm:flex">
-            <SourceBadge source={car.sourceSite} />
+          <div className="pointer-events-none absolute left-3 top-3 hidden flex-wrap gap-2 sm:flex">
+            <SourceBadge source={car.sourceSite} overlay />
             <span className="badge badge-accent">{car.year}</span>
             {car.damageFlag && <span className="badge badge-danger">Hasar Kaydı</span>}
             {priceDrop !== null && (

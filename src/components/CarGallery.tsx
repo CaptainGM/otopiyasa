@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { sanitizeImageUrl } from "@/lib/image-url";
 import { CarThumb, CarThumbPlaceholder } from "@/components/CarThumb";
 import { FallbackImage } from "@/components/FallbackImage";
 import { Lightbox } from "@/components/Lightbox";
@@ -10,6 +11,8 @@ export function CarGallery({ images, title }: { images: string[]; title: string 
   const [activeIndex, setActiveIndex] = useState(0);
   const [showAll, setShowAll] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+  const touchX = useRef<number | null>(null);
+  const swiped = useRef(false);
 
   const show = useCallback(
     (index: number) => {
@@ -20,6 +23,19 @@ export function CarGallery({ images, title }: { images: string[]; title: string 
     [gallery.length]
   );
 
+  // Komşu fotoğrafları önceden indir: ok/kaydırma sonrası görsel beklemesin.
+  useEffect(() => {
+    const n = gallery.length;
+    if (n < 2) return;
+    for (const k of [activeIndex + 1, activeIndex - 1]) {
+      const src = gallery[((k % n) + n) % n];
+      if (!src) continue;
+      const img = new Image();
+      img.referrerPolicy = "no-referrer";
+      img.src = sanitizeImageUrl(src);
+    }
+  }, [activeIndex, gallery]);
+
   if (gallery.length === 0) return null;
 
   const visibleThumbs = showAll ? gallery : gallery.slice(0, 7);
@@ -29,17 +45,38 @@ export function CarGallery({ images, title }: { images: string[]; title: string 
     <div className="self-start">
       <div className="card group relative h-[420px] w-full overflow-hidden">
         {/* Ana görsele tıklayınca tam ekran (lightbox) açılır */}
+        {/* Telefonda sola/sağa kaydırarak fotoğraf değiştirilir (eşik 45 px). */}
         <button
           type="button"
-          onClick={() => setLightbox(true)}
+          onClick={() => {
+            if (swiped.current) {
+              swiped.current = false;
+              return;
+            }
+            setLightbox(true);
+          }}
+          onTouchStart={(e) => {
+            touchX.current = e.touches[0].clientX;
+          }}
+          onTouchEnd={(e) => {
+            const start = touchX.current;
+            touchX.current = null;
+            if (start === null || gallery.length < 2) return;
+            const delta = e.changedTouches[0].clientX - start;
+            if (Math.abs(delta) > 45) {
+              swiped.current = true;
+              show(activeIndex + (delta < 0 ? 1 : -1));
+            }
+          }}
           aria-label="Fotoğrafı tam ekran gör"
-          className="relative block h-full w-full cursor-zoom-in"
+          className="relative block h-full w-full cursor-zoom-in touch-pan-y"
         >
           <CarThumb
             key={gallery[activeIndex]}
             src={gallery[activeIndex]}
             alt={`${title} ${activeIndex + 1}`}
             className="object-cover transition group-hover:scale-[1.02]"
+            priority={activeIndex === 0}
           />
           <span className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>

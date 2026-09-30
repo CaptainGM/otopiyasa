@@ -164,6 +164,19 @@ class ApiService {
     );
   }
 
+  /// Hazır sorgu parametreleriyle arama (asistanın önerdiği "/?priceMax=…&fuelType=…" gibi
+  /// bağlantılar; fiyat/yıl/şehir filtreleri ana sayfanın filtre çubuğunda yok).
+  Future<CarsResponse> fetchCarsByQuery(Map<String, String> params, {int page = 1, int limit = 24}) async {
+    final response = await http.get(
+      _uri('/api/cars', {...params, 'page': '$page', 'limit': '$limit', 'compact': '1'}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Araçlar yüklenemedi (${response.statusCode})');
+    }
+    return CarsResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   /// Marka seçilince o markanın gerçek modelleriyle dolan filtre listesi —
   /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
   Future<Map<String, dynamic>> fetchBrandModels() async {

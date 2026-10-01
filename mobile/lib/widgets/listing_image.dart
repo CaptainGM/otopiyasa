@@ -1,5 +1,35 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:path_provider/path_provider.dart';
+
+/// İlan fotoğrafları için disk önbelleği. Akış her yenilemede değiştiği için saklama kısa tutulur:
+/// 3 gün, 200 dosya. Paket 200 sınırını yalnızca 1 günden eski dosyalara uyguladığından aynı gün
+/// içinde görülen her fotoğraf birikebiliyor (ölçüm: 8 yoğun yenilemede 315 dosya, 15 MB; ortalama
+/// ~48 KB). Bu yüzden açılışta [trimListingImageCache] sert bir üst sınır uygular.
+const _cacheKey = 'listingImages';
+const _cacheHardLimitBytes = 30 * 1024 * 1024;
+
+final listingImageCache = CacheManager(
+  Config(_cacheKey, stalePeriod: const Duration(days: 3), maxNrOfCacheObjects: 200),
+);
+
+/// Önbellek 30 MB'ı aştıysa tamamen boşaltır (uygulama açılışında, arka planda).
+Future<void> trimListingImageCache() async {
+  try {
+    final dir = Directory('${(await getTemporaryDirectory()).path}/$_cacheKey');
+    if (!await dir.exists()) return;
+    var total = 0;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is File) total += await entity.length();
+    }
+    if (total > _cacheHardLimitBytes) await listingImageCache.emptyCache();
+  } catch (_) {
+    // Önbellek temizliği başarısız olursa uygulama etkilenmez.
+  }
+}
 
 final _arabamSize = RegExp(r'_\d{2,4}x\d{2,4}\.(jpe?g|png|webp)', caseSensitive: false);
 
@@ -91,6 +121,7 @@ class ListingImage extends StatelessWidget {
   Widget _image(String requestUrl, {int? width, required Widget Function() loading, required Widget Function() failed}) =>
       CachedNetworkImage(
         imageUrl: requestUrl,
+        cacheManager: listingImageCache,
         httpHeaders: _headersFor(requestUrl),
         fit: fit,
         memCacheWidth: width,

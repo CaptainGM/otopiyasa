@@ -104,6 +104,7 @@ async function main() {
   const { runDetailBackfill } = await import("@/lib/scraper/enrich-detail");
   const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
   const { backfillMissingRand } = await import("@/lib/feed-rand");
+  const { getFuelPrices } = await import("@/lib/fuel-prices");
   const { recordHourlyMetric, updateDaemonHeartbeat, getDaemonControl, setDaemonControl, DaemonHeartbeat } = await import(
     "@/models/ScrapeMetric"
   );
@@ -255,6 +256,12 @@ async function main() {
       // Eski kodla eklenmiş ilanlar "Keşfet" akışından dışlanmasın (Car.rand eksikse yaz).
       const randFixed = await backfillMissingRand().catch(() => 0);
       if (randFixed > 0) log(`🎲 [AKIŞ] ${randFixed} ilana rastgele akış değeri yazıldı.`);
+
+      // İlan detayındaki km başına yakıt maliyeti için pompa fiyatları (12 saatten eskiyse yenilenir).
+      const fuel = await getFuelPrices().catch(() => null);
+      if (fuel && Date.now() - new Date(fuel.fetchedAt).getTime() < 60_000) {
+        log(`⛽ [YAKIT] Fiyatlar güncellendi (${fuel.source}): benzin ${fuel.average.benzin} ₺, motorin ${fuel.average.dizel} ₺, LPG ${fuel.average.lpg} ₺`);
+      }
 
       // ------------------------------------------------- 1b. DETAY TAMAMLAMA
       // Otokoç/Otoplus: ilan sayfasından galeri, tramer, boya ve teknik bilgi (her turda küçük parti).

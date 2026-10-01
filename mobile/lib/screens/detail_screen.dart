@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/widgets/fuel_cost_card.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/widgets/listing_interaction.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
@@ -37,6 +38,7 @@ class _DetailScreenState extends State<DetailScreen> {
   bool _togglingFavorite = false;
   String? _error;
   int _activeImageIndex = 0;
+  Map<String, dynamic>? _fuelCost;
 
   @override
   void initState() {
@@ -51,6 +53,9 @@ class _DetailScreenState extends State<DetailScreen> {
       _loading = widget.initialCar == null;
     }
     _load();
+    _api.fetchFuelCost(widget.carId).then((cost) {
+      if (mounted && cost != null) setState(() => _fuelCost = cost);
+    });
   }
 
   Future<void> _load() async {
@@ -406,6 +411,10 @@ class _DetailScreenState extends State<DetailScreen> {
                   _chip(car.bodyType),
                 ],
               ),
+              if (_fuelCost != null) ...[
+                const SizedBox(height: 16),
+                FuelCostCard(cost: _fuelCost!),
+              ],
               if (car.priceHistory.length >= 2) ...[
                 const SizedBox(height: 24),
                 const Text(

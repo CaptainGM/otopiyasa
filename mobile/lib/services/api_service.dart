@@ -188,6 +188,18 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// İlanın km başına yakıt maliyeti; hesaplanamıyorsa (elektrikli, tüketim bilinmiyor) null.
+  Future<Map<String, dynamic>?> fetchFuelCost(String id) async {
+    try {
+      final response = await http.get(_uri('/api/cars/$id/fuel-cost'), headers: _headers);
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return body['fuelCost'] as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<CarListing> fetchCar(String id) async {
     final response = await http.get(_uri('/api/cars/$id'), headers: _headers);
     if (response.statusCode != 200) {

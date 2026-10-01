@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -49,18 +50,28 @@ class _NearbyScreenState extends State<NearbyScreen> {
     }
     // Kapalı alanda/emülatörde taze konum gelmeyebilir; zaman sınırı yokken ekran sonsuza dek
     // yükleniyordu. Mesafe zaten ilçe düzeyinde yaklaşık, orta doğruluk ve son bilinen konum yeter.
-    try {
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
-    } on TimeoutException {
-      final last = await Geolocator.getLastKnownPosition();
-      if (last != null) return last;
-      throw Exception('Konum alınamadı. Biraz sonra ya da açık bir alanda tekrar dene.');
+    // Google "konum doğruluğu" penceresi reddedilirse (ağ konumu kapalı) Google'ın konum
+    // servisi sonuç vermiyor; ikinci denemede Android'in GPS'i doğrudan kullanılır. Eski "son
+    // bilinen konum" en son çaredir, çünkü başka bir şehirden/ülkeden kalmış olabilir.
+    final attempts = <LocationSettings>[
+      const LocationSettings(accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 8)),
+      if (Platform.isAndroid)
+        AndroidSettings(accuracy: LocationAccuracy.high, forceLocationManager: true, timeLimit: const Duration(seconds: 12))
+      else
+        const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 12)),
+    ];
+    for (final settings in attempts) {
+      try {
+        return await Geolocator.getCurrentPosition(locationSettings: settings);
+      } on TimeoutException {
+        continue;
+      } on LocationServiceDisabledException {
+        continue;
+      }
     }
+    final last = await Geolocator.getLastKnownPosition();
+    if (last != null) return last;
+    throw Exception('Konum alınamadı. Konum servisinin açık olduğundan emin olup tekrar dene.');
   }
 
   Future<void> _load() async {
@@ -73,6 +84,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
       final items = await _api.fetchNearby(position.latitude, position.longitude);
       if (!mounted) return;
       setState(() => _items = items);
+    } on LocationServiceDisabledException {
+      if (!mounted) return;
+      setState(() => _error = 'Konum servisleri kapalı. Cihaz ayarlarından konumu açıp tekrar dene.');
+    } on PermissionDeniedException {
+      if (!mounted) return;
+      setState(() => _error = 'Konum izni verilmedi.');
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -115,10 +132,34 @@ class _NearbyScreenState extends State<NearbyScreen> {
                               style: TextStyle(fontSize: 12, color: Colors.white54),
                             ),
                           ),
+                          if (_nearestKm > _farAwayKm) _farAwayNotice(),
                           ..._grouped(),
                         ],
                       ),
                     ),
+    );
+  }
+
+  /// En yakın ilan bu kadar uzaksa cihaz konumu Türkiye dışında (ya da yanlış) demektir.
+  static const _farAwayKm = 500;
+
+  double get _nearestKm => _items.isEmpty ? 0 : ((_items.first['distanceKm'] as num?)?.toDouble() ?? 0);
+
+  Widget _farAwayNotice() {
+    final km = NumberFormat.decimalPatternDigits(locale: 'tr_TR', decimalDigits: 0).format(_nearestKm);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFB923C).withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFB923C).withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        'Konumun Türkiye dışında görünüyor: en yakın ilan $km km uzakta. '
+        'Konum ayarını kontrol edip aşağı çekerek yenileyebilirsin.',
+        style: const TextStyle(fontSize: 12.5, color: Color(0xFFFDBA74)),
+      ),
     );
   }
 

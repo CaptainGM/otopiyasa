@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseModel, bodyClass, buildConsumptionStats, computeFuelCost, engineFromText, parseConsumption, type ConsumptionSample } from "./fuel-cost";
+import { baseModel, bodyClass, buildConsumptionStats, computeFuelCost, ELECTRICITY, engineFromText, isPlugInHybrid, parseConsumption, type ConsumptionSample } from "./fuel-cost";
 
 const prices = {
   source: "test",
@@ -13,6 +13,8 @@ const samples: ConsumptionSample[] = [
   ...Array.from({ length: 25 }, () => ({ brand: "X", model: "Y", fuelType: "Benzin", bodyType: "SUV", consumption: 7 })),
   ...Array.from({ length: 25 }, () => ({ brand: "Fiat", model: "Egea", engineSize: 1.3, fuelType: "Dizel", bodyType: "Sedan", consumption: 4.5 })),
   ...Array.from({ length: 3 }, () => ({ brand: "Renault", model: "Clio", engineSize: 1.0, fuelType: "Benzin", bodyType: "Hatchback", consumption: 5.2 })),
+  // Sınıfındaki benzinli sedanlar (batarya bitince şarjlı hibritin yakacağı değerin kaynağı).
+  ...Array.from({ length: 22 }, () => ({ brand: "Z", model: "Q", fuelType: "Benzin", bodyType: "Sedan", consumption: 6.4 })),
   // Aynı aracı bir kaynak donanımıyla, diğeri pompa adıyla ("Kurşunsuz") yazıyor; motor alanı da aralık (1.2).
   ...Array.from({ length: 2 }, () => ({ brand: "Nissan", model: "Qashqai 1.3 DIG-T Sky Pack", engineSize: 1.2, fuelType: "Benzin", bodyType: "SUV", consumption: 5.8 })),
   { brand: "Nissan", model: "QASHQAI 1.3DIG-T MHEV", engineSize: 1.3, fuelType: "Kurşunsuz", bodyType: "SUV", consumption: 5.4 },
@@ -94,9 +96,9 @@ describe("computeFuelCost", () => {
     expect(frugal.rating).toBe("low");
   });
 
-  it("plug-in hibritte uyarı notu düşer, sınıf karşılaştırması yapmaz", () => {
+  it("şarjlı hibritte uyarı notu düşer, sınıf karşılaştırması yapmaz", () => {
     const cost = computeFuelCost({ features: { fuelType: "Hibrit", avgFuelConsumption: "1,5 lt" } }, prices, stats)!;
-    expect(cost.note).toContain("Plug-in");
+    expect(cost.note).toContain("Şarjlı hibrit");
     expect(cost.rating).toBeUndefined();
   });
 });
@@ -119,6 +121,58 @@ describe("baseModel / engineFromText", () => {
     expect(engineFromText("Volkswagen POLO 2022 166.787 km")).toBeNull();
     expect(engineFromText("Qashqai", "Nissan Qashqai 1.3 DIG-T N Design")).toBe(1.3);
     expect(engineFromText("BMW 520d")).toBeNull();
+  });
+});
+
+describe("şarjlı hibrit", () => {
+  const ds9 = {
+    brand: "DS",
+    model: "DS9 1.6 E-Tense",
+    title: "2023 MODEL 56.000 KM! DS9 1.6 E-TENSE PLUG-İN HİBRİT OPERA 250BG",
+    city: "İstanbul",
+    // Kaynak bu aracı "Benzin" yazmış; resmi tüketim 1 lt.
+    features: { fuelType: "Benzin", bodyType: "Sedan", avgFuelConsumption: "1 lt" },
+  };
+
+  it("başlıktan ve düşük resmi tüketimden şarjlı hibriti tanır", () => {
+    expect(isPlugInHybrid(ds9, 1)).toBe(true);
+    expect(isPlugInHybrid({ model: "320e", features: { fuelType: "Hibrit" } }, 1.6)).toBe(true);
+    expect(isPlugInHybrid({ title: "Toyota Corolla 1.8 Hybrid", features: { fuelType: "Hibrit" } }, 4.5)).toBe(false);
+    expect(isPlugInHybrid({ title: "Egea 1.3", features: { fuelType: "Benzin" } }, 5)).toBe(false);
+  });
+
+  it("benzinin yanına elektrik maliyetini ekler ve benzinli sınıfla kıyaslamaz", () => {
+    const cost = computeFuelCost(ds9, prices, stats)!;
+    expect(cost.fuelType).toBe("Hibrit");
+    expect(cost.rating).toBeUndefined();
+    const electric = ELECTRICITY.kwhPer100Km * ELECTRICITY.homePerKwh;
+    expect(cost.per100Km).toBeCloseTo(84.5 + electric, 1);
+    expect(cost.plugIn?.fuelPer100Km).toBeCloseTo(84.5, 1);
+    expect(cost.plugIn?.electricPer100Km).toBeCloseTo(electric, 1);
+    expect(cost.plugIn?.perKmPublicCharge).toBeCloseTo((84.5 + ELECTRICITY.kwhPer100Km * ELECTRICITY.publicAcPerKwh) / 100, 1);
+    // Ev şarjı halka açık şarjdan ucuz, batarya bitince en pahalı.
+    expect(cost.perKm).toBeLessThan(cost.plugIn!.perKmPublicCharge);
+    expect(cost.plugIn?.perKmEmptyBattery).toBeCloseTo((6.4 * 84.5) / 100, 1);
+    expect(cost.plugIn!.perKmEmptyBattery!).toBeGreaterThan(cost.plugIn!.perKmPublicCharge);
+    expect(cost.note).toContain("elektrik");
+  });
+
+  it("şarjlı hibritin 1 lt değeri benzinli sınıf ortalamasını bozmaz", () => {
+    const polluted = buildConsumptionStats([
+      ...samples,
+      ...Array.from({ length: 30 }, () => ({ brand: "DS", model: "DS9 1.6 E-Tense", title: "DS9 E-TENSE PLUG-İN", fuelType: "Benzin", bodyType: "Sedan", consumption: 1 })),
+    ]);
+    expect(polluted.segment["Sedan|Benzin"].median).toBe(6.4);
+  });
+
+  it("benzinli araçta gerçek dışı düşük resmi değeri maliyet olarak yazmaz", () => {
+    expect(computeFuelCost({ brand: "X", model: "Y", city: "İstanbul", features: { fuelType: "Benzin", avgFuelConsumption: "1,2 lt" } }, prices, stats)).toBeNull();
+  });
+
+  it("sıradan hibritte elektrik eklenmez", () => {
+    const cost = computeFuelCost({ brand: "X", model: "Y", city: "İstanbul", features: { fuelType: "Hibrit", bodyType: "SUV", avgFuelConsumption: "4,5 lt" } }, prices, stats)!;
+    expect(cost.plugIn).toBeUndefined();
+    expect(cost.per100Km).toBeCloseTo(4.5 * 84.5, 1);
   });
 });
 

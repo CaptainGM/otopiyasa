@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeFuelType } from "./normalize-fuel";
+import { fuelWithTitleHint, normalizeFuelType } from "./normalize-fuel";
 
 describe("normalizeFuelType", () => {
   it("LPG'nin tüm yazımlarını tek değere indirger", () => {
@@ -26,5 +26,20 @@ describe("normalizeFuelType", () => {
     expect(normalizeFuelType(undefined)).toBe("Bilinmiyor");
     expect(normalizeFuelType("Bilinmiyor")).toBe("Bilinmiyor");
     expect(normalizeFuelType("Hidrojen")).toBe("Hidrojen");
+  });
+});
+
+describe("fuelWithTitleHint", () => {
+  it("başlığında şarjlı hibrit ifadesi olan benzinli kaydı hibrit yapar", () => {
+    expect(fuelWithTitleHint("Benzin", "2023 DS9 1.6 E-TENSE PLUG-İN HİBRİT OPERA")).toBe("Hibrit");
+    expect(fuelWithTitleHint("Benzin", "Sahibinden MG HS T Plug-in 2024 Model")).toBe("Hibrit");
+    expect(fuelWithTitleHint("Benzin", "X1 xDrive25e PHEV")).toBe("Hibrit");
+  });
+
+  it("hafif hibrit ya da ifadesiz başlığa, elektrik ve LPG kaydına dokunmaz", () => {
+    expect(fuelWithTitleHint("Benzin", "Nissan Qashqai 1.3 MHEV")).toBe("Benzin");
+    expect(fuelWithTitleHint("Benzin", "Toyota Corolla 1.8 Hybrid")).toBe("Benzin");
+    expect(fuelWithTitleHint("Elektrik", "Plug-in")).toBe("Elektrik");
+    expect(fuelWithTitleHint("Benzin & LPG", "Plug-in")).toBe("LPG & Benzin");
   });
 });

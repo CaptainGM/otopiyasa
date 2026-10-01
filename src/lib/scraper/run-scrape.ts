@@ -22,7 +22,7 @@ import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
 import { fetchDetailPatch, isDetailSource, isUnknownValue, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
-import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { fuelWithTitleHint } from "@/lib/normalize-fuel";
 import { normalizeCity } from "@/lib/normalize-city";
 import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
 import { ListingSource } from "@/types";
@@ -78,7 +78,7 @@ export async function saveListing(
     ...listing,
     ...normalizeBrandModel(listing.brand, listing.model),
     city: listing.city ? normalizeCity(listing.city) : listing.city,
-    features: { ...listing.features, fuelType: normalizeFuelType(listing.features?.fuelType) },
+    features: { ...listing.features, fuelType: fuelWithTitleHint(listing.features?.fuelType, listing.title, listing.model) },
   };
   const now = new Date();
   const existing = await Car.findOne({

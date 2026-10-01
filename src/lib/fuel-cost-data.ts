@@ -6,7 +6,7 @@ import { buildConsumptionStats, computeFuelCost, parseConsumption, type Consumpt
 
 /** Resmi tüketim değeri olan ilanlardan model ve sınıf medyanları (15 dk önbellekte). */
 export function getConsumptionStats(): Promise<ConsumptionStats> {
-  return cached("fuel:consumption-stats:v5", CACHE_TTL.long, async () => {
+  return cached("fuel:consumption-stats:v6", CACHE_TTL.long, async () => {
     const docs = await Car.find({ ...PUBLIC_LISTING_FILTER, "features.avgFuelConsumption": { $nin: [null, ""] } })
       .select("brand model title features.fuelType features.bodyType features.engineSize features.avgFuelConsumption")
       .lean<Array<{ brand?: string; model?: string; title?: string; features?: { fuelType?: string; bodyType?: string; engineSize?: number; avgFuelConsumption?: string } }>>();

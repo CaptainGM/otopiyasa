@@ -6,6 +6,19 @@
 export const FUEL_TYPES = ["Benzin", "Dizel", "LPG & Benzin", "Hibrit", "Elektrik"] as const;
 export type FuelType = (typeof FUEL_TYPES)[number];
 
+/** Başlık/modeldeki şarjlı hibrit ifadeleri ("PLUG-İN", "E-TENSE", "PHEV"). */
+export const PLUG_IN_TEXT = /plug[\s-]*in|phev|e-?tense|şarjlı\s+hibrit|sarjli\s+hibrit/i;
+
+/**
+ * Kaynak alanı "Benzin"/"Dizel" yazsa da başlığında şarjlı hibrit ifadesi olan araç hibrittir.
+ * Yalnızca bu açık ifadeye bakılır: "hybrid" kelimesi hafif hibritlerde de geçtiği için yetmez.
+ */
+export function fuelWithTitleHint(fuel: string | null | undefined, ...texts: Array<string | null | undefined>): string {
+  const normalized = normalizeFuelType(fuel);
+  if (!["Benzin", "Dizel", "Bilinmiyor"].includes(normalized)) return normalized;
+  return PLUG_IN_TEXT.test(texts.filter(Boolean).join(" ")) ? "Hibrit" : normalized;
+}
+
 export function normalizeFuelType(raw?: string | null): string {
   const value = (raw || "").trim();
   if (!value) return "Bilinmiyor";

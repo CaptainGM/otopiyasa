@@ -135,8 +135,8 @@ class _CarCardState extends State<CarCard> {
                       child: PageView.builder(
                         controller: _pageController,
                         physics: const BouncingScrollPhysics(),
-                        // Komşu fotoğraf önceden hazırlanır: kaydırınca boş kare görünmez.
-                        allowImplicitScrolling: true,
+                        // Komşu fotoğraf ÖNCEDEN İNDİRİLMEZ: eskiden her kart bir sonraki fotoğrafını da
+                        // indiriyordu, kullanıcı hiç kaydırmasa bile (ölçüm: 10 ekran ≈ 6,6 MB, kart başına ~3 dosya).
                         itemCount: images.length,
                         onPageChanged: (idx) {
                           setState(() => _activeImageIndex = idx);

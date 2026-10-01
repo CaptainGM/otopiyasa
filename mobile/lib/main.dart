@@ -19,6 +19,7 @@ import 'package:otopiyasa/screens/home_screen.dart';
 import 'package:otopiyasa/screens/login_screen.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/services/data_saver.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/services/push_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
@@ -33,6 +34,7 @@ Future<void> main() async {
   await Future.wait([
     initializeDateFormatting('tr_TR'),
     themeController.load(),
+    DataSaver.instance.init(),
   ]);
   runApp(const OtoPiyasaApp());
   unawaited(_initializeSessionAndNotifications());

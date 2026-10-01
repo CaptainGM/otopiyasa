@@ -18,11 +18,13 @@ import 'package:otopiyasa/screens/admin_screen.dart';
 import 'package:otopiyasa/screens/nearby_screen.dart';
 import 'package:otopiyasa/widgets/home_strips.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/services/data_saver.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/widgets/app_logo.dart';
 import 'package:otopiyasa/widgets/car_card.dart';
+import 'package:otopiyasa/widgets/data_saver_dialog.dart';
 
 // Sunucudan gerçek marka listesi gelene kadar gösterilen dar yedek liste.
 const _fallbackBrands = [
@@ -341,6 +343,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: const Text('Bildirimler'),
                 onTap: () => Navigator.of(context).pop('notifications'),
               ),
+              ValueListenableBuilder<DataSaverMode>(
+                valueListenable: DataSaver.instance.mode,
+                builder: (context, mode, _) => ListTile(
+                  leading: const Icon(Icons.data_saver_on_outlined),
+                  title: const Text('Veri tasarrufu'),
+                  subtitle: Text(dataSaverLabel(mode), style: const TextStyle(fontSize: 12)),
+                  onTap: () => Navigator.of(context).pop('dataSaver'),
+                ),
+              ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.redAccent),
                 title: const Text('Çıkış yap', style: TextStyle(color: Colors.redAccent)),
@@ -394,6 +405,8 @@ class _HomeScreenState extends State<HomeScreen> {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ProfileScreen()),
       );
+    } else if (action == 'dataSaver') {
+      await showDataSaverDialog(context);
     } else if (action == 'logout') {
       await _api.logout();
       NotificationService.instance.stop();

@@ -124,7 +124,9 @@ export function DamageDiagram({
           <p className="text-xs text-slate-500">
             Bilgi ilan sahibinin/kaynak sitenin beyanıdır.
             {affectedParts.length === 0 &&
-              " Bu ilan için parça bazlı ayrıntı kaynakta bulunmadığından yalnızca sayılar gösteriliyor."}
+              (damageParts.length > 0
+                ? ` Kaynak ${damageParts.length} parçayı tek tek kontrol edip işlem görmüş parça bildirmiyor.`
+                : " Bu ilan için parça bazlı ayrıntı kaynakta bulunmadığından yalnızca sayılar gösteriliyor.")}
           </p>
         </div>
       </div>

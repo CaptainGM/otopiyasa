@@ -214,6 +214,10 @@ describe("derivePainted", () => {
   it("boya/değişen ifadelerini yakalar, orijinali ayırır", () => {
     expect(derivePainted("1 boyalı, 2 lokal boyalı")).toBe(1);
     expect(derivePainted("Tamamı orijinal")).toBe(0);
+    expect(derivePainted("Tamamı orjinal")).toBe(0);
+    expect(derivePainted("Boya/değişen yok")).toBe(0);
+    expect(derivePainted("Boyasız")).toBe(0);
+    expect(derivePainted("1 değişen")).toBe(1);
     expect(derivePainted("Belirtilmemiş")).toBe(0);
     expect(derivePainted("")).toBe(0);
     expect(derivePainted(undefined)).toBe(0);

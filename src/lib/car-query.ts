@@ -2,12 +2,14 @@ import { FilterQuery, SortOrder } from "mongoose";
 import { CarFilters } from "@/types";
 import { turkishSearchRegex } from "@/lib/utils";
 import { Car } from "@/models/Car";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { isMixedSort, resolveFeedSeed, seedToStart } from "@/lib/car-mix";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { LIST_IMAGE_LIMIT } from "@/lib/serialize-car";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
+import { modelFamilyRegex } from "@/lib/model-family";
 
 export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   
@@ -31,7 +33,8 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
       ),
     };
   }
-  if (filters.model) query.model = filters.model;
+  // Model ailesi: "Juke" seçilince "JUKE" ve "Juke 1.0 DIG-T Platinum" de gelir (bkz. model-family.ts).
+  if (filters.model) query.model = modelFamilyRegex(filters.model, filters.brand);
   if (filters.city) query.city = { $in: cityStorageAliases(filters.city) };
 
   
@@ -44,7 +47,8 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
       ],
     });
   }
-  if (filters.fuelType) query["features.fuelType"] = filters.fuelType;
+  // Mobil "LPG" gönderiyor, kayıtlar "LPG & Benzin"; ikisi de aynı yazıma çevrilir.
+  if (filters.fuelType) query["features.fuelType"] = normalizeFuelType(filters.fuelType);
   if (filters.transmission) query["features.transmission"] = filters.transmission;
 
   if (filters.yearMin || filters.yearMax) {

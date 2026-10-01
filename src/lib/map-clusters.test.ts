@@ -4,9 +4,10 @@ import { buildClusters, buildMapQuery, clusterKeyFor, distanceKm, prettyDistrict
 const car = (city: string, address: string, price: number) => ({ city, address, price });
 
 describe("buildMapQuery", () => {
-  it("filters by model when given", () => {
-    const query = buildMapQuery(new URLSearchParams("brand=Fiat&model=Egea&minPrice=500000")) as { model: string; price: { $gte: number } };
-    expect(query.model).toBe("Egea");
+  it("filters by model family when given", () => {
+    const query = buildMapQuery(new URLSearchParams("brand=Fiat&model=Egea&minPrice=500000")) as { model: RegExp; price: { $gte: number } };
+    // Aile: "EGEA" ve "Egea 1.3 Multijet" de gelir, ayrı araç olan "Egea Cross" gelmez.
+    expect(["Egea", "EGEA", "Egea 1.3 Multijet Easy", "Egea Cross 1.4"].filter((m) => query.model.test(m))).toEqual(["Egea", "EGEA", "Egea 1.3 Multijet Easy"]);
     expect(query.price.$gte).toBe(500000);
   });
 

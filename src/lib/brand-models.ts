@@ -3,15 +3,19 @@ import { isNonCarBrand, normalizeBrand } from "@/lib/normalize-brand";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { connectDB } from "@/lib/mongodb";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { modelFamilies } from "@/lib/model-family";
 
 export interface BrandModelOptions {
   brands: string[];
+  /** Donanımıyla tam model adları (ilan verme formu, model analizi). */
   brandModels: Record<string, string[]>;
+  /** Filtreler için model aileleri: "Juke", "JUKE" ve "Juke 1.0 DIG-T Platinum" tek "Juke" (bkz. model-family.ts). */
+  brandFamilies: Record<string, string[]>;
 }
 
 /** Web'deki marka+model filtresi ve mobil `/api/filters/brand-models` uç noktası ortak kaynağı kullansın diye çıkarıldı. */
 export async function getBrandModelOptions(): Promise<BrandModelOptions> {
-  return cached("filters:brandModels", CACHE_TTL.long, async () => {
+  return cached("filters:brandModels:v5", CACHE_TTL.long, async () => {
     await connectDB();
     const rows = await Car.aggregate<{ _id: string; models: string[] }>([
       { $match: { ...PUBLIC_LISTING_FILTER, model: { $exists: true, $ne: "" } } },
@@ -34,6 +38,7 @@ export async function getBrandModelOptions(): Promise<BrandModelOptions> {
       brandModels[b].sort((a, b) => a.localeCompare(b, "tr"));
     }
     const brands = Object.keys(brandModels).sort((a, b) => a.localeCompare(b, "tr"));
-    return { brands, brandModels };
+    const brandFamilies = Object.fromEntries(brands.map((b) => [b, modelFamilies(brandModels[b], b)]));
+    return { brands, brandModels, brandFamilies };
   });
 }

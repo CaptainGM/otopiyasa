@@ -49,7 +49,7 @@ echo    N  - Arabam Yeni Ilanlar (sitemap'ten en yeni ilanlari bul ve tam detayl
 echo    S  - Arabam Sitemap     (32 sitemap dosyasi, ~2 dk; dogrulama onceligi icin)
 echo    E  - Kurumsal Envanter  (Otokoc, DOD, VavaCars... tum envanteri senkronla)
 echo.
-echo    G  - GALERI ^& ACIKLAMA  (Arabam + Otokoc + Otoplus: tum fotograf, aciklama, tramer/boya)
+echo    G  - GALERI ^& ACIKLAMA  (Arabam + kurumsal kaynaklar: tum fotograf, aciklama, tramer/boya)
 echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve tamamla)
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
@@ -141,7 +141,7 @@ goto :eof
 echo.
 echo ====================================================================
 echo   TAM DETAY, GALERI ^& HASAR TAMAMLAMA MOTORU
-echo   1) Kurumsal kaynaklar (Otokoc, Otoplus): ilan sayfasindan tum fotograflar,
+echo   1) Kurumsal kaynaklar (Otokoc, Otoplus, DOD, Carvak, Otomerkezi): tum fotograflar,
 echo      tramer, boya/degisen, renk, kasa tipi ve motor hacmi.
 echo   2) Arabam: tum fotograflar, saticinin aciklamasi, boya/degisen hasar matrisi.
 echo   (Bu islem 7/24 motorda da kucuk partilerle kendiliginden yapilir.)
@@ -150,7 +150,7 @@ echo.
 set /p glimit="Kac aracin detaylari tamamlansin? (Varsayilan 35000 - Tum DB, Enter'a bas): "
 if "%glimit%"=="" set glimit=35000
 echo.
-echo [1/2] Kurumsal kaynaklar (Otokoc, Otoplus) tamamlaniyor...
+echo [1/2] Kurumsal kaynaklar (Otokoc, Otoplus, DOD, Carvak, Otomerkezi) tamamlaniyor...
 echo.
 npx tsx scripts\enrich-details.ts %glimit%
 echo.
@@ -167,7 +167,7 @@ echo ====================================================================
 echo   EKSIK DETAY TARAMASI
 echo   1) Tum aktif ilanlar taranir: fotograf, aciklama, km, fiyat, konum,
 echo      hasar/boya, motor ve beygir bilgisi kac ilanda eksik raporlanir.
-echo   2) Ilan sayfasi okunabilen kaynaklarda (Arabam, Otokoc, Otoplus) eksikler
+echo   2) Ilan detayi okunabilen kaynaklarda (Arabam ve kurumsal kaynaklar) eksikler
 echo      tamamlanir; satilmis ilanlar arsive tasinir. Ctrl+C ile guvenle durur.
 echo ====================================================================
 echo.

@@ -12,7 +12,7 @@ process.env.SCRAPE_MIN_INTERVAL_MS = process.env.SCRAPE_MIN_INTERVAL_MS || "1200
 const reportOnly = process.argv.includes("--rapor");
 const limitArg = Number(process.argv.find((a) => /^\d+$/.test(a)));
 const LIMIT = Number.isFinite(limitArg) && limitArg > 0 ? limitArg : Infinity;
-const DETAIL_SOURCES = ["arabam", "otokoc", "otoplus"];
+const DETAIL_SOURCES = ["arabam", "otokoc", "otoplus", "carvak", "dod", "otomerkezi"];
 /** Bir kez okunup yine eksik kalan ilan (kaynak o bilgiyi vermiyor) bu süre dolmadan tekrar denenmez. */
 const RETRY_AFTER_DAYS = 14;
 const ARABAM_CONCURRENCY = 2;
@@ -26,7 +26,8 @@ const FIELDS: Array<{ key: string; label: string; query: Record<string, unknown>
   { key: "aciklama", label: "Açıklama", query: { $or: [{ description: { $in: ["", null] } }, { description: TEMPLATE_DESC }] } },
   { key: "km", label: "Kilometre", query: { $or: [{ mileage: { $lte: 0 } }, { mileage: null }] } },
   { key: "fiyat", label: "Fiyat", query: { $or: [{ price: { $lte: 0 } }, { price: null }] } },
-  { key: "konum", label: "Konum (şehir/adres)", query: { $or: [{ city: { $in: ["", null, "Türkiye"] } }, { address: { $in: ["", null] } }] } },
+  // Kurumsal kaynaklar açık adres vermiyor (yalnızca il/bayi); boş adres eksik sayılırsa bu ilanlar hiç "tamam" olmaz.
+  { key: "konum", label: "Konum (şehir)", query: { city: { $in: ["", null, "Türkiye"] } } },
   {
     key: "hasar",
     label: "Hasar/boya",
@@ -98,9 +99,10 @@ async function main() {
   const bySource = (s: string) => candidates.filter((c) => c.sourceSite === s);
   console.log(
     `\n🔧 Tamamlanacak: ${candidates.length.toLocaleString("tr-TR")} ilan ` +
-      `(Arabam ${bySource("arabam").length}, Otokoç ${bySource("otokoc").length}, Otoplus ${bySource("otoplus").length}).` +
+      `(Arabam ${bySource("arabam").length}, Otokoç ${bySource("otokoc").length}, Otoplus ${bySource("otoplus").length}, ` +
+      `Carvak ${bySource("carvak").length}, DOD ${bySource("dod").length}, Otomerkezi ${bySource("otomerkezi").length}).` +
       `\n   Son ${RETRY_AFTER_DAYS} günde okunup yine eksik kalanlar atlandı (kaynak o bilgiyi vermiyor).` +
-      `\n   Diğer kaynaklar (DOD, VavaCars, Carvak, Otomerkezi, İkinciyeni) ilan sayfası sunmadığı için envanter senkronuyla güncellenir.\n`
+      `\n   VavaCars ve İkinciyeni ilan detayı sunmadığı için envanter senkronuyla güncellenir.\n`
   );
 
   let stopping = false;
@@ -110,11 +112,34 @@ async function main() {
     console.log("\n\n🛑 Durduruluyor; işlenen ilanlar kaydedildi.");
   });
 
+  // Yönetim panelindeki denetim kayıtlarında diğer terminal işleri gibi görünsün.
+  const { ManualScrapeLog } = await import("@/models/ManualScrapeLog");
+  const runStarted = Date.now();
+  const logDoc =
+    candidates.length > 0
+      ? await ManualScrapeLog.create({
+          actor: "Terminal (scrape.bat - Eksik Detay)",
+          source: "all",
+          label: "Eksik Detay Tamamlama (galeri, açıklama, hasar)",
+          status: "partial",
+          message: `${candidates.length.toLocaleString("tr-TR")} eksik ilan tamamlanıyor.`,
+        }).catch(() => null)
+      : null;
+  const perSource: Record<string, { scanned: number; updated?: number; deleted?: number }> = {};
+
   // Kurumsal kaynaklar: 50'lik partiler, satılmışlar arşivlenir.
   const { runDetailBackfill } = await import("@/lib/scraper/enrich-detail");
   const corporate = candidates.filter((c) => c.sourceSite !== "arabam").map((c) => c._id);
+  const corporateStats = { checked: 0, enriched: 0, archived: 0, images: 0 };
   for (let i = 0; i < corporate.length && !stopping; i += 50) {
-    await runDetailBackfill(50, { ids: corporate.slice(i, i + 50), log: (m) => console.log(`   ${m}`) });
+    const r = await runDetailBackfill(50, { ids: corporate.slice(i, i + 50), log: (m) => console.log(`   ${m}`) });
+    corporateStats.checked += r.checked;
+    corporateStats.enriched += r.enriched;
+    corporateStats.archived += r.archived;
+    corporateStats.images += r.imagesAdded;
+  }
+  for (const source of new Set(candidates.filter((c) => c.sourceSite !== "arabam").map((c) => c.sourceSite))) {
+    perSource[source] = { scanned: bySource(source).length };
   }
 
   // Arabam: ilan sayfası okunur; kaldırılmışsa arşivlenir.
@@ -173,6 +198,28 @@ async function main() {
     }
   }
   if (queue.length > 0) await Promise.all(Array.from({ length: ARABAM_CONCURRENCY }, worker));
+
+  if (logDoc) {
+    if (stats.done > 0) perSource.arabam = { scanned: stats.done, updated: stats.filled, deleted: stats.archived };
+    const scanned = corporateStats.checked + stats.done;
+    await ManualScrapeLog.updateOne(
+      { _id: logDoc._id },
+      {
+        $set: {
+          scanned,
+          updated: corporateStats.enriched + stats.filled,
+          deleted: corporateStats.archived + stats.archived,
+          durationSeconds: Math.max(1, Math.round((Date.now() - runStarted) / 1000)),
+          status: stopping ? "partial" : "success",
+          bySource: perSource,
+          message:
+            `${scanned.toLocaleString("tr-TR")} ilan okundu: ${(corporateStats.enriched + stats.filled).toLocaleString("tr-TR")} tamamlandı` +
+            ` (+${corporateStats.images.toLocaleString("tr-TR")} fotoğraf), ${(corporateStats.archived + stats.archived).toLocaleString("tr-TR")} satılmış ilan arşivlendi.` +
+            (stopping ? " Kullanıcı tarafından durduruldu." : ""),
+        },
+      }
+    ).catch(() => {});
+  }
 
   await report("\n\n📋 SONRAKİ DURUM");
   await mongoose.disconnect();

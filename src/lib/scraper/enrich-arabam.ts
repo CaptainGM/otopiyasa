@@ -1,8 +1,9 @@
 import { Car } from "@/models/Car";
 import { isCloudflareChallenge, isListingGone, parseArabamDetailHtml } from "@/lib/scraper/browser-scrape";
 import { archiveListings } from "@/lib/scraper/listing-lifecycle";
-import { isUnknownValue } from "@/lib/scraper/enrich-detail";
+import { isUnknownValue, shouldReplaceFuel } from "@/lib/scraper/enrich-detail";
 import type { ScrapedListing } from "@/lib/scraper/types";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
 
 /**
  * Arabam ilan sayfasından galeri, satıcı açıklaması, parça bazlı hasar ve teknik bilgiyi
@@ -75,8 +76,12 @@ export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record
     ...(listing.address && !car.address ? { address: listing.address } : {}),
     ...fill("color", x.color),
     ...fill("bodyType", x.bodyType),
-    ...fill("fuelType", x.fuelType),
-    ...fill("transmission", x.transmission),
+    // Liste sayfasından gelen yakıt/vites tahmindir (bulamayınca "Benzin"/"Manuel" yazılıyordu:
+    // 2021 Evoque manuel görünüyordu). İlan sayfasındaki değer onu düzeltir.
+    ...(shouldReplaceFuel(f.fuelType, x.fuelType) ? { "features.fuelType": normalizeFuelType(x.fuelType) } : {}),
+    ...(x.transmission && !isUnknownValue(x.transmission) && x.transmission !== f.transmission
+      ? { "features.transmission": x.transmission }
+      : {}),
     ...(x.engineSize ? { "features.engineSize": x.engineSize } : {}),
     ...(x.horsepower ? { "features.horsepower": x.horsepower } : {}),
     ...(x.drivetrain ? { "features.drivetrain": x.drivetrain } : {}),

@@ -16,12 +16,14 @@ import {
   refetchArabamDetails,
   POPULAR_BRANDS,
 } from "@/lib/scraper/adapters";
-import { normalizeBrand } from "@/lib/normalize-brand";
+import { normalizeBrand, normalizeBrandModel } from "@/lib/normalize-brand";
 import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
 import { fetchDetailPatch, isDetailSource, isUnknownValue, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { normalizeCity } from "@/lib/normalize-city";
 import { ListingSource } from "@/types";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
@@ -69,6 +71,14 @@ export async function saveListing(
   options: { markVerified?: boolean } = {}
 ): Promise<SaveResult> {
   const markVerified = options.markVerified !== false;
+  // Kaynaklar marka/model, yakıt ve ili farklı yazıyor ("Mercedes" + "- Benz C 180", "Benzin & LPG",
+  // "Elaziğ"...); tek yazımla saklanır.
+  listing = {
+    ...listing,
+    ...normalizeBrandModel(listing.brand, listing.model),
+    city: listing.city ? normalizeCity(listing.city) : listing.city,
+    features: { ...listing.features, fuelType: normalizeFuelType(listing.features?.fuelType) },
+  };
   const now = new Date();
   const existing = await Car.findOne({
     sourceSite: listing.sourceSite,
@@ -212,7 +222,7 @@ export async function saveListing(
   let detailCheckedAt: Date | undefined;
   if (isDetailSource(listing.sourceSite)) {
     try {
-      const patch = await fetchDetailPatch(listing.sourceSite, listing.listingUrl);
+      const patch = await fetchDetailPatch(listing.sourceSite, listing.listingUrl, listing.externalId, listing.title);
       if (patch) {
         toCreate = mergeDetailIntoListing(listing, patch);
         detailCheckedAt = now;

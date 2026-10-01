@@ -4,6 +4,8 @@ import { foldForFilter } from "@/lib/content-filter";
 import type { ScrapedListing } from "@/lib/scraper/types";
 import { classifyOtokocHtml, classifyRedirect } from "@/lib/scraper/verify-listing";
 import { archiveListings, breakerTripped } from "@/lib/scraper/listing-lifecycle";
+import { EXTRA_DETAIL_SOURCES, fetchExtraDetail } from "@/lib/scraper/detail-sources";
+import { FUEL_TYPES, normalizeFuelType } from "@/lib/normalize-fuel";
 
 /**
  * KURUMSAL KAYNAKLARDA İLAN DETAYI
@@ -20,7 +22,8 @@ import { archiveListings, breakerTripped } from "@/lib/scraper/listing-lifecycle
  * Satıcı açıklaması yalnızca sayfada gerçekten varsa alınır; bu iki kaynakta yok,
  * bu yüzden açıklama sayfadaki verilerden derlenir (uydurma bilgi eklenmez).
  */
-export const DETAIL_SOURCES = ["otokoc", "otoplus"] as const;
+/** İlan detayı okunabilen kurumsal kaynaklar; son üçü sitelerin kendi veri uç noktalarından (bkz. detail-sources.ts). */
+export const DETAIL_SOURCES = ["otokoc", "otoplus", "carvak", "dod", "otomerkezi"] as const;
 export type DetailSource = (typeof DETAIL_SOURCES)[number];
 
 export const isDetailSource = (source?: string): source is DetailSource =>
@@ -36,11 +39,29 @@ export interface DetailPatch {
   engineSize?: number;
   paintChange?: string;
   damageFlag?: boolean;
+  damageParts?: { name: string; state: string }[];
+  horsepower?: number;
+  /** Resmi ortalama tüketim ("4,9 lt"); yakıt maliyeti hesabında kullanılır. */
+  avgFuelConsumption?: string;
 }
 
 const MAX_IMAGES = 24;
 const UNKNOWN_VALUES = new Set(["", "belirtilmemiş", "bilinmiyor", "otomobil", "belirtilmemis"]);
 export const isUnknownValue = (v?: string | null) => UNKNOWN_VALUES.has((v || "").trim().toLocaleLowerCase("tr-TR"));
+
+/**
+ * Detay sayfasındaki (aracın kendi kaydı) yakıt, liste sayfasından tahmin edilenden güvenilirdir:
+ * liste açıklamasındaki "EVOQUE"/"MHEV" gibi kelimeler aracı yanlışlıkla elektrikli gösterebiliyordu.
+ * Sonradan takılmış LPG ise fabrika kaydıyla ezilmez.
+ */
+export function shouldReplaceFuel(current?: string | null, next?: string | null): boolean {
+  if (!next || isUnknownValue(next)) return false;
+  const proposed = normalizeFuelType(next);
+  if (!(FUEL_TYPES as readonly string[]).includes(proposed)) return isUnknownValue(current);
+  const existing = normalizeFuelType(current);
+  if (existing === proposed) return current !== proposed;
+  return !(existing === "LPG & Benzin" && proposed === "Benzin");
+}
 
 /** Liste sayfası rengi küçük harfle veriyor ("beyaz"); ilan sayfasındaki yazımı ("Beyaz") tercih et. */
 const sameIgnoringCase = (a?: string | null, b?: string | null) =>
@@ -225,8 +246,13 @@ export type DetailOutcome =
   | { kind: "gone"; reason: string }
   | { kind: "failed"; reason: string };
 
-export async function fetchDetail(source: string, url: string): Promise<DetailOutcome> {
+export async function fetchDetail(source: string, url: string, externalId?: string, title?: string): Promise<DetailOutcome> {
   if (!isDetailSource(source) || !url) return { kind: "failed", reason: "desteklenmeyen kaynak" };
+  if ((EXTRA_DETAIL_SOURCES as readonly string[]).includes(source)) {
+    // Bu kaynaklarda ilanın kaldırıldığına detaydan karar verilmez; envanter senkronu karar verir.
+    const extra = await fetchExtraDetail(source, url, externalId, title);
+    return extra ? { kind: "ok", patch: extra } : { kind: "failed", reason: "ilan verisi okunamadı" };
+  }
   const res = await fetch(url, {
     headers: { "User-Agent": DETAIL_UA, "Accept-Language": "tr-TR,tr;q=0.9" },
     redirect: "follow",
@@ -248,8 +274,8 @@ export async function fetchDetail(source: string, url: string): Promise<DetailOu
   return { kind: "failed", reason: "ilan verisi bulunamadı" };
 }
 
-export async function fetchDetailPatch(source: string, url: string): Promise<DetailPatch | null> {
-  const outcome = await fetchDetail(source, url);
+export async function fetchDetailPatch(source: string, url: string, externalId?: string, title?: string): Promise<DetailPatch | null> {
+  const outcome = await fetchDetail(source, url, externalId, title);
   return outcome.kind === "ok" ? outcome.patch : null;
 }
 
@@ -258,9 +284,11 @@ export function mergeDetailIntoListing(listing: ScrapedListing, patch: DetailPat
   const features = { ...listing.features };
   if (patch.color && shouldReplaceColor(features.color, patch.color)) features.color = patch.color;
   if (patch.bodyType && isUnknownValue(features.bodyType)) features.bodyType = patch.bodyType;
-  if (patch.fuelType && isUnknownValue(features.fuelType)) features.fuelType = patch.fuelType;
+  if (shouldReplaceFuel(features.fuelType, patch.fuelType)) features.fuelType = normalizeFuelType(patch.fuelType);
   if (patch.transmission && isUnknownValue(features.transmission)) features.transmission = patch.transmission;
   if (patch.engineSize && !features.engineSize) features.engineSize = patch.engineSize;
+  if (patch.horsepower && !features.horsepower) features.horsepower = patch.horsepower;
+  if (patch.avgFuelConsumption && !features.avgFuelConsumption) features.avgFuelConsumption = patch.avgFuelConsumption;
 
   const images = patch.images && patch.images.length > (listing.images?.length ?? 0) ? patch.images : listing.images;
   return {
@@ -270,6 +298,7 @@ export function mergeDetailIntoListing(listing: ScrapedListing, patch: DetailPat
     description: patch.description || listing.description,
     paintChange: patch.paintChange ?? listing.paintChange,
     damageFlag: patch.damageFlag ?? listing.damageFlag,
+    damageParts: patch.damageParts?.length ? patch.damageParts : listing.damageParts,
     features,
   };
 }
@@ -312,7 +341,7 @@ export async function runDetailBackfill(
   )
     .sort({ detailCheckedAt: 1, createdAt: -1 })
     .limit(limit)
-    .select("_id sourceSite listingUrl images description features")
+    .select("_id sourceSite listingUrl externalId title images description features")
     .lean<
       Array<{
         _id: unknown;
@@ -320,7 +349,9 @@ export async function runDetailBackfill(
         listingUrl: string;
         images?: string[];
         description?: string;
-        features?: { color?: string; bodyType?: string; fuelType?: string; transmission?: string; engineSize?: number };
+        externalId?: string;
+        title?: string;
+        features?: { color?: string; bodyType?: string; fuelType?: string; transmission?: string; engineSize?: number; horsepower?: number; avgFuelConsumption?: string };
       }>
     >();
 
@@ -330,7 +361,7 @@ export async function runDetailBackfill(
     result.checked++;
     let outcome: DetailOutcome;
     try {
-      outcome = await fetchDetail(doc.sourceSite, doc.listingUrl);
+      outcome = await fetchDetail(doc.sourceSite, doc.listingUrl, doc.externalId, doc.title);
     } catch (err) {
       outcome = { kind: "failed", reason: err instanceof Error ? err.message : "istek hatası" };
     }
@@ -353,9 +384,12 @@ export async function runDetailBackfill(
       if (patch.description) set.description = patch.description;
       if (patch.color && shouldReplaceColor(f.color, patch.color)) set["features.color"] = patch.color;
       if (patch.bodyType && isUnknownValue(f.bodyType)) set["features.bodyType"] = patch.bodyType;
-      if (patch.fuelType && isUnknownValue(f.fuelType)) set["features.fuelType"] = patch.fuelType;
+      if (shouldReplaceFuel(f.fuelType, patch.fuelType)) set["features.fuelType"] = normalizeFuelType(patch.fuelType);
       if (patch.transmission && isUnknownValue(f.transmission)) set["features.transmission"] = patch.transmission;
       if (patch.engineSize && !f.engineSize) set["features.engineSize"] = patch.engineSize;
+      if (patch.horsepower && !f.horsepower) set["features.horsepower"] = patch.horsepower;
+      if (patch.avgFuelConsumption && !f.avgFuelConsumption) set["features.avgFuelConsumption"] = patch.avgFuelConsumption;
+      if (patch.damageParts?.length) set.damageParts = patch.damageParts;
       if (patch.paintChange !== undefined) set.paintChange = patch.paintChange;
       if (patch.damageFlag !== undefined) set.damageFlag = patch.damageFlag;
       result.enriched++;

@@ -66,6 +66,19 @@ async function main() {
     await write(ops);
   }
 
+  // 3) Başlığında şarjlı hibrit ifadesi olup "Benzin"/"Dizel" yazılmış ilanlar → Hibrit
+  const { PLUG_IN_TEXT } = await import("@/lib/normalize-fuel");
+  const plugIns = await Car.find({
+    "features.fuelType": { $in: ["Benzin", "Dizel", "Bilinmiyor"] },
+    $or: [{ title: PLUG_IN_TEXT }, { model: PLUG_IN_TEXT }],
+  })
+    .select("_id")
+    .lean<Array<{ _id: unknown }>>();
+  console.log(`Şarjlı hibrit (başlıkta ifade var, yakıt "Benzin/Dizel"): ${fmt(plugIns.length)} ilan → Hibrit`);
+  if (apply && plugIns.length) {
+    await Car.updateMany({ _id: { $in: plugIns.map((p) => p._id) } }, { $set: { "features.fuelType": "Hibrit" } }, { timestamps: false });
+  }
+
   console.log(apply ? `\nYazıldı (marka/model: ${fmt(brandTotal)} ilan).` : `\nYalnızca rapor; yazmak için --apply (marka/model: ${fmt(brandTotal)} ilan).`);
   await mongoose.disconnect();
 }

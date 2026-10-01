@@ -1,4 +1,4 @@
-import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { normalizeFuelType, PLUG_IN_TEXT } from "@/lib/normalize-fuel";
 import { pricesForCity, type FuelPrices } from "@/lib/fuel-prices";
 import { modelFamilyKey } from "@/lib/model-family";
 
@@ -67,6 +67,35 @@ export function engineFromText(...texts: Array<string | null | undefined>): numb
   return null;
 }
 
+/**
+ * ŞARJLI (PLUG-IN) HİBRİT: resmi 1–1,5 lt/100 km değeri bataryanın şarjlı olduğunu varsayar; elektrik
+ * maliyeti ayrıca vardır. Birçok ilan bu araçları "Benzin" yazıyor, bu yüzden başlıktaki ifadeye
+ * de bakılır; "Hibrit" yazılıp resmi tüketimi 3 lt altında olanlar da şarjlıdır.
+ */
+export function isPlugInHybrid(
+  car: { model?: string; title?: string; features?: { fuelType?: string } },
+  consumption?: number | null
+): boolean {
+  if (PLUG_IN_TEXT.test(`${car.model || ""} ${car.title || ""}`)) return true;
+  return normalizeFuelType(car.features?.fuelType) === "Hibrit" && consumption != null && consumption < PLUG_IN_THRESHOLD;
+}
+
+/**
+ * Elektrik fiyatı ve tüketimi için varsayımlar. Akaryakıttan farklı olarak elektrik için günlük,
+ * herkese açık resmi bir fiyat akışı yok (tarifeler üç ayda bir EPDK kararıyla değişir, şarj ağları
+ * kendi fiyatını koyar); bu yüzden değerler burada açık varsayım olarak durur ve kartta etiketlenir.
+ * Her üç ayda bir gözden geçirilir (son: Ağustos 2026 şarj ağı ve tarife duyuruları).
+ */
+export const ELECTRICITY = {
+  /** Evde gece tarifesi, ₺/kWh. */
+  homePerKwh: 3.3,
+  /** Halka açık AC şarj (9,90–11 ₺ aralığının ortası), ₺/kWh. */
+  publicAcPerKwh: 10.5,
+  /** Şarjlı hibritlerin resmi ağırlıklı elektrik tüketimi 13–19 kWh/100 km arasındadır; ortası. */
+  kwhPer100Km: 16,
+  reviewed: "Ağustos 2026",
+} as const;
+
 /** "marka|model|motor|yakıt" (motor boşsa yalnızca model) — istatistik ve ilan aynı anahtarla aranır. */
 export const modelKey = (brand?: string, model?: string, fuel?: string, engine?: number | null) =>
   [fold(brand), modelFamilyKey(model, brand), engine ? engine.toFixed(1) : "", normalizeFuelType(fuel)].join("|");
@@ -99,12 +128,17 @@ export function buildConsumptionStats(samples: ConsumptionSample[]): Consumption
     else map.set(key, [v]);
   };
   for (const s of samples) {
-    const fuel = normalizeFuelType(s.fuelType);
+    // "Benzin" yazılmış şarjlı hibrit de hibrit anahtarında tutulur: aynı motorlu benzinli sürümün
+    // ve sınıf ortalamalarının değerini 1 lt'ye çekmesin.
+    const plugIn = isPlugInHybrid({ model: s.model, title: s.title, features: { fuelType: s.fuelType } }, s.consumption);
+    const fuel = plugIn ? "Hibrit" : normalizeFuelType(s.fuelType);
     const engine = engineOf(s);
     if (engine) push(groups.model, modelKey(s.brand, s.model, fuel, engine), s.consumption);
     push(groups.model, modelKey(s.brand, s.model, fuel), s.consumption);
     // Plug-in hibritlerin çok düşük resmi değerleri sınıf ortalamasını bozmasın.
-    if (fuel === "Hibrit" && s.consumption < PLUG_IN_THRESHOLD) continue;
+    if (plugIn) continue;
+    // Benzinli/dizel araçta 3 lt altı resmi değer yoktur (kaynak hatası ya da şarjlı hibrit); ortalamaya girmez.
+    if (fuel !== "Hibrit" && s.consumption < PLUG_IN_THRESHOLD) continue;
     const cls = bodyClass(s.bodyType);
     if (cls) push(groups.segment, `${cls}|${fuel}`, s.consumption);
     push(groups.segment, fuel, s.consumption);
@@ -137,6 +171,21 @@ export interface FuelCost {
   per100Km: number;
   /** LPG'li araçta benzinle 100 km maliyeti (karşılaştırma için). */
   petrolPer100Km?: number;
+  /** Şarjlı hibrit: `perKm`/`per100Km` evde şarjla benzin + elektriği içerir; diğer senaryolar burada. */
+  plugIn?: {
+    electricKwhPer100: number;
+    homePricePerKwh: number;
+    publicPricePerKwh: number;
+    /** Yalnızca benzin payı (resmi tüketim × litre fiyatı), 100 km. */
+    fuelPer100Km: number;
+    /** Yalnızca elektrik payı, evde şarjla, 100 km. */
+    electricPer100Km: number;
+    perKmPublicCharge: number;
+    /** Batarya bitince sınıfındaki benzinli araç gibi yakar; sınıf ortalaması yoksa yok. */
+    perKmEmptyBattery?: number;
+    emptyBatteryConsumption?: number;
+    electricityReviewed: string;
+  };
   rating?: "low" | "high";
   ratingText?: string;
   note?: string;
@@ -148,10 +197,11 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const FUEL_ADJECTIVE: Record<string, string> = { Benzin: "benzinli", Dizel: "dizel", "LPG & Benzin": "LPG'li", Hibrit: "hibrit" };
 
 export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: ConsumptionStats): FuelCost | null {
-  const fuel = normalizeFuelType(car.features?.fuelType);
+  let consumption = parseConsumption(car.features?.avgFuelConsumption);
+  let plugIn = isPlugInHybrid(car, consumption);
+  const fuel = plugIn ? "Hibrit" : normalizeFuelType(car.features?.fuelType);
   if (!["Benzin", "Dizel", "LPG & Benzin", "Hibrit"].includes(fuel)) return null;
 
-  let consumption = parseConsumption(car.features?.avgFuelConsumption);
   let consumptionSource: FuelCost["consumptionSource"] = "ilan";
   let consumptionNote: string | undefined;
   if (consumption === null) {
@@ -168,7 +218,13 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
       return null;
     }
     consumptionSource = "model";
+    // Tüketim model istatistiğinden geldiyse şarjlı hibrit tespiti onunla da yapılır.
+    plugIn = plugIn || isPlugInHybrid(car, consumption);
   }
+
+  // Benzinli/dizel/LPG'li araçta 3 lt altı resmi değer gerçek değildir (kaynak hatası ya da başlıkta
+  // belirtilmemiş şarjlı hibrit); yanlış bir maliyet yazmaktansa göstermeyiz.
+  if (!plugIn && fuel !== "Hibrit" && consumption < PLUG_IN_THRESHOLD) return null;
 
   const local = pricesForCity(prices, car.city);
   const priceFuel: FuelCost["priceFuel"] = fuel === "Dizel" ? "motorin" : fuel === "LPG & Benzin" ? "LPG" : "benzin";
@@ -176,7 +232,10 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
   if (!pricePerLiter) return null;
 
   const litersPer100 = priceFuel === "LPG" ? consumption * LPG_CONSUMPTION_FACTOR : consumption;
-  const per100Km = round2(litersPer100 * pricePerLiter);
+  const fuelPer100Km = round2(litersPer100 * pricePerLiter);
+  // Şarjlı hibrit: benzin payına elektrik de eklenir (evde şarj); 100 km başına toplam yazılır.
+  const electricPer100Km = plugIn ? round2(ELECTRICITY.kwhPer100Km * ELECTRICITY.homePerKwh) : 0;
+  const per100Km = round2(fuelPer100Km + electricPer100Km);
   const result: FuelCost = {
     fuelType: fuel,
     consumption,
@@ -192,13 +251,29 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
   };
   if (priceFuel === "LPG" && local.benzin) result.petrolPer100Km = round2(consumption * local.benzin);
 
-  const plugIn = fuel === "Hibrit" && consumption < PLUG_IN_THRESHOLD;
+  const cls = bodyClass(car.features?.bodyType);
   if (plugIn) {
-    result.note = "Plug-in hibrit: resmi değer şarjla yapılan sürüşü de içerir; batarya boşken tüketim daha yüksektir.";
+    // Batarya bitince sınıfındaki benzinli araç gibi yakar; sınıf ortalaması yoksa bu satır gösterilmez.
+    const petrolClass = (cls && stats.segment[`${cls}|Benzin`]) || stats.segment["Benzin"];
+    const emptyBattery = petrolClass && petrolClass.count >= 20 && local.benzin ? petrolClass : undefined;
+    result.plugIn = {
+      electricKwhPer100: ELECTRICITY.kwhPer100Km,
+      homePricePerKwh: ELECTRICITY.homePerKwh,
+      publicPricePerKwh: ELECTRICITY.publicAcPerKwh,
+      fuelPer100Km,
+      electricPer100Km,
+      perKmPublicCharge: round2((fuelPer100Km + ELECTRICITY.kwhPer100Km * ELECTRICITY.publicAcPerKwh) / 100),
+      ...(emptyBattery && local.benzin
+        ? { perKmEmptyBattery: round2((emptyBattery.median * local.benzin) / 100), emptyBatteryConsumption: emptyBattery.median }
+        : {}),
+      electricityReviewed: ELECTRICITY.reviewed,
+    };
+    result.note =
+      "Şarjlı hibrit: resmi tüketim bataryanın şarjlı olduğunu varsayar. İlanda elektrik tüketimi yok; " +
+      `${ELECTRICITY.kwhPer100Km} kWh/100 km tipik değeriyle elektrik maliyeti eklendi.`;
     return result;
   }
 
-  const cls = bodyClass(car.features?.bodyType);
   const segment = (cls && stats.segment[`${cls}|${fuel}`]) || stats.segment[fuel];
   if (segment && segment.count >= 20) {
     const ratio = consumption / segment.median;

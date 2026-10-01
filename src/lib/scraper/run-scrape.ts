@@ -22,8 +22,9 @@ import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
 import { fetchDetailPatch, isDetailSource, isUnknownValue, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
-import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { fuelWithTitleHint } from "@/lib/normalize-fuel";
 import { normalizeCity } from "@/lib/normalize-city";
+import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
 import { ListingSource } from "@/types";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
@@ -77,7 +78,7 @@ export async function saveListing(
     ...listing,
     ...normalizeBrandModel(listing.brand, listing.model),
     city: listing.city ? normalizeCity(listing.city) : listing.city,
-    features: { ...listing.features, fuelType: normalizeFuelType(listing.features?.fuelType) },
+    features: { ...listing.features, fuelType: fuelWithTitleHint(listing.features?.fuelType, listing.title, listing.model) },
   };
   const now = new Date();
   const existing = await Car.findOne({
@@ -86,6 +87,10 @@ export async function saveListing(
   });
 
   if (existing) {
+    // "Eksik" diye arşive alınmış ilanı, liste sayfası yine tek fotoğraf veriyorsa geri açma.
+    if (existing.status === "removed" && isIncompleteRemoval(existing.removedReason) && lacksGallery(listing.sourceSite, listing.images)) {
+      return "unchanged";
+    }
     // Detayı ilan sayfasından tamamlanmış kurumsal ilanlarda liste sayfasındaki şablon açıklama,
     // tek fotoğraf ve "Belirtilmemiş" alanlar zengin veriyi ezmemeli (aksi hâlde her tarama
     // galeriyi ve açıklamayı geri siliyordu).
@@ -230,6 +235,11 @@ export async function saveListing(
     } catch {
       // ilan sayfası okunamadı: liste verisiyle devam
     }
+  }
+
+  // Galeri şartı olan kaynakta detay okununca da galeri çıkmadıysa yeni ilan yayına alınmaz.
+  if (lacksGallery(toCreate.sourceSite, toCreate.images)) {
+    return "skipped";
   }
 
   await Car.create({

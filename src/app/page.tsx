@@ -128,8 +128,8 @@ export default async function HomePage({ searchParams }: HomeProps) {
               takip et
             </h1>
             <p className="max-w-xl text-[15px] leading-relaxed text-slate-400">
-              Arabam ve Otomerkezi kaynaklı ilanları filtrele. Her araç için marka /
-              model / yıl bazında piyasa ortalamasını gör, gerçek ilana tek tıkla ulaş.
+              İlan siteleri ve kurumsal galerilerden derlenen ilanları filtrele. Her araç için
+              marka / model / yıl bazında piyasa ortalamasını gör, gerçek ilana tek tıkla ulaş.
             </p>
           </div>
 
@@ -146,10 +146,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
                 <span className="text-xs uppercase tracking-widest text-slate-500">
                   Aktif ilan
                 </span>
-                <strong>{total}</strong>
+                <strong>{total.toLocaleString("tr-TR")}</strong>
               </div>
             </div>
-            <div className="stat-tile sm:col-span-2">
+            <Link href="/sell" className="stat-tile sm:col-span-2 group cursor-pointer" aria-label="Ücretsiz ilan ver">
               <span className="stat-tile-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
                   <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -161,7 +161,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
                 </span>
                 <strong className="text-lg">Ücretsiz ilan ver</strong>
               </div>
-            </div>
+              <span className="ml-auto self-center text-xl text-amber-300 transition-transform group-hover:translate-x-1" aria-hidden>
+                →
+              </span>
+            </Link>
           </div>
         </div>
       </section>

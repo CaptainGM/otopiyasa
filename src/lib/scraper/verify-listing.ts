@@ -91,11 +91,67 @@ export function classifyRedirect(originalUrl: string, finalUrl: string): "same" 
   return "moved";
 }
 
+/**
+ * Arabam ilan sayfaları arasındaki en kısa süre. Her ilan gerçek tarayıcıyla açılıyor; araya bekleme
+ * konmayınca (ve 3 işçiyle) saniyede ~3 sayfa gidiyor, ilk ~60 sayfadan sonra Cloudflare hız sınırı
+ * her şeyi "doğrulama sayfası"na çeviriyordu (2 dakikada 400 ilan denendi, 336'sı engellendi).
+ */
+export const ARABAM_PAGE_GAP_MS = { min: 1500, spread: 900 };
+
+let arabamGate: Promise<void> = Promise.resolve();
+
+/** Sıra beklenir; sonraki çağrı en az min..min+spread ms sonra başlar (işçi sayısından bağımsız). */
+async function waitForArabamTurn(): Promise<void> {
+  const previous = arabamGate;
+  let release!: () => void;
+  arabamGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  setTimeout(release, ARABAM_PAGE_GAP_MS.min + Math.random() * ARABAM_PAGE_GAP_MS.spread);
+}
+
+/**
+ * Bir kaynakta art arda gelen "blocked" sayısını tutar. Sınıra ulaşan kaynağa o çalıştırmada ara
+ * verilir: engel varken yüzlerce ilanı boşuna denemek hem engeli uzatır hem de her ilana 6 saatlik
+ * "denendi" damgası vurup doğrulamayı geciktirir.
+ */
+export class BlockStreak {
+  private streak = new Map<string, number>();
+  private paused = new Set<string>();
+
+  constructor(private readonly limit = 4) {}
+
+  /** Sonucu işler; kaynak bu çağrıyla durdurulduysa true döner. */
+  record(source: string, status: string): boolean {
+    if (status !== "blocked") {
+      this.streak.set(source, 0);
+      return false;
+    }
+    const next = (this.streak.get(source) || 0) + 1;
+    this.streak.set(source, next);
+    if (next >= this.limit && !this.paused.has(source)) {
+      this.paused.add(source);
+      return true;
+    }
+    return false;
+  }
+
+  isPaused(source: string): boolean {
+    return this.paused.has(source);
+  }
+
+  get pausedSources(): string[] {
+    return [...this.paused];
+  }
+}
+
 async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListingResult> {
   if (process.env.DISABLE_PLAYWRIGHT === "true" || process.env.VERCEL) {
     return { status: "blocked", reason: "Bu ortamda tarayıcı yok; doğrulama atlandı (ilan korunur)." };
   }
   try {
+    await waitForArabamTurn();
     const page = await fetchPageWithBrowser(listingUrl, true);
     if (isCloudflareChallenge(page.html)) {
       return { status: "blocked", finalUrl: page.finalUrl, reason: "Cloudflare doğrulama sayfası (ilan korunur)." };
@@ -225,10 +281,21 @@ export async function sweepAndCleanDeadListings(options: {
   limit?: number;
   source?: string;
   excludeSource?: string;
+  /** Önceki turlarda engellenip durdurulan kaynaklar (yeniden denenmez). */
+  excludeSources?: string[];
   concurrency?: number;
   maxDurationMs?: number;
   onProgress?: (processed: number, total: number, archived: number) => void;
-} = {}): Promise<{ checked: number; archived: number; active: number; errors: number; breaker: string[]; details: SweepDetail[] }> {
+} = {}): Promise<{
+  checked: number;
+  archived: number;
+  active: number;
+  errors: number;
+  breaker: string[];
+  /** Bu turda art arda engel yüzünden durdurulan kaynaklar. */
+  pausedSources: string[];
+  details: SweepDetail[];
+}> {
   const limit = Math.min(options.limit || 50, 250);
   const concurrency = Math.min(options.concurrency || 3, 8);
   const now = new Date();
@@ -237,7 +304,7 @@ export async function sweepAndCleanDeadListings(options: {
   const sourceFilter: Record<string, unknown> =
     options.source && options.source !== "all"
       ? { sourceSite: options.source }
-      : { sourceSite: { $nin: [...INVENTORY_ONLY_SOURCES, ...(options.excludeSource ? [options.excludeSource] : [])] } };
+      : { sourceSite: { $nin: [...INVENTORY_ONLY_SOURCES, ...(options.excludeSource ? [options.excludeSource] : []), ...(options.excludeSources || [])] } };
 
   const candidates = await Car.find({
     $and: [
@@ -254,7 +321,7 @@ export async function sweepAndCleanDeadListings(options: {
     .lean<Array<{ _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string }>>();
 
   const details: SweepDetail[] = [];
-  if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, errors: 0, breaker: [], details };
+  if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, errors: 0, breaker: [], pausedSources: [], details };
 
   const aliveIds: Types.ObjectId[] = [];
   const attemptedIds: Types.ObjectId[] = [];
@@ -267,12 +334,16 @@ export async function sweepAndCleanDeadListings(options: {
   const maxDuration = options.maxDurationMs ?? 5 * 60 * 1000;
 
   const queue = [...candidates];
+  const blocks = new BlockStreak(4);
+  const blockNotes: string[] = [];
   await Promise.all(
     Array.from({ length: concurrency }).map(async () => {
       while (queue.length > 0 && Date.now() - started < maxDuration) {
         const item = queue.shift();
         if (!item) break;
         const source = item.sourceSite || "bilinmiyor";
+        // Engellenen kaynağın kalan ilanları denenmez (denendi damgası da vurulmaz).
+        if (blocks.isPaused(source)) continue;
         const timeoutMs = source === "arabam" ? 45000 : 15000;
         let result: VerifyListingResult;
         try {
@@ -284,6 +355,9 @@ export async function sweepAndCleanDeadListings(options: {
           result = { status: "error", reason: err?.message || "zaman aşımı" };
         }
 
+        if (blocks.record(source, result.status)) {
+          blockNotes.push(`${source}: art arda engel geldi (${result.reason.slice(0, 60)}); bu çalıştırmada ara verildi`);
+        }
         checkedBySource.set(source, (checkedBySource.get(source) || 0) + 1);
         if (result.status === "active") {
           aliveIds.push(item._id);
@@ -307,7 +381,7 @@ export async function sweepAndCleanDeadListings(options: {
   await markVerifyAttempt(attemptedIds, now);
 
   let archivedCount = 0;
-  const breaker: string[] = [];
+  const breaker: string[] = [...blockNotes];
   for (const [source, gone] of goneBySource) {
     const checked = checkedBySource.get(source) || 0;
     if (breakerTripped(checked, gone.length, aliveBySource.get(source) || 0)) {
@@ -331,6 +405,7 @@ export async function sweepAndCleanDeadListings(options: {
     active: aliveIds.length,
     errors: errorCount,
     breaker,
+    pausedSources: blocks.pausedSources,
     details,
   };
 }

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/services/data_saver.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// İlan fotoğrafları için disk önbelleği. Akış her yenilemede değiştiği için saklama kısa tutulur:
@@ -38,35 +40,75 @@ bool _isArabamCdn(String url) => url.contains('mncdn.com/ilanfotograflari/');
 String _arabamSized(String url, String size) =>
     url.replaceFirstMapped(_arabamSize, (m) => '_$size.${m.group(1)}');
 
+/// Küçük boyut sunmayan kaynaklar (VavaCars ve eski Carvak kayıtları tek fotoğraf 0,5–1 MB, Otomerkezi
+/// ~140 KB, Otoplus 118 KB) sunucuda küçültülür (`/api/img`, bkz. src/lib/image-proxy.ts): 6–12 KB'lık WebP.
+const _proxyHosts = {
+  'dat-tr-prda-ops-vava.azureedge.net',
+  'images.kavak.services',
+  'asset.otomerkezi.net',
+  'cdn.otoplus.com',
+};
+
+bool _isProxyable(String url) {
+  final uri = Uri.tryParse(url);
+  return uri != null && uri.scheme == 'https' && _proxyHosts.contains(uri.host.toLowerCase());
+}
+
+/// Genişlik 80 px adımlarına yuvarlanır (sunucu tarafıyla aynı): aynı fotoğraf tek önbellek kaydı olur.
+String _proxied(String url, int width) {
+  final w = ((width / 80).ceil() * 80).clamp(160, 1280);
+  return '${ApiService().originUrl}/api/img?u=${Uri.encodeComponent(url)}&w=$w';
+}
+
 /// Kart küçük resmi için daha hafif varyant (web'deki cardImageUrl ile aynı kurallar).
-/// Kaynak sitelerin galeri görselleri 1920 px geliyor; kartta ~480 px yeter:
-/// Carvak 266 KB → 65 KB, Otoplus 135 KB → 66 KB, Otokoç 52 KB → 34 KB,
-/// Arabam 357 KB → 61 KB (580x435; CDN'in sunduğu ara boyutlar 800x600, 580x435, 240x180).
-String cardImageUrl(String url) {
+/// Kaynak sitelerin galeri görselleri 1920 px geliyor; kartta ~480 px yeter. Veri tasarrufu açıkken
+/// (hücresel veri) daha da küçük: Arabam 240x180 ≈ 10 KB (normalde 580x435 ≈ 50 KB), Carvak 320 px ≈ 23 KB
+/// (normalde 480 px ≈ 45 KB). Otokoç'un daha küçük boyutu yok (450 px ≈ 28 KB).
+String cardImageUrl(String url, {bool? lowData}) {
+  final low = lowData ?? DataSaver.instance.lowData.value;
+  if (_isProxyable(url)) return _proxied(url, low ? 320 : 480);
   if (url.contains('img.carvak.co/') && url.contains('w_1920,h_1080')) {
-    return url.replaceFirst('w_1920,h_1080', 'w_640,h_360');
-  }
-  if (url.contains('cdn.otoplus.com/') && RegExp(r'_1920x1080.(jpe?g|webp|png)', caseSensitive: false).hasMatch(url)) {
-    return url.replaceFirst('_1920x1080.', '_1280x720.');
+    return url.replaceFirst('w_1920,h_1080', low ? 'w_320,h_180' : 'w_480,h_270');
   }
   if (url.contains('2el-cdn.otokoc.com.tr/') && url.contains('/car/640x/')) {
     return url.replaceFirst('/car/640x/', '/car/450x/');
   }
   if (_isArabamCdn(url) && _arabamSize.hasMatch(url)) {
-    return _arabamSized(url, '580x435');
+    return _arabamSized(url, low ? '240x180' : '580x435');
   }
   return url;
 }
 
-/// Denenecek adresler, sırayla: hafif varyant (kartta), orijinal, ve Arabam'da 800x600.
-/// CDN eski ilanlarda 1920x1080 üretmiyor; o durumda 800x600 çoğunlukla mevcut.
-List<String> imageCandidates(String url, {required bool small}) {
+/// Galeride bir sonraki sayfa gelene kadar gösterilen çok küçük önizleme (Arabam 240x180 ≈ 10 KB).
+/// Boyutu olmayan kaynaklarda kart varyantına döner.
+String tinyImageUrl(String url) {
+  if (_isArabamCdn(url) && _arabamSize.hasMatch(url)) return _arabamSized(url, '240x180');
+  return cardImageUrl(url, lowData: true);
+}
+
+/// Tam ekran galeri varyantı: normalde en keskin boyut; veri tasarrufunda Arabam 800x600 (≈90 KB, 1920x1080
+/// ≈270 KB yerine) ve Carvak 800 px. Küçük boyut sunmayanlar her iki durumda küçültülür (1280/800 px).
+String galleryImageUrl(String url, {bool? lowData}) {
+  final low = lowData ?? DataSaver.instance.lowData.value;
+  if (_isProxyable(url)) return _proxied(url, low ? 800 : 1280);
+  if (low) {
+    if (url.contains('img.carvak.co/') && url.contains('w_1920,h_1080')) {
+      return url.replaceFirst('w_1920,h_1080', 'w_800,h_450');
+    }
+    if (_isArabamCdn(url) && _arabamSize.hasMatch(url)) return _arabamSized(url, '800x600');
+  }
+  return url;
+}
+
+/// Denenecek adresler, sırayla: uygun varyant (kartta hafif, galeride tam ekran), orijinal, ve Arabam'da
+/// 800x600. CDN eski ilanlarda 1920x1080 üretmiyor; o durumda 800x600 çoğunlukla mevcut.
+List<String> imageCandidates(String url, {required bool small, bool? lowData}) {
   final out = <String>[];
   void add(String u) {
     if (u.isNotEmpty && !out.contains(u)) out.add(u);
   }
 
-  if (small) add(cardImageUrl(url));
+  add(small ? cardImageUrl(url, lowData: lowData) : galleryImageUrl(url, lowData: lowData));
   add(url);
   if (_isArabamCdn(url) && _arabamSize.hasMatch(url)) add(_arabamSized(url, '800x600'));
   return out;
@@ -81,6 +123,7 @@ class ListingImage extends StatelessWidget {
     this.fit = BoxFit.cover,
     this.cacheWidth = 480,
     this.fallbacks = const [],
+    this.tinyPreview = false,
   });
 
   final String url;
@@ -89,6 +132,10 @@ class ListingImage extends StatelessWidget {
 
   /// İlk fotoğraf kaynakta silinmişse (404) denenecek diğer fotoğraflar.
   final List<String> fallbacks;
+
+  /// Galeride tam boy yüklenirken kart varyantı yerine çok küçük (≈10 KB) önizleme göster. Kart
+  /// varyantı yalnızca ilk fotoğrafta zaten önbellekte olduğu için bedavadır; diğerlerinde indirilirdi.
+  final bool tinyPreview;
 
   static Map<String, String> _headersFor(String url) {
     final uri = Uri.tryParse(url);
@@ -149,7 +196,7 @@ class ListingImage extends StatelessWidget {
     // (Arabam'da ~357 KB) yüklenene kadar hafif sürüm gösterilir, boş kutu beklenmez.
     final small = (cacheWidth ?? 9999) <= 700;
     final primary = url.isNotEmpty ? url : fallbacks.first;
-    final light = cardImageUrl(primary);
+    final light = tinyPreview ? tinyImageUrl(primary) : cardImageUrl(primary);
     final candidates = <String>[
       ...imageCandidates(primary, small: small),
       for (final other in fallbacks)

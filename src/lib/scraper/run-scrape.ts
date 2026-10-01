@@ -237,8 +237,10 @@ export async function saveListing(
     }
   }
 
-  // Galeri şartı olan kaynakta detay okununca da galeri çıkmadıysa yeni ilan yayına alınmaz.
-  if (lacksGallery(toCreate.sourceSite, toCreate.images)) {
+  // Galeri şartı olan kaynakta detay BAŞARIYLA okunup yine de galeri çıkmadıysa yeni ilan yayına alınmaz.
+  // Okuma başarısızsa (ağ, bot koruması) ilan eskisi gibi eklenir; arka plan tamamlayıcı yeniden dener ve
+  // ancak ikinci başarısız okumada arşive alır. Aksi hâlde geçici bir engel yeni ilanların tamamını düşürürdü.
+  if (detailCheckedAt && lacksGallery(toCreate.sourceSite, toCreate.images)) {
     return "skipped";
   }
 

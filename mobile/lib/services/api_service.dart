@@ -71,6 +71,9 @@ class ApiService {
 
   String get _androidLocalhost => 'http://10.0.2.2:3000';
 
+  /// Sunucunun köküne giden adres (fotoğraf küçültme uç noktası gibi doğrudan adreslenen yollar için).
+  String get originUrl => Platform.isAndroid && baseUrl.contains('localhost') ? _androidLocalhost : baseUrl;
+
   Uri _uri(String path, [Map<String, String>? query]) {
     final host = Platform.isAndroid && baseUrl.contains('localhost')
         ? _androidLocalhost
@@ -181,7 +184,7 @@ class ApiService {
   /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
   Future<Map<String, dynamic>> fetchBrandModels() async {
     final response =
-        await http.get(_uri('/api/filters/brand-models'), headers: _headers);
+        await http.get(_uri('/api/filters/brand-models', {'families': '1'}), headers: _headers);
     if (response.statusCode != 200) {
       throw Exception('Marka/model listesi yüklenemedi');
     }

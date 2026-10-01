@@ -169,7 +169,8 @@ class _DetailScreenState extends State<DetailScreen> {
         children: [
           PageView.builder(
             itemCount: allImages.length,
-            allowImplicitScrolling: true,
+            // Komşu fotoğraf önceden indirilmez: galeride kimse hepsini görmüyor, hücresel veride her
+            // fotoğraf 90–270 KB.
             onPageChanged: (idx) => setState(() => _activeImageIndex = idx),
             itemBuilder: (context, index) {
               final imgUrl = allImages[index];
@@ -179,6 +180,8 @@ class _DetailScreenState extends State<DetailScreen> {
                 url: imgUrl,
                 fit: BoxFit.cover,
                 cacheWidth: 1080,
+                // İlk fotoğrafın kart varyantı zaten önbellekte; diğerlerinde ~10 KB'lık önizleme.
+                tinyPreview: !isFirst,
               );
               return isFirst
                   ? Hero(tag: 'car-img-${car.id}', child: child)

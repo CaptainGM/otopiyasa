@@ -11,6 +11,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as cheerio from "cheerio";
 import { fetchPageHtml } from "../src/lib/scraper/browser-scrape";
+import { normalizeBrandModel } from "../src/lib/normalize-brand";
+import { normalizeFuelType } from "../src/lib/normalize-fuel";
+import { normalizeCity } from "../src/lib/normalize-city";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -134,8 +137,11 @@ function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): Pars
     const city = locParts[0] || "Türkiye";
     const district = locParts.slice(1).join(" ") || "";
 
-    const firstWord = modelFull.split(" ")[0] || "Bilinmiyor";
-    const rest = modelFull.split(" ").slice(1).join(" ") || modelFull;
+    // "Mercedes - Benz G 400 d", "Land Rover Range Rover Velar": iki kelimelik markalar düzeltilir.
+    const { brand: firstWord, model: rest } = normalizeBrandModel(
+      modelFull.split(" ")[0] || "Bilinmiyor",
+      modelFull.split(" ").slice(1).join(" ") || modelFull
+    );
 
     const checkText = (modelFull + " " + title).toLowerCase();
     let fuelType = "Benzin";
@@ -174,13 +180,13 @@ function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): Pars
       year,
       price,
       mileage: km,
-      city,
-      address: district ? `${city}, ${district}` : city,
+      city: normalizeCity(city),
+      address: district ? `${normalizeCity(city)}, ${district}` : normalizeCity(city),
       description: title,
       imageUrl: hdImg,
       images: [hdImg].filter(Boolean),
       features: {
-        fuelType,
+        fuelType: normalizeFuelType(fuelType),
         transmission,
         bodyType,
         color,

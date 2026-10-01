@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:otopiyasa/screens/favorites_screen.dart';
+import 'package:otopiyasa/widgets/listing_image.dart';
 import 'package:otopiyasa/screens/offers_screen.dart';
 import 'package:otopiyasa/screens/my_listings_screen.dart';
 import 'package:otopiyasa/screens/notifications_screen.dart';
@@ -35,6 +36,7 @@ Future<void> main() async {
   ]);
   runApp(const OtoPiyasaApp());
   unawaited(_initializeSessionAndNotifications());
+  unawaited(trimListingImageCache());
 }
 
 Future<void> _initializeSessionAndNotifications() async {
@@ -78,8 +80,13 @@ class OtoPiyasaApp extends StatelessWidget {
           final uri = Uri.tryParse(settings.name ?? '');
           if (uri != null) {
             final segments = uri.pathSegments;
-            if (segments.length >= 2 && segments[0] == 'cars') {
-              final carId = segments[1];
+            // https://otopiyasa.app/cars/<id> → "/cars/<id>"; otopiyasa://cars/<id> ise yalnızca "/<id>" olarak gelir.
+            final carId = segments.length >= 2 && segments[0] == 'cars'
+                ? segments[1]
+                : segments.length == 1 && RegExp(r'^[0-9a-f]{24}$').hasMatch(segments[0])
+                    ? segments[0]
+                    : null;
+            if (carId != null) {
               return MaterialPageRoute(
                 builder: (_) => DetailScreen(carId: carId),
                 settings: settings,

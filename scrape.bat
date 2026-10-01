@@ -49,16 +49,18 @@ echo    N  - Arabam Yeni Ilanlar (sitemap'ten en yeni ilanlari bul ve tam detayl
 echo    S  - Arabam Sitemap     (32 sitemap dosyasi, ~2 dk; dogrulama onceligi icin)
 echo    E  - Kurumsal Envanter  (Otokoc, DOD, VavaCars... tum envanteri senkronla)
 echo.
-echo    G  - GALERI ^& ACIKLAMA  (Arabam + Otokoc + Otoplus: tum fotograf, aciklama, tramer/boya)
+echo    G  - GALERI ^& ACIKLAMA  (Arabam + kurumsal kaynaklar: tum fotograf, aciklama, tramer/boya)
+echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve tamamla)
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, G, N, S, E, 1-19 veya P, varsayilan T): "
+set /p secim="Secimin (T, G, D, N, S, E, 1-19 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo
 if "%secim%"=="2" goto :turbo
 if /i "%secim%"=="G" goto :galeri
+if /i "%secim%"=="D" goto :eksikdetay
 if "%secim%"=="11" goto :mod11
 if "%secim%"=="8" goto :mod8
 rem 10 ve 14 eski "tam yenileme / stealth" modlariydi; artik ayni isi 11 yapiyor.
@@ -139,7 +141,7 @@ goto :eof
 echo.
 echo ====================================================================
 echo   TAM DETAY, GALERI ^& HASAR TAMAMLAMA MOTORU
-echo   1) Kurumsal kaynaklar (Otokoc, Otoplus): ilan sayfasindan tum fotograflar,
+echo   1) Kurumsal kaynaklar (Otokoc, Otoplus, DOD, Carvak, Otomerkezi): tum fotograflar,
 echo      tramer, boya/degisen, renk, kasa tipi ve motor hacmi.
 echo   2) Arabam: tum fotograflar, saticinin aciklamasi, boya/degisen hasar matrisi.
 echo   (Bu islem 7/24 motorda da kucuk partilerle kendiliginden yapilir.)
@@ -148,13 +150,34 @@ echo.
 set /p glimit="Kac aracin detaylari tamamlansin? (Varsayilan 35000 - Tum DB, Enter'a bas): "
 if "%glimit%"=="" set glimit=35000
 echo.
-echo [1/2] Kurumsal kaynaklar (Otokoc, Otoplus) tamamlaniyor...
+echo [1/2] Kurumsal kaynaklar (Otokoc, Otoplus, DOD, Carvak, Otomerkezi) tamamlaniyor...
 echo.
 npx tsx scripts\enrich-details.ts %glimit%
 echo.
 echo [2/2] Arabam tamamlaniyor (ev IP'si gerekir)...
 echo.
 npx tsx scripts\enrich-arabam.ts %glimit%
+echo.
+pause
+goto :eof
+
+:eksikdetay
+echo.
+echo ====================================================================
+echo   EKSIK DETAY TARAMASI
+echo   1) Tum aktif ilanlar taranir: fotograf, aciklama, km, fiyat, konum,
+echo      hasar/boya, motor ve beygir bilgisi kac ilanda eksik raporlanir.
+echo   2) Ilan detayi okunabilen kaynaklarda (Arabam ve kurumsal kaynaklar) eksikler
+echo      tamamlanir; satilmis ilanlar arsive tasinir. Ctrl+C ile guvenle durur.
+echo ====================================================================
+echo.
+set dlimit=
+set /p dlimit="Kac ilan tamamlansin? (Enter = hepsi, R = yalnizca rapor): "
+if /i "%dlimit%"=="R" (
+    npx tsx scripts\complete-details.ts --rapor
+) else (
+    npx tsx scripts\complete-details.ts %dlimit%
+)
 echo.
 pause
 goto :eof

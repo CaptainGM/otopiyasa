@@ -1,4 +1,4 @@
-// Kurumsal kaynaklarda (Otokoç, Otoplus) eksik galeri / açıklama / teknik bilgiyi ilan sayfasından tamamlar.
+// Kurumsal kaynaklarda (Otokoç, Otoplus, Carvak, DOD, Otomerkezi) eksik galeri / açıklama / hasar / teknik bilgiyi tamamlar.
 //   npx tsx scripts/enrich-details.ts [adet] [otokoc|otoplus]
 // Daemon bunu her turda küçük partilerle zaten yapar; bu betik ilk toplu tamamlama içindir.
 import { loadEnv } from "./load-env";

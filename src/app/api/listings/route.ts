@@ -12,6 +12,7 @@ import { createNotification } from "@/lib/notify";
 import { appBaseUrl } from "@/lib/app-url";
 import { isMailerConfigured, sendListingRejectedEmail, sendListingPublishedEmail } from "@/lib/mailer";
 import { logAudit } from "@/lib/audit-log";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
       contactPhone: String(body.contactPhone || "").trim(),
       // Satıcının kabul ettiği en düşük teklif (boş = sistem varsayılanı).
       minOffer: Math.trunc(Number(body.minOffer) || 0),
-      fuelType: String(body.fuelType || "Bilinmiyor").trim(),
+      fuelType: normalizeFuelType(String(body.fuelType || "")),
       transmission: String(body.transmission || "Bilinmiyor").trim(),
       bodyType: String(body.bodyType || "Belirtilmemiş").trim(),
       color: String(body.color || "Belirtilmemiş").trim(),

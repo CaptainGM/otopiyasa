@@ -6,6 +6,7 @@ import { classifyOtokocHtml, classifyRedirect } from "@/lib/scraper/verify-listi
 import { archiveListings, breakerTripped } from "@/lib/scraper/listing-lifecycle";
 import { EXTRA_DETAIL_SOURCES, fetchExtraDetail } from "@/lib/scraper/detail-sources";
 import { FUEL_TYPES, normalizeFuelType } from "@/lib/normalize-fuel";
+import { incompleteReason, lacksGallery } from "@/lib/scraper/listing-quality";
 
 /**
  * KURUMSAL KAYNAKLARDA İLAN DETAYI
@@ -341,12 +342,13 @@ export async function runDetailBackfill(
   )
     .sort({ detailCheckedAt: 1, createdAt: -1 })
     .limit(limit)
-    .select("_id sourceSite listingUrl externalId title images description features")
+    .select("_id sourceSite listingUrl externalId title images description features detailCheckedAt")
     .lean<
       Array<{
         _id: unknown;
         sourceSite: string;
         listingUrl: string;
+        detailCheckedAt?: Date;
         images?: string[];
         description?: string;
         externalId?: string;
@@ -356,7 +358,7 @@ export async function runDetailBackfill(
     >();
 
   const result: BackfillResult = { checked: 0, enriched: 0, imagesAdded: 0, gone: 0, archived: 0, failed: 0 };
-  const perSource = new Map<string, { checked: number; alive: number; gone: Array<{ id: unknown; reason: string }> }>();
+  const perSource = new Map<string, { checked: number; alive: number; gone: Array<{ id: unknown; reason: string }>; incomplete: unknown[] }>();
   for (const doc of docs) {
     result.checked++;
     let outcome: DetailOutcome;
@@ -365,7 +367,7 @@ export async function runDetailBackfill(
     } catch (err) {
       outcome = { kind: "failed", reason: err instanceof Error ? err.message : "istek hatası" };
     }
-    const stats = perSource.get(doc.sourceSite) || { checked: 0, alive: 0, gone: [] };
+    const stats = perSource.get(doc.sourceSite) || { checked: 0, alive: 0, gone: [], incomplete: [] };
     stats.checked++;
     if (outcome.kind === "ok") stats.alive++;
     if (outcome.kind === "gone") stats.gone.push({ id: doc._id, reason: outcome.reason });
@@ -399,6 +401,13 @@ export async function runDetailBackfill(
       result.failed++;
     }
 
+    // Daha önce de okunmuş (ilk deneme sayılmaz) ve galerisi bu okumadan sonra da tek fotoğraf kalan
+    // ilan "eksik" sayılır; arşive alma aşağıda, parti ölçeğindeki güvenlik freninden sonra yapılır.
+    const finalImages = (set.images as string[] | undefined) ?? doc.images;
+    if (doc.detailCheckedAt && outcome.kind !== "gone" && lacksGallery(doc.sourceSite, finalImages)) {
+      stats.incomplete.push(doc._id);
+    }
+
     // updatedAt'e dokunulmaz: detay tamamlamak ilanın "son değişikliği" değildir.
     await Car.updateOne({ _id: doc._id }, { $set: set }, { timestamps: false });
     await new Promise((r) => setTimeout(r, options.delayMs ?? 700));
@@ -409,6 +418,11 @@ export async function runDetailBackfill(
   // görüldüğünde kendiliğinden geri açılır.
   const held: string[] = [];
   for (const [source, stats] of perSource) {
+    // Sayfa hiç açılmıyorsa (engel/ağ sorunu) hepsini "eksik" saymamak için aynı fren: parti çoğunlukla
+    // okunamıyorsa dokunulmaz.
+    if (stats.incomplete.length > 0 && !breakerTripped(stats.checked, stats.incomplete.length, stats.alive)) {
+      result.archived += await archiveListings(stats.incomplete as string[], incompleteReason(source), now);
+    }
     if (stats.gone.length === 0) continue;
     if (breakerTripped(stats.checked, stats.gone.length, stats.alive)) {
       held.push(source);

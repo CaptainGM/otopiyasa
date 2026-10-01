@@ -199,6 +199,15 @@ async function main() {
   }
   if (queue.length > 0) await Promise.all(Array.from({ length: ARABAM_CONCURRENCY }, worker));
 
+  // Galerisi tamamlanamayan kurumsal ilanlar yayında kalmaz (arşive alınır, silinmez).
+  const { archiveIncompleteGalleries } = await import("@/lib/scraper/listing-quality");
+  const incomplete = await archiveIncompleteGalleries({ apply: !stopping });
+  if (incomplete.total > 0) {
+    const parts = Object.entries(incomplete.bySource).map(([s, n]) => `${s} ${n}`).join(", ");
+    console.log(`\n\n🗂️  Galerisi tamamlanamayan ${incomplete.total} ilan ${stopping ? "bulundu (durdurulduğu için arşive alınmadı)" : "arşive alındı"}: ${parts}`);
+  }
+  corporateStats.archived += incomplete.archived;
+
   if (logDoc) {
     if (stats.done > 0) perSource.arabam = { scanned: stats.done, updated: stats.filled, deleted: stats.archived };
     const scanned = corporateStats.checked + stats.done;

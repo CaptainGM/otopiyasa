@@ -7,10 +7,13 @@ import type { FuelPriceCity, FuelPriceDoc } from "@/models/FuelPrice";
  *  1. Petrol Ofisi fiyat sayfası: tek istekte 81 il için vergili benzin, motorin ve otogaz (LPG).
  *  2. Yedek: Opet'in herkese açık fiyat uç noktası (İstanbul benzin/motorin; LPG vermiyor).
  *
- * Fiyatlar veritabanında tek belgede tutulur; 12 saatten eskiyse okunurken yenilenir, motor da
- * günde iki kez yeniler. Kaynağa ulaşılamazsa son bilinen fiyat kullanılır.
+ * Fiyatlar veritabanında tek belgede tutulur; 3 saatten eskiyse sayfa/uygulama okurken yenilenir,
+ * 7/24 motor ise her turda saatlik kontrol eder (zamlar gün içinde de gelebiliyor). Kaynağa
+ * ulaşılamazsa son bilinen fiyat kullanılır; belgenin saati kartta Türkiye saatiyle gösterilir.
  */
-export const FUEL_PRICE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+export const FUEL_PRICE_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+/** Motorun yenileme eşiği: sayfa okumasından daha sıkı, böylece okuyan kimse beklemez. */
+export const FUEL_PRICE_DAEMON_MAX_AGE_MS = 60 * 60 * 1000;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 /** "İstanbul" → "ISTANBUL", "Kahramanmaraş" → "KAHRAMANMARAS". */
@@ -120,11 +123,11 @@ export async function refreshFuelPrices(): Promise<FuelPrices | null> {
   return refreshing;
 }
 
-/** Güncel fiyatlar; 12 saatten eskiyse yenilemeyi dener, olmazsa son bilinen fiyatı döndürür. */
-export async function getFuelPrices(): Promise<FuelPrices | null> {
+/** Güncel fiyatlar; belirtilen süreden eskiyse (varsayılan 3 saat) yenilemeyi dener, olmazsa son bilinen fiyatı döndürür. */
+export async function getFuelPrices(maxAgeMs = FUEL_PRICE_MAX_AGE_MS): Promise<FuelPrices | null> {
   const { FuelPrice } = await import("@/models/FuelPrice");
   const stored = await FuelPrice.findOne({ name: "latest" }).lean<FuelPrices | null>();
-  if (stored && Date.now() - new Date(stored.fetchedAt).getTime() < FUEL_PRICE_MAX_AGE_MS) return stored;
+  if (stored && Date.now() - new Date(stored.fetchedAt).getTime() < maxAgeMs) return stored;
   try {
     return (await refreshFuelPrices()) || stored;
   } catch {

@@ -70,7 +70,7 @@ export function ListingsMap() {
   useEffect(() => {
     fetch("/api/filters/brand-models")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => data?.brandModels && setBrandModels(data.brandModels))
+      .then((data) => (data?.brandFamilies || data?.brandModels) && setBrandModels(data.brandFamilies || data.brandModels))
       .catch(() => {});
   }, []);
 

@@ -48,3 +48,13 @@ describe("parseFilterCriteria — bileşik chatbot sorguları", () => {
     expect(c.fuelType).toBeUndefined();
   });
 });
+
+describe("parseFilterCriteria — vites", () => {
+  it("otomatik / düz vites / yarı otomatik isteğini okur", () => {
+    expect(parseFilterCriteria("800 bin altı lpg otomatik araba öner").transmission).toBe("Otomatik");
+    expect(parseFilterCriteria("800 bin altı lpg otomatik araba öner").fuelType).toBe("LPG & Benzin");
+    expect(parseFilterCriteria("düz vites dizel 1 milyon altı").transmission).toBe("Manuel");
+    expect(parseFilterCriteria("yarı otomatik araba").transmission).toBe("Yarı Otomatik");
+    expect(parseFilterCriteria("1 milyon altı dizel araba").transmission).toBeUndefined();
+  });
+});

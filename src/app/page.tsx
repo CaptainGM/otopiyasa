@@ -69,7 +69,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
 
     // Filtre seçenekleri herkes için aynı ve yalnızca taramada değişir → önbellek
     // (aksi hâlde her sayfa geçişinde 8000 araç üzerinde 3 ağır sorgu koşuyordu).
-    let brandModelData: { brands: string[]; brandModels: Record<string, string[]> };
+    let brandModelData: { brands: string[]; brandFamilies: Record<string, string[]> };
     [brandModelData, cityOptions, colorOptions] = await Promise.all([
       getBrandModelOptions(),
       cached("home:cities", CACHE_TTL.medium, async () =>
@@ -81,7 +81,8 @@ export default async function HomePage({ searchParams }: HomeProps) {
       cached("home:colors", CACHE_TTL.medium, () => getColorOptions()),
     ]);
     brandOptions = brandModelData.brands;
-    brandModelOptions = brandModelData.brandModels;
+    // Filtrede model aileleri: "Juke" seçilince tüm Juke donanımları gelir.
+    brandModelOptions = brandModelData.brandFamilies;
 
     const { docs: cars, total: count, limit } = await findCarsPage(filters);
     const docs = cars.filter(isLeanCarDoc);

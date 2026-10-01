@@ -116,7 +116,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final data = await _api.fetchBrandModels();
       final brands = (data['brands'] as List<dynamic>? ?? []).cast<String>();
-      final rawModels = data['brandModels'] as Map<String, dynamic>? ?? {};
+      // Model aileleri ("Juke" tüm Juke donanımlarını bulur); eski sunucuda tam model listesi.
+      final rawModels = (data['brandFamilies'] ?? data['brandModels']) as Map<String, dynamic>? ?? {};
       final brandModels = rawModels.map(
         (key, value) => MapEntry(key, (value as List<dynamic>).cast<String>()),
       );

@@ -20,7 +20,7 @@ import { CompareButton } from "@/components/CompareButton";
 import { CarPriceHistoryChart } from "@/components/CarPriceHistoryChart";
 import { PriceHistogram } from "@/components/PriceHistogram";
 import { PricePredictionBadge } from "@/components/PricePredictionBadge";
-import { predictPrice } from "@/lib/price-prediction";
+import { derivePainted, predictPrice } from "@/lib/price-prediction";
 import { getSimilarCars } from "@/lib/recommendations";
 import { CarCard } from "@/components/CarCard";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
@@ -35,6 +35,8 @@ import { detectPriceAnomaly } from "@/lib/anomaly";
 import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
+import { FuelCostCard } from "@/components/FuelCostCard";
+import { getFuelCostForCar } from "@/lib/fuel-cost-data";
 import { resolvePlacement } from "@/lib/district-coords";
 import { getCurrentUser } from "@/lib/auth";
 import { cached, CACHE_TTL } from "@/lib/cache";
@@ -137,12 +139,12 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
 
   const carCondition = carDoc.damageFlag
     ? ("damaged" as const)
-    : carDoc.paintChange && /boya|lokal|değiş/i.test(carDoc.paintChange)
+    : derivePainted(carDoc.paintChange)
     ? ("painted" as const)
     : ("clean" as const);
 
   if (!ownerViewing) void Car.updateOne({ _id: carDoc._id }, { $inc: { viewCount: 1 } }).catch(() => {});
-  const [marketMap, prediction, segment, favoriteCount] = await Promise.all([
+  const [marketMap, prediction, segment, favoriteCount, fuelCost] = await Promise.all([
     getMarketMap([{ brand, model, year }]),
     cached(
       `predict:${brand}|${model}|${year}|${Math.round(carDoc.mileage / 20000)}|${carCondition}|${carDoc.title.slice(0, 30)}`,
@@ -151,6 +153,8 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
     ),
     cached(`segment:${brand}|${model}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model)),
     User.countDocuments({ favorites: carDoc._id }),
+    // Yakıt maliyeti hesaplanamazsa (fiyat kaynağına ulaşılamadı, tüketim bilinmiyor) kart gösterilmez.
+    getFuelCostForCar(carDoc).catch(() => null),
   ]);
 
   const targetPrice = prediction?.predictedPrice || price;
@@ -355,6 +359,8 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
             <span className="badge">{car.features.bodyType}</span>
             <span className="badge">{car.features.color}</span>
           </div>
+
+          {fuelCost && <FuelCostCard cost={fuelCost} />}
 
           <p className="leading-7 text-slate-300">{car.description}</p>
 

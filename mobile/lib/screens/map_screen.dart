@@ -83,7 +83,7 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _load();
     _api.fetchBrandModels().then((data) {
-      final raw = data['brandModels'] as Map<String, dynamic>? ?? {};
+      final raw = (data['brandFamilies'] ?? data['brandModels']) as Map<String, dynamic>? ?? {};
       if (!mounted) return;
       setState(() {
         _brandModels = raw.map((k, v) => MapEntry(k, (v as List<dynamic>).map((e) => e.toString()).toList()));

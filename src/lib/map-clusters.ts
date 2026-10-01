@@ -3,6 +3,8 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
 import { TR_GEO } from "@/lib/tr-geo";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { modelFamilyRegex } from "@/lib/model-family";
 
 
 
@@ -103,15 +105,15 @@ export function buildMapQuery(params: URLSearchParams): Record<string, unknown> 
   const brand = params.get("brand");
   if (brand) query.brand = { $in: brandStorageAliases(brand) };
 
-  // Ana listedeki filtreyle aynı: model tam adıyla eşleşir (marka seçiliyken).
+  // Ana listedeki filtreyle aynı: model ailesiyle eşleşir (marka seçiliyken).
   const model = params.get("model");
-  if (model) query.model = model;
+  if (model) query.model = modelFamilyRegex(model, brand);
 
   const city = params.get("city");
   if (city) query.city = { $in: cityStorageAliases(city) };
 
   const fuel = params.get("fuel");
-  if (fuel) query["features.fuelType"] = fuel;
+  if (fuel) query["features.fuelType"] = normalizeFuelType(fuel);
 
   const min = Number(params.get("minPrice"));
   const max = Number(params.get("maxPrice"));

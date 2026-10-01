@@ -141,7 +141,7 @@ class DamageDiagram extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Bilgi ilan sahibinin/kaynak sitenin beyanıdır.'
-              '${affectedParts.isEmpty ? ' Bu ilan için parça bazlı ayrıntı kaynakta bulunmadığından yalnızca sayılar gösteriliyor.' : ''}',
+              '${affectedParts.isEmpty ? (damageParts.isNotEmpty ? ' Kaynak ${damageParts.length} parçayı tek tek kontrol edip işlem görmüş parça bildirmiyor.' : ' Bu ilan için parça bazlı ayrıntı kaynakta bulunmadığından yalnızca sayılar gösteriliyor.') : ''}',
               style: const TextStyle(fontSize: 10.5, color: Colors.white38),
             ),
           ],

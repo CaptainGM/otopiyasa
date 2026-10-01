@@ -10,6 +10,16 @@ describe("parseDamageReport", () => {
     expect(r.affected).toBe(0);
   });
 
+  it("kurumsal kaynakların temiz yazımlarını orijinal sayar", () => {
+    for (const text of ["Boya/değişen yok", "Boya/değişen yok (tüm parçalar orijinal)", "Boyasız"]) {
+      const r = parseDamageReport(text);
+      expect(r.level).toBe("original");
+      expect(r.unknown).toBe(false);
+    }
+    // Sayı varsa temiz ifadesi sayıyı ezmez.
+    expect(parseDamageReport("Boyasız, 1 değişen").changed).toBe(1);
+  });
+
   it("belirtilmemiş / boş", () => {
     expect(parseDamageReport("Belirtilmemiş").unknown).toBe(true);
     expect(parseDamageReport("").unknown).toBe(true);

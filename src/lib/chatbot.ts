@@ -122,6 +122,15 @@ export interface FilterCriteria {
   priceMin?: number;
   priceMax?: number;
   fuelType?: string;
+  transmission?: string;
+}
+
+/** "otomatik", "düz vites", "yarı otomatik" — kayıtlardaki vites yazımına çevrilir. */
+function parseTransmission(t: string): string | undefined {
+  if (/yar[ıi][\s-]*otomatik/.test(t)) return "Yarı Otomatik";
+  if (/\b(otomatik|automatic|dsg|cvt)\b/.test(t)) return "Otomatik";
+  if (/\b(manuel|manual)\b|düz\s*vites/.test(t)) return "Manuel";
+  return undefined;
 }
 
 const FUEL_WORDS: Record<string, string> = {
@@ -151,6 +160,8 @@ export function parseFilterCriteria(message: string): FilterCriteria {
       break;
     }
   }
+  const transmission = parseTransmission(t);
+  if (transmission) out.transmission = transmission;
 
 
   const yearRange = t.match(/(19|20)\d{2}\s*[-–]\s*(19|20)\d{2}/);
@@ -201,6 +212,7 @@ interface FilterFields {
   priceMin?: number;
   priceMax?: number;
   fuelType?: string;
+  transmission?: string;
 }
 
 
@@ -214,6 +226,7 @@ function filterReply(f: FilterFields, replyText?: string): ChatReply | null {
   if (Number.isFinite(f.priceMin)) params.set("priceMin", String(f.priceMin));
   if (Number.isFinite(f.priceMax)) params.set("priceMax", String(f.priceMax));
   if (f.fuelType) params.set("fuelType", f.fuelType);
+  if (f.transmission) params.set("transmission", f.transmission);
   if ([...params.keys()].length === 0) return null;
 
 
@@ -230,6 +243,7 @@ function filterReply(f: FilterFields, replyText?: string): ChatReply | null {
   else if (f.priceMax) bits.push(`${formatPrice(f.priceMax)} bütçe`);
   else if (f.priceMin) bits.push(`${formatPrice(f.priceMin)} üstü`);
   if (f.fuelType) bits.push(f.fuelType);
+  if (f.transmission) bits.push(f.transmission.toLocaleLowerCase("tr-TR") + " vites");
   const summary = bits.join(", ");
 
   return {
@@ -279,7 +293,7 @@ function isFollowUp(message: string): boolean {
 
 async function fastReply(message: string, context?: ChatContext): Promise<ChatReply | null> {
   const c = parseFilterCriteria(message);
-  const hasCriteria = c.yearMin || c.yearMax || c.priceMin || c.priceMax || c.fuelType;
+  const hasCriteria = c.yearMin || c.yearMax || c.priceMin || c.priceMax || c.fuelType || c.transmission;
   if (hasCriteria) {
     const [detected, city] = await Promise.all([detectBrand(message), detectCity(message)]);
    
@@ -552,7 +566,7 @@ async function handleIntent(
   if (intent.action !== "filter") {
     const c = parseFilterCriteria(userMessage);
     const hasCriteria =
-      c.yearMin || c.yearMax || c.priceMin || c.priceMax || c.fuelType;
+      c.yearMin || c.yearMax || c.priceMin || c.priceMax || c.fuelType || c.transmission;
     if (hasCriteria) {
       intent = { ...intent, action: "filter" };
     }
@@ -586,6 +600,7 @@ async function handleIntent(
         priceMin: parsed.priceMin ?? pr(gf.priceMin),
         priceMax: parsed.priceMax ?? pr(gf.priceMax),
         fuelType: parsed.fuelType ?? gf.fuelType,
+        transmission: parsed.transmission,
       };
       const reply = filterReply(merged, intent.reply?.trim());
       if (reply) return reply;

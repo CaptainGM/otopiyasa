@@ -43,24 +43,6 @@ export function dailyMixSeed(now = Date.now()): number {
 }
 
 
-/**
- * Rastgele akışın başlangıç noktası: tohumdan [0, 0.5) aralığında bir rand değeri.
- * İlk yarıdan başlandığı için (en az ~yarısı kadar ilan öndedir) sayfa sonuna gelip başa
- * sarmak gerekmez. Aynı tohum aynı akışı verir; farklı tohumlar farklı yerden başlar.
- */
-export function seedToStart(seed: number): number {
-  const mixed = Math.imul((Math.trunc(seed) | 0) ^ 0x9e3779b9, 2654435761) >>> 0;
-  return (mixed / 4294967296) * 0.5;
-}
-
-/**
- * Tohum yoksa (eski mobil sürümler tohum göndermez) 30 dakikada bir değişen ortak tohum
- * kullanılır: sayfalar arası tutarlılık bozulmaz, yine de akış sabit "en yeni" değildir.
- */
-export function resolveFeedSeed(seed?: number, now = Date.now()): number {
-  return Number.isFinite(seed) && (seed as number) > 0 ? (seed as number) : dailyMixSeed(now);
-}
-
 export function isMixedSort(sort?: string): boolean {
   return !sort || sort === "mixed";
 }

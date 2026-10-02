@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyTramer, mergeDetailIntoListing, parseOtokocDetail, parseOtoplusDetail, shouldReplaceFuel } from "./enrich-detail";
+import { classifyTramer, mergeDetailIntoListing, parseOtokocDetail, parseOtoplusDetail } from "./enrich-detail";
 import type { ScrapedListing } from "./types";
 
 const otokocHtml = (opts: { tramer?: string; paint?: string; images?: string[]; fuel?: string; volume?: string } = {}) => {
@@ -147,23 +147,5 @@ describe("mergeDetailIntoListing", () => {
   it("daha az fotoğraf gelirse mevcut galeriyi küçültmez", () => {
     const merged = mergeDetailIntoListing({ ...base, images: ["a", "b", "c"] }, { images: ["a"] });
     expect(merged.images).toEqual(["a", "b", "c"]);
-  });
-});
-
-describe("shouldReplaceFuel", () => {
-  it("liste tahminini aracın kendi kaydıyla düzeltir", () => {
-    // "RANGE ROVER EVOQUE" ve "QASHQAI 1.3DIG-T MHEV" liste açıklamasından elektrikli sanılıyordu.
-    expect(shouldReplaceFuel("Elektrik", "Kurşunsuz")).toBe(true);
-    expect(shouldReplaceFuel("Elektrik", "Hibrit")).toBe(true);
-    expect(shouldReplaceFuel("Bilinmiyor", "Dizel")).toBe(true);
-    expect(shouldReplaceFuel("Kurşunsuz", "Benzin")).toBe(true);
-  });
-
-  it("aynı yakıtı, sonradan takılan LPG'yi ve anlaşılmayan değeri ezmez", () => {
-    expect(shouldReplaceFuel("Benzin", "Kurşunsuz")).toBe(false);
-    expect(shouldReplaceFuel("LPG & Benzin", "Benzin")).toBe(false);
-    expect(shouldReplaceFuel("Dizel", "Hidrojen")).toBe(false);
-    expect(shouldReplaceFuel("Dizel", "")).toBe(false);
-    expect(shouldReplaceFuel("Dizel", "Bilinmiyor")).toBe(false);
   });
 });

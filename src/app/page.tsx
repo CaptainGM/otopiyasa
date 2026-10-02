@@ -45,16 +45,11 @@ export default async function HomePage({ searchParams }: HomeProps) {
   });
 
   const filters = parseCarFilters(urlParams);
-  // "Keşfet" akışı: her sayfa yüklemesinde (tarayıcı yenileme dahil) yeni tohum; aynı tohum
-  // sonsuz kaydırmadaki sonraki sayfalara da gider, böylece sayfalar arasında tekrar/atlama olmaz.
-  const feedSeed = filters.seed ?? 1 + Math.floor(Math.random() * 2_147_483_646);
-  filters.seed = feedSeed;
   const pageSize = filters.limit || 48;
   filters.limit = pageSize;
   const listParams = new URLSearchParams(urlParams);
   listParams.delete("page");
   listParams.set("limit", String(pageSize));
-  listParams.set("seed", String(feedSeed));
   let items: CarType[] = [];
   let total = 0;
   let totalPages = 1;
@@ -69,7 +64,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
 
     // Filtre seçenekleri herkes için aynı ve yalnızca taramada değişir → önbellek
     // (aksi hâlde her sayfa geçişinde 8000 araç üzerinde 3 ağır sorgu koşuyordu).
-    let brandModelData: { brands: string[]; brandFamilies: Record<string, string[]> };
+    let brandModelData: { brands: string[]; brandModels: Record<string, string[]> };
     [brandModelData, cityOptions, colorOptions] = await Promise.all([
       getBrandModelOptions(),
       cached("home:cities", CACHE_TTL.medium, async () =>
@@ -81,8 +76,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
       cached("home:colors", CACHE_TTL.medium, () => getColorOptions()),
     ]);
     brandOptions = brandModelData.brands;
-    // Filtrede model aileleri: "Juke" seçilince tüm Juke donanımları gelir.
-    brandModelOptions = brandModelData.brandFamilies;
+    brandModelOptions = brandModelData.brandModels;
 
     const { docs: cars, total: count, limit } = await findCarsPage(filters);
     const docs = cars.filter(isLeanCarDoc);
@@ -128,8 +122,8 @@ export default async function HomePage({ searchParams }: HomeProps) {
               takip et
             </h1>
             <p className="max-w-xl text-[15px] leading-relaxed text-slate-400">
-              İlan siteleri ve kurumsal galerilerden derlenen ilanları filtrele. Her araç için
-              marka / model / yıl bazında piyasa ortalamasını gör, gerçek ilana tek tıkla ulaş.
+              Arabam ve Otomerkezi kaynaklı ilanları filtrele. Her araç için marka /
+              model / yıl bazında piyasa ortalamasını gör, gerçek ilana tek tıkla ulaş.
             </p>
           </div>
 
@@ -146,10 +140,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
                 <span className="text-xs uppercase tracking-widest text-slate-500">
                   Aktif ilan
                 </span>
-                <strong>{total.toLocaleString("tr-TR")}</strong>
+                <strong>{total}</strong>
               </div>
             </div>
-            <Link href="/sell" className="stat-tile sm:col-span-2 group cursor-pointer" aria-label="Ücretsiz ilan ver">
+            <div className="stat-tile sm:col-span-2">
               <span className="stat-tile-icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
                   <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -161,10 +155,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
                 </span>
                 <strong className="text-lg">Ücretsiz ilan ver</strong>
               </div>
-              <span className="ml-auto self-center text-xl text-amber-300 transition-transform group-hover:translate-x-1" aria-hidden>
-                →
-              </span>
-            </Link>
+            </div>
           </div>
         </div>
       </section>

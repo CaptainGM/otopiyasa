@@ -21,9 +21,6 @@ export interface DamageReport {
 }
 
 
-/** Kurumsal kaynakların "temiz" yazımları: "Boya/değişen yok", "Boyasız", "tüm parçalar orijinal". */
-export const CLEAN_PAINT_RE = /boya\s*\/\s*değişen\s+yok|değişen\s+yok|boyasız|boyasiz|değişensiz|degisensiz|tüm\s+parçalar\s+or[ji]inal/;
-
 function countOf(text: string, label: RegExp): number {
   const match = text.match(new RegExp(`(\\d+)\\s*${label.source}`, "i"));
   return match ? Number(match[1]) : 0;
@@ -69,15 +66,6 @@ export function parseDamageReport(raw: string | undefined | null): DamageReport 
   const changed = countOf(lower, /değişen/);
 
   const affected = changed + painted + localPainted;
-  if (affected === 0 && CLEAN_PAINT_RE.test(lower)) {
-    return {
-      ...empty,
-      unknown: false,
-      allOriginal: true,
-      level: "original",
-      summary: "Aracın tamamı orijinal — boyalı ya da değişen parça yok.",
-    };
-  }
   if (affected === 0) return empty;
 
   

@@ -16,15 +16,12 @@ import {
   refetchArabamDetails,
   POPULAR_BRANDS,
 } from "@/lib/scraper/adapters";
-import { normalizeBrand, normalizeBrandModel } from "@/lib/normalize-brand";
+import { normalizeBrand } from "@/lib/normalize-brand";
 import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
 import { fetchDetailPatch, isDetailSource, isUnknownValue, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
-import { fuelWithTitleHint } from "@/lib/normalize-fuel";
-import { normalizeCity } from "@/lib/normalize-city";
-import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
 import { ListingSource } from "@/types";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
@@ -72,14 +69,6 @@ export async function saveListing(
   options: { markVerified?: boolean } = {}
 ): Promise<SaveResult> {
   const markVerified = options.markVerified !== false;
-  // Kaynaklar marka/model, yakıt ve ili farklı yazıyor ("Mercedes" + "- Benz C 180", "Benzin & LPG",
-  // "Elaziğ"...); tek yazımla saklanır.
-  listing = {
-    ...listing,
-    ...normalizeBrandModel(listing.brand, listing.model),
-    city: listing.city ? normalizeCity(listing.city) : listing.city,
-    features: { ...listing.features, fuelType: fuelWithTitleHint(listing.features?.fuelType, listing.title, listing.model) },
-  };
   const now = new Date();
   const existing = await Car.findOne({
     sourceSite: listing.sourceSite,
@@ -87,10 +76,6 @@ export async function saveListing(
   });
 
   if (existing) {
-    // "Eksik" diye arşive alınmış ilanı, liste sayfası yine tek fotoğraf veriyorsa geri açma.
-    if (existing.status === "removed" && isIncompleteRemoval(existing.removedReason) && lacksGallery(listing.sourceSite, listing.images)) {
-      return "unchanged";
-    }
     // Detayı ilan sayfasından tamamlanmış kurumsal ilanlarda liste sayfasındaki şablon açıklama,
     // tek fotoğraf ve "Belirtilmemiş" alanlar zengin veriyi ezmemeli (aksi hâlde her tarama
     // galeriyi ve açıklamayı geri siliyordu).
@@ -227,7 +212,7 @@ export async function saveListing(
   let detailCheckedAt: Date | undefined;
   if (isDetailSource(listing.sourceSite)) {
     try {
-      const patch = await fetchDetailPatch(listing.sourceSite, listing.listingUrl, listing.externalId, listing.title);
+      const patch = await fetchDetailPatch(listing.sourceSite, listing.listingUrl);
       if (patch) {
         toCreate = mergeDetailIntoListing(listing, patch);
         detailCheckedAt = now;
@@ -235,13 +220,6 @@ export async function saveListing(
     } catch {
       // ilan sayfası okunamadı: liste verisiyle devam
     }
-  }
-
-  // Galeri şartı olan kaynakta detay BAŞARIYLA okunup yine de galeri çıkmadıysa yeni ilan yayına alınmaz.
-  // Okuma başarısızsa (ağ, bot koruması) ilan eskisi gibi eklenir; arka plan tamamlayıcı yeniden dener ve
-  // ancak ikinci başarısız okumada arşive alır. Aksi hâlde geçici bir engel yeni ilanların tamamını düşürürdü.
-  if (detailCheckedAt && lacksGallery(toCreate.sourceSite, toCreate.images)) {
-    return "skipped";
   }
 
   await Car.create({

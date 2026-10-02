@@ -1,5 +1,3 @@
-import { isProxyableImage, proxiedImageUrl } from "@/lib/image-proxy";
-
 const ARABAM_SIZE_LADDER = ["800x600", "1920x1080"];
 
 const ARABAM_SIZE_RE = /_(\d{2,4}x\d{2,4})(\.(?:jpe?g|png|webp))(\?.*)?$/i;
@@ -13,13 +11,9 @@ export const CARD_IMAGE_SIZE = "800x600";
  *  - Otoplus  _1920x1080    → _1280x720       135 KB → 66 KB (daha küçük boyutlar 403 veriyor)
  *  - Otokoç   /car/640x/    → /car/450x/       52 KB → 34 KB
  * Varyant yüklenemezse çağıran orijinal adresi yedek olarak verir (bkz. CardGallery).
- *
- * Küçük boyut sunmayan kaynaklar (VavaCars ve eski Carvak kayıtları 0,5–1 MB, Otomerkezi ~140 KB, Otoplus 118 KB) sunucuda
- * 480 px WebP'ye küçültülür (/api/img): 6–12 KB.
  */
 export function cardImageUrl(url: string): string {
   if (!url) return url;
-  if (isProxyableImage(url)) return proxiedImageUrl(url, 480);
   if (url.includes("img.carvak.co/") && url.includes("w_1920,h_1080")) {
     return url.replace("w_1920,h_1080", "w_640,h_360");
   }

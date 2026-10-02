@@ -26,8 +26,9 @@ Widget _miniCard(BuildContext context, CarListing car, {String? badge, Color? ba
             children: [
               AspectRatio(
                 aspectRatio: 16 / 10,
-                // İlk fotoğraf kaynakta silinmişse ilanın diğer fotoğrafı denenir.
-                child: ListingImage(url: car.imageUrl, fallbacks: car.images, cacheWidth: 480),
+                child: car.imageUrl.isEmpty
+                    ? Container(color: Colors.white10, child: const Icon(Icons.directions_car))
+                    : ListingImage(url: car.imageUrl, cacheWidth: 480),
               ),
               if (badge != null)
                 Positioned(
@@ -73,8 +74,7 @@ Widget _stripShell({required String title, required List<Widget> children}) {
       Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
       const SizedBox(height: 8),
       SizedBox(
-        // Kart yüksekliği yazı tipi ölçeğine göre değişir; sabit 152 px bazı cihazlarda taşıyordu.
-        height: 172,
+        height: 152,
         child: ListView(scrollDirection: Axis.horizontal, children: children),
       ),
       const SizedBox(height: 20),

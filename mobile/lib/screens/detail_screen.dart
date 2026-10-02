@@ -2,11 +2,9 @@ import 'dart:async';
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/services/api_service.dart';
-import 'package:otopiyasa/widgets/fuel_cost_card.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/widgets/listing_interaction.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
@@ -38,7 +36,6 @@ class _DetailScreenState extends State<DetailScreen> {
   bool _togglingFavorite = false;
   String? _error;
   int _activeImageIndex = 0;
-  Map<String, dynamic>? _fuelCost;
 
   @override
   void initState() {
@@ -53,9 +50,6 @@ class _DetailScreenState extends State<DetailScreen> {
       _loading = widget.initialCar == null;
     }
     _load();
-    _api.fetchFuelCost(widget.carId).then((cost) {
-      if (mounted && cost != null) setState(() => _fuelCost = cost);
-    });
   }
 
   Future<void> _load() async {
@@ -105,7 +99,6 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   Future<void> _toggleFavorite() async {
-    HapticFeedback.lightImpact();
     if (!_api.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Favorilere eklemek için giriş yapmalısın')),
@@ -169,19 +162,15 @@ class _DetailScreenState extends State<DetailScreen> {
         children: [
           PageView.builder(
             itemCount: allImages.length,
-            // Komşu fotoğraf önceden indirilmez: galeride kimse hepsini görmüyor, hücresel veride her
-            // fotoğraf 90–270 KB.
+            allowImplicitScrolling: true,
             onPageChanged: (idx) => setState(() => _activeImageIndex = idx),
             itemBuilder: (context, index) {
               final imgUrl = allImages[index];
               final isFirst = index == 0;
-              // Tam genişlik galeri: 480 px çözüm yüksek yoğunluklu ekranlarda bulanık görünüyordu.
               final child = ListingImage(
                 url: imgUrl,
                 fit: BoxFit.cover,
-                cacheWidth: 1080,
-                // İlk fotoğrafın kart varyantı zaten önbellekte; diğerlerinde ~10 KB'lık önizleme.
-                tinyPreview: !isFirst,
+                cacheWidth: 480,
               );
               return isFirst
                   ? Hero(tag: 'car-img-${car.id}', child: child)
@@ -414,10 +403,6 @@ class _DetailScreenState extends State<DetailScreen> {
                   _chip(car.bodyType),
                 ],
               ),
-              if (_fuelCost != null) ...[
-                const SizedBox(height: 16),
-                FuelCostCard(cost: _fuelCost!),
-              ],
               if (car.priceHistory.length >= 2) ...[
                 const SizedBox(height: 24),
                 const Text(
@@ -528,7 +513,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: car.similarCars.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final similar = car.similarCars[index];
                       return _buildSimilarCarRow(context, similar);

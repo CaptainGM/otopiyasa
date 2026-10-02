@@ -30,8 +30,6 @@ const DEFAULT_RADIUS_KM = 25;
 
 export function ListingsMap() {
   const [brand, setBrand] = useState("");
-  const [model, setModel] = useState("");
-  const [brandModels, setBrandModels] = useState<Record<string, string[]>>({});
   const [city, setCity] = useState("");
   const [fuel, setFuel] = useState("");
   const [minPrice, setMinPrice] = useState("");
@@ -57,22 +55,13 @@ export function ListingsMap() {
   const filterParams = useCallback(() => {
     const params = new URLSearchParams();
     if (brand) params.set("brand", brand);
-    if (brand && model) params.set("model", model);
     if (city) params.set("city", city);
     if (fuel) params.set("fuel", fuel);
     if (minPrice) params.set("minPrice", minPrice);
     if (maxPrice) params.set("maxPrice", maxPrice);
     if (discountOnly) params.set("discountOnly", "true");
     return params;
-  }, [brand, model, city, fuel, minPrice, maxPrice, discountOnly]);
-
-  // Model listesi ana sayfadaki filtreyle aynı kaynaktan (marka seçilince dolar).
-  useEffect(() => {
-    fetch("/api/filters/brand-models")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => (data?.brandFamilies || data?.brandModels) && setBrandModels(data.brandFamilies || data.brandModels))
-      .catch(() => {});
-  }, []);
+  }, [brand, city, fuel, minPrice, maxPrice, discountOnly]);
 
   const requestId = useRef(0);
   useEffect(() => {
@@ -122,7 +111,6 @@ export function ListingsMap() {
 
   function clearFilters() {
     setBrand("");
-    setModel("");
     setCity("");
     setFuel("");
     setMinPrice("");
@@ -130,7 +118,7 @@ export function ListingsMap() {
     setDiscountOnly(false);
   }
 
-  const hasActiveFilters = Boolean(brand || model || city || fuel || minPrice || maxPrice || discountOnly);
+  const hasActiveFilters = Boolean(brand || city || fuel || minPrice || maxPrice || discountOnly);
 
   const withDistance: (MapCluster & { distance: number | null })[] = me
     ? clusters
@@ -168,32 +156,10 @@ export function ListingsMap() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="space-y-1 text-xs text-slate-400">
             <span className="block font-bold uppercase tracking-wider text-[10px]">Marka</span>
-            <select
-              className={selectCls}
-              value={brand}
-              onChange={(e) => {
-                setBrand(e.target.value);
-                setModel("");
-              }}
-            >
+            <select className={selectCls} value={brand} onChange={(e) => setBrand(e.target.value)}>
               <option value="">Tüm Markalar</option>
               {options.brands.map((b) => (
                 <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="space-y-1 text-xs text-slate-400">
-            <span className="block font-bold uppercase tracking-wider text-[10px]">Model</span>
-            <select
-              className={selectCls}
-              value={model}
-              disabled={!brand || !(brandModels[brand]?.length)}
-              onChange={(e) => setModel(e.target.value)}
-            >
-              <option value="">{brand ? "Tüm Modeller" : "Önce marka seçin"}</option>
-              {(brandModels[brand] || []).map((m) => (
-                <option key={m} value={m}>{m}</option>
               ))}
             </select>
           </label>

@@ -2,11 +2,6 @@ import * as cheerio from "cheerio";
 import { Car } from "@/models/Car";
 import { foldForFilter } from "@/lib/content-filter";
 import type { ScrapedListing } from "@/lib/scraper/types";
-import { classifyOtokocHtml, classifyRedirect } from "@/lib/scraper/verify-listing";
-import { archiveListings, breakerTripped } from "@/lib/scraper/listing-lifecycle";
-import { EXTRA_DETAIL_SOURCES, fetchExtraDetail } from "@/lib/scraper/detail-sources";
-import { FUEL_TYPES, normalizeFuelType } from "@/lib/normalize-fuel";
-import { incompleteReason, lacksGallery } from "@/lib/scraper/listing-quality";
 
 /**
  * KURUMSAL KAYNAKLARDA İLAN DETAYI
@@ -23,8 +18,7 @@ import { incompleteReason, lacksGallery } from "@/lib/scraper/listing-quality";
  * Satıcı açıklaması yalnızca sayfada gerçekten varsa alınır; bu iki kaynakta yok,
  * bu yüzden açıklama sayfadaki verilerden derlenir (uydurma bilgi eklenmez).
  */
-/** İlan detayı okunabilen kurumsal kaynaklar; son üçü sitelerin kendi veri uç noktalarından (bkz. detail-sources.ts). */
-export const DETAIL_SOURCES = ["otokoc", "otoplus", "carvak", "dod", "otomerkezi"] as const;
+export const DETAIL_SOURCES = ["otokoc", "otoplus"] as const;
 export type DetailSource = (typeof DETAIL_SOURCES)[number];
 
 export const isDetailSource = (source?: string): source is DetailSource =>
@@ -40,29 +34,11 @@ export interface DetailPatch {
   engineSize?: number;
   paintChange?: string;
   damageFlag?: boolean;
-  damageParts?: { name: string; state: string }[];
-  horsepower?: number;
-  /** Resmi ortalama tüketim ("4,9 lt"); yakıt maliyeti hesabında kullanılır. */
-  avgFuelConsumption?: string;
 }
 
 const MAX_IMAGES = 24;
 const UNKNOWN_VALUES = new Set(["", "belirtilmemiş", "bilinmiyor", "otomobil", "belirtilmemis"]);
 export const isUnknownValue = (v?: string | null) => UNKNOWN_VALUES.has((v || "").trim().toLocaleLowerCase("tr-TR"));
-
-/**
- * Detay sayfasındaki (aracın kendi kaydı) yakıt, liste sayfasından tahmin edilenden güvenilirdir:
- * liste açıklamasındaki "EVOQUE"/"MHEV" gibi kelimeler aracı yanlışlıkla elektrikli gösterebiliyordu.
- * Sonradan takılmış LPG ise fabrika kaydıyla ezilmez.
- */
-export function shouldReplaceFuel(current?: string | null, next?: string | null): boolean {
-  if (!next || isUnknownValue(next)) return false;
-  const proposed = normalizeFuelType(next);
-  if (!(FUEL_TYPES as readonly string[]).includes(proposed)) return isUnknownValue(current);
-  const existing = normalizeFuelType(current);
-  if (existing === proposed) return current !== proposed;
-  return !(existing === "LPG & Benzin" && proposed === "Benzin");
-}
 
 /** Liste sayfası rengi küçük harfle veriyor ("beyaz"); ilan sayfasındaki yazımı ("Beyaz") tercih et. */
 const sameIgnoringCase = (a?: string | null, b?: string | null) =>
@@ -236,48 +212,16 @@ export function parseOtoplusDetail(html: string): DetailPatch | null {
 const DETAIL_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
-/**
- * ok     → ilan sayfası okundu
- * gone   → ilan kaldırılmış (güçlü kanıt: 404/410, Otokoç'un "Sayfa Bulunamadı" sayfası,
- *          Otoplus'un ilan numarasını kaybeden yönlendirmesi)
- * failed → ağ hatası, engel ya da anlaşılamayan sayfa: hiçbir şey kanıtlamaz
- */
-export type DetailOutcome =
-  | { kind: "ok"; patch: DetailPatch }
-  | { kind: "gone"; reason: string }
-  | { kind: "failed"; reason: string };
-
-export async function fetchDetail(source: string, url: string, externalId?: string, title?: string): Promise<DetailOutcome> {
-  if (!isDetailSource(source) || !url) return { kind: "failed", reason: "desteklenmeyen kaynak" };
-  if ((EXTRA_DETAIL_SOURCES as readonly string[]).includes(source)) {
-    // Bu kaynaklarda ilanın kaldırıldığına detaydan karar verilmez; envanter senkronu karar verir.
-    const extra = await fetchExtraDetail(source, url, externalId, title);
-    return extra ? { kind: "ok", patch: extra } : { kind: "failed", reason: "ilan verisi okunamadı" };
-  }
+export async function fetchDetailPatch(source: string, url: string): Promise<DetailPatch | null> {
+  if (!isDetailSource(source) || !url) return null;
   const res = await fetch(url, {
     headers: { "User-Agent": DETAIL_UA, "Accept-Language": "tr-TR,tr;q=0.9" },
     redirect: "follow",
     signal: AbortSignal.timeout(15000),
   });
-  if (res.status === 404 || res.status === 410) return { kind: "gone", reason: `HTTP ${res.status}` };
-  if (!res.ok) return { kind: "failed", reason: `HTTP ${res.status}` };
-  if (source === "otoplus" && classifyRedirect(url, res.url || url) === "lost-id") {
-    return { kind: "gone", reason: "ilan adresi ilan numarası olmayan bir sayfaya yönlendi" };
-  }
+  if (!res.ok) return null;
   const html = await res.text();
-  const patch = source === "otokoc" ? parseOtokocDetail(html) : parseOtoplusDetail(html);
-  if (patch) return { kind: "ok", patch };
-  // 2026-09 ölçümü: okunamayan Otokoç sayfalarının hepsi HTTP 200 ile dönen "Sayfa Bulunamadı"
-  // kabuğuydu (satılmış ilan); eskiden bunlar yalnızca "okunamadı" sayılıp aktif kalıyordu.
-  if (source === "otokoc" && classifyOtokocHtml(html) === "gone") {
-    return { kind: "gone", reason: "ilan sayfası 'Sayfa Bulunamadı' döndürüyor (satılmış)" };
-  }
-  return { kind: "failed", reason: "ilan verisi bulunamadı" };
-}
-
-export async function fetchDetailPatch(source: string, url: string, externalId?: string, title?: string): Promise<DetailPatch | null> {
-  const outcome = await fetchDetail(source, url, externalId, title);
-  return outcome.kind === "ok" ? outcome.patch : null;
+  return source === "otokoc" ? parseOtokocDetail(html) : parseOtoplusDetail(html);
 }
 
 /** Yeni ilan kaydedilmeden önce detay bilgisini listeleme verisine işler. */
@@ -285,11 +229,9 @@ export function mergeDetailIntoListing(listing: ScrapedListing, patch: DetailPat
   const features = { ...listing.features };
   if (patch.color && shouldReplaceColor(features.color, patch.color)) features.color = patch.color;
   if (patch.bodyType && isUnknownValue(features.bodyType)) features.bodyType = patch.bodyType;
-  if (shouldReplaceFuel(features.fuelType, patch.fuelType)) features.fuelType = normalizeFuelType(patch.fuelType);
+  if (patch.fuelType && isUnknownValue(features.fuelType)) features.fuelType = patch.fuelType;
   if (patch.transmission && isUnknownValue(features.transmission)) features.transmission = patch.transmission;
   if (patch.engineSize && !features.engineSize) features.engineSize = patch.engineSize;
-  if (patch.horsepower && !features.horsepower) features.horsepower = patch.horsepower;
-  if (patch.avgFuelConsumption && !features.avgFuelConsumption) features.avgFuelConsumption = patch.avgFuelConsumption;
 
   const images = patch.images && patch.images.length > (listing.images?.length ?? 0) ? patch.images : listing.images;
   return {
@@ -299,7 +241,6 @@ export function mergeDetailIntoListing(listing: ScrapedListing, patch: DetailPat
     description: patch.description || listing.description,
     paintChange: patch.paintChange ?? listing.paintChange,
     damageFlag: patch.damageFlag ?? listing.damageFlag,
-    damageParts: patch.damageParts?.length ? patch.damageParts : listing.damageParts,
     features,
   };
 }
@@ -308,9 +249,6 @@ export interface BackfillResult {
   checked: number;
   enriched: number;
   imagesAdded: number;
-  /** Sayfası kaldırılmış görünen ilanlar (arşivlenenler + fren nedeniyle bekletilenler). */
-  gone: number;
-  archived: number;
   failed: number;
 }
 
@@ -320,60 +258,45 @@ export interface BackfillResult {
  */
 export async function runDetailBackfill(
   limit = 20,
-  options: { source?: DetailSource; log?: (msg: string) => void; delayMs?: number; ids?: unknown[] } = {}
+  options: { source?: DetailSource; log?: (msg: string) => void; delayMs?: number } = {}
 ): Promise<BackfillResult> {
   const now = new Date();
   const retryBefore = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const sources = options.source ? [options.source] : [...DETAIL_SOURCES];
 
-  // ids verilirse (eksik detay taraması) sıra seçimi atlanır, yalnızca o ilanlar işlenir.
-  const docs = await Car.find(
-    options.ids
-      ? { _id: { $in: options.ids }, sourceSite: { $in: sources }, status: "active", listingUrl: { $nin: ["", null] } }
-      : {
-          sourceSite: { $in: sources },
-          status: "active",
-          listingUrl: { $nin: ["", null] },
-          $or: [
-            { detailCheckedAt: { $exists: false } },
-            { "images.1": { $exists: false }, detailCheckedAt: { $lt: retryBefore } },
-          ],
-        }
-  )
+  const docs = await Car.find({
+    sourceSite: { $in: sources },
+    status: "active",
+    listingUrl: { $nin: ["", null] },
+    $or: [
+      { detailCheckedAt: { $exists: false } },
+      { "images.1": { $exists: false }, detailCheckedAt: { $lt: retryBefore } },
+    ],
+  })
     .sort({ detailCheckedAt: 1, createdAt: -1 })
     .limit(limit)
-    .select("_id sourceSite listingUrl externalId title images description features detailCheckedAt")
+    .select("_id sourceSite listingUrl images description features")
     .lean<
       Array<{
         _id: unknown;
         sourceSite: string;
         listingUrl: string;
-        detailCheckedAt?: Date;
         images?: string[];
         description?: string;
-        externalId?: string;
-        title?: string;
-        features?: { color?: string; bodyType?: string; fuelType?: string; transmission?: string; engineSize?: number; horsepower?: number; avgFuelConsumption?: string };
+        features?: { color?: string; bodyType?: string; fuelType?: string; transmission?: string; engineSize?: number };
       }>
     >();
 
-  const result: BackfillResult = { checked: 0, enriched: 0, imagesAdded: 0, gone: 0, archived: 0, failed: 0 };
-  const perSource = new Map<string, { checked: number; alive: number; gone: Array<{ id: unknown; reason: string }>; incomplete: unknown[] }>();
+  const result: BackfillResult = { checked: 0, enriched: 0, imagesAdded: 0, failed: 0 };
   for (const doc of docs) {
     result.checked++;
-    let outcome: DetailOutcome;
+    let patch: DetailPatch | null = null;
     try {
-      outcome = await fetchDetail(doc.sourceSite, doc.listingUrl, doc.externalId, doc.title);
-    } catch (err) {
-      outcome = { kind: "failed", reason: err instanceof Error ? err.message : "istek hatası" };
+      patch = await fetchDetailPatch(doc.sourceSite, doc.listingUrl);
+    } catch {
+      patch = null;
     }
-    const stats = perSource.get(doc.sourceSite) || { checked: 0, alive: 0, gone: [], incomplete: [] };
-    stats.checked++;
-    if (outcome.kind === "ok") stats.alive++;
-    if (outcome.kind === "gone") stats.gone.push({ id: doc._id, reason: outcome.reason });
-    perSource.set(doc.sourceSite, stats);
 
-    const patch = outcome.kind === "ok" ? outcome.patch : null;
     const set: Record<string, unknown> = { detailCheckedAt: now };
     if (patch) {
       const f = doc.features || {};
@@ -386,26 +309,14 @@ export async function runDetailBackfill(
       if (patch.description) set.description = patch.description;
       if (patch.color && shouldReplaceColor(f.color, patch.color)) set["features.color"] = patch.color;
       if (patch.bodyType && isUnknownValue(f.bodyType)) set["features.bodyType"] = patch.bodyType;
-      if (shouldReplaceFuel(f.fuelType, patch.fuelType)) set["features.fuelType"] = normalizeFuelType(patch.fuelType);
+      if (patch.fuelType && isUnknownValue(f.fuelType)) set["features.fuelType"] = patch.fuelType;
       if (patch.transmission && isUnknownValue(f.transmission)) set["features.transmission"] = patch.transmission;
       if (patch.engineSize && !f.engineSize) set["features.engineSize"] = patch.engineSize;
-      if (patch.horsepower && !f.horsepower) set["features.horsepower"] = patch.horsepower;
-      if (patch.avgFuelConsumption && !f.avgFuelConsumption) set["features.avgFuelConsumption"] = patch.avgFuelConsumption;
-      if (patch.damageParts?.length) set.damageParts = patch.damageParts;
       if (patch.paintChange !== undefined) set.paintChange = patch.paintChange;
       if (patch.damageFlag !== undefined) set.damageFlag = patch.damageFlag;
       result.enriched++;
-    } else if (outcome.kind === "gone") {
-      result.gone++;
     } else {
       result.failed++;
-    }
-
-    // Daha önce de okunmuş (ilk deneme sayılmaz) ve galerisi bu okumadan sonra da tek fotoğraf kalan
-    // ilan "eksik" sayılır; arşive alma aşağıda, parti ölçeğindeki güvenlik freninden sonra yapılır.
-    const finalImages = (set.images as string[] | undefined) ?? doc.images;
-    if (doc.detailCheckedAt && outcome.kind !== "gone" && lacksGallery(doc.sourceSite, finalImages)) {
-      stats.incomplete.push(doc._id);
     }
 
     // updatedAt'e dokunulmaz: detay tamamlamak ilanın "son değişikliği" değildir.
@@ -413,33 +324,9 @@ export async function runDetailBackfill(
     await new Promise((r) => setTimeout(r, options.delayMs ?? 700));
   }
 
-  // Kaldırılmış sayfalar güçlü kanıttır; yine de partide yeterince canlı sayfa okunmadıysa
-  // (site değişmiş/engel) arşivlenmez. Yanlışlıkla arşivlenen ilan, envanter senkronunda
-  // görüldüğünde kendiliğinden geri açılır.
-  const held: string[] = [];
-  for (const [source, stats] of perSource) {
-    // Sayfa hiç açılmıyorsa (engel/ağ sorunu) hepsini "eksik" saymamak için aynı fren: parti çoğunlukla
-    // okunamıyorsa dokunulmaz.
-    if (stats.incomplete.length > 0 && !breakerTripped(stats.checked, stats.incomplete.length, stats.alive)) {
-      result.archived += await archiveListings(stats.incomplete as string[], incompleteReason(source), now);
-    }
-    if (stats.gone.length === 0) continue;
-    if (breakerTripped(stats.checked, stats.gone.length, stats.alive)) {
-      held.push(source);
-      continue;
-    }
-    for (const g of stats.gone) {
-      result.archived += await archiveListings([g.id as string], `${source}: ${g.reason}`, now);
-    }
-  }
-
   if (result.checked > 0) {
-    const goneText =
-      result.gone > 0
-        ? `, ${result.gone} satılmış/kaldırılmış (${result.archived} arşive taşındı${held.length ? `; güvenlik freni: ${held.join(", ")}` : ""})`
-        : "";
     options.log?.(
-      `🖼️ [DETAY] ${result.checked} ilan kontrol edildi: ${result.enriched} zenginleştirildi (+${result.imagesAdded} fotoğraf)${goneText}, ${result.failed} okunamadı.`
+      `🖼️ [DETAY] ${result.checked} ilan kontrol edildi: ${result.enriched} zenginleştirildi (+${result.imagesAdded} fotoğraf), ${result.failed} okunamadı.`
     );
   }
   return result;

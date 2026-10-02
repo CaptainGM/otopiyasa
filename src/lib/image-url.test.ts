@@ -90,22 +90,17 @@ describe("imageCandidates", () => {
 });
 
 describe("cardImageUrl", () => {
-  it("Carvak ve Otokoç için kart boyutunda daha hafif varyant seçer", async () => {
+  it("Carvak, Otoplus ve Otokoç için kart boyutunda daha hafif varyant seçer", async () => {
     const { cardImageUrl } = await import("@/lib/image-url");
     expect(cardImageUrl("https://img.carvak.co/image/upload/w_1920,h_1080,c_thumb,g_auto/uploads/1.jpg")).toBe(
       "https://img.carvak.co/image/upload/w_640,h_360,c_thumb,g_auto/uploads/1.jpg"
     );
+    expect(cardImageUrl("https://cdn.otoplus.com/img/u/v/d6/arac-1_1920x1080.jpg")).toBe(
+      "https://cdn.otoplus.com/img/u/v/d6/arac-1_1280x720.jpg"
+    );
     expect(cardImageUrl("https://2el-cdn.otokoc.com.tr/otokoc2el/car/640x/a.webp")).toBe(
       "https://2el-cdn.otokoc.com.tr/otokoc2el/car/450x/a.webp"
     );
-  });
-
-  it("küçük boyut sunmayan kaynakları sunucuda küçültülen adrese çevirir", async () => {
-    const { cardImageUrl } = await import("@/lib/image-url");
-    const vava = "https://dat-tr-prda-ops-vava.azureedge.net/cars/1/documents/a.webp";
-    expect(cardImageUrl(vava)).toBe("/api/img?u=" + encodeURIComponent(vava) + "&w=480");
-    expect(cardImageUrl("https://asset.otomerkezi.net/car-photo/1_x.jpeg")).toContain("/api/img?u=");
-    expect(cardImageUrl("https://cdn.otoplus.com/img/u/v/d6/arac-1_1920x1080.jpg")).toContain("/api/img?u=");
   });
 
   it("tanınmayan adreslere ve Arabam'a dokunmaz", async () => {

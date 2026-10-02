@@ -2,9 +2,6 @@ import { resolvePlacement } from "@/lib/district-coords";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
-import { TR_GEO } from "@/lib/tr-geo";
-import { normalizeFuelType } from "@/lib/normalize-fuel";
-import { modelFamilyRegex } from "@/lib/model-family";
 
 
 
@@ -22,8 +19,6 @@ export interface MapCluster {
   city: string;
   
   district: string;
-  /** İlçenin Türkçe yazılışı ("cerkezkoy" → "Çerkezköy"); il geneli kümelerde boş. */
-  districtLabel: string;
   lat: number;
   lng: number;
   count: number;
@@ -77,7 +72,6 @@ export function buildClusters(cars: ClusterInput[]): {
         key: placed.key,
         city: car.city,
         district: placed.district,
-        districtLabel: placed.district ? prettyDistrict(placed.district) : "",
         lat: placed.lat,
         lng: placed.lng,
         count: 1,
@@ -105,15 +99,11 @@ export function buildMapQuery(params: URLSearchParams): Record<string, unknown> 
   const brand = params.get("brand");
   if (brand) query.brand = { $in: brandStorageAliases(brand) };
 
-  // Ana listedeki filtreyle aynı: model ailesiyle eşleşir (marka seçiliyken).
-  const model = params.get("model");
-  if (model) query.model = modelFamilyRegex(model, brand);
-
   const city = params.get("city");
   if (city) query.city = { $in: cityStorageAliases(city) };
 
   const fuel = params.get("fuel");
-  if (fuel) query["features.fuelType"] = normalizeFuelType(fuel);
+  if (fuel) query["features.fuelType"] = fuel;
 
   const min = Number(params.get("minPrice"));
   const max = Number(params.get("maxPrice"));
@@ -141,30 +131,7 @@ export function buildMapQuery(params: URLSearchParams): Record<string, unknown> 
 }
 
 
-const foldName = (s: string) =>
-  s
-    .toLocaleLowerCase("tr-TR")
-    .replace(/ç/g, "c").replace(/ğ/g, "g").replace(/ı/g, "i").replace(/ö/g, "o").replace(/ş/g, "s").replace(/ü/g, "u")
-    .replace(/[^a-z0-9]/g, "");
-
-let displayNames: Map<string, string> | null = null;
-
-/**
- * Koordinat tablosu ilçeleri sade anahtarla tutuyor ("cerkezkoy"); görünen ad il/ilçe listesindeki
- * Türkçe yazılıştan alınır, listede yoksa kelimelerin baş harfi büyütülür.
- */
 export function prettyDistrict(name: string): string {
-  if (!displayNames) {
-    displayNames = new Map();
-    for (const list of Object.values(TR_GEO)) {
-      for (const district of list) {
-        const key = foldName(district);
-        if (!displayNames.has(key)) displayNames.set(key, district);
-      }
-    }
-  }
-  const known = displayNames.get(foldName(name));
-  if (known) return known;
   return name
     .split(/[\s-]+/)
     .filter(Boolean)

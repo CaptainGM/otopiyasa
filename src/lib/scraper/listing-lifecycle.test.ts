@@ -38,17 +38,6 @@ describe("breakerTripped", () => {
     expect(breakerTripped(100, 5)).toBe(false);
     expect(breakerTripped(100, 35)).toBe(false);
   });
-  it("aynı partide yeterince canlı sayfa okunduysa yüksek ölü oranına güvenir", () => {
-    // Gerçek parti: 50 Otokoç ilanının 31'i veriyle okundu, 19'u satılmış sayfası döndü.
-    expect(breakerTripped(50, 19, 31)).toBe(false);
-    // Eski stok: 40 ilanın 27'si satılmış, 13'ü canlı.
-    expect(breakerTripped(40, 27, 13)).toBe(false);
-  });
-  it("canlı kanıt azsa yine tetiklenir", () => {
-    expect(breakerTripped(50, 48, 2)).toBe(true);
-    expect(breakerTripped(100, 80, 10)).toBe(true);
-    expect(breakerTripped(20, 20, 0)).toBe(true);
-  });
 });
 
 describe("inventoryLooksTrustworthy", () => {

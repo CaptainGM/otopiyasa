@@ -25,9 +25,9 @@ export interface ListingsMapInnerProps {
 function shortPrice(price: number) {
   if (price >= 1_000_000) {
     const millions = price / 1_000_000;
-    return `${millions.toLocaleString("tr-TR", { maximumFractionDigits: 1 })} mn`;
+    return `${millions.toLocaleString("tr-TR", { maximumFractionDigits: 1 })}M`;
   }
-  if (price >= 1_000) return `${Math.round(price / 1_000)} bin`;
+  if (price >= 1_000) return `${Math.round(price / 1_000)}B`;
   return `${price}`;
 }
 
@@ -45,13 +45,15 @@ function clusterPin(cluster: MapCluster, isSelected: boolean) {
   if (cluster.count >= 500) densityCls = "map-pin-density-high";
   else if (cluster.count >= 50) densityCls = "map-pin-density-mid";
 
-  // "8B" (8 bin ilan) fiyatlardaki kısaltmayla karışıyordu; ilan sayısı tam yazılır.
-  const countStr = cluster.count.toLocaleString("tr-TR");
+  const countStr =
+    cluster.count >= 1000
+      ? `${(cluster.count / 1000).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}B`
+      : `${cluster.count}`;
 
   const html = single
     ? `<div class="map-price-pin${activeCls}">${shortPrice(cluster.minPrice)} ₺</div>`
     : `<div class="map-city-pin ${densityCls}${activeCls}">
-        <span class="map-city-pin-count" title="${countStr} ilan">${countStr}</span>
+        <span class="map-city-pin-count">${countStr}</span>
         <span class="map-city-pin-body">
           <b>${label}</b>
           <i>${shortPrice(cluster.minPrice)} ₺'den</i>

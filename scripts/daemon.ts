@@ -103,8 +103,6 @@ async function main() {
   const { syncArabamSitemap, isSitemapSyncDue } = await import("@/lib/scraper/arabam-sitemap");
   const { runDetailBackfill } = await import("@/lib/scraper/enrich-detail");
   const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
-  const { backfillMissingRand } = await import("@/lib/feed-rand");
-  const { getFuelPrices, FUEL_PRICE_DAEMON_MAX_AGE_MS } = await import("@/lib/fuel-prices");
   const { recordHourlyMetric, updateDaemonHeartbeat, getDaemonControl, setDaemonControl, DaemonHeartbeat } = await import(
     "@/models/ScrapeMetric"
   );
@@ -251,16 +249,6 @@ async function main() {
             : `${targets[i].source} HATA: ${(r.reason as Error)?.message?.slice(0, 60)}`
         );
         log(`🚗 [KEŞİF] ${parts.join(" | ")}`);
-      }
-
-      // Eski kodla eklenmiş ilanlar "Keşfet" akışından dışlanmasın (Car.rand eksikse yaz).
-      const randFixed = await backfillMissingRand().catch(() => 0);
-      if (randFixed > 0) log(`🎲 [AKIŞ] ${randFixed} ilana rastgele akış değeri yazıldı.`);
-
-      // İlan detayındaki km başına yakıt maliyeti için pompa fiyatları (saatte bir kontrol edilir).
-      const fuel = await getFuelPrices(FUEL_PRICE_DAEMON_MAX_AGE_MS).catch(() => null);
-      if (fuel && Date.now() - new Date(fuel.fetchedAt).getTime() < 60_000) {
-        log(`⛽ [YAKIT] Fiyatlar güncellendi (${fuel.source}): benzin ${fuel.average.benzin} ₺, motorin ${fuel.average.dizel} ₺, LPG ${fuel.average.lpg} ₺`);
       }
 
       // ------------------------------------------------- 1b. DETAY TAMAMLAMA

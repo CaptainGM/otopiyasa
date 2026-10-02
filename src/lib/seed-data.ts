@@ -1,5 +1,3 @@
-import { FUEL_TYPES } from "@/lib/normalize-fuel";
-
 export const seedCars = [
   {
     title: "2020 Toyota Corolla 1.6 Vision",
@@ -303,6 +301,5 @@ export const seedCars = [
 ];
 
 export const brands = [...new Set(seedCars.map((car) => car.brand))].sort();
-// Filtre ve ilan formu tüm yakıtları göstersin (demo verisinde yalnızca üçü vardı: LPG ve hibrit seçilemiyordu).
-export const fuelTypes: string[] = [...FUEL_TYPES];
+export const fuelTypes = [...new Set(seedCars.map((car) => car.features.fuelType))].sort();
 export const transmissions = [...new Set(seedCars.map((car) => car.features.transmission))].sort();

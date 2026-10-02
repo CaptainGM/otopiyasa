@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:otopiyasa/services/api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 /// BİLDİRİM SERVİSİ.
 ///
@@ -15,9 +14,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// FCM anahtarı gibi Google hesabı gerektiren adımlar tamamlanana kadar
 /// devre dışı kalır. O tamamlanana kadar bu yoklama yöntemi tek kanal.
 ///
-/// Bu yaklaşım pil dostu olsun diye 60 saniyede bir yokluyor. Telefonda gösterilen son
-/// bildirimin kimliği cihazda saklanır; yalnızca ondan sonra gelenler gösterilir. Eskiden
-/// sayaç yalnızca bellekteydi ve uygulama her açıldığında son okunmamış bildirim yeniden düşüyordu.
+/// Bu yaklaşım pil dostu olsun diye 60 saniyede bir yokluyor ve yalnızca
+/// SAYI ARTTIĞINDA bildirim çıkarıyor (aynı bildirimi tekrar göstermiyor).
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -26,9 +24,8 @@ class NotificationService {
   final _api = ApiService();
 
   Timer? _timer;
+  int _lastUnreadCount = 0;
   bool _ready = false;
-  static const _shownKey = 'last_shown_notification_id';
-  String? _lastShownId;
 
   /// Yeni okunmamış bildirim sayısı değiştiğinde tetiklenir (rozet için).
   final unreadStream = StreamController<int>.broadcast();
@@ -57,7 +54,7 @@ class NotificationService {
   void stop() {
     _timer?.cancel();
     _timer = null;
-    _lastShownId = null;
+    _lastUnreadCount = 0;
   }
 
   Future<void> _check() async {
@@ -67,15 +64,12 @@ class NotificationService {
       final unread = items.where((n) => !n.read).toList();
       unreadStream.add(unread.length);
 
-      if (unread.isEmpty) return;
-      final prefs = await SharedPreferences.getInstance();
-      _lastShownId ??= prefs.getString(_shownKey);
-      final latest = unread.first;
-      if (latest.id == _lastShownId) return;
-      // İlk kurulumda (hiç kayıt yokken) birikmiş eski bildirimler telefona düşürülmez.
-      if (_lastShownId != null) await _show(latest.title, latest.body);
-      _lastShownId = latest.id;
-      await prefs.setString(_shownKey, latest.id);
+      // Yalnızca ARTIŞ olduğunda bildir; aksi halde her yoklamada tekrar eder.
+      if (unread.length > _lastUnreadCount && unread.isNotEmpty) {
+        final latest = unread.first;
+        await _show(latest.title, latest.body);
+      }
+      _lastUnreadCount = unread.length;
     } catch (_) {
       // Ağ hatası sessizce geçilir; bir sonraki yoklamada tekrar denenir.
     }

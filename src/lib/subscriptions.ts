@@ -4,8 +4,6 @@ import { Car } from "@/models/Car";
 import { connectDB } from "@/lib/mongodb";
 import { sendEmail } from "@/lib/mailer";
 import { shouldNotifySegmentAlert } from "@/lib/segment-alert";
-import { brandStorageAliases } from "@/lib/normalize-brand";
-import { modelFamilyRegex } from "@/lib/model-family";
 
 interface SubscriptionDoc {
   _id: unknown;
@@ -21,8 +19,8 @@ interface SubscriptionDoc {
 
 async function checkNewListingSubscription(sub: SubscriptionDoc) {
   const query: Record<string, unknown> = {};
-  if (sub.brand) query.brand = { $in: brandStorageAliases(sub.brand) };
-  if (sub.model) query.model = modelFamilyRegex(sub.model, sub.brand);
+  if (sub.brand) query.brand = sub.brand;
+  if (sub.model) query.model = sub.model;
   if (sub.yearMin || sub.yearMax) {
     const year: Record<string, number> = {};
     if (sub.yearMin) year.$gte = sub.yearMin;
@@ -59,8 +57,8 @@ async function checkNewListingSubscription(sub: SubscriptionDoc) {
 
 
 async function getSegmentAverage(brand: string, model?: string | null) {
-  const match: Record<string, unknown> = { brand: { $in: brandStorageAliases(brand) } };
-  if (model) match.model = modelFamilyRegex(model, brand);
+  const match: Record<string, unknown> = { brand };
+  if (model) match.model = model;
   const [row] = await Car.aggregate([
     { $match: match },
     { $group: { _id: null, avgPrice: { $avg: "$price" }, count: { $sum: 1 } } },

@@ -1,91 +1,151 @@
 # OtoPiyasa
 
-Türkiye'deki ikinci el araç ilan sitelerinden fiyat toplayıp analiz eden bir web sitesi ve mobil uygulama. Üniversite bitirme projesi olarak yapıldı.
+Türkiye'deki araç ilan sitelerinden fiyat toplayıp analiz eden **full-stack araç fiyat takip platformu** — web + mobil + admin paneli. Üniversite bitirme projesi.
 
-Canlı adres: https://otopiyasa.app
+🌐 **Canlı:** https://otopiyasa.app
 
-Bu proje akademik amaçlıdır, ticari değildir. İlanlar kaynak sitelerden sadece analiz için toplanıyor, her ilan kendi kaynağına bağlantı veriyor ve tüm hakları kaynak sitelere ait.
+> Akademik bir projedir; ticari değildir. İlan verileri kaynak sitelerden yalnızca akademik amaçla derlenir, tüm hakları kaynaklarına aittir ve her ilan orijinal kaynağına bağlantı verir. Araç kataloğu herkese açıktır; ilan verme, teklifler ve profil işlemleri giriş gerektirir.
 
-## Neler var
+## Mimari
 
-- İlan listeleme ve filtreleme (marka, model, yıl, fiyat, yakıt, vites, sıralama)
-- Piyasa ortalaması: aynı marka, model ve yıldaki araçların ortalama fiyatı
-- Fiyat tahmini: veritabanı verisi üzerinde en küçük kareler yöntemiyle (sıfırdan yazılmış) lineer regresyon
-- Fiyat geçmişi grafiği ve fırsat araç uyarısı (segmentin ortalamasına göre)
-- Araç karşılaştırma, harita (Leaflet), marka bazlı analiz sayfası
-- Favoriler ve abonelik: istediğin kritere uyan yeni ilan ya da fiyat düşüşü olunca e-posta gelir
-- Kural tabanlı asistan: "en ucuz BMW", "kaç ilan var" gibi sorulara cevap verir
-- Yorum ve puanlama, kullanıcı profili, şifre sıfırlama
-- Admin paneli (`/admin`): istatistikler, veri çekme paneli, kullanıcı ve araç yönetimi
-- Flutter ile yazılmış Android mobil uygulama (`mobile/` klasörü)
+| Katman | Teknoloji |
+|--------|-----------|
+| Web + API + Admin | Next.js 15 (App Router) · React 19 · TypeScript |
+| Stil | Tailwind CSS v4 |
+| Veritabanı | MongoDB (Mongoose) — canlıda MongoDB Atlas |
+| Kimlik doğrulama | JWT (jose) · httpOnly cookie · bcrypt · rate limiting |
+| Grafik / Harita | Recharts · Leaflet |
+| Mobil uygulama | Flutter (`mobile/`) |
+| Scraper | Playwright + Cheerio (Arabam.com, Otomerkezi.net) |
+| E-posta | Nodemailer (fiyat/abonelik alarmları, şifre sıfırlama) |
+| Deploy | Vercel (web) + Atlas (DB) + otopiyasa.app (Namecheap) |
 
-## Kullanılan teknolojiler
+## Özellikler
 
-- Web ve API: Next.js 15, React 19, TypeScript, Tailwind CSS
-- Veritabanı: MongoDB (Mongoose), canlıda MongoDB Atlas
-- Giriş sistemi: JWT, httpOnly cookie, bcrypt
-- Grafik ve harita: Recharts, Leaflet
-- Veri çekme: Playwright ve Cheerio
-- E-posta: Nodemailer
-- Mobil: Flutter
-- Yayın: Vercel (web), alan adı Namecheap'ten
+- **İlan listeleme & filtreleme** — marka, model, yıl, fiyat, yakıt, vites, sıralama, sayfalama
+- **Piyasa ortalaması** — her araç için aynı marka/model/yıl segmentinin ortalaması
+- **Fiyat tahmini** — veritabanı üzerinde sıfırdan yazılmış OLS (en küçük kareler) lineer regresyon; segment → marka → global fallback zinciri, R² skoru
+- **Canlı piyasa ortalaması** — Arabam üzerinden anlık ortalama + "fırsat aracı" etiketi
+- **Fiyat geçmişi grafiği** ve **anomali tespiti** (segment içi z-skoru ile istatistiksel fırsat / piyasa üstü uyarısı)
+- **Araç karşılaştırma** — yan yana tablo, "en iyi değer" vurgusu
+- **Harita** (Leaflet) — şehir bazlı gruplu ilan pinleri
+- **Analiz sayfası** — markaya göre ortalama fiyat, model yılı fiyat eğrileri
+- **Favoriler** ve **abonelikler** (kriterlere uyan yeni ilan/fiyat düşüşü geldiğinde e-posta)
+- **Kural tabanlı asistan (chatbot)** — SSS + "en ucuz BMW", "kaç ilan var" gibi veri sorguları
+- **Yorum & puanlama** — otomatik duygu (sentiment) etiketi
+- **Kullanıcı profili**, şifre değiştirme, şifre sıfırlama (e-posta)
+- **Admin paneli** (`/admin`) — istatistikler, scrape paneli, gece scrape log'u, kullanıcı/araç yönetimi
+- **PWA** (yüklenebilir) · **7/24 otonom veri motoru** (keşif + tam envanter senkronu + arşivleme)
+- **Flutter mobil uygulama** — oturum kalıcılığı, favoriler, filtreler, fiyat grafiği
 
 ## Veri kaynakları
 
-Arabam.com, Otokoç 2. El, Otoplus, VavaCars, Carvak, Otomerkezi, DOD ve İkinciyeni'den ilan çekiliyor. Sahibinden.com Cloudflare koruması yüzünden çekilemiyor.
+| Kaynak | Yöntem | Doğrulama (satıldı mı?) |
+|--------|--------|--------------------------|
+| Arabam.com | İlan detayında schema.org `Car` ld+json. Cloudflare nedeniyle gerçek Chromium ve **Türkiye ev IP'si** gerekir | Sitemap + detay sayfası (`scrape.bat` 11) |
+| Otokoç 2. El | Liste sayfası kartları (`data-*` öznitelikleri) | Tam envanter senkronu + ilan sayfası (soft 404: ilan verisi yoksa satılmış) |
+| Otoplus | Liste sayfası schema.org ld+json | Tam envanter senkronu + ilan sayfası (satılınca model kataloğuna yönlenir) |
+| VavaCars | Kendi arama API'si | Tam envanter senkronu |
+| Carvak | Angular sunucu durumu (`serverApp-state`) | Tam envanter senkronu |
+| Otomerkezi | Next.js RSC yükü | Tam envanter senkronu |
+| DOD | Sitemap + ilan sayfası ld+json | Sitemap = envanter |
+| İkinciyeni | Açık ihale API'si | Tam envanter senkronu |
 
-Arabam.com da Cloudflare kullanıyor, sadece gerçek bir tarayıcıyla ve Türkiye'deki ev internetinden çalışıyor. Bu yüzden bulut sunucuda kapalı, sadece ev bilgisayarında açılabiliyor.
+Sahibinden.com Cloudflare nedeniyle taranamıyor (bilinen kısıt).
 
-Satılan ilanlar silinmiyor, "Piyasa Arşivi"ne taşınıyor. Bir ilanın satıldığına karar vermeden önce sayfası kontrol ediliyor. Site engellediyse ya da cevap vermediyse ilan arşive atılmıyor.
+## Kurulum (yerel geliştirme)
 
-## Çalıştırma
+### 1. Backend (Next.js)
 
-```
+```bash
 npm install
-copy .env.example .env      (içini doldur: MONGODB_URI, JWT_SECRET, SMTP bilgileri)
-npm run dev                 (http://localhost:3000)
+copy .env.example .env   # .env'i doldur (MONGODB_URI, JWT_SECRET, SMTP*, secret'ler)
+npm run dev              # http://localhost:3000
 ```
 
-Windows'ta `start.bat` ile de açılıyor. Demo veri için `npm run seed`, gerçek veri için `scrape.bat`.
+Yerelde araç kataloğu herkese açıktır; ilan verme, teklifler, favoriler ve profil gibi
+hesaba bağlı işlemler için giriş yapılması gerekir.
+Windows'ta hızlı başlatma için kök dizindeki **`start.bat`** kullanılabilir.
 
-Mobil uygulama:
+### 2. Veri
 
+```bash
+npm run seed                              # demo veri
+# veya gerçek kaynaklar (admin girişi ya da x-scrape-secret ile):
+# scrape.bat → 1) Hızlı güncelleme (Arabam 30 + Otomerkezi 60)
 ```
+
+### 3. Flutter mobil
+
+```bash
 cd mobile
 flutter pub get
-flutter run
+flutter run -d windows        # veya Android emülatör (API otomatik 10.0.2.2:3000)
 ```
 
-## Veri çekme motoru
+## Scraping
 
-`scripts/daemon.ts` 7/24 çalışıyor. Her turda yeni ilanları buluyor, sırası gelen kaynağın bütün ilan listesini baştan sona tarayıp fiyat değişikliklerini güncelliyor ve satılanları arşive alıyor. Sunucuda `pm2 start ecosystem.config.cjs` ile başlatılıyor, güncellemek için `bash scripts/update-server.sh` çalıştırılıyor.
+### 7/24 otonom motor (`scripts/daemon.ts`)
 
-Elle çalıştırmak için `scrape.bat` var (menüden seçiliyor). Ölü ilanları temizlemek için `temizle-olu-ilanlari.bat`.
+Her tur (varsayılan 5 dk aralık):
 
-Sunucu Oracle Linux, SELinux açıkken pm2 servisi sürekli yeniden başlıyordu. `pm2-opc.service` dosyasındaki `PIDFile` satırını silince düzeldi (`sudo sed -i '/^PIDFile=/d' /etc/systemd/system/pm2-opc.service`, sonra `daemon-reload` ve `restart`).
+1. **Keşif** — kurumsal kaynakların ilk sayfalarından yeni ilanlar.
+2. **Tam envanter senkronu** — sırası gelen *tek* kaynağın tüm ilan listesi baştan sona taranır
+   (`src/lib/scraper/reconcile.ts`): fiyat/km/foto değişiklikleri işlenir, satılanlar **Piyasa Arşivi**'ne
+   taşınır, arşivdeyken sitede yeniden görünenler geri açılır. Aralıklar: VavaCars 6 sa, Otokoç ve DOD 24 sa, diğerleri 12 sa.
+3. **Arabam sitemap** (günde 1) — Arabam'ın açık sitemap dosyalarından öncelik işaretleri (`arabam-sitemap.ts`).
+4. **Arabam** — yalnızca `EXCLUDE_ARABAM=false` iken (Türkiye ev IP'si olan makinede): yeni ilanlar sitemap'ten bulunan aday kuyruğundan (`arabam-discovery.ts`), mevcutların fiyat/durum kontrolü detay sayfasından yapılır.
+
+**Arşiv kuralları** (`src/lib/scraper/listing-lifecycle.ts`): kesin kanıt (ilan sayfası 404, ilan numarası kaybolan
+yönlendirme, soft 404) tek gözlemle arşivler; "tam envanterde görünmedi" gibi zayıf kanıt en az iki gözlem ve 6 saat ister.
+Engel, zaman aşımı ve anlaşılamayan yanıt **asla** ilanı arşivlemez. Bir partide ölü oranı anormalse (%35+) ya da envanter
+taraması eksik/şüpheliyse (yarıda kesildi, aktiflerin %50'sinden fazlası kayıp) **hiçbir şey arşivlenmez** (devre kesici).
+`lastVerifiedAt` ilanın kaynakta son teyit edildiği anı, `updatedAt` içeriğin son değişimini tutar.
+
+### Çalıştırma
+
+- **Sunucuda (pm2):** `pm2 start ecosystem.config.cjs`. Yeni kod için sunucuda `bash scripts/update-server.sh`
+  (`git fetch` + `reset --hard origin/main` + `npm install` + `pm2 restart daemon`). Eskiden geçmiş yeniden yazıldığı
+  için `git pull` çalışmıyordu; daemon artık kendi kendini `fetch + reset --hard` ile de güncelliyor.
+- **Sunucu notu (SELinux):** Oracle Linux'ta SELinux açıkken systemd `pm2-<kullanıcı>.service` içindeki `PIDFile`'ı okuyamaz;
+  servis sürekli "başarısız" sayılıp yeniden başlatılır ve motor her ~90 saniyede bir öldürülür. Çözüm:
+  `sudo sed -i '/^PIDFile=/d' /etc/systemd/system/pm2-opc.service && sudo systemctl daemon-reload && sudo systemctl restart pm2-opc`.
+  Kullanılmayan `pm2-root.service` kapatılmalıdır (`sudo systemctl disable --now pm2-root`). Kontrol: `pm2 list` çalışma süresi dakikalarca artmalı.
+- **Elle:** `scrape.bat` — `11` Arabam doğrula, `N` Arabam yeni ilanlar (sitemap), `S` Arabam sitemap, `E` kurumsal envanter senkronu, `G` galeri/detay tamamlama, `T` turbo çekim.
+  `temizle-olu-ilanlari.bat` → `6` kurumsal envanter senkronu.
+- `npm run daemon`, `npm run reconcile [kaynak]`, `npm run arabam-sitemap`.
+
+### Arabam ve Cloudflare
+
+Arabam ilan detay ve liste sayfaları Cloudflare doğrulaması gösteriyor; düz `curl`/Node isteği Türkiye ev IP'sinden bile
+403 alıyor (TLS parmak izi). Gerçek Chromium ev IP'sinde geçiyor, veri merkezi ve yurtdışı IP'lerinde geçmiyor. Bu yüzden
+Arabam bulut sunucuda kapalıdır. Sitemap dosyaları (`/sitemap/advert_N.xml`, ~1,3 milyon ilan) ise doğrulamasız erişilebilir.
+Sitemap'te olmamak tek başına ilanı öldürmez (ölçümde eksik olabildiği görüldü); yalnızca detay taramasında öne alır.
 
 ## Test
 
-```
-npm test
-npx tsc --noEmit
+```bash
+npm test          # vitest (parser, rate-limit, regresyon yardımcıları vb.)
+npx tsc --noEmit  # tip kontrolü
 cd mobile && flutter test && flutter analyze
 ```
 
-## Klasörler
+## Deploy
+
+Özet: MongoDB Atlas → veri migrasyonu → `vercel --prod` → env değişkenleri (`MONGODB_URI`, `JWT_SECRET`, `SMTP*`) → Namecheap DNS. Scraper yerelde çalışıp aynı Atlas veritabanına yazar; canlı site o veriyi okur.
+
+## Proje yapısı
 
 ```
-src/app/        sayfalar, API route'ları, admin paneli
-src/components/ React bileşenleri
-src/lib/        scraper, regresyon, piyasa hesabı, mail, giriş sistemi
-src/models/     Mongoose şemaları
-mobile/         Flutter uygulaması
-scripts/        seed, veri çekme motoru, bakım betikleri
+src/app/          Next.js sayfaları + API route'ları + admin paneli
+src/components/    React bileşenleri (kart, grafik, harita, chatbot, formlar…)
+src/lib/           İş mantığı (scraper + ilan yaşam döngüsü, regresyon, piyasa, mailer, auth, yardımcılar)
+src/models/        Mongoose şemaları (Car, User, Offer, SourceSyncState, ScrapeMetric …)
+mobile/            Flutter uygulaması
+scripts/           seed, migrasyon, zamanlı scrape, mail testi
 ```
-
-Daha ayrıntılı anlatım için `dokümantasyon.md` dosyasına bakılabilir.
 
 ## Notlar
 
-- Piyasa ortalaması sayfadaki ilanların değil, o aracın marka, model ve yıl grubunun ortalamasıdır
-- OneDrive içinde çalışırken `.next` klasörü bozulabiliyor ("React Client Manifest" hatası). `npm run dev`'i durdurup `.next` klasörünü silmek yetiyor
+- Piyasa ortalaması **sayfadaki tüm ilanların değil**, o aracın marka/model/yıl segmentinin ortalamasıdır.
+- OneDrive `.next` klasörünü ara sıra bozar ("React Client Manifest" 500) → `npm run dev`'i durdur, `.next`'i sil, yeniden başlat.

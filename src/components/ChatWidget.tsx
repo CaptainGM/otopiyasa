@@ -31,7 +31,6 @@ interface Message {
   text: string;
   link?: ChatLink;
   card?: ChatCard;
-  cards?: ChatCard[];
 }
 
 const GREETING: Message = {
@@ -208,7 +207,6 @@ export function ChatWidget() {
           text: reply,
           link: res.ok ? data.link : undefined,
           card: res.ok ? data.card : undefined,
-          cards: res.ok ? data.cards : undefined,
         },
       ]);
     } catch {
@@ -304,17 +302,16 @@ export function ChatWidget() {
                 }`}
               >
                 {m.text}
-                {[...(m.card ? [m.card] : []), ...(m.cards || [])].map((card) => (
+                {m.card && (
                   <button
-                    key={card.href}
-                    onClick={() => router.push(card.href)}
+                    onClick={() => router.push(m.card!.href)}
                     className="mt-2 flex w-full items-center gap-3 overflow-hidden rounded-lg border border-white/10 bg-black/30 p-2 text-left transition hover:border-amber-400/40"
                   >
-                    {card.imageUrl ? (
+                    {m.card.imageUrl ? (
                       
                       <img
-                        src={card.imageUrl}
-                        alt={card.title}
+                        src={m.card.imageUrl}
+                        alt={m.card.title}
                         className="h-14 w-20 shrink-0 rounded-md object-cover"
                       />
                     ) : (
@@ -324,17 +321,17 @@ export function ChatWidget() {
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-semibold text-slate-100">
-                        {card.title}
+                        {m.card.title}
                       </span>
-                      {card.subtitle && (
-                        <span className="block text-[11px] text-slate-500">{card.subtitle}</span>
+                      {m.card.subtitle && (
+                        <span className="block text-[11px] text-slate-500">{m.card.subtitle}</span>
                       )}
                       <span className="mt-0.5 block text-sm font-black text-amber-300">
-                        {formatPrice(card.price)}
+                        {formatPrice(m.card.price)}
                       </span>
                     </span>
                   </button>
-                ))}
+                )}
                 {m.link && (
                   <button
                     onClick={() => {

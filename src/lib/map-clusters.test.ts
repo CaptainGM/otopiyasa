@@ -1,16 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildClusters, buildMapQuery, clusterKeyFor, distanceKm, prettyDistrict } from "./map-clusters";
+import { buildClusters, buildMapQuery, clusterKeyFor, distanceKm } from "./map-clusters";
 
 const car = (city: string, address: string, price: number) => ({ city, address, price });
 
 describe("buildMapQuery", () => {
-  it("filters by model family when given", () => {
-    const query = buildMapQuery(new URLSearchParams("brand=Fiat&model=Egea&minPrice=500000")) as { model: RegExp; price: { $gte: number } };
-    // Aile: "EGEA" ve "Egea 1.3 Multijet" de gelir, ayrı araç olan "Egea Cross" gelmez.
-    expect(["Egea", "EGEA", "Egea 1.3 Multijet Easy", "Egea Cross 1.4"].filter((m) => query.model.test(m))).toEqual(["Egea", "EGEA", "Egea 1.3 Multijet Easy"]);
-    expect(query.price.$gte).toBe(500000);
-  });
-
   it("canonical brand/city filters match stored spelling variants", () => {
     const query = buildMapQuery(new URLSearchParams("brand=KG%20Mobility&city=Elaz%C4%B1%C4%9F")) as {
       brand: { $in: string[] };
@@ -108,22 +101,5 @@ describe("distanceKm", () => {
 
   it("aynı nokta için 0 döner", () => {
     expect(distanceKm({ lat: 41, lng: 29 }, { lat: 41, lng: 29 })).toBe(0);
-  });
-});
-
-describe("prettyDistrict", () => {
-  it("sade anahtarı Türkçe yazılışa çevirir", () => {
-    expect(prettyDistrict("cerkezkoy")).toBe("Çerkezköy");
-    expect(prettyDistrict("beyoglu")).toBe("Beyoğlu");
-    expect(prettyDistrict("mustafakemalpasa")).toBe("Mustafakemalpaşa");
-  });
-
-  it("listede olmayan adın baş harflerini büyütür", () => {
-    expect(prettyDistrict("yeni bolge")).toBe("Yeni Bolge");
-  });
-
-  it("kümelerde görünen adı da verir", () => {
-    const { clusters } = buildClusters([car("İstanbul", "X Mh. Kadıköy, İstanbul", 1_000_000)]);
-    expect(clusters[0].districtLabel).toBe("Kadıköy");
   });
 });

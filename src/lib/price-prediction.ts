@@ -133,8 +133,7 @@ export function fitLinear(
 export function derivePainted(paintChange?: string): number {
   if (!paintChange) return 0;
   const s = paintChange.toLocaleLowerCase("tr-TR");
-  // "Boya/değişen yok" boya kelimesini içeriyor ama temiz araçtır (kurumsal kaynakların yazımı).
-  if (/orijinal|orjinal|boyasız|boyasiz|değişensiz|degisensiz|değişen\s+yok/.test(s)) return 0;
+  if (/orijinal|boyasız|boyasiz|değişensiz|degisensiz/.test(s)) return 0;
   return /boya|değişen|degisen|lokal/.test(s) ? 1 : 0;
 }
 

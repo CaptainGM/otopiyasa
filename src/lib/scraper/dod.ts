@@ -140,13 +140,11 @@ export async function scrapeDodDetails(
       if (!imageUrl || !imageUrl.startsWith("http")) continue;
 
       // Yakıt & Vites
-      // Tahmin; detay okununca aracın kendi kaydındaki yakıtla düzeltilir. "EV" yalnızca ayrı kelimeyse
-      // elektrik sayılır ("EVOQUE", "Evolution", "MHEV" eskiden elektrikli görünüyordu).
       let fuelType = "Bilinmiyor";
       if (/TDI|Dizel/i.test(desc)) fuelType = "Dizel";
       else if (/TSI|TFSI|Benzin/i.test(desc)) fuelType = "Benzin";
-      else if (/Hibrit|Hybrid|Ibrida|e-TSI|\b[MP]?HEV\b/i.test(desc)) fuelType = "Hibrit";
-      else if (/Elektrik/i.test(desc) || /\bEV\b/.test(desc)) fuelType = "Elektrik";
+      else if (/Hibrit|Hybrid|Ibrida|e-TSI/i.test(desc)) fuelType = "Hibrit";
+      else if (/Elektrik|EV/i.test(desc)) fuelType = "Elektrik";
 
       let transmission = "Bilinmiyor";
       if (/STRONIC|DSG|EDCT|Otomatik|AT\b/i.test(desc)) transmission = "Otomatik";

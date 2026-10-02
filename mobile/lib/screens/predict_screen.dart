@@ -103,8 +103,6 @@ class _PredictScreenState extends State<PredictScreen> {
 
   Map<String, dynamic>? _result;
   bool _loading = false;
-  /// Sonuç kartı formun altında kalıyor; tahmin gelince oraya kaydırmak için.
-  final _resultKey = GlobalKey();
   String? _error;
 
   bool _photoLoading = false;
@@ -171,7 +169,6 @@ class _PredictScreenState extends State<PredictScreen> {
   }
 
   Future<void> _predict() async {
-    FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
       _error = null;
@@ -186,12 +183,6 @@ class _PredictScreenState extends State<PredictScreen> {
         condition: _condition,
       );
       setState(() => _result = result);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final target = _resultKey.currentContext;
-        if (target != null) {
-          Scrollable.ensureVisible(target, duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
-        }
-      });
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -308,7 +299,6 @@ class _PredictScreenState extends State<PredictScreen> {
           if (price != null) ...[
             const SizedBox(height: 24),
             Card(
-              key: _resultKey,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(

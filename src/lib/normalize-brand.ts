@@ -21,8 +21,6 @@ const BRAND_ALIASES: Record<string, string> = {
   togg: "Togg",
   swm: "Swm",
   audi: "Audi",
-  // Aksanlar eşleştirme için siliniyor; Türkçe marka adı korunur.
-  tofas: "Tofaş",
 };
 
 const BRAND_STORAGE_ALIASES: Record<string, string[]> = {
@@ -77,48 +75,4 @@ export function isNonCarBrand(brand: string): boolean {
   return ["motosiklet", "motorsiklet", "atv", "utv", "traktör"].some((word) =>
     lower.includes(word)
   );
-}
-
-/**
- * Liste sayfasındaki "Mercedes - Benz G 400 d", "Land Rover Range Rover Velar", "Alfa Romeo Giulia"
- * gibi metinler ilk boşluktan bölününce marka "Mercedes"/"Land"/"Alfa", model "- Benz G 400 d" /
- * "Rover Range Velar" / "Romeo Giulia" oluyordu; filtrede ayrı marka ve anlamsız modeller çıkıyordu.
- */
-const SPLIT_BRANDS: Array<{ head: string; tail: RegExp; brand: string }> = [
-  { head: "mercedes", tail: /^-?\s*benz(?![a-z0-9])[\s-]*/i, brand: "Mercedes-Benz" },
-  { head: "land", tail: /^rover(?![a-z0-9])\s*/i, brand: "Land Rover" },
-  { head: "alfa", tail: /^romeo(?![a-z0-9])\s*/i, brand: "Alfa Romeo" },
-  { head: "aston", tail: /^martin(?![a-z0-9])\s*/i, brand: "Aston Martin" },
-  { head: "rolls", tail: /^-?\s*royce(?![a-z0-9])\s*/i, brand: "Rolls-Royce" },
-];
-
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/** Marka/model ayrımını düzeltir, markayı tek yazıma çevirir ve modelin başında tekrarlanan markayı atar. */
-export function normalizeBrandModel(rawBrand: string, rawModel: string): { brand: string; model: string } {
-  let brand = (rawBrand || "").trim();
-  let model = (rawModel || "").trim();
-  const head = brand.replace(/İ/g, "i").replace(/ı/g, "i").toLowerCase();
-  const split = SPLIT_BRANDS.find((s) => s.head === head && s.tail.test(model));
-  if (split) {
-    brand = split.brand;
-    model = model.replace(split.tail, "");
-  }
-  // Bazı kaynaklar "Range Rover"ı marka yazıyor (model "Velar").
-  if (/^range\s+rover$/i.test(brand)) {
-    brand = "Land Rover";
-    model = `Range Rover ${model}`.trim();
-  }
-  brand = normalizeBrand(brand);
-  // Bölünmüş "Land Rover Range Rover Velar" metninden "Range Velar" kalıyordu.
-  if (brand === "Land Rover") model = model.replace(/^range\s+(?!rover(?![a-z0-9]))/i, "Range Rover ");
-  // Bir kaynak makyajlı kasayı "MC QASHQAI", "MCQASHQAI1.6" diye yazıyor.
-  if (brand === "Nissan") model = model.replace(/^MC(?:\s+(?=\S)|(?=[A-Z]{3,}))/, "");
-
-  // "TOYOTA COROLLA" → "COROLLA"; "DS4", "MG4" gibi bitişik adlar ve yalnız marka adı olan model kalır.
-  const brandWords = brand.split(/[\s-]+/).map(escapeRe).join("[\\s-]*");
-  const withoutBrand = model.replace(new RegExp(`^${brandWords}[\\s-]+(?=\\S)`, "i"), "");
-  if (withoutBrand) model = withoutBrand;
-
-  return { brand, model: model || (rawModel || "").trim() };
 }

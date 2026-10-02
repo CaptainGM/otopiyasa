@@ -42,9 +42,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   List<Map<String, dynamic>> _reports = [];
   List<Map<String, dynamic>> _business = [];
   List<Map<String, dynamic>> _manualLogs = [];
-  /// Denetim kayıtları 5'er gösterilir; 30 kaydın hepsini birden çizmek paneli kasıyordu.
-  static const _logPageSize = 5;
-  int _logsShown = _logPageSize;
   String _manualDateFilter = 'all'; // 'all', 'today', 'past'
 
   // Kontrol paneli parametreleri
@@ -609,18 +606,19 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                // Üç kart yan yana dar kalıyor ("182 …", "Çalışma…"); metin kesilmek yerine sığacak kadar küçülür.
                 children: [
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.white54), maxLines: 1),
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 11, color: Colors.white54),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(value, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), maxLines: 1),
+                  Text(
+                    value,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -1157,10 +1155,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               );
             }
 
-            final remaining = filtered.length - _logsShown;
             return Column(
-              children: [
-                ...filtered.take(_logsShown).map((log) {
+              children: filtered.take(30).map((log) {
                 final actor = log['actor']?.toString() ?? 'Yönetici';
                 final label = log['label']?.toString() ?? 'Manuel Tarama';
                 final scanned = log['scanned'] ?? 0;
@@ -1259,14 +1255,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     ),
                   ),
                 );
-              }),
-                if (remaining > 0)
-                  TextButton.icon(
-                    onPressed: () => setState(() => _logsShown += _logPageSize),
-                    icon: const Icon(Icons.expand_more),
-                    label: Text('Daha fazla göster (${remaining > _logPageSize ? _logPageSize : remaining} / $remaining)'),
-                  ),
-              ],
+              }).toList(),
             );
           },
         ),
@@ -1295,10 +1284,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Widget _dateFilterChip(String label, String filterKey) {
     final isSelected = _manualDateFilter == filterKey;
     return GestureDetector(
-      onTap: () => setState(() {
-        _manualDateFilter = filterKey;
-        _logsShown = _logPageSize;
-      }),
+      onTap: () => setState(() => _manualDateFilter = filterKey),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(

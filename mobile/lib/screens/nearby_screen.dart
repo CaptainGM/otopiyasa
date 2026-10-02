@@ -1,8 +1,12 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/widgets/listing_image.dart';
 
 /// "Yakınımdaki ilanlar" — web'deki NearbyListings ile aynı mantık: gerçek
 /// konum verisi ilanlarda genelde yok, bu yüzden sunucu ilçe/il merkezine göre
@@ -44,7 +48,30 @@ class _NearbyScreenState extends State<NearbyScreen> {
     if (permission == LocationPermission.deniedForever) {
       throw Exception('Konum izni kalıcı reddedilmiş. Ayarlardan izin vermen gerekiyor.');
     }
-    return Geolocator.getCurrentPosition();
+    // Kapalı alanda/emülatörde taze konum gelmeyebilir; zaman sınırı yokken ekran sonsuza dek
+    // yükleniyordu. Mesafe zaten ilçe düzeyinde yaklaşık, orta doğruluk ve son bilinen konum yeter.
+    // Google "konum doğruluğu" penceresi reddedilirse (ağ konumu kapalı) Google'ın konum
+    // servisi sonuç vermiyor; ikinci denemede Android'in GPS'i doğrudan kullanılır. Eski "son
+    // bilinen konum" en son çaredir, çünkü başka bir şehirden/ülkeden kalmış olabilir.
+    final attempts = <LocationSettings>[
+      const LocationSettings(accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 8)),
+      if (Platform.isAndroid)
+        AndroidSettings(accuracy: LocationAccuracy.high, forceLocationManager: true, timeLimit: const Duration(seconds: 12))
+      else
+        const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 12)),
+    ];
+    for (final settings in attempts) {
+      try {
+        return await Geolocator.getCurrentPosition(locationSettings: settings);
+      } on TimeoutException {
+        continue;
+      } on LocationServiceDisabledException {
+        continue;
+      }
+    }
+    final last = await Geolocator.getLastKnownPosition();
+    if (last != null) return last;
+    throw Exception('Konum alınamadı. Konum servisinin açık olduğundan emin olup tekrar dene.');
   }
 
   Future<void> _load() async {
@@ -57,6 +84,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
       final items = await _api.fetchNearby(position.latitude, position.longitude);
       if (!mounted) return;
       setState(() => _items = items);
+    } on LocationServiceDisabledException {
+      if (!mounted) return;
+      setState(() => _error = 'Konum servisleri kapalı. Cihaz ayarlarından konumu açıp tekrar dene.');
+    } on PermissionDeniedException {
+      if (!mounted) return;
+      setState(() => _error = 'Konum izni verilmedi.');
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -89,54 +122,128 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ? const Center(child: Text('Yakınında eşleşen ilan bulunamadı.'))
                   : RefreshIndicator(
                       onRefresh: _load,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _items.length,
-                        itemBuilder: (context, i) => _card(_items[i]),
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Mesafeler ilanın ilçe (bilinmiyorsa il) merkezine göre yaklaşıktır.',
+                              style: TextStyle(fontSize: 12, color: Colors.white54),
+                            ),
+                          ),
+                          if (_nearestKm > _farAwayKm) _farAwayNotice(),
+                          ..._grouped(),
+                        ],
                       ),
                     ),
     );
   }
 
-  Widget _thumbFallback() => Container(
-        color: Colors.white10,
-        child: const Icon(Icons.directions_car, size: 22),
-      );
+  /// En yakın ilan bu kadar uzaksa cihaz konumu Türkiye dışında (ya da yanlış) demektir.
+  static const _farAwayKm = 500;
+
+  double get _nearestKm => _items.isEmpty ? 0 : ((_items.first['distanceKm'] as num?)?.toDouble() ?? 0);
+
+  Widget _farAwayNotice() {
+    final km = NumberFormat.decimalPatternDigits(locale: 'tr_TR', decimalDigits: 0).format(_nearestKm);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFB923C).withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFB923C).withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        'Konumun Türkiye dışında görünüyor: en yakın ilan $km km uzakta. '
+        'Konum ayarını kontrol edip aşağı çekerek yenileyebilirsin.',
+        style: const TextStyle(fontSize: 12.5, color: Color(0xFFFDBA74)),
+      ),
+    );
+  }
+
+  /// Aynı ilçedeki ilanların mesafesi aynıdır; her ilana tekrar yazmak yerine ilçe başlığı altında toplanır.
+  List<Widget> _grouped() {
+    final out = <Widget>[];
+    String? lastKey;
+    for (final item in _items) {
+      final place = [item['district'], item['city']]
+          .map((e) => e?.toString() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .join(', ');
+      final km = (item['distanceKm'] as num?)?.toDouble() ?? 0;
+      final key = '$place|$km';
+      if (key != lastKey) {
+        lastKey = key;
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 12, bottom: 8),
+          child: Row(
+            children: [
+              const Icon(Icons.place_outlined, size: 18, color: Color(0xFFF5B942)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(place.isEmpty ? 'Konum' : place, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+              Text(
+                '${item['approximate'] == true ? '~' : ''}${km.toStringAsFixed(1).replaceAll('.', ',')} km',
+                style: const TextStyle(fontSize: 13, color: Colors.white70, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ));
+      }
+      out.add(_card(item));
+    }
+    return out;
+  }
 
   Widget _card(Map<String, dynamic> item) {
-    final approximate = item['approximate'] == true;
-    final distance = (item['distanceKm'] as num?)?.toStringAsFixed(1) ?? '?';
+    final images = (item['images'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+    final mileage = (item['mileage'] as num?)?.toInt() ?? 0;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(10),
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: SizedBox(
-            width: 72,
-            height: 54,
-            child: (item['imageUrl'] as String?)?.isNotEmpty == true
-                ? Image.network(
-                    item['imageUrl'] as String,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _thumbFallback(),
-                  )
-                : _thumbFallback(),
-          ),
-        ),
-        title: Text(
-          item['title']?.toString() ?? '',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-        ),
-        subtitle: Text(
-          '${_money.format(item['price'] ?? 0)} ₺  •  ${approximate ? "~" : ""}$distance km  •  ${item['city'] ?? ''}',
-          style: const TextStyle(fontSize: 12),
-        ),
+      child: InkWell(
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => DetailScreen(carId: item['_id'].toString())),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 130,
+              height: 96,
+              child: ListingImage(url: item['imageUrl']?.toString() ?? '', fallbacks: images, cacheWidth: 320),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item['title']?.toString() ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      ['${item['year'] ?? ''}', if (mileage > 0) '${_money.format(mileage)} km'].join(' • '),
+                      style: const TextStyle(fontSize: 12, color: Colors.white60),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${_money.format(item['price'] ?? 0)} ₺',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFFF5B942)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
@@ -44,6 +45,7 @@ class _CarCardState extends State<CarCard> {
   }
 
   void _openDetail() {
+    HapticFeedback.selectionClick();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => DetailScreen(carId: widget.car.id, initialCar: widget.car),
@@ -133,8 +135,8 @@ class _CarCardState extends State<CarCard> {
                       child: PageView.builder(
                         controller: _pageController,
                         physics: const BouncingScrollPhysics(),
-                        // Komşu fotoğraf önceden hazırlanır: kaydırınca boş kare görünmez.
-                        allowImplicitScrolling: true,
+                        // Komşu fotoğraf ÖNCEDEN İNDİRİLMEZ: eskiden her kart bir sonraki fotoğrafını da
+                        // indiriyordu, kullanıcı hiç kaydırmasa bile (ölçüm: 10 ekran ≈ 6,6 MB, kart başına ~3 dosya).
                         itemCount: images.length,
                         onPageChanged: (idx) {
                           setState(() => _activeImageIndex = idx);

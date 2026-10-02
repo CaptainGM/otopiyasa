@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyOtokocHtml, classifyRedirect, listingIdFromUrl } from "./verify-listing";
+import { BlockStreak, classifyOtokocHtml, classifyRedirect, listingIdFromUrl } from "./verify-listing";
 
 describe("classifyOtokocHtml", () => {
   const notFoundBoundary = '{"children":"404 | Sayfa Bulunamadı"}';
@@ -42,5 +42,35 @@ describe("classifyRedirect", () => {
   });
   it("ilan numarasını koruyan yönlendirmeyi (adres normalleştirme) ölü saymaz", () => {
     expect(classifyRedirect(original, "https://otoplus.com/kia/sportage/sportage-1-6-ekspertizli-Ankara-1050000tl-574590")).toBe("moved");
+  });
+});
+
+describe("BlockStreak", () => {
+  it("art arda 4 engelden sonra kaynağı durdurur, yalnızca o kaynağı", () => {
+    const streak = new BlockStreak(4);
+    expect([1, 2, 3].map(() => streak.record("arabam", "blocked"))).toEqual([false, false, false]);
+    expect(streak.record("arabam", "blocked")).toBe(true);
+    expect(streak.isPaused("arabam")).toBe(true);
+    expect(streak.isPaused("otokoc")).toBe(false);
+    // Durdurma bir kez bildirilir.
+    expect(streak.record("arabam", "blocked")).toBe(false);
+    expect(streak.pausedSources).toEqual(["arabam"]);
+  });
+
+  it("araya giren her başarılı doğrulama sayacı sıfırlar", () => {
+    const streak = new BlockStreak(4);
+    for (let i = 0; i < 20; i++) {
+      streak.record("arabam", "blocked");
+      streak.record("arabam", "blocked");
+      streak.record("arabam", "blocked");
+      streak.record("arabam", "active");
+    }
+    expect(streak.isPaused("arabam")).toBe(false);
+  });
+
+  it("zaman aşımı gibi diğer hatalar engel sayılmaz", () => {
+    const streak = new BlockStreak(2);
+    for (let i = 0; i < 10; i++) streak.record("arabam", "error");
+    expect(streak.isPaused("arabam")).toBe(false);
   });
 });

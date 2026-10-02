@@ -428,6 +428,45 @@ function upgradeArabamImageQuality(urls: string[]): string[] {
   );
 }
 
+/** Bozuk sayfalara karşı üst sınır; ölçülen en büyük gerçek galeri 71 fotoğraf. */
+export const ARABAM_MAX_GALLERY = 80;
+
+/** Aynı fotoğrafın farklı boyut/sunucu varyantları için ortak anahtar. */
+const arabamPhotoKey = (url: string) =>
+  url
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/\?.*$/, "")
+    .replace(/_\d{2,4}x\d{2,4}(\.\w+)$/i, "$1")
+    .toLowerCase();
+
+/**
+ * Sayfadan toplanan fotoğraf adreslerini galeriye çevirir. Sayfa aynı fotoğrafı birkaç
+ * boyutta (küçük resim, 800x600, 1920x1080) içeriyor; eskiden adresler yükseltmeden ÖNCE
+ * tekilleştirildiği için her fotoğraf 2-3 kez kaydediliyordu (400 ilanlık örnekte 27.043
+ * adresin yalnızca 10.098'i farklı fotoğraftı). Ayrıca benzer ilanların fotoğrafları,
+ * "noImage" yer tutucuları ve kaçış karakteriyle biten bozuk adresler ayıklanır.
+ */
+export function normalizeArabamGallery(urls: string[], listingId?: string): string[] {
+  const cleaned = urls
+    // "_{0}.jpg": sayfadaki JS şablonundan boyutu doldurulmamış adres; boyut yerine konur
+    // (aynı fotoğrafın gerçek adresi de varsa aşağıda tekilleşir).
+    .map((u) => (typeof u === "string" ? u.trim().replace(/[\\'"),]+$/, "").replace(/_(?:\{0\}|%7B0%7D)(\.\w+)$/i, "_1920x1080$1") : ""))
+    .filter((u) => /^https?:\/\//i.test(u) && !/\/noimage/i.test(u) && !/[{}]|%7B|%7D/i.test(u));
+  const own = listingId ? cleaned.filter((u) => u.includes(`/${listingId}/`)) : [];
+  const pool = own.length > 0 ? own : cleaned;
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const url of upgradeArabamImageQuality(pool)) {
+    const key = arabamPhotoKey(url);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(url);
+    if (out.length >= ARABAM_MAX_GALLERY) break;
+  }
+  return out;
+}
+
 /**
  * İlan detay sayfasından galerideki tüm gerçek fotoğrafları çeker (arama sonucundaki
  * küçük thumbnail yerine). ld+json Product/Car şeması varsa oradan, yoksa slider
@@ -475,7 +514,7 @@ export function extractArabamDamageParts(html: string): DamagePart[] {
   return parts;
 }
 
-export function extractArabamGalleryImages(html: string): string[] {
+export function extractArabamGalleryImages(html: string, listingId?: string): string[] {
   const $ = cheerio.load(html);
   const collected: string[] = [];
 
@@ -516,8 +555,7 @@ export function extractArabamGalleryImages(html: string): string[] {
     if (matches) collected.push(...matches);
   });
 
-  const unique = Array.from(new Set(collected.filter(Boolean)));
-  return upgradeArabamImageQuality(unique);
+  return normalizeArabamGallery(collected, listingId);
 }
 
 /** Arama sonuç sayfasından sadece ilan linklerini toplar; alan verileri detay sayfasından okunur. */
@@ -662,7 +700,7 @@ export function parseArabamDetailHtml(
   const transmission =
     transmissionRaw === "Düz" ? "Manuel" : transmissionRaw || "Bilinmiyor";
 
-  const images = extractArabamGalleryImages(html);
+  const images = extractArabamGalleryImages(html, externalIdMatch ? externalIdMatch[1] : undefined);
 
   const damageFlag =
     props["Ağır Hasarlı"] === "Var" || props["Ağır Hasarlı"] === "Evet";

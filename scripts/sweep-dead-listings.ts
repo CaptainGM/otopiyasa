@@ -105,6 +105,8 @@ async function main() {
   const excludeSource = choice.source === "kurumsal" ? "arabam" : undefined;
   let round = 0;
   let totals = { checked: 0, archived: 0, active: 0, errors: 0 };
+  // Art arda engel yiyen kaynak bu çalıştırmada bırakılır: engel varken denemeye devam etmek engeli uzatır.
+  const paused = new Set<string>();
 
   do {
     round++;
@@ -113,6 +115,7 @@ async function main() {
       limit: choice.limit,
       source,
       excludeSource,
+      excludeSources: [...paused],
       concurrency: choice.source === "arabam" ? 1 : 3,
       maxDurationMs: 30 * 60 * 1000,
       onProgress: (done, total, archived) => process.stdout.write(`\r   ${done}/${total} kontrol edildi, ${archived} kaldırılmış`),
@@ -123,6 +126,7 @@ async function main() {
       console.log(`   ${c.dim}${d.source.padEnd(10)}${c.reset} ${d.title.slice(0, 40).padEnd(40)} ${color}${d.status.toUpperCase()}${c.reset} ${c.dim}${d.reason}${c.reset}`);
     }
     for (const b of res.breaker) console.log(`   ${c.yellow}⛔ Güvenlik freni: ${b}${c.reset}`);
+    for (const s of res.pausedSources) paused.add(s);
     totals = {
       checked: totals.checked + res.checked,
       archived: totals.archived + res.archived,
@@ -130,7 +134,11 @@ async function main() {
       errors: totals.errors + res.errors,
     };
     if (res.checked === 0) {
-      console.log(`\n${c.green}Sırada kontrol edilecek ilan kalmadı.${c.reset}`);
+      console.log(
+        paused.size > 0
+          ? `\n${c.yellow}Kalan ilanlar engellenen kaynaklardan (${[...paused].join(", ")}). Yaklaşık 30 dakika bekleyip tekrar çalıştır.${c.reset}`
+          : `\n${c.green}Sırada kontrol edilecek ilan kalmadı.${c.reset}`
+      );
       break;
     }
     if (choice.mode === "loop") await new Promise((r) => setTimeout(r, 3000));

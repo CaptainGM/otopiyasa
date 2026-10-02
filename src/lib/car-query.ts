@@ -2,12 +2,14 @@ import { FilterQuery, SortOrder } from "mongoose";
 import { CarFilters } from "@/types";
 import { turkishSearchRegex } from "@/lib/utils";
 import { Car } from "@/models/Car";
-import { isMixedSort, mixedSortStages, dailyMixSeed } from "@/lib/car-mix";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { isMixedSort, resolveFeedSeed, seedToStart } from "@/lib/car-mix";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { LIST_IMAGE_LIMIT } from "@/lib/serialize-car";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
+import { modelFamilyRegex } from "@/lib/model-family";
 
 export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   
@@ -31,7 +33,8 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
       ),
     };
   }
-  if (filters.model) query.model = filters.model;
+  // Model ailesi: "Juke" seçilince "JUKE" ve "Juke 1.0 DIG-T Platinum" de gelir (bkz. model-family.ts).
+  if (filters.model) query.model = modelFamilyRegex(filters.model, filters.brand);
   if (filters.city) query.city = { $in: cityStorageAliases(filters.city) };
 
   
@@ -44,7 +47,8 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
       ],
     });
   }
-  if (filters.fuelType) query["features.fuelType"] = filters.fuelType;
+  // Mobil "LPG" gönderiyor, kayıtlar "LPG & Benzin"; ikisi de aynı yazıma çevrilir.
+  if (filters.fuelType) query["features.fuelType"] = normalizeFuelType(filters.fuelType);
   if (filters.transmission) query["features.transmission"] = filters.transmission;
 
   if (filters.yearMin || filters.yearMax) {
@@ -111,35 +115,36 @@ export async function findCarsPage(
     !filters.discountOnly &&
     (!filters.sort || filters.sort === "mixed");
 
-  if (isDefaultHome) {
-    return cached(
-      `cars:defaultHome:${filters.limit || 12}:${filters.page || 1}`,
-      CACHE_TTL.short,
-      () => findCarsPageUncached(filters, true)
-    );
+  // Rastgele akış her tohumda farklıdır; önbelleğe alınırsa kayıtlar boşuna birikir ve herkes
+  // aynı sırayı görürdü. Sorgu zaten indeksli ve milisaniyeler sürüyor.
+  if (isDefaultHome || (isMixedSort(filters.sort) && !filters.q?.trim())) {
+    return findCarsPageUncached(filters);
   }
 
-  const seed = isMixedSort(filters.sort) ? dailyMixSeed() : "";
-  const key = `cars:${JSON.stringify(filters)}:${seed}`;
+  const key = `cars:${JSON.stringify(filters)}`;
   return cached(key, CACHE_TTL.short, () => findCarsPageUncached(filters));
 }
 
 async function findCarsPageUncached(
-  filters: CarFilters,
-  randomize = false
+  filters: CarFilters
 ): Promise<{ docs: unknown[]; total: number; page: number; limit: number }> {
   const query = buildCarQuery(filters);
   const page = filters.page || 1;
   const limit = filters.limit || 12;
+  const skip = (page - 1) * limit;
 
-  if (randomize) {
-    // ISR (60sn) önbelleği ile birlikte sort:{updatedAt:-1} hem hızlı hem taze
-    // ilanlar sunar. Eski $sample pipeline tüm koleksiyonu tarıyordu (~500ms),
-    // indeksli sort ile ~50ms'ye düşer.
+  // 0. KEŞFET akışı (varsayılan): herkese ve her yenilemeye farklı, sayfalar arası tutarlı.
+  // Her ilanda kalıcı bir rastgele sayı (rand) var; tohumdan bir başlangıç noktası seçilir ve
+  // {status, rand} indeksi üzerinden o noktadan itibaren sıralanır. Eski çözümler: sabit "en yeni"
+  // (hep aynı kaynağın ilanları peş peşe geliyordu) ve tüm koleksiyonu pencere fonksiyonuyla
+  // sıralayan karma (~1 sn; ayrıca 30 dakikada bir değişen ortak tohum).
+  // Arama metni varsa alaka sırası korunur (aşağıdaki arama yolu).
+  if (isMixedSort(filters.sort) && !filters.q?.trim()) {
+    const start = seedToStart(resolveFeedSeed(filters.seed));
     const [docs, total] = await Promise.all([
-      Car.find(query)
-        .sort({ createdAt: -1 as const, _id: -1 as const })
-        .skip((page - 1) * limit)
+      Car.find({ ...query, rand: { $gte: start } })
+        .sort({ rand: 1 as const })
+        .skip(skip)
         .limit(limit)
         .slice("images", LIST_IMAGE_LIMIT)
         .lean(),
@@ -148,11 +153,9 @@ async function findCarsPageUncached(
     return { docs: docs as unknown[], total, page, limit };
   }
 
-  const skip = (page - 1) * limit;
-
   // 1. MongoDB Atlas Search (Lucene Engine):
   // Typo-tolerance (volksvagen -> Volkswagen), kelime kökü analizi ve alaka düzeyi (relevance)
-  if (filters.q?.trim() && !isMixedSort(filters.sort)) {
+  if (filters.q?.trim()) {
     try {
       const searchTerm = filters.q.trim();
       const filtersWithoutQ = { ...filters, q: undefined };
@@ -195,35 +198,6 @@ async function findCarsPageUncached(
     } catch {
       // Atlas Search desteklenmiyorsa (örn. yerel mock testler) standart $regex aramasına devam eder
     }
-  }
-
-  if (isMixedSort(filters.sort)) {
-    const [docs, total] = await Promise.all([
-      Car.aggregate([
-        { $match: query },
-
-        
-        { $project: { brand: 1, model: 1, price: 1, mileage: 1 } },
-
-        ...mixedSortStages(dailyMixSeed()),
-        { $skip: skip },
-        { $limit: limit },
-
-       
-        {
-          $lookup: {
-            from: "cars",
-            localField: "_id",
-            foreignField: "_id",
-            as: "_full",
-            pipeline: [{ $addFields: { images: { $slice: ["$images", LIST_IMAGE_LIMIT] } } }],
-          },
-        },
-        { $replaceRoot: { newRoot: { $first: "$_full" } } },
-      ]).option({ allowDiskUse: true }),
-      Car.countDocuments(query),
-    ]);
-    return { docs, total, page, limit };
   }
 
   const [docs, total] = await Promise.all([
@@ -271,6 +245,7 @@ export function parseCarFilters(searchParams: URLSearchParams): CarFilters {
     discountOnly: searchParams.get("discountOnly") === "true",
     
     sort: (searchParams.get("sort") as CarFilters["sort"]) || "mixed",
+    seed: clampInt(num("seed"), 2_147_483_647, 0) || undefined,
     page: clampInt(num("page"), 100_000, 1),
     limit: clampInt(num("limit"), MAX_PAGE_SIZE, MAX_PAGE_SIZE),
   };

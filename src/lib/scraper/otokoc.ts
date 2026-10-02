@@ -7,6 +7,37 @@ import { Car } from "@/models/Car";
 
 const OTOKOC_BASE_URL = "https://www.otokocikinciel.com";
 const PAGE_SIZE = 15;
+const RETRY_DELAYS_MS = [3000, 10000];
+
+/**
+ * Liste sayfasını getirir; zaman aşımı, ağ hatası, 429 ve 5xx'te bekleyip yeniden dener.
+ * Tam envanter ~90 sayfa: tek bir yavaş yanıt eskiden taramanın tamamını "tamamlanamadı"
+ * yapıyordu (sunucuda 7. sayfada zaman aşımı) ve satılan ilanlar hiç arşivlenmiyordu.
+ */
+async function fetchListPage(pageNum: number): Promise<{ html: string } | { error: string }> {
+  let lastError = "";
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
+    try {
+      const res = await fetch(`${OTOKOC_BASE_URL}/ikinci-el?page=${pageNum}`, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        },
+        signal: AbortSignal.timeout(25000),
+      });
+      if (res.ok) return { html: await res.text() };
+      lastError = `HTTP ${res.status} (Sf.${pageNum})`;
+      if (res.status !== 429 && res.status < 500) break;
+    } catch (err) {
+      lastError = `${err instanceof Error ? err.message : "istek hatası"} (Sf.${pageNum})`;
+    }
+  }
+  return { error: lastError };
+}
 
 export async function scrapeOtokocListings(
   limit: number,
@@ -24,28 +55,12 @@ export async function scrapeOtokocListings(
   while (fetched < limit && pageNum <= maxPage) {
     reportProgress(`Otokoç 2. El araçları çekiliyor (Sf.${pageNum})`, pageNum, maxPage);
 
-    let html = "";
-    try {
-      const res = await fetch(`${OTOKOC_BASE_URL}/ikinci-el?page=${pageNum}`, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-          "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        },
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!res.ok) {
-        if (report) report.error = `HTTP ${res.status} (Sf.${pageNum})`;
-        break;
-      }
-      html = await res.text();
-    } catch (err) {
-      if (report) report.error = err instanceof Error ? err.message : "istek hatası";
+    const page = await fetchListPage(pageNum);
+    if ("error" in page) {
+      if (report) report.error = page.error;
       break;
     }
+    const html = page.html;
     if (report) report.pages += 1;
 
     const $ = cheerio.load(html || "");

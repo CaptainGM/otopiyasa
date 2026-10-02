@@ -1,4 +1,7 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/favorites_screen.dart';
 import 'package:otopiyasa/screens/offers_screen.dart';
@@ -15,11 +18,13 @@ import 'package:otopiyasa/screens/admin_screen.dart';
 import 'package:otopiyasa/screens/nearby_screen.dart';
 import 'package:otopiyasa/widgets/home_strips.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/services/data_saver.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/widgets/app_logo.dart';
 import 'package:otopiyasa/widgets/car_card.dart';
+import 'package:otopiyasa/widgets/data_saver_dialog.dart';
 
 // Sunucudan gerçek marka listesi gelene kadar gösterilen dar yedek liste.
 const _fallbackBrands = [
@@ -68,6 +73,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _totalPages = 1;
   int _refreshSignal = 0;
   int _carsRequestId = 0;
+  final _random = Random();
+  // Her yenilemede (aşağı çekme, filtre değişimi, ilk açılış) yeni tohum: akış her seferinde
+  // farklıdır, aynı yenilemenin sonraki sayfaları tutarlı kalır.
+  int _feedSeed = 1 + Random().nextInt(2147483646);
 
   String _brand = '';
   String _model = '';
@@ -109,7 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final data = await _api.fetchBrandModels();
       final brands = (data['brands'] as List<dynamic>? ?? []).cast<String>();
-      final rawModels = data['brandModels'] as Map<String, dynamic>? ?? {};
+      // Model aileleri ("Juke" tüm Juke donanımlarını bulur); eski sunucuda tam model listesi.
+      final rawModels = (data['brandFamilies'] ?? data['brandModels']) as Map<String, dynamic>? ?? {};
       final brandModels = rawModels.map(
         (key, value) => MapEntry(key, (value as List<dynamic>).cast<String>()),
       );
@@ -143,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadCars({required bool reset}) async {
     final requestId = ++_carsRequestId;
     if (reset) {
+      _feedSeed = 1 + _random.nextInt(2147483646);
       setState(() {
         _loading = true;
         _loadingMore = false;
@@ -165,6 +176,7 @@ class _HomeScreenState extends State<HomeScreen> {
         sort: _sort,
         discountOnly: _discountOnly,
         page: nextPage,
+        seed: _feedSeed,
       );
       if (!mounted || requestId != _carsRequestId) return;
       setState(() {
@@ -331,6 +343,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: const Text('Bildirimler'),
                 onTap: () => Navigator.of(context).pop('notifications'),
               ),
+              ValueListenableBuilder<DataSaverMode>(
+                valueListenable: DataSaver.instance.mode,
+                builder: (context, mode, _) => ListTile(
+                  leading: const Icon(Icons.data_saver_on_outlined),
+                  title: const Text('Veri tasarrufu'),
+                  subtitle: Text(dataSaverLabel(mode), style: const TextStyle(fontSize: 12)),
+                  onTap: () => Navigator.of(context).pop('dataSaver'),
+                ),
+              ),
               ListTile(
                 leading: const Icon(Icons.logout, color: Colors.redAccent),
                 title: const Text('Çıkış yap', style: TextStyle(color: Colors.redAccent)),
@@ -384,6 +405,8 @@ class _HomeScreenState extends State<HomeScreen> {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ProfileScreen()),
       );
+    } else if (action == 'dataSaver') {
+      await showDataSaverDialog(context);
     } else if (action == 'logout') {
       await _api.logout();
       NotificationService.instance.stop();
@@ -514,7 +537,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ValueListenableBuilder<int>(
             valueListenable: _api.authRevision,
-            builder: (context, _, __) => Row(
+            builder: (context, _, _) => Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (_api.isLoggedIn) ...[
@@ -554,7 +577,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ValueListenableBuilder<int>(
             valueListenable: _api.authRevision,
-            builder: (context, _, __) => IconButton(
+            builder: (context, _, _) => IconButton(
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.all(4),
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -571,7 +594,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () => _loadCars(reset: true),
+        onRefresh: () {
+          HapticFeedback.mediumImpact();
+          return _loadCars(reset: true);
+        },
         child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -955,7 +981,7 @@ class _SearchablePickerSheetState extends State<_SearchablePickerSheet> {
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _popularBrands.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final brand = _popularBrands[index];
                       final val = brand == 'Tümü' ? '' : brand;

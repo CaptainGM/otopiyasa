@@ -1,4 +1,4 @@
-// Kurumsal kaynaklarda (Otokoç, Otoplus) eksik galeri / açıklama / teknik bilgiyi ilan sayfasından tamamlar.
+// Kurumsal kaynaklarda (Otokoç, Otoplus, Carvak, DOD, Otomerkezi) eksik galeri / açıklama / hasar / teknik bilgiyi tamamlar.
 //   npx tsx scripts/enrich-details.ts [adet] [otokoc|otoplus]
 // Daemon bunu her turda küçük partilerle zaten yapar; bu betik ilk toplu tamamlama içindir.
 import { loadEnv } from "./load-env";
@@ -30,6 +30,7 @@ async function main() {
   let done = 0;
   let enriched = 0;
   let images = 0;
+  let archived = 0;
   let stalled = 0;
   while (done < total) {
     const r = await runDetailBackfill(Math.min(50, total - done), { source: only, log: (m) => console.log(`   ${m}`) });
@@ -37,14 +38,15 @@ async function main() {
     done += r.checked;
     enriched += r.enriched;
     images += r.imagesAdded;
+    archived += r.archived;
     // Art arda hiç ilan okunamıyorsa (engel/ağ sorunu) döngüyü sonsuza dek sürdürme.
-    stalled = r.enriched === 0 ? stalled + 1 : 0;
+    stalled = r.enriched === 0 && r.archived === 0 ? stalled + 1 : 0;
     if (stalled >= 3) {
       console.log("\n⛔ Art arda 3 parti hiç ilan okuyamadı; durduruldu (ağ/engel olabilir).");
       break;
     }
   }
-  console.log(`\nBitti: ${done} ilan kontrol edildi, ${enriched} zenginleştirildi, +${images} fotoğraf eklendi.`);
+  console.log(`\nBitti: ${done} ilan kontrol edildi, ${enriched} zenginleştirildi, +${images} fotoğraf eklendi, ${archived} satılmış ilan arşive taşındı.`);
   console.log(`Kalan: ${(await pending()).toLocaleString("tr-TR")}\n`);
   await mongoose.disconnect();
   process.exit(0);

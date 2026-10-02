@@ -26,6 +26,9 @@ class DamageReport {
   final String summary;
 }
 
+/// Kurumsal kaynakların "temiz" yazımları: "Boya/değişen yok", "Boyasız", "tüm parçalar orijinal".
+final _cleanPaint = RegExp(r'boya\s*/\s*değişen\s+yok|değişen\s+yok|boyasız|boyasiz|değişensiz|degisensiz|tüm\s+parçalar\s+or[ji]inal');
+
 int _countOf(String text, String labelPattern) {
   final match = RegExp('(\\d+)\\s*$labelPattern', caseSensitive: false).firstMatch(text);
   if (match == null) return 0;
@@ -83,6 +86,18 @@ DamageReport parseDamageReport(String? raw) {
   final changed = _countOf(lower, r'değişen');
 
   final affected = changed + painted + localPainted;
+  if (affected == 0 && _cleanPaint.hasMatch(lower)) {
+    return const DamageReport(
+      changed: 0,
+      painted: 0,
+      localPainted: 0,
+      allOriginal: true,
+      unknown: false,
+      affected: 0,
+      level: DamageLevel.original,
+      summary: 'Aracın tamamı orijinal — boyalı ya da değişen parça yok.',
+    );
+  }
   if (affected == 0) return _empty;
 
   final score = changed * 3 + painted * 2 + localPainted;

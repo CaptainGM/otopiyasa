@@ -48,7 +48,3 @@ tempCodeRunnerFile.*
 # Firebase servis hesabı anahtarı (gizli — asla commit edilmemeli)
 *firebase-adminsdk*.json
 *serviceAccountKey*.json
-
-# claude
-.claude/
-.claudeignore

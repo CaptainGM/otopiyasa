@@ -93,3 +93,25 @@ describe("Keşfet akışı tohumu", () => {
     expect(resolveFeedSeed(987, now)).toBe(987);
   });
 });
+
+describe("akış tohumu havuzu (CDN önbelleği)", () => {
+  it("rastgele tohum her zaman 1..12 arasındadır", async () => {
+    const { randomFeedSeed, FEED_SEED_POOL } = await import("./car-mix");
+    for (let i = 0; i < 500; i++) {
+      const seed = randomFeedSeed();
+      expect(Number.isInteger(seed)).toBe(true);
+      expect(seed).toBeGreaterThanOrEqual(1);
+      expect(seed).toBeLessThanOrEqual(FEED_SEED_POOL);
+    }
+  });
+
+  it("yalnızca tohumsuz ya da havuzdaki tohumlu istek önbelleğe alınabilir", async () => {
+    const { isCacheableFeedSeed } = await import("./car-mix");
+    expect(isCacheableFeedSeed(undefined)).toBe(true);
+    expect(isCacheableFeedSeed(1)).toBe(true);
+    expect(isCacheableFeedSeed(12)).toBe(true);
+    expect(isCacheableFeedSeed(13)).toBe(false);
+    expect(isCacheableFeedSeed(492230507)).toBe(false);
+    expect(isCacheableFeedSeed(Number.NaN)).toBe(false);
+  });
+});

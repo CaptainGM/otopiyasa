@@ -23,7 +23,18 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     const allowedOrigin = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // Kullanıcıdan bağımsız sayfalar (ana sayfa 670 KB'tı ve her ziyaret sunucuya gidiyordu): yalnızca Vercel CDN'i
+    // saklar (tarayıcıya giden Cache-Control değişmez). Giriş yapmış kullanıcıya özel arayüz içeren sayfalar
+    // (ilan ayrıntısı, profil, ilanlarım...) burada YOK.
+    const cdnPage = (seconds: number, stale: number) => [
+      { key: "Vercel-CDN-Cache-Control", value: `max-age=${seconds}, stale-while-revalidate=${stale}` },
+    ];
     return [
+      { source: "/", headers: cdnPage(300, 1800) },
+      { source: "/analytics", headers: cdnPage(600, 3600) },
+      { source: "/map", headers: cdnPage(600, 3600) },
+      { source: "/predict", headers: cdnPage(3600, 86400) },
+      { source: "/compare", headers: cdnPage(3600, 86400) },
       {
         source: "/api/:path*",
         headers: [

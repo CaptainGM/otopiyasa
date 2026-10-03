@@ -156,6 +156,20 @@ async function main() {
     );
   }
 
+  // Arabam ilanları yalnızca evdeki bilgisayardan doğrulanır (arabam-bekci-kur.bat); bilgisayar kapalıyken ilerlemez.
+  console.log(`\n${c.bold}${c.cyan}── 4) ARABAM DOĞRULAMA (ev bilgisayarı, bekçi) ──${c.reset}`);
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [arabamActive, arabamNever, arabamDay, arabamLast] = await Promise.all([
+    Car.countDocuments({ sourceSite: "arabam", status: "active" }),
+    Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $exists: false } }),
+    Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $gt: dayAgo } }),
+    Car.findOne({ sourceSite: "arabam", lastVerifiedAt: { $exists: true } }).sort({ lastVerifiedAt: -1 }).select("lastVerifiedAt").lean<{ lastVerifiedAt?: Date }>(),
+  ]);
+  const lastAgeH = arabamLast?.lastVerifiedAt ? Math.round((Date.now() - new Date(arabamLast.lastVerifiedAt).getTime()) / 3600000) : null;
+  const fmt = (n: number) => n.toLocaleString("tr-TR");
+  console.log(`aktif ilan    ${fmt(arabamActive)} | hiç doğrulanmamış ${fmt(arabamNever)} | son 24 saatte doğrulanan ${fmt(arabamDay)}`);
+  console.log(`son doğrulama ${lastAgeH === null ? bad("hiç yok") : lastAgeH <= 72 ? ok(`${lastAgeH} sa önce`) : warn(`${lastAgeH} sa önce (bekçi çalışmıyor olabilir: arabam-bekci-durum.bat)`)}`);
+
   console.log(`\n${problems === 0 ? ok("Tüm kaynaklar sağlıklı görünüyor.") : bad(`${problems} sorun bulundu (yukarıda işaretli).`)}\n`);
   await mongoose.disconnect();
   process.exit(problems === 0 ? 0 : 1);

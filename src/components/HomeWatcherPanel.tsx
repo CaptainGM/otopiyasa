@@ -81,6 +81,8 @@ export function HomeWatcherPanel() {
   }, [openDate]);
 
   const w = data?.watcher;
+  // Bugün için içinde bulunulan saatten sonrası "çalışmadı" değil "henüz gelmedi".
+  const nowHourTr = Number(new Intl.DateTimeFormat("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", hour12: false }).format(new Date())) % 24;
   const maxHour = hours ? Math.max(1, ...hours.map((h) => h.checked)) : 1;
 
   return (
@@ -187,13 +189,16 @@ export function HomeWatcherPanel() {
                 <div className="space-y-1">
                   {hours.map((h) => {
                     const idle = h.checked === 0 && !(h.batches && h.batches > 0);
+                    const future = openDate === getTurkeyDateStr() && h.hour > nowHourTr;
                     return (
                       <div key={h.hour} className="flex items-center gap-3 text-xs">
                         <span className="w-24 shrink-0 text-slate-500">{h.hourRange}</span>
                         <div className="h-3 flex-1 overflow-hidden rounded bg-white/5">
                           <div className="h-full rounded bg-emerald-400/70" style={{ width: `${(h.checked / maxHour) * 100}%` }} />
                         </div>
-                        {idle ? (
+                        {future ? (
+                          <span className="w-64 shrink-0 text-slate-700">henüz gelmedi</span>
+                        ) : idle ? (
                           <span className="w-64 shrink-0 text-slate-600">çalışmadı (bilgisayar kapalı olabilir)</span>
                         ) : (
                           <span className="w-64 shrink-0 text-slate-300">

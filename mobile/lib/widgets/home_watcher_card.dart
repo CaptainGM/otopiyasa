@@ -117,6 +117,9 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
 
   Widget _hoursList() {
     final hours = _hours;
+    // Bugün için içinde bulunulan saatten sonrası "çalışmadı" değil "henüz gelmedi".
+    final trNow = DateTime.now().toUtc().add(const Duration(hours: 3));
+    final isToday = _openDate == DateFormat('dd.MM.yyyy').format(trNow);
     if (hours == null) {
       return const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
     }
@@ -132,6 +135,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
               final checked = (h['checked'] as num?)?.toInt() ?? 0;
               final idle = checked == 0 && ((h['batches'] as num?)?.toInt() ?? 0) == 0;
               final hour = (h['hour'] as num?)?.toInt() ?? 0;
+              final future = isToday && hour > trNow.hour;
               final blocked = (h['blocked'] as num?)?.toInt() ?? 0;
               final paused = (h['pausedMinutes'] as num?)?.toInt() ?? 0;
               return Padding(
@@ -156,7 +160,9 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                     const SizedBox(width: 8),
                     SizedBox(
                       width: 104,
-                      child: idle
+                      child: future
+                          ? const Text('henüz gelmedi', style: TextStyle(fontSize: 11, color: Colors.white12))
+                          : idle
                           ? const Text('çalışmadı', style: TextStyle(fontSize: 11, color: Colors.white30))
                           : Text.rich(
                               TextSpan(style: const TextStyle(fontSize: 11), children: [
@@ -251,7 +257,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                           const SizedBox(height: 12),
                           Row(
                             children: [
-                              _tile('Bugün kontrol', _n(today['checked'])),
+                              _tile('Kontrol', _n(today['checked'])),
                               const SizedBox(width: 6),
                               _tile('Canlı', _n(today['alive']), color: _emerald),
                               const SizedBox(width: 6),

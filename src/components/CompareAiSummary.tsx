@@ -21,6 +21,8 @@ export function CompareAiSummary({ items }: { items: Car[] }) {
   const [loading, setLoading] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [open, setOpen] = useState(true);
+  // Telefonda önce 4 satır görünür (tablo ekranın altında kalmasın), dokununca tamamı açılır.
+  const [expanded, setExpanded] = useState(false);
 
   const ids = items.map((c) => c._id).join(",");
 
@@ -77,9 +79,22 @@ export function CompareAiSummary({ items }: { items: Car[] }) {
               Araçlar analiz ediliyor...
             </p>
           ) : (
-            <p className="whitespace-pre-line text-base leading-7 text-slate-100 md:text-[17px] md:leading-8">
-              {summary ? renderSummary(summary) : null}
-            </p>
+            <>
+              <p
+                className={`whitespace-pre-line text-base leading-7 text-slate-100 md:text-[17px] md:leading-8 ${
+                  expanded ? "" : "line-clamp-4 md:line-clamp-none"
+                }`}
+              >
+                {summary ? renderSummary(summary) : null}
+              </p>
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-1 text-sm font-semibold text-amber-300 md:hidden"
+              >
+                {expanded ? "Daha az göster ▲" : "Devamını oku ▼"}
+              </button>
+            </>
           )}
         </div>
       ) : (

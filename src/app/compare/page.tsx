@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Car } from "@/types";
-import { formatNumber, formatPrice } from "@/lib/utils";
+import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { removeFromCompare, subscribeCompare, getCompareIds } from "@/lib/compare-store";
 import { CompareAiSummary } from "@/components/CompareAiSummary";
 import { CarThumbPlaceholder } from "@/components/CarThumb";
@@ -101,6 +101,14 @@ function ComparePageInner() {
     { label: "Şehir", render: (c) => c.city },
     { label: "İlan tarihi", render: (c) => c.listingDate || "-" },
     {
+      label: "Son kontrol",
+      // Hiç yeniden doğrulanmamış ilanda son kontrol, ilanın kaynakta ilk görüldüğü andır.
+      render: (c) => {
+        const checked = c.lastVerifiedAt || c.createdAt;
+        return c.sourceSite === "user" || (c.status && c.status !== "active") || !checked ? "-" : formatRelativeTr(checked);
+      },
+    },
+    {
       label: "Hasar",
       render: (c) =>
         c.damageFlag ? <span className="text-red-400">Hasar kaydı</span> : "Belirtilmemiş",
@@ -117,12 +125,12 @@ function ComparePageInner() {
       <CompareAiSummary items={items} />
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] table-fixed border-collapse">
+        <table className="w-full table-fixed border-collapse sm:min-w-[640px]">
           <thead>
             <tr>
-              <th className="w-32 p-3 text-left align-bottom text-sm text-slate-500">Özellik</th>
+              <th className="w-12 p-1 text-left align-bottom text-[10px] text-slate-500 sm:w-32 sm:p-3 sm:text-sm">Özellik</th>
               {items.map((c) => (
-                <th key={c._id} className="p-3 align-bottom">
+                <th key={c._id} className="p-0.5 align-bottom sm:p-3">
                   <div className="card overflow-hidden">
                     {/* Kaynak fotoğraflar 16:9; aynı oran kullanılınca araç kırpılmadan tam görünür */}
                     <Link href={`/cars/${c._id}`} aria-label={`${c.title} ilanına git`} className="relative block aspect-video w-full bg-black/30">
@@ -134,10 +142,10 @@ function ComparePageInner() {
                         fallback={<CarThumbPlaceholder />}
                       />
                     </Link>
-                    <div className="space-y-1 p-3 text-left">
+                    <div className="space-y-0.5 p-1.5 text-left sm:space-y-1 sm:p-3">
                       <Link
                         href={`/cars/${c._id}`}
-                        className="line-clamp-2 text-sm font-semibold leading-snug hover:text-amber-300"
+                        className="line-clamp-2 text-[11px] font-semibold leading-snug hover:text-amber-300 sm:text-sm"
                       >
                         {c.title}
                       </Link>
@@ -157,20 +165,20 @@ function ComparePageInner() {
           <tbody>
             {rows.map((row) => (
               <tr key={row.label} className="border-t border-white/5">
-                <td className="p-3 text-sm text-slate-500">{row.label}</td>
+                <td className="p-1 text-[10px] leading-tight text-slate-500 sm:p-3 sm:text-sm">{row.label}</td>
                 {items.map((c) => {
                   const isBest = row.best?.(c);
                   return (
                     <td
                       key={c._id}
-                      className={`p-3 text-sm font-medium ${
-                        isBest ? "text-emerald-300" : "text-slate-100"
+                      className={`break-words p-1 text-[11px] font-medium sm:p-3 sm:text-sm ${
+                        isBest ? "bg-emerald-500/10 text-emerald-300 sm:bg-transparent" : "text-slate-100"
                       }`}
                     >
-                      <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
                         {row.render(c)}
                         {isBest && (
-                          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-300">
+                          <span className="hidden rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-300 sm:inline">
                             en iyi
                           </span>
                         )}

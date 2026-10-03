@@ -6,6 +6,7 @@ import 'package:otopiyasa/screens/login_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/relative_time.dart';
+import 'package:otopiyasa/widgets/home_watcher_card.dart';
 
 const _emerald = Color(0xFF10B981);
 const _roseColor = Color(0xFFF43F5E);
@@ -435,6 +436,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               ),
             ],
           ),
+          const SizedBox(height: 20),
+
+          // EVDEKİ BİLGİSAYARDA ÇALIŞAN ARABAM BEKÇİSİ
+          const HomeWatcherCard(),
           const SizedBox(height: 20),
 
           // ENVANTER

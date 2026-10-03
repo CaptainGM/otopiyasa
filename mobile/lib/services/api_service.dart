@@ -1050,6 +1050,25 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Evdeki bilgisayarda çalışan Arabam bekçisinin durumu, günlük özeti ve doğrulama kuyruğu (yalnızca yönetici).
+  Future<Map<String, dynamic>> fetchHomeWatcher() async {
+    final response = await http.get(_uri('/api/admin/home-watcher'), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Bekçi durumu alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Bekçinin bir günü (GG.AA.YYYY) saat saat: 24 satır, çalışmadığı saatler sıfır.
+  Future<List<Map<String, dynamic>>> fetchHomeWatcherHours(String date) async {
+    final response = await http.get(_uri('/api/admin/home-watcher', {'date': date}), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Saatlik döküm alınamadı'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['hours'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+  }
+
   /// Yönetici şikayet listesi (açık raporlar).
   Future<List<Map<String, dynamic>>> fetchAdminReports() async {
     final response = await http.get(_uri('/api/admin/reports'), headers: _headers);

@@ -56,6 +56,16 @@ export async function sendResetEmail(to: string, resetUrl: string) {
   return sendEmail({ to, subject, html, text });
 }
 
+export async function sendResetCodeEmail(to: string, code: string) {
+  const subject = "OtoPiyasa - Şifre sıfırlama kodu";
+  const html = `<p>Şifre sıfırlama isteğiniz alındı. Uygulamaya aşağıdaki kodu girerek yeni şifre belirleyebilirsiniz:</p>
+    <p style="font-size:28px;font-weight:800;letter-spacing:6px">${code}</p>
+    <p style="color:#888;font-size:12px">Kod 15 dakika geçerlidir. Bu isteği siz yapmadıysanız bu e-postayı yok sayabilirsiniz; şifreniz değişmez.</p>`;
+  const text = `Şifre sıfırlama kodun: ${code}`;
+
+  return sendEmail({ to, subject, html, text });
+}
+
 export function isMailerConfigured() {
   return getTransporter() !== null;
 }

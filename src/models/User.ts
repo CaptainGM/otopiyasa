@@ -11,6 +11,10 @@ const UserSchema = new Schema(
     favorites: [{ type: Schema.Types.ObjectId, ref: "Car" }],
     resetTokenHash: { type: String, default: null },
     resetTokenExpires: { type: Date, default: null },
+    // Mobil uygulamada şifre sıfırlama: e-postaya giden 6 haneli kod (bağlantı akışından ayrı tutulur)
+    resetCodeHash: { type: String, default: null },
+    resetCodeExpires: { type: Date, default: null },
+    resetCodeAttempts: { type: Number, default: 0 },
    
     emailVerified: { type: Boolean, default: false },
     verifyTokenHash: { type: String, default: null },

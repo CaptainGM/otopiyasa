@@ -114,6 +114,8 @@ function ComparePageInner() {
         <span className="text-sm text-slate-500">{items.length} araç</span>
       </div>
 
+      <CompareAiSummary items={items} />
+
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] table-fixed border-collapse">
           <thead>
@@ -123,15 +125,15 @@ function ComparePageInner() {
                 <th key={c._id} className="p-3 align-bottom">
                   <div className="card overflow-hidden">
                     {/* Kaynak fotoğraflar 16:9; aynı oran kullanılınca araç kırpılmadan tam görünür */}
-                    <div className="relative aspect-video w-full bg-black/30">
+                    <Link href={`/cars/${c._id}`} aria-label={`${c.title} ilanına git`} className="relative block aspect-video w-full bg-black/30">
                       <FallbackImage
                         src={c.imageUrl}
                         fallbacks={c.images}
                         alt={c.title}
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-cover transition hover:opacity-90"
                         fallback={<CarThumbPlaceholder />}
                       />
-                    </div>
+                    </Link>
                     <div className="space-y-1 p-3 text-left">
                       <Link
                         href={`/cars/${c._id}`}
@@ -181,8 +183,6 @@ function ComparePageInner() {
           </tbody>
         </table>
       </div>
-
-      <CompareAiSummary items={items} />
     </div>
   );
 }

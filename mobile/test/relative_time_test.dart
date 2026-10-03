@@ -56,5 +56,15 @@ void main() {
       final removed = CarListing.fromJson(json({'status': 'removed', 'lastVerifiedAt': '2026-09-30T08:00:00.000Z'}));
       expect(removed.verifiedLabel, '');
     });
+
+    test('hiç doğrulanmamış ilanda son kontrol ilanın eklendiği andır', () {
+      final never = CarListing.fromJson(json({'createdAt': '2026-09-12T08:00:00.000Z'}));
+      expect(never.lastVerifiedAt, isNull);
+      expect(never.verifiedLabel, startsWith('Kaynakta son kontrol: '));
+
+      // Doğrulama varsa o kullanılır; üye ilanında yine yazılmaz.
+      final user = CarListing.fromJson(json({'sourceSite': 'user', 'createdAt': '2026-09-12T08:00:00.000Z'}));
+      expect(user.verifiedLabel, '');
+    });
   });
 }

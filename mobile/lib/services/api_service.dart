@@ -9,6 +9,15 @@ import 'package:otopiyasa/models/account.dart';
 import 'package:otopiyasa/models/offer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Giriş: hesap var ama e-posta henüz doğrulanmamış (ekran "tekrar gönder" seçeneği sunar).
+class NeedsVerificationException implements Exception {
+  NeedsVerificationException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class ApiService {
   /// Sunucu adresi.
   ///
@@ -231,7 +240,9 @@ class ApiService {
     }
   }
 
-  Future<void> auth({
+  /// Giriş/kayıt. Kayıt sonrası e-posta doğrulaması gerekiyorsa (oturum açılmaz) sunucunun
+  /// mesajını döner; oturum açıldıysa null.
+  Future<String?> auth({
     required bool register,
     required String email,
     required String password,
@@ -248,8 +259,21 @@ class ApiService {
     );
 
     if (response.statusCode != 200) {
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      throw Exception(body['error'] as String? ?? 'Kimlik doğrulama başarısız');
+      Map<String, dynamic> failure = {};
+      try {
+        failure = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        // gövde JSON değilse varsayılan mesaj
+      }
+      final message = failure['error'] as String? ?? 'Kimlik doğrulama başarısız';
+      if (failure['needsVerification'] == true) throw NeedsVerificationException(message);
+      throw Exception(message);
+    }
+
+    final answer = jsonDecode(response.body) as Map<String, dynamic>;
+    if (answer['requiresVerification'] == true) {
+      return answer['message']?.toString() ??
+          'Hesabın oluşturuldu. E-posta adresine gönderdiğimiz doğrulama bağlantısına tıkla.';
     }
 
     // httpOnly cookie mobilde otomatik saklanmaz; Set-Cookie'den token'ı çek.
@@ -263,6 +287,79 @@ class ApiService {
     currentUser = body['user'] as Map<String, dynamic>?;
     currentUser ??= await me();
     authRevision.value++;
+    return null;
+  }
+
+  /// Giriş yapmadan şifre sıfırlama: e-postaya 6 haneli kod gider (web bağlantı gönderir).
+  Future<String> requestPasswordResetCode(String email) async {
+    final response = await http.post(
+      _uri('/api/auth/forgot-password'),
+      headers: _headers,
+      body: jsonEncode({'email': email, 'method': 'code'}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Kod gönderilemedi'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['message']?.toString() ?? 'Kod gönderildi.';
+  }
+
+  Future<String> resetPasswordWithCode({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      _uri('/api/auth/reset-password'),
+      headers: _headers,
+      body: jsonEncode({
+        'email': email,
+        'code': code,
+        'password': newPassword,
+        'confirmPassword': newPassword,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Şifre sıfırlanamadı'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['message']?.toString() ?? 'Şifren güncellendi.';
+  }
+
+  /// Doğrulama e-postasını yeniden gönderir (bağlantı kaybolduysa ya da süresi dolduysa).
+  Future<String> resendVerification(String email) async {
+    final response = await http.post(
+      _uri('/api/auth/resend-verification'),
+      headers: _headers,
+      body: jsonEncode({'email': email}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Doğrulama e-postası gönderilemedi'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return body['message']?.toString() ?? 'Doğrulama bağlantısı gönderildi.';
+  }
+
+  /// Hesabımın açık olduğu cihazlar (web'deki "Cihazlarım" ile aynı).
+  Future<List<Map<String, dynamic>>> fetchSessions() async {
+    final response = await http.get(_uri('/api/sessions'), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Cihazlar yüklenemedi'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['sessions'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+  }
+
+  /// Bir cihazın oturumunu kapatır. Kapatılan bu cihazsa yerel oturum da temizlenir; true döner.
+  Future<bool> revokeSession(String id) async {
+    final response = await http.delete(_uri('/api/sessions/$id'), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Oturum kapatılamadı'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final wasCurrent = body['wasCurrent'] == true;
+    if (wasCurrent) await _clearSession();
+    return wasCurrent;
   }
 
   Future<Map<String, dynamic>?> me() async {

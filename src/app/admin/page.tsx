@@ -7,6 +7,7 @@ import { BusinessApprovals } from "@/components/BusinessApprovals";
 import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
 import { DaemonStatsPanel } from "@/components/DaemonStatsPanel";
+import { HomeWatcherPanel } from "@/components/HomeWatcherPanel";
 import { ScrapePanel } from "@/components/ScrapePanel";
 import { SourceBadge } from "@/components/SourceBadge";
 import { OldestListingsPanel } from "@/components/OldestListingsPanel";
@@ -378,6 +379,9 @@ export default async function AdminPage() {
         initialToday={initialToday}
         initialHourly={initialHourly}
       />
+
+      {/* 1b. EVDEKİ BİLGİSAYARDA ÇALIŞAN ARABAM BEKÇİSİ (günlük + saat saat) */}
+      <HomeWatcherPanel />
 
       {/* 2. SIRADA: MANUEL VERİ ÇEKME & DENETİM PANELİ */}
       <ScrapePanel

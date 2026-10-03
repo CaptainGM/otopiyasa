@@ -33,8 +33,13 @@ const singleRound = args.includes("--tek-tur");
 const batchSize = Math.min(Math.max(Number(args.find((a) => a.startsWith("--adet="))?.split("=")[1]) || 20, 1), 100);
 const configuredGap = Number(process.env.ARABAM_BEKCI_ARALIK);
 
+/** Yönetim ekranındaki mini konsol için son satırlar (kalp atışıyla veritabanına gider). */
+const recentLines: string[] = [];
+
 function log(message: string) {
   const line = `[${new Date().toLocaleString("tr-TR")}] ${message}`;
+  recentLines.push(line);
+  if (recentLines.length > 30) recentLines.shift();
   // Arka planda (Görev Zamanlayıcı) konsol yok; yalnızca günlük dosyasına yazılır.
   if (process.stdout.isTTY) console.log(line);
   try {
@@ -87,16 +92,44 @@ async function main() {
     // 2 = başka kopya çalışıyor: başlatıcı (arabam-bekci-gizli.vbs) yeniden denemeyi bırakır.
     process.exit(2);
   }
+  const { connectDB } = await import("@/lib/mongodb");
+  const { Car } = await import("@/models/Car");
+  const { recordWatcherBatch, updateWatcherState } = await import("@/models/HomeWatcher");
+  const os = await import("node:os");
+
+  // Yönetim ekranı için kalp atışı: durum, ne yaptığı, son satırlar. Dakikada bir ve her olayda yazılır.
+  const startedAt = new Date();
+  let beat: { status: "running" | "paused" | "stopped"; phase: string; gapSeconds: number; pausedUntil: Date | null } = {
+    status: "running",
+    phase: "Başlıyor",
+    gapSeconds: 0,
+    pausedUntil: null,
+  };
+  const heartbeat = (extra: { lastBatchAt?: Date } = {}) =>
+    connectDB()
+      .then(() =>
+        updateWatcherState({
+          host: os.hostname(),
+          startedAt,
+          recentLogs: recentLines,
+          ...beat,
+          ...extra,
+        })
+      )
+      .catch(() => {});
+  const setBeat = (status: "running" | "paused", phase: string, gapSeconds: number, pausedUntil: Date | null = null, extra: { lastBatchAt?: Date } = {}) => {
+    beat = { status, phase, gapSeconds, pausedUntil };
+    return heartbeat(extra);
+  };
   const quit = () => {
     releaseLock();
-    process.exit(0);
+    beat = { ...beat, status: "stopped", phase: "Kapatıldı" };
+    // Çıkmadan önce "durdu" yazmayı dene (en fazla 2 sn bekle).
+    Promise.race([heartbeat(), sleep(2000)]).finally(() => process.exit(0));
   };
   process.on("SIGINT", quit);
   process.on("SIGTERM", quit);
   process.on("exit", releaseLock);
-
-  const { connectDB } = await import("@/lib/mongodb");
-  const { Car } = await import("@/models/Car");
   const { sweepAndCleanDeadListings, setArabamPageGap } = await import("@/lib/scraper/verify-listing");
   const { closeSharedBrowser } = await import("@/lib/scraper/browser-scrape");
   const { PACING, planNextStep } = await import("@/lib/scraper/arabam-pacing");
@@ -109,6 +142,10 @@ async function main() {
   let day = new Date().toDateString();
 
   log(`Arabam bekçisi başladı (parti ${batchSize} ilan, ilanlar arası ~${baseGap} sn).`);
+  await setBeat("running", "Başladı", baseGap);
+  // Uzun beklemelerde (engel molası, sırada ilan yok) de "yaşıyorum" sinyali gitsin.
+  const timer = setInterval(() => void heartbeat(), 60 * 1000);
+  timer.unref();
 
   for (;;) {
     try {
@@ -121,6 +158,8 @@ async function main() {
 
       // Aralık ±%25 oynar: sabit ritim bot izi bırakır.
       setArabamPageGap(state.gapSeconds * 750, state.gapSeconds * 500);
+      await setBeat("running", `Doğrulanıyor (${batchSize} ilanlık parti, ilanlar arası ~${Math.round(state.gapSeconds)} sn)`, state.gapSeconds);
+      const batchStarted = Date.now();
       const res = await sweepAndCleanDeadListings({
         source: "arabam",
         limit: batchSize,
@@ -156,13 +195,42 @@ async function main() {
       else if (plan.reason === "slow-down") log(`  engel görüldü, aralık ${plan.gapSeconds} sn'ye uzatıldı.`);
 
       state = { gapSeconds: plan.gapSeconds, pauseMinutes: plan.pauseMinutes };
+
+      // Yönetim ekranı için saatlik kayıt: parti iki saate yayıldıysa orta noktasındaki saate yazılır.
+      if (res.checked > 0 || plan.reason === "blocked-pause") {
+        await recordWatcherBatch(
+          {
+            checked: res.checked,
+            alive: res.active,
+            archived: res.archived,
+            blocked,
+            uncertain: Math.max(0, res.errors - blocked),
+            pauseMinutes: plan.reason === "blocked-pause" ? plan.sleepMinutes : 0,
+            activeSeconds: (Date.now() - batchStarted) / 1000,
+          },
+          new Date((batchStarted + Date.now()) / 2)
+        );
+      }
       if (singleRound) break;
 
       // Tarayıcı günlerce açık kalınca şişer: ~2.000 sayfada bir yenilenir.
       if (rounds % 100 === 0) await closeSharedBrowser();
       if (plan.sleepMinutes > 0) {
         await closeSharedBrowser(); // molada tarayıcı boşuna bellek tutmasın
+        const until = new Date(Date.now() + plan.sleepMinutes * 60 * 1000);
+        const untilText = until.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+        const reasonText =
+          plan.reason === "blocked-pause"
+            ? `Cloudflare engel verdi: ${plan.sleepMinutes} dk mola (${untilText}'e kadar)`
+            : plan.reason === "errors"
+              ? `İnternet ya da tarayıcı sorunu: ${plan.sleepMinutes} dk bekleniyor (${untilText}'e kadar)`
+              : `Sırada kontrol edilecek ilan yok: ${plan.sleepMinutes} dk bekleniyor (${untilText}'e kadar)`;
+        await setBeat(plan.reason === "blocked-pause" ? "paused" : "running", reasonText, plan.gapSeconds, plan.reason === "blocked-pause" ? until : null, {
+          lastBatchAt: new Date(),
+        });
         await sleep(plan.sleepMinutes * 60 * 1000);
+      } else {
+        await heartbeat({ lastBatchAt: new Date() });
       }
     } catch (err) {
       log(`Beklenmeyen hata: ${err instanceof Error ? err.message : err} (5 dk sonra yeniden denenecek)`);
@@ -172,7 +240,10 @@ async function main() {
     }
   }
 
+  clearInterval(timer);
   await closeSharedBrowser();
+  beat = { ...beat, status: "stopped", phase: "Tek tur bitti" };
+  await heartbeat();
   const { default: mongoose } = await import("mongoose");
   await mongoose.disconnect().catch(() => {});
   releaseLock();

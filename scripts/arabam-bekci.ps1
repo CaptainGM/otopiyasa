@@ -54,6 +54,9 @@ switch ($Islem) {
         if (-not (Get-Command npx -ErrorAction SilentlyContinue)) {
             throw "Node.js (npx) bulunamadi. Node.js kurulu olmali."
         }
+        if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+            Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        }
         $action = New-ScheduledTaskAction -Execute "wscript.exe" -Argument ('"{0}"' -f $Launcher) -WorkingDirectory $Root
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $User
         $trigger.Delay = "PT1M"   # internetin gelmesi icin 1 dk bekle
@@ -63,12 +66,10 @@ switch ($Islem) {
         Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
             -Principal $principal -Force -Description "Arabam ilanlarini ev internetinden ~10 sn arayla kontrol eder (OtoPiyasa)." | Out-Null
         Write-Host "Gorev kuruldu: her oturum acilisinda (1 dk sonra) kendiliginden baslar."
-        if (Get-WatcherPid) {
-            Write-Host "Bekci zaten calisiyor."
-        } else {
-            Start-ScheduledTask -TaskName $TaskName
-            Write-Host "Bekci simdi baslatildi."
-        }
+        # Calisan eski kopya varsa durdurulur; yeni kod ile yeniden baslar (kodu guncelleyince de ayni komut).
+        Stop-Watcher
+        Start-ScheduledTask -TaskName $TaskName
+        Write-Host "Bekci simdi baslatildi."
         Write-Host ""
         Show-Status
     }

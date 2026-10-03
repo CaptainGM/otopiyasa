@@ -50,15 +50,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   try {
     await connectDB();
-    const recentCars = await Car.find(PUBLIC_LISTING_FILTER, { _id: 1, updatedAt: 1 })
-      .sort({ updatedAt: -1 })
-      .limit(500)
+    // 200 yeni ilan; "güncellenme"ye göre sıralayıp "günlük" demek, ilanlar tarama betikleriyle sürekli
+    // güncellendiği için botları her gün 500 sayfayı (228 KB'lık) yeniden çekmeye itiyordu.
+    const recentCars = await Car.find(PUBLIC_LISTING_FILTER, { _id: 1, createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .limit(200)
       .lean();
 
-    const carPages: MetadataRoute.Sitemap = (recentCars as unknown as Array<{ _id: { toString(): string }; updatedAt?: Date }>).map((c) => ({
+    const carPages: MetadataRoute.Sitemap = (recentCars as unknown as Array<{ _id: { toString(): string }; createdAt?: Date }>).map((c) => ({
       url: `${baseUrl}/cars/${c._id.toString()}`,
-      lastModified: c.updatedAt ? new Date(c.updatedAt) : new Date(),
-      changeFrequency: "daily",
+      lastModified: c.createdAt ? new Date(c.createdAt) : new Date(),
+      changeFrequency: "weekly",
       priority: 0.6,
     }));
 

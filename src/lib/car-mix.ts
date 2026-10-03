@@ -61,6 +61,19 @@ export function resolveFeedSeed(seed?: number, now = Date.now()): number {
   return Number.isFinite(seed) && (seed as number) > 0 ? (seed as number) : dailyMixSeed(now);
 }
 
+/**
+ * Akış tohumu havuzu: sayfa ve mobil uygulama 1..12 arasından seçer. Rastgele 31 bitlik tohum her istek
+ * adresini benzersiz yapıyor, CDN hiçbir isteği tekrar kullanamıyordu (her sayfa kaydırma sunucuya gidiyordu);
+ * 12 farklı akış ve kısa önbellek yine çeşitlilik verir ama aynı adresler paylaşılır.
+ */
+export const FEED_SEED_POOL = 12;
+export const randomFeedSeed = (): number => 1 + Math.floor(Math.random() * FEED_SEED_POOL);
+
+/** Tohum yoksa ya da havuzdaysa yanıt herkes için aynıdır, CDN'de saklanabilir. */
+export function isCacheableFeedSeed(seed?: number | null): boolean {
+  return seed === undefined || seed === null || (Number.isInteger(seed) && seed >= 1 && seed <= FEED_SEED_POOL);
+}
+
 export function isMixedSort(sort?: string): boolean {
   return !sort || sort === "mixed";
 }

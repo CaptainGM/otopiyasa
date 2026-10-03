@@ -17,6 +17,8 @@ describe("carvakPartName", () => {
     expect(carvakPartName("hood")).toBe("Motor Kaputu");
     expect(carvakPartName("trunk")).toBe("Bagaj Kapağı");
     expect(carvakPartName("rightPillarA")).toBe("Sağ A Direği");
+    expect(carvakPartName("leftRunningBoard")).toBe("Sol Marşpiyel");
+    expect(carvakPartName("rightFragrantSheet")).toBe("Sağ Yan Sac");
     expect(carvakPartName("somethingNew")).toBe("somethingNew");
   });
 });

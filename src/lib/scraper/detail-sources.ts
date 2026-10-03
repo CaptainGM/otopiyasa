@@ -63,7 +63,9 @@ const PART_WORDS: Array<[RegExp, string]> = [
   [/fender/i, "Çamurluk"],
   [/door/i, "Kapı"],
   [/pillar/i, "Direk"],
-  [/rocker|sill|marsp/i, "Marşpiyel"],
+  // Carvak: "rightRunningBoard" basamak/marşpiyel; "rightFragrantSheet" kaynağın kendi adı, anlamı belirsiz bir yan sac.
+  [/rocker|sill|marsp|runningboard/i, "Marşpiyel"],
+  [/fragrantsheet/i, "Yan Sac"],
 ];
 
 /** Carvak parça kodu ("leftFrontDoor", "rightPillarA") → hasar şemasının tanıdığı Türkçe ad. */

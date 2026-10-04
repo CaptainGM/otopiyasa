@@ -81,8 +81,20 @@ function ComparePageInner() {
   const rows: { label: string; render: (c: Car) => React.ReactNode; best?: (c: Car) => boolean }[] = [
     { label: "Fiyat", render: (c) => formatPrice(c.price), best: (c) => c.price === minPrice },
     {
-      label: "Canlı piyasa ort.",
-      render: (c) => (c.marketAvgPrice ? formatPrice(c.marketAvgPrice) : "-"),
+      label: "Marka/model/yıl ort.",
+      render: (c) =>
+        c.marketAvgPrice && (c.marketListingCount ?? 0) >= 3 ? (
+          <span className="inline-flex flex-col">
+            <span>{formatPrice(c.marketAvgPrice)}</span>
+            <small className="text-[10px] font-normal text-slate-500">
+              {c.marketListingCount} diğer aktif ilan
+            </small>
+          </span>
+        ) : (
+          <span className="text-slate-500">
+            Yeterli veri yok ({c.marketListingCount ?? 0}/3)
+          </span>
+        ),
     },
     { label: "Yıl", render: (c) => c.year, best: (c) => c.year === maxYear },
     {
@@ -123,6 +135,10 @@ function ComparePageInner() {
       </div>
 
       <CompareAiSummary items={items} />
+
+      <p className="-mt-3 text-xs leading-relaxed text-slate-500">
+        Ortalama, karşılaştırdığın araçlar hariç aktif ilanlardan hesaplanır. Donanım ve kilometre farkları bu ortalamaya dahil değildir; en az 3 ilan yoksa gösterilmez.
+      </p>
 
       <div className="overflow-x-auto">
         <table className="w-full table-fixed border-collapse sm:min-w-[640px]">

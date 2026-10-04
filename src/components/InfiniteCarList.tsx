@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CarListItem } from "@/types";
 import { CarCard } from "@/components/CarCard";
+import { FEED_SEED_COOKIE, FEED_SEED_POOL } from "@/lib/car-mix";
 
 export function InfiniteCarList({
   initialItems,
@@ -25,6 +26,37 @@ export function InfiniteCarList({
   const [error, setError] = useState("");
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const navigation = performance.getEntriesByType("navigation")[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    if (navigation?.type !== "reload") return;
+
+    const previousRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    window.scrollTo(0, 0);
+    return () => {
+      window.history.scrollRestoration = previousRestoration;
+    };
+  }, []);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const seedValue = url.searchParams.get("seed");
+    const seed = Number(seedValue);
+    if (!seedValue || !Number.isInteger(seed) || seed < 1 || seed > FEED_SEED_POOL) return;
+
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${FEED_SEED_COOKIE}=${seed}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
+    url.searchParams.delete("seed");
+    const search = url.searchParams.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${search ? `?${search}` : ""}${url.hash}`
+    );
+  }, [query]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingRef.current || page >= totalPages) return;

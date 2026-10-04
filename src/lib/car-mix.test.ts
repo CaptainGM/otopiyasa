@@ -114,4 +114,13 @@ describe("akış tohumu havuzu (CDN önbelleği)", () => {
     expect(isCacheableFeedSeed(492230507)).toBe(false);
     expect(isCacheableFeedSeed(Number.NaN)).toBe(false);
   });
+
+  it("önceki akış tohumunu hemen tekrar seçmez", async () => {
+    const { randomFeedSeed, FEED_SEED_POOL } = await import("./car-mix");
+    for (let previous = 1; previous <= FEED_SEED_POOL; previous++) {
+      for (let i = 0; i < 30; i++) {
+        expect(randomFeedSeed(previous)).not.toBe(previous);
+      }
+    }
+  });
 });

@@ -454,8 +454,8 @@ export function PricePredictorForm() {
                   : condition === "damaged"
                   ? "Ağır Hasarlı / Onarımlı"
                   : "Hatasız / Boyasız",
-              marketAvgPrice: liveMarket?.avg || result.predictedPrice,
-              marketListingCount: liveMarket?.count || result.sampleSize,
+              marketAvgPrice: liveMarket?.avg ?? null,
+              marketListingCount: liveMarket?.count ?? 0,
             }}
             predictedPrice={result.predictedPrice}
             comparables={result.comparables}

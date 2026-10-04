@@ -36,6 +36,7 @@ import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
 import { FuelCostCard } from "@/components/FuelCostCard";
+import { ListingDescription } from "@/components/ListingDescription";
 import { getFuelCostForCar } from "@/lib/fuel-cost-data";
 import { resolvePlacement } from "@/lib/district-coords";
 import { getCurrentUser } from "@/lib/auth";
@@ -364,7 +365,7 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
 
           {fuelCost && <FuelCostCard cost={fuelCost} />}
 
-          <p className="leading-7 text-slate-300">{car.description}</p>
+          <ListingDescription value={car.description} />
 
           {/* Üye ilanıysa iletişim + işletme rozeti */}
           {car.sourceSite === "user" && (

@@ -148,7 +148,7 @@ async function findCarsPageUncached(
         .limit(limit)
         .slice("images", LIST_IMAGE_LIMIT)
         .lean(),
-      Car.countDocuments(query),
+      Car.countDocuments({ ...query, rand: { $gte: start } }),
     ]);
     return { docs: docs as unknown[], total, page, limit };
   }

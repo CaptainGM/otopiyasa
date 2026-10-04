@@ -67,7 +67,14 @@ export function resolveFeedSeed(seed?: number, now = Date.now()): number {
  * 12 farklı akış ve kısa önbellek yine çeşitlilik verir ama aynı adresler paylaşılır.
  */
 export const FEED_SEED_POOL = 12;
-export const randomFeedSeed = (): number => 1 + Math.floor(Math.random() * FEED_SEED_POOL);
+export const FEED_SEED_COOKIE = "op_feed_seed";
+
+export function randomFeedSeed(previousSeed?: number): number {
+  const seeds = Array.from({ length: FEED_SEED_POOL }, (_, index) => index + 1).filter(
+    (seed) => seed !== previousSeed
+  );
+  return seeds[Math.floor(Math.random() * seeds.length)];
+}
 
 /** Tohum yoksa ya da havuzdaysa yanıt herkes için aynıdır, CDN'de saklanabilir. */
 export function isCacheableFeedSeed(seed?: number | null): boolean {

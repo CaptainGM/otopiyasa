@@ -26,6 +26,7 @@ echo  [B] FIYAT TAHMIN ^& AI MODELINI GUCLENDIRME (Model Dogrulugu Icin)
 echo   ------------------------------------------------------------------
 echo    6  - Nadir MODEL        (^<10 ilanli modelleri Arabam'da arar, AI R2 artar)
 echo    7  - Nadir MODEL genis  (^<15 ilanli 300 modeli Arabam'da derin tarar)
+echo    20 - Seyrek piyasa emsali (Aykiri deger sonrasi 3'ten az marka/model/yil ilani)
 echo    4  - Nadir MARKA        (^<40 ilanli markalari Arabam'da tarar: Alfa, Jeep vb.)
 echo    5  - En Az Markalar     (^<15 ilanli nadir markalari Arabam'da 20 sayfa tarar)
 echo.
@@ -54,7 +55,7 @@ echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve t
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, G, D, N, S, E, 1-19 veya P, varsayilan T): "
+set /p secim="Secimin (T, G, D, N, S, E, 1-20 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo

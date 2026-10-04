@@ -13,6 +13,7 @@ import {
   ikinciyeniAdapter,
   scrapeArabamForBrands,
   scrapeArabamForModels,
+  scrapeArabamForMarketYears,
   refetchArabamDetails,
   POPULAR_BRANDS,
 } from "@/lib/scraper/adapters";
@@ -26,6 +27,8 @@ import { fuelWithTitleHint } from "@/lib/normalize-fuel";
 import { normalizeCity } from "@/lib/normalize-city";
 import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
 import { ListingSource } from "@/types";
+import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
   if (source === "sahibinden") return [sahibindenAdapter];
@@ -493,6 +496,122 @@ export async function runRareModelScrape(
     inserted: counts.inserted,
     updated: counts.updated,
     reactivated: counts.reactivated,
+    sources: [{ source: "arabam", fetched, saved: counts.saved }],
+    sampleVehicles,
+  };
+}
+
+/** Aykırı değer temizliğinden sonra üçten az emsali kalan marka/model/yıl segmentlerini tamamlar. */
+export async function runSparseMarketSegmentScrape(
+  maxSegments = 100,
+  pagesPerYear = 4,
+  maxListings = 500
+): Promise<ScrapeJobResult> {
+  const groups = await Car.aggregate<{
+    _id: { brand: string; model: string; year: number };
+    prices: number[];
+  }>([
+    {
+      $match: {
+        ...PUBLIC_LISTING_FILTER,
+        brand: { $type: "string", $ne: "" },
+        model: { $type: "string", $nin: ["", "Model", "Bilinmiyor"] },
+        year: { $type: "number", $gte: 1900 },
+      },
+    },
+    {
+      $group: {
+        _id: { brand: "$brand", model: "$model", year: "$year" },
+        prices: { $push: "$price" },
+      },
+    },
+  ]);
+
+  const sparseSegments = selectSparseMarketSegments(
+    groups.map((group) => ({ ...group._id, prices: group.prices || [] })),
+    maxSegments
+  );
+
+  if (sparseSegments.length === 0) {
+    return {
+      success: true,
+      message: "Aykırı değer temizliğinden sonra üçten az emsali kalan marka/model/yıl segmenti bulunamadı.",
+      inserted: 0,
+      updated: 0,
+      sources: [{ source: "arabam", fetched: 0, saved: 0 }],
+    };
+  }
+
+  const modelTargets = new Map<string, { brand: string; model: string; years: Set<number> }>();
+  const allowedSegmentKeys = new Set<string>();
+  const segmentsForInvalidation: Array<{ brand: string; model: string; year: number }> = [];
+  for (const segment of sparseSegments) {
+    const normalized = normalizeBrandModel(segment.brand, segment.model);
+    const modelKey = `${segment.brand}::${segment.model}`;
+    const existing = modelTargets.get(modelKey) || {
+      brand: segment.brand,
+      model: segment.model,
+      years: new Set<number>(),
+    };
+    existing.years.add(segment.year);
+    modelTargets.set(modelKey, existing);
+    allowedSegmentKeys.add(`${segment.brand}::${segment.model}::${segment.year}`);
+    allowedSegmentKeys.add(`${normalized.brand}::${normalized.model}::${segment.year}`);
+    segmentsForInvalidation.push(segment, { ...normalized, year: segment.year });
+  }
+
+  const counter = createSaveCounter();
+  const { counts } = counter;
+  const sampleVehicles: NonNullable<ScrapeJobResult["sampleVehicles"]> = [];
+  const onListing = async (listing: ScrapedListing) => {
+    const normalized = normalizeBrandModel(listing.brand, listing.model);
+    if (!allowedSegmentKeys.has(`${normalized.brand}::${normalized.model}::${listing.year}`)) return;
+    const result = await saveListing(listing);
+    counter.add(result);
+    if (result !== "skipped" && sampleVehicles.length < 20) {
+      sampleVehicles.push({
+        brand: normalized.brand,
+        model: normalized.model,
+        year: listing.year,
+        price: listing.price,
+        source: listing.sourceSite,
+        title: listing.title,
+        imageUrl: listing.imageUrl || listing.images?.[0],
+      });
+    }
+  };
+
+  let fetched = 0;
+  const errors: string[] = [];
+  try {
+    fetched = await scrapeArabamForMarketYears(
+      [...modelTargets.values()].map((target) => ({ ...target, years: [...target.years] })),
+      pagesPerYear,
+      onListing,
+      maxListings
+    );
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
+  }
+
+  invalidateMarketSegments(segmentsForInvalidation);
+  if (counts.inserted > 0) {
+    try {
+      await checkSubscriptions();
+    } catch (error) {
+      console.error("Abonelik bildirimi kontrolü başarısız:", error);
+    }
+  }
+
+  return {
+    success: true,
+    message:
+      `Seyrek fiyat taraması: aykırı değer temizliğinden sonra üçten az emsali kalan ${sparseSegments.length} marka/model/yıl segmenti, ${modelTargets.size} model tarandı` +
+      (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
+    inserted: counts.inserted,
+    updated: counts.updated,
+    reactivated: counts.reactivated,
+    unchanged: counts.unchanged,
     sources: [{ source: "arabam", fetched, saved: counts.saved }],
     sampleVehicles,
   };

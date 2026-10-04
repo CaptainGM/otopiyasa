@@ -27,7 +27,10 @@ const nextConfig: NextConfig = {
     // saklar (tarayıcıya giden Cache-Control değişmez). Giriş yapmış kullanıcıya özel arayüz içeren sayfalar
     // (ilan ayrıntısı, profil, ilanlarım...) burada YOK.
     const cdnPage = (seconds: number, stale: number) => [
-      { key: "Vercel-CDN-Cache-Control", value: `max-age=${seconds}, stale-while-revalidate=${stale}` },
+      {
+        key: "Vercel-CDN-Cache-Control",
+        value: `public, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
+      },
     ];
     return [
       { source: "/", headers: cdnPage(300, 1800) },

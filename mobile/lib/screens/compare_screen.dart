@@ -361,7 +361,14 @@ class _CompareScreenState extends State<CompareScreen> {
     return [
       _CompareRow('Fiyat ₺', [for (final c in _cars) _money.format(c.price)],
           best: _extremes(prices, lowest: true), worst: worst(prices, highest: true)),
-      _CompareRow('Piyasa ort. ₺', [for (final c in _cars) c.marketAvgPrice != null ? _money.format(c.marketAvgPrice) : '-']),
+      _CompareRow('Marka/model/yıl ort.', [
+        for (final c in _cars)
+          c.marketAvgPrice != null &&
+                  c.marketAvgPrice! > 0 &&
+                  (c.marketListingCount ?? 0) >= 3
+              ? '${_money.format(c.marketAvgPrice)} · ${c.marketListingCount} ilan'
+              : 'Yeterli veri yok (${c.marketListingCount ?? 0}/3)',
+      ]),
       _CompareRow('Yıl', [for (final c in _cars) c.year.toString()],
           best: _extremes(years, lowest: false), worst: worst(years, highest: false)),
       _CompareRow('Km', [for (final c in _cars) _money.format(c.mileage)],

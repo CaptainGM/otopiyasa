@@ -44,6 +44,10 @@ const seedCars = JSON.parse(
     index % 2 === 0
       ? `https://www.sahibinden.com/ilan/demo-${index + 1}`
       : `https://www.arabam.com/ilan/demo-${index + 1}`,
+  rand: Math.random(),
+  rand2: Math.random(),
+  rand3: Math.random(),
+  rand4: Math.random(),
   priceHistory: car.priceHistory.map((point) => ({
     ...point,
     recordedAt: new Date(point.recordedAt),
@@ -69,6 +73,10 @@ const CarSchema = new mongoose.Schema(
     sourceSite: String,
     listingUrl: String,
     externalId: String,
+    rand: Number,
+    rand2: Number,
+    rand3: Number,
+    rand4: Number,
     priceHistory: Array,
   },
   { timestamps: true }

@@ -4,6 +4,7 @@ import {
   runScrapeJob,
   runRareBrandScrape,
   runRareModelScrape,
+  runSparseMarketSegmentScrape,
   runPriceRefresh,
   runAddressBackfill,
   arabamRefreshStatus,
@@ -167,6 +168,31 @@ export async function POST(request: Request) {
           : 1500;
       const result = await runRareModelScrape(threshold, perModelPages, maxSegments, maxListings);
       await recordLog(result, "rare-model", "Nadir Model Doldurma");
+      return NextResponse.json(result);
+    }
+
+    // 5b. Aykırı değer temizliği sonrası üçten az örneği kalan yıl segmentleri.
+    if (body.mode === "sparse-market-segments") {
+      if (isVercel) {
+        return NextResponse.json(
+          { success: false, message: "Bu uzun Arabam taramasını ev bilgisayarındaki scrape.bat üzerinden çalıştırın." },
+          { status: 409 }
+        );
+      }
+      const maxSegments =
+        typeof body.maxSegments === "number" && body.maxSegments > 0
+          ? Math.min(Math.trunc(body.maxSegments), 500)
+          : 100;
+      const pagesPerYear =
+        typeof body.pagesPerYear === "number" && body.pagesPerYear > 0
+          ? Math.min(Math.trunc(body.pagesPerYear), 20)
+          : 4;
+      const maxListings =
+        typeof body.maxListings === "number" && body.maxListings > 0
+          ? Math.min(Math.trunc(body.maxListings), 2500)
+          : 500;
+      const result = await runSparseMarketSegmentScrape(maxSegments, pagesPerYear, maxListings);
+      await recordLog(result, "sparse-market-segments", "Seyrek Marka/Model/Yıl Emsali");
       return NextResponse.json(result);
     }
 

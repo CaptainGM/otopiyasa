@@ -17,7 +17,7 @@ class MarketBadge extends StatelessWidget {
     final avg = car.marketAvgPrice;
     final count = car.marketListingCount;
 
-    if (avg == null || count == null || count < 2) {
+    if (avg == null || avg <= 0 || count == null || count < 3) {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -25,14 +25,14 @@ class MarketBadge extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.info_outline, size: 16, color: Colors.white38),
-            SizedBox(width: 8),
+            const Icon(Icons.info_outline, size: 16, color: Colors.white38),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Bu segment için henüz yeterli karşılaştırma ilanı yok',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+                'Yeterli fiyat verisi yok (${count ?? 0}/3 ilan)',
+                style: const TextStyle(color: Colors.white54, fontSize: 12),
               ),
             ),
           ],
@@ -53,17 +53,17 @@ class MarketBadge extends StatelessWidget {
       statusTag = 'Kondisyonuna Göre %${pct.abs()} Hesaplı (Fırsat)';
       statusIcon = '🔥';
       statusColor = const Color(0xFF10B981);
-      analysisDesc = 'Bu araç, benzer kilometre ve hasar kondisyonundaki emsallerine göre %${pct.abs()} daha avantajlı fiyatlandırılmıştır.';
+      analysisDesc = 'Bu ilan, aynı marka/model/yıl grubundaki aktif ilan ortalamasının %${pct.abs()} altında.';
     } else if (pct >= 6) {
       statusTag = 'Hasar ve KM Durumuna Göre %$pct Yüksek';
       statusIcon = '🔴';
       statusColor = const Color(0xFFEF4444);
-      analysisDesc = 'Bu araç, aynı kilometre ve hasar durumundaki piyasa beklentisinin %$pct üzerinde fiyatlandırılmıştır.';
+      analysisDesc = 'Bu ilan, aynı marka/model/yıl grubundaki aktif ilan ortalamasının %$pct üzerinde.';
     } else {
-      statusTag = 'Piyasa Değerinde (Adil Fiyat)';
+      statusTag = 'İlan ortalamasına yakın';
       statusIcon = '🟢';
       statusColor = const Color(0xFF38BDF8);
-      analysisDesc = 'İlan fiyatı, aracın model yılı, kilometresi ve hasar kondisyonuna göre hesaplanan adil piyasa ederiyle tam uyumludur.';
+      analysisDesc = 'Bu ilan, aynı marka/model/yıl grubundaki aktif ilan ortalamasına yakın.';
     }
 
     return Container(
@@ -86,11 +86,11 @@ class MarketBadge extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Fiyat Analiz Termometresi',
+                      'Marka / model / yıl ilan ortalaması',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                     Text(
-                      '$count emsal araç verisi',
+                      '$count aktif ilan (bu ilan dahil)',
                       style: const TextStyle(color: Colors.white38, fontSize: 10.5),
                     ),
                   ],
@@ -137,7 +137,7 @@ class MarketBadge extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Adil Piyasa Ederi', style: TextStyle(fontSize: 10.5, color: Colors.white38)),
+                      const Text('İlan ortalaması', style: TextStyle(fontSize: 10.5, color: Colors.white38)),
                       const SizedBox(height: 2),
                       Text(
                         _formatPrice(avg),

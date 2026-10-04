@@ -270,6 +270,14 @@ let sharedBrowser: any = null;
 let sharedContext: any = null;
 let browserLaunchPromise: Promise<any> | null = null;
 
+/** Paylaşılan tarayıcıyı kapatır; sonraki sayfa yeni bir tane açar (günlerce açık kalan arka plan işlerinde bellek şişmesin). */
+export async function closeSharedBrowser(): Promise<void> {
+  const browser = sharedBrowser;
+  sharedBrowser = null;
+  sharedContext = null;
+  if (browser) await browser.close().catch(() => {});
+}
+
 async function getSharedContext(hostname: string) {
   if (sharedBrowser && sharedBrowser.isConnected() && sharedContext) {
     return sharedContext;

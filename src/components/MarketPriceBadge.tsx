@@ -13,10 +13,10 @@ export function MarketPriceBadge({
   marketListingCount,
   compact = false,
 }: MarketPriceBadgeProps) {
-  if (!marketAvgPrice || !marketListingCount || marketListingCount < 2) {
+  if (!marketAvgPrice || !marketListingCount || marketListingCount < 3) {
     return (
       <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-400">
-        Bu segment için henüz yeterli ilan yok
+        Yeterli fiyat verisi yok ({marketListingCount ?? 0}/3 ilan)
       </div>
     );
   }
@@ -28,7 +28,7 @@ export function MarketPriceBadge({
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5">
       <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-        {compact ? "Piyasa ort." : "Bu araca özel piyasa ortalaması"}
+        {compact ? "Piyasa ort." : "Marka / model / yıl ortalaması"}
       </p>
       <div className="mt-1 flex flex-wrap items-end justify-between gap-2">
         <strong className="text-base text-amber-200">{formatPrice(marketAvgPrice)}</strong>
@@ -41,7 +41,7 @@ export function MarketPriceBadge({
         </span>
       </div>
       <p className="mt-1 text-[11px] text-slate-500">
-        Aynı marka / model / yıl: {marketListingCount} ilan
+        {marketListingCount} aktif ilan{compact ? "" : " (bu ilan dahil)"}
       </p>
     </div>
   );

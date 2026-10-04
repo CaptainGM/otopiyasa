@@ -19,19 +19,20 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
     timeZone: "Europe/Istanbul",
   });
   const plug = cost.plugIn;
+  const electric = cost.electric;
 
   return (
     <section className={`rounded-2xl border p-4 ${tone}`} aria-label="Yakıt maliyeti">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-200">⛽ Yakıt maliyeti</h3>
         <span className="text-xs text-slate-500">
-          {cost.place} pompa fiyatı · {cost.priceSource} · {date}
+          {electric ? "Tahmini elektrik tarifesi" : `${cost.place} pompa fiyatı · ${cost.priceSource} · ${date}`}
         </span>
       </div>
       <div className="mt-2 flex flex-wrap items-end gap-x-6 gap-y-1">
         <p>
           <span className="text-2xl font-black text-amber-300">{tl(cost.perKm)} ₺</span>
-          <span className="ml-1 text-sm text-slate-400">/ km{plug ? " (evde şarjla)" : ""}</span>
+          <span className="ml-1 text-sm text-slate-400">/ km{plug || electric ? " (evde şarjla)" : ""}</span>
         </p>
         <p className="text-sm text-slate-300">
           100 km: <strong>{tl(cost.per100Km, 0)} ₺</strong>
@@ -40,7 +41,18 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
           <p className="text-sm text-slate-400">Benzinle 100 km: {tl(cost.petrolPer100Km, 0)} ₺</p>
         )}
       </div>
-      {plug ? (
+      {electric ? (
+        <>
+          <p className="mt-2 text-sm text-slate-300">
+            Halka açık şarjla <strong>{tl(electric.perKmPublicCharge)} ₺/km</strong>
+          </p>
+          <p className="mt-2 text-xs text-slate-400">
+            {electric.kwhPer100} kWh/100 km × {tl(electric.homePricePerKwh, 1)} ₺/kWh (ev) = {tl(cost.per100Km, 0)} ₺. Halka açık AC şarj ~
+            {tl(electric.publicPricePerKwh, 1)} ₺/kWh alındı.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">ℹ️ {cost.note}</p>
+        </>
+      ) : plug ? (
         <>
           <p className="mt-2 text-sm text-slate-300">
             Halka açık şarjla <strong>{tl(plug.perKmPublicCharge)} ₺/km</strong>
@@ -63,7 +75,7 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
         <>
           <p className="mt-2 text-xs text-slate-400">
             Resmi ortalama tüketim {cost.consumption.toLocaleString("tr-TR")} lt/100 km
-            {cost.consumptionSource === "model" ? ` (${cost.consumptionNote || "aynı modelin resmi değeri"})` : ""} × {cost.priceFuel}{" "}
+            {cost.consumptionSource !== "ilan" ? ` (${cost.consumptionNote || "aynı modelin resmi değeri"})` : ""} × {cost.priceFuel}{" "}
             {tl(cost.pricePerLiter)} ₺/lt
             {cost.priceFuel === "LPG" ? " (LPG'de tüketim ~%20 fazla hesaplandı)" : ""}.
           </p>

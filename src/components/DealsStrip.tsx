@@ -6,6 +6,8 @@ import { formatPrice } from "@/lib/utils";
 import { findGlobalDeals, type Deal } from "@/lib/deals";
 import { cached, CACHE_TTL } from "@/lib/cache";
 
+const STRIP_LIMIT = 12;
+
 async function findDeals(): Promise<Deal[]> {
   try {
     await connectDB();
@@ -18,17 +20,19 @@ async function findDeals(): Promise<Deal[]> {
 export async function DealsStrip() {
   const deals = await cached("home:deals:global", CACHE_TTL.long, findDeals);
   if (deals.length === 0) return null;
+  // Şeritte ilk 12 fırsat: 30 kartın hepsi ana sayfa HTML'ine gömülüyordu (ziyaret başına ~100 KB).
+  const shown = deals.slice(0, STRIP_LIMIT);
 
   return (
     <section className="space-y-3">
       <div className="flex items-center gap-2">
         <h2 className="text-xl font-bold tracking-tight">Haftanın fırsatları</h2>
         <span className="badge border-emerald-400/30 bg-emerald-500/15 text-emerald-300">
-          {deals.length} araç
+          {shown.length} araç
         </span>
       </div>
       <DragScroller className="flex gap-4 overflow-x-auto pb-2">
-        {deals.map(({ car, label }) => (
+        {shown.map(({ car, label }) => (
           <Link
             key={car._id}
             href={`/cars/${car._id}`}

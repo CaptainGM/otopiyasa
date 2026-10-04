@@ -68,7 +68,7 @@ export function ListingsMap() {
 
   // Model listesi ana sayfadaki filtreyle aynı kaynaktan (marka seçilince dolar).
   useEffect(() => {
-    fetch("/api/filters/brand-models")
+    fetch("/api/filters/brand-models?families=1")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => (data?.brandFamilies || data?.brandModels) && setBrandModels(data.brandFamilies || data.brandModels))
       .catch(() => {});

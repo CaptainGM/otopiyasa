@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:otopiyasa/models/account.dart';
 import 'package:otopiyasa/screens/admin_screen.dart';
+import 'package:otopiyasa/screens/devices_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
@@ -289,6 +290,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: const Text('Şifreyi güncelle'),
           ),
 
+          const SizedBox(height: 32),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.devices),
+              title: const Text('Cihazlarım'),
+              subtitle: const Text('Hesabına giriş yapılmış cihazlar; tanımadığın cihazın oturumunu kapat', style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DevicesScreen()),
+              ),
+            ),
+          ),
           const SizedBox(height: 32),
           _emailChangeSection(),
 

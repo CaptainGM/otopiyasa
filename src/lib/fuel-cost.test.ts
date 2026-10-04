@@ -80,12 +80,40 @@ describe("computeFuelCost", () => {
     expect(cost.consumptionNote).toBe("aynı modeldeki 3 ilanın resmi değeri");
   });
 
-  it("tüketim de model verisi de yoksa uydurmaz", () => {
-    expect(computeFuelCost({ brand: "Lada", model: "Niva", features: { fuelType: "Benzin" } }, prices, stats)).toBeNull();
+  it("model verisi yoksa sınıf ortalamasını tahmin diye yazar", () => {
+    const cost = computeFuelCost({ brand: "Lada", model: "Niva", city: "İstanbul", features: { fuelType: "Benzin", bodyType: "SUV" } }, prices, stats)!;
+    expect(cost.consumption).toBe(7);
+    expect(cost.consumptionSource).toBe("sinif");
+    expect(cost.consumptionNote).toContain("SUV sınıfındaki benzinli");
+    expect(cost.consumptionNote).toContain("tahmini");
+    // Kendi ortalamasıyla kıyaslayıp "az/çok yakıyor" demez.
+    expect(cost.rating).toBeUndefined();
   });
 
-  it("elektrikli araçta hesap yapmaz", () => {
-    expect(computeFuelCost({ features: { fuelType: "Elektrik", avgFuelConsumption: "5 lt" } }, prices, stats)).toBeNull();
+  it("kasa tipi de bilinmiyorsa yakıtın genel ortalamasına düşer", () => {
+    const cost = computeFuelCost({ brand: "Lada", model: "Niva", features: { fuelType: "Dizel" } }, prices, stats)!;
+    expect(cost.consumptionSource).toBe("sinif");
+    expect(cost.consumptionNote).toContain("dizel");
+  });
+
+  it("sınıf için de yeterli örnek yoksa uydurmaz", () => {
+    expect(computeFuelCost({ brand: "Lada", model: "Niva", features: { fuelType: "Benzin" } }, prices, buildConsumptionStats([]))).toBeNull();
+  });
+
+  it("başlığında şarjlı hibrit yazan ama tüketimi bilinmeyen araçta sınıf ortalaması yazmaz", () => {
+    const car = { brand: "Volvo", model: "XC60", title: "Volvo XC60 T8 Plug-in Hybrid", features: { fuelType: "Hibrit", bodyType: "SUV" } };
+    expect(computeFuelCost(car, prices, stats)).toBeNull();
+  });
+
+  it("elektrikli araçta tipik kWh değeriyle evde ve halka açık şarj maliyetini tahmin eder", () => {
+    const sedan = computeFuelCost({ features: { fuelType: "Elektrik", bodyType: "Sedan" } }, prices, stats)!;
+    expect(sedan.fuelType).toBe("Elektrik");
+    expect(sedan.consumption).toBe(ELECTRICITY.evKwhPer100Km);
+    expect(sedan.per100Km).toBeCloseTo(ELECTRICITY.evKwhPer100Km * ELECTRICITY.homePerKwh, 2);
+    expect(sedan.electric?.perKmPublicCharge).toBeCloseTo((ELECTRICITY.evKwhPer100Km * ELECTRICITY.publicAcPerKwh) / 100, 1);
+    const suv = computeFuelCost({ features: { fuelType: "Elektrik", bodyType: "SUV" } }, prices, stats)!;
+    expect(suv.consumption).toBe(ELECTRICITY.evLargeKwhPer100Km);
+    expect(suv.perKm).toBeGreaterThan(sedan.perKm);
   });
 
   it("sınıf ortalamasına göre az ya da çok yakıyor der", () => {

@@ -6,7 +6,7 @@
 > web + mobil üzerinden sunan full-stack bir araç fiyat takip ve alım-satım platformu.
 
 **Canlı adres:** https://otopiyasa.app
-**Depo:** GitHub (private) — `otopiyasa`
+**Depo:** GitHub — `otopiyasa`
 
 ---
 

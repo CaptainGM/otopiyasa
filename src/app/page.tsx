@@ -18,8 +18,10 @@ import { getColorOptions, type ColorOption } from "@/lib/color-counts";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { FEED_SEED_COOKIE, FEED_SEED_POOL, randomFeedSeed } from "@/lib/car-mix";
 import { normalizeCity } from "@/lib/normalize-city";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
+import { cookies } from "next/headers";
 
 interface HomeProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -47,9 +49,18 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const filters = parseCarFilters(urlParams);
   // "Keşfet" akışı: her sayfa yüklemesinde (tarayıcı yenileme dahil) yeni tohum; aynı tohum
   // sonsuz kaydırmadaki sonraki sayfalara da gider, böylece sayfalar arasında tekrar/atlama olmaz.
-  const feedSeed = filters.seed ?? 1 + Math.floor(Math.random() * 2_147_483_646);
+  const feedCookie = (await cookies()).get(FEED_SEED_COOKIE)?.value;
+  const previousFeedSeed = Number(feedCookie);
+  const validPreviousFeedSeed =
+    Number.isInteger(previousFeedSeed) && previousFeedSeed >= 1 && previousFeedSeed <= FEED_SEED_POOL
+      ? previousFeedSeed
+      : undefined;
+  const feedSeed = filters.seed ?? randomFeedSeed(validPreviousFeedSeed);
   filters.seed = feedSeed;
-  const pageSize = filters.limit || 48;
+  // İlk HTML'de 12 kart: 48 kartlık sayfa 670 KB'tı ve her ziyaret sunucudan o kadar veri çekiyordu.
+  // Kalanı sonsuz kaydırma yükler (aynı limit ve tohumla).
+  // (parseCarFilters limit verilmediğinde 48'e düşürür; açıkça istenmediyse 12 kullan.)
+  const pageSize = urlParams.has("limit") ? filters.limit || 12 : 12;
   filters.limit = pageSize;
   const listParams = new URLSearchParams(urlParams);
   listParams.delete("page");

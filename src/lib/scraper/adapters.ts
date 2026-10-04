@@ -196,7 +196,8 @@ export function arabamModelSlug(brand: string, model: string): string {
 export async function collectArabamHrefsForModel(
   brand: string,
   model: string,
-  pages: number
+  pages: number,
+  year?: number
 ): Promise<string[]> {
   const modelSlug = arabamModelSlug(brand, model);
   const base = await resolveArabamBase(modelSlug);
@@ -210,7 +211,12 @@ export async function collectArabamHrefsForModel(
   for (let page = 1; page <= pages; page++) {
     let found: string[] = [];
     try {
-      found = await hrefsFromUrl(`${base}?page=${page}`);
+      const params = new URLSearchParams({ page: String(page) });
+      if (year && Number.isInteger(year)) {
+        params.set("yearMin", String(year));
+        params.set("yearMax", String(year));
+      }
+      found = await hrefsFromUrl(`${base}?${params.toString()}`);
     } catch {
       break;
     }
@@ -544,6 +550,49 @@ export async function scrapeArabamForModels(
 
    
     fetched += await fetchAndSaveArabamDetails(fresh, onListing);
+  }
+
+  return fetched;
+}
+
+/** Model ve yıl aralığına göre hedefli Arabam taraması; hedef dışı yıllar kaydedilmez. */
+export async function scrapeArabamForMarketYears(
+  segments: { brand: string; model: string; years: number[] }[],
+  pagesPerYear: number,
+  onListing: OnListing,
+  maxListings = Number.MAX_SAFE_INTEGER
+): Promise<number> {
+  const seen = new Set<string>();
+  let fetched = 0;
+
+  for (const [index, segment] of segments.entries()) {
+    if (fetched >= maxListings) break;
+    const years = new Set(segment.years.filter((year) => Number.isInteger(year) && year > 0));
+    if (years.size === 0) continue;
+
+    reportProgress(
+      `Piyasa emsali: ${segment.brand} ${segment.model} (${[...years].join(", ")})`,
+      index + 1,
+      segments.length
+    );
+
+    const candidates = new Set<string>();
+    for (const year of years) {
+      try {
+        const hrefs = await collectArabamHrefsForModel(segment.brand, segment.model, pagesPerYear, year);
+        hrefs.forEach((href) => candidates.add(href));
+      } catch {
+        // Bir yılın arama sonucu hata verirse kalan hedef yıl grupları devam eder.
+      }
+    }
+
+    const fresh = [...candidates].filter((href) => !seen.has(href)).slice(0, maxListings - fetched);
+    fresh.forEach((href) => seen.add(href));
+    if (fresh.length === 0) continue;
+
+    fetched += await fetchAndSaveArabamDetails(fresh, async (listing) => {
+      if (years.has(listing.year)) await onListing(listing);
+    });
   }
 
   return fetched;

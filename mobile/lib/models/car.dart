@@ -82,6 +82,13 @@ class CarListing {
     this.fuelType = 'Bilinmiyor',
     this.transmission = 'Bilinmiyor',
     this.bodyType = 'Otomobil',
+    this.color = '',
+    this.engineSize,
+    this.horsepower,
+    this.drivetrain = '',
+    this.avgFuelConsumption = '',
+    this.listingDate = '',
+    this.createdAt,
     this.priceHistory = const [],
     this.address = '',
     this.status = 'active',
@@ -118,6 +125,17 @@ class CarListing {
   final String fuelType;
   final String transmission;
   final String bodyType;
+  final String color;
+  final double? engineSize;
+  final int? horsepower;
+  final String drivetrain;
+  final String avgFuelConsumption;
+
+  /// Kaynak sitedeki ilan tarihi (metin, ör. "19 Eylül 2026"); bilinmiyorsa boş.
+  final String listingDate;
+
+  /// İlanın sistemimize ilk girdiği an; hiç yeniden doğrulanmamış ilanda son kontrol yerine geçer.
+  final DateTime? createdAt;
   final List<PricePoint> priceHistory;
   final String address;
 
@@ -142,10 +160,12 @@ class CarListing {
 
   bool get isActive => status == 'active';
 
-  /// "Kaynakta son kontrol: 3 saat önce" satırı; kaynak ilanları için yoksa boş.
+  /// "Kaynakta son kontrol: 3 saat önce" satırı; üye ilanlarında ve arşivde yok.
+  /// Hiç yeniden doğrulanmamış ilanda son kontrol, ilanın kaynakta ilk görüldüğü andır.
   String get verifiedLabel {
-    if (sourceSite == 'user' || !isActive || lastVerifiedAt == null) return '';
-    return 'Kaynakta son kontrol: ${relativeTimeTr(lastVerifiedAt!)}';
+    final checked = lastVerifiedAt ?? createdAt;
+    if (sourceSite == 'user' || !isActive || checked == null) return '';
+    return 'Kaynakta son kontrol: ${relativeTimeTr(checked)}';
   }
 
   String get statusLabel {
@@ -184,6 +204,13 @@ class CarListing {
       fuelType: features['fuelType'] as String? ?? 'Bilinmiyor',
       transmission: features['transmission'] as String? ?? 'Bilinmiyor',
       bodyType: features['bodyType'] as String? ?? 'Otomobil',
+      color: features['color'] as String? ?? '',
+      engineSize: (features['engineSize'] as num?)?.toDouble(),
+      horsepower: (features['horsepower'] as num?)?.toInt(),
+      drivetrain: features['drivetrain'] as String? ?? '',
+      avgFuelConsumption: features['avgFuelConsumption']?.toString() ?? '',
+      listingDate: json['listingDate'] as String? ?? '',
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? ''),
       priceHistory: (json['priceHistory'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(PricePoint.fromJson)

@@ -2,6 +2,7 @@ import { Car } from "@/models/Car";
 import { connectDB } from "@/lib/mongodb";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { cached, CACHE_TTL } from "@/lib/cache";
+import { normalizeColorOptions } from "@/lib/normalize-color";
 
 export interface ColorOption {
   color: string;
@@ -20,11 +21,8 @@ export async function getColorOptions(): Promise<ColorOption[]> {
       },
       { $group: { _id: "$features.color", count: { $sum: 1 } } },
       { $sort: { count: -1 } },
-      { $limit: 30 },
     ]);
 
-    return rows
-      .filter((r) => r._id && typeof r._id === "string" && r.count > 0)
-      .map((r) => ({ color: r._id.trim(), count: r.count }));
+    return normalizeColorOptions(rows);
   });
 }

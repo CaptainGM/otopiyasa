@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:otopiyasa/screens/forgot_password_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
@@ -19,6 +20,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _nameController = TextEditingController();
   bool _loading = false;
   String? _error;
+  String? _info;
+
+  /// Giriş denenirken "e-posta doğrulanmamış" döndü; tekrar gönderme düğmesi açılır.
+  bool _needsVerification = false;
   /// Kayıt kipinde ad alanı ve şifre kuralları gösterilir.
   bool _registerMode = false;
 
@@ -35,6 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _info = null;
+      _needsVerification = false;
     });
 
     if (register && _nameController.text.trim().isEmpty) {
@@ -53,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     try {
-      await _api.auth(
+      final verifyMessage = await _api.auth(
         register: register,
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -61,6 +68,17 @@ class _LoginScreenState extends State<LoginScreen> {
         // ilanlarda/tekliflerde herkes aynı isimle görünüyordu.
         name: register ? _nameController.text.trim() : null,
       );
+      if (verifyMessage != null) {
+        // Kayıt oldu ama oturum açılmadı: önce e-posta doğrulanmalı.
+        if (mounted) {
+          setState(() {
+            _info = verifyMessage;
+            _needsVerification = true;
+            _registerMode = false;
+          });
+        }
+        return;
+      }
       // Girişten sonra bildirim yoklaması başlasın.
       NotificationService.instance.startPolling();
       if (mounted) {
@@ -69,10 +87,48 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(content: Text(register ? 'Kayıt başarılı' : 'Giriş başarılı')),
         );
       }
+    } on NeedsVerificationException catch (error) {
+      setState(() {
+        _error = error.message;
+        _needsVerification = true;
+      });
     } catch (error) {
-      setState(() => _error = error.toString());
+      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _resendVerification() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _error = 'Önce e-posta adresini gir');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final message = await _api.resendVerification(email);
+      if (mounted) setState(() => _info = message);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openForgotPassword() async {
+    final message = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => ForgotPasswordScreen(initialEmail: _emailController.text.trim())),
+    );
+    if (message != null && mounted) {
+      _passwordController.clear();
+      setState(() {
+        _error = null;
+        _info = message;
+      });
     }
   }
 
@@ -116,6 +172,14 @@ class _LoginScreenState extends State<LoginScreen> {
             obscureText: true,
             decoration: const InputDecoration(labelText: 'Şifre'),
           ),
+          if (!_registerMode)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _loading ? null : _openForgotPassword,
+                child: const Text('Şifremi unuttum'),
+              ),
+            ),
           if (_registerMode) ...[
             const SizedBox(height: 12),
             TextField(
@@ -127,6 +191,17 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+          ],
+          if (_info != null) ...[
+            const SizedBox(height: 12),
+            Text(_info!, style: const TextStyle(color: Colors.greenAccent)),
+          ],
+          if (_needsVerification) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: _loading ? null : _resendVerification,
+              child: const Text('Doğrulama e-postasını tekrar gönder'),
+            ),
           ],
           const SizedBox(height: 20),
           if (_registerMode)
@@ -155,7 +230,7 @@ class _LoginScreenState extends State<LoginScreen> {
             _registerMode
                 ? 'Kayıttan sonra e-postana doğrulama bağlantısı gönderilir; '
                   'giriş yapabilmek için ona tıklaman gerekir.'
-                : 'Şifreni unuttuysan otopiyasa.app üzerinden sıfırlayabilirsin.',
+                : 'Şifreni unuttuysan "Şifremi unuttum"a dokun; e-postana kod gönderelim.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12),
           ),
         ],

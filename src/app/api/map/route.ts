@@ -57,12 +57,16 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    return NextResponse.json({
-      clusters: mapData.clusters,
-      total: mapData.total,
-      unmapped: mapData.unmapped,
-      options,
-    });
+    return NextResponse.json(
+      {
+        clusters: mapData.clusters,
+        total: mapData.total,
+        unmapped: mapData.unmapped,
+        options,
+      },
+      // 93 KB'lık yanıt herkes için aynı; her harita açılışında sunucuya gitmesin.
+      { headers: { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600" } }
+    );
   } catch (error) {
     console.error("GET /api/map error:", error);
     return NextResponse.json({ error: "Harita verisi alınamadı." }, { status: 500 });

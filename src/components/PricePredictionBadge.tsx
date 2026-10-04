@@ -77,7 +77,7 @@ export function PricePredictionBadge({
       {/* Fiyat Kıyaslama Rakamları */}
       <div
         className={`grid ${
-          marketAvgPrice && marketListingCount && marketListingCount >= 2
+          marketAvgPrice && marketListingCount && marketListingCount >= 3
             ? "grid-cols-1 sm:grid-cols-3"
             : "grid-cols-2"
         } gap-3 rounded-xl bg-white/5 p-3 border border-white/5`}
@@ -102,14 +102,14 @@ export function PricePredictionBadge({
             {pct < 0 ? "Fırsat avantajı" : pct > 0 ? "Piyasa üzerinde" : "Tam ederinde"}
           </p>
         </div>
-        {marketAvgPrice && marketListingCount && marketListingCount >= 2 ? (
+        {marketAvgPrice && marketListingCount && marketListingCount >= 3 ? (
           <div>
             <p className="text-[11px] text-slate-400">Segment Ham Ort.</p>
             <p className="text-base font-bold text-amber-200">
               {formatPrice(marketAvgPrice)}
             </p>
             <p className="text-[10px] text-slate-500">
-              Aynı model/yıl: {marketListingCount} ilan
+              Aynı marka/model/yıl: {marketListingCount} aktif ilan
             </p>
           </div>
         ) : null}
@@ -149,4 +149,3 @@ export function PricePredictionBadge({
     </div>
   );
 }
-

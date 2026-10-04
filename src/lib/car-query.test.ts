@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCarFilters } from "@/lib/car-query";
+import { buildCarQuery, parseCarFilters } from "@/lib/car-query";
 
 const filtersFrom = (qs: string) => parseCarFilters(new URLSearchParams(qs));
 
@@ -55,5 +55,15 @@ describe("parseCarFilters — akış tohumu", () => {
 
   it("çok büyük tohumu üst sınıra çeker", () => {
     expect(filtersFrom("seed=99999999999999").seed).toBe(2_147_483_647);
+  });
+});
+
+describe("renk filtresi", () => {
+  it("ilan metnini aramak yerine seçilen renk alanını tam eşleştirir", () => {
+    const filters = filtersFrom("color=beyaz");
+    const query = buildCarQuery(filters);
+
+    expect(query["features.color"]).toMatchObject({ $regex: "^Beyaz$", $options: "i" });
+    expect(query.$and).toBeUndefined();
   });
 });

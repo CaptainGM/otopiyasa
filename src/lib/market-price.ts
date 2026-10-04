@@ -1,5 +1,6 @@
 import { Car } from "@/models/Car";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { Types } from "mongoose";
 
 export interface MarketSegmentStats {
   brand: string;
@@ -11,19 +12,66 @@ export interface MarketSegmentStats {
 
 const segmentCache = new Map<string, { stat: MarketSegmentStats; expires: number }>();
 const SEGMENT_CACHE_TTL = 30 * 60 * 1000; // 30 dakika
+export const MIN_MARKET_SAMPLE = 3;
+
+export function selectSparseMarketSegments(
+  groups: Array<{ brand: string; model: string; year: number; prices: number[] }>,
+  limit = 100
+) {
+  return groups
+    .map((group) => ({
+      brand: group.brand,
+      model: group.model,
+      year: group.year,
+      listingCount: robustTrimmedPrices(group.prices || []).length,
+    }))
+    .filter((group) => group.brand && group.model && group.year && group.listingCount < MIN_MARKET_SAMPLE)
+    .sort((a, b) => a.listingCount - b.listingCount)
+    .slice(0, Math.max(0, Math.trunc(limit)));
+}
+
+export function invalidateMarketSegments(segments: Array<{ brand: string; model: string; year: number }>) {
+  for (const segment of segments) {
+    segmentCache.delete(segmentKey(segment.brand, segment.model, segment.year));
+  }
+}
 
 export async function getMarketMap(
-  segments: Array<{ brand: string; model: string; year: number }>
+  segments: Array<{ brand: string; model: string; year: number }>,
+  excludedListingIds: Types.ObjectId[] = []
 ): Promise<Map<string, MarketSegmentStats>> {
   if (segments.length === 0) return new Map<string, MarketSegmentStats>();
 
   const result = new Map<string, MarketSegmentStats>();
   const missingKeys = new Set<string>();
   const now = Date.now();
+  const uniqueKeys = new Set(
+    segments
+      .filter((segment) => segment.brand && segment.model && segment.year)
+      .map((segment) => `${segment.brand}::${segment.model}::${segment.year}`)
+  );
 
-  for (const s of segments) {
-    if (!s.brand || !s.model || !s.year) continue;
-    const key = `${s.brand}::${s.model}::${s.year}`;
+  if (excludedListingIds.length > 0) {
+    const freshMap = await computeMarketMap(uniqueKeys, excludedListingIds);
+    for (const key of uniqueKeys) {
+      const stat = freshMap.get(key);
+      if (stat) {
+        result.set(key, stat);
+      } else {
+        const [brand, model, year] = key.split("::");
+        result.set(key, {
+          brand,
+          model,
+          year: Number(year) || 0,
+          avgPrice: 0,
+          listingCount: 0,
+        });
+      }
+    }
+    return result;
+  }
+
+  for (const key of uniqueKeys) {
     const cachedEntry = segmentCache.get(key);
     if (cachedEntry && cachedEntry.expires > now) {
       result.set(key, cachedEntry.stat);
@@ -63,12 +111,27 @@ export async function getMarketMap(
  * piyasa ortalamasını bozan anormal/hatalı ilanları (örn: 36.5M Defender gibi) temizler.
  */
 export function robustTrimmedAverage(prices: number[]): number {
+  const inliers = robustTrimmedPrices(prices);
+  if (inliers.length === 0) return 0;
+  return Math.round(inliers.reduce((sum, price) => sum + price, 0) / inliers.length);
+}
+
+export function summarizeMarketPrices(prices: number[]) {
+  const comparablePrices = robustTrimmedPrices(prices);
+  const listingCount = comparablePrices.length;
+  return {
+    avgPrice:
+      listingCount >= MIN_MARKET_SAMPLE
+        ? Math.round(comparablePrices.reduce((sum, price) => sum + price, 0) / listingCount)
+        : 0,
+    listingCount,
+  };
+}
+
+export function robustTrimmedPrices(prices: number[]): number[] {
   // Aşırı anomalileri (150M TL üzeri veya 30K TL altı) baştan filtrele
   const validPrices = prices.filter((p) => p >= 30_000 && p <= 150_000_000);
-  if (validPrices.length === 0) return 0;
-  if (validPrices.length <= 2) {
-    return Math.round(validPrices.reduce((a, b) => a + b, 0) / validPrices.length);
-  }
+  if (validPrices.length <= 2) return validPrices;
 
   const sorted = [...validPrices].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -94,12 +157,14 @@ export function robustTrimmedAverage(prices: number[]): number {
     }
   }
 
-  if (inliers.length === 0) inliers = sorted;
-  const sum = inliers.reduce((a, b) => a + b, 0);
-  return Math.round(sum / inliers.length);
+  return inliers.length === 0 ? sorted : inliers;
 }
 
-async function computeMarketMap(uniqueKeys: Set<string>) {
+async function computeMarketMap(
+  uniqueKeys: Set<string>,
+  excludedListingIds: Types.ObjectId[] = []
+) {
+  if (uniqueKeys.size === 0) return new Map<string, MarketSegmentStats>();
   const orConditions = [...uniqueKeys].map((key) => {
     const [brand, model, year] = key.split("::");
     return { brand, model, year: Number(year) };
@@ -107,7 +172,13 @@ async function computeMarketMap(uniqueKeys: Set<string>) {
 
   // GÜVENLİK: Piyasa ortalamasında yalnızca aktif/onaylı ilanları say.
   const rows = await Car.aggregate([
-    { $match: { $or: orConditions, ...PUBLIC_LISTING_FILTER } },
+    {
+      $match: {
+        $or: orConditions,
+        ...PUBLIC_LISTING_FILTER,
+        ...(excludedListingIds.length > 0 ? { _id: { $nin: excludedListingIds } } : {}),
+      },
+    },
     {
       $group: {
         _id: { brand: "$brand", model: "$model", year: "$year" },
@@ -119,13 +190,13 @@ async function computeMarketMap(uniqueKeys: Set<string>) {
 
   const map = new Map<string, MarketSegmentStats>();
   for (const row of rows) {
-    const avgPrice = robustTrimmedAverage(row.prices || []);
+    const { avgPrice, listingCount } = summarizeMarketPrices(row.prices || []);
     map.set(`${row._id.brand}::${row._id.model}::${row._id.year}`, {
       brand: row._id.brand,
       model: row._id.model,
       year: row._id.year,
       avgPrice,
-      listingCount: row.listingCount,
+      listingCount,
     });
   }
   return map;

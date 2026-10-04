@@ -29,9 +29,13 @@ async function findTrending(): Promise<CarType[]> {
   }
 }
 
+/** Şeritte gösterilen kart sayısı (ana sayfa HTML'i şişmesin). */
+const STRIP_LIMIT = 12;
+
 export async function TrendingStrip() {
   const trending = await cached("home:trending", CACHE_TTL.medium, findTrending);
   if (trending.length === 0) return null;
+  const shown = trending.slice(0, STRIP_LIMIT);
 
   return (
     <section className="space-y-3">
@@ -39,7 +43,7 @@ export async function TrendingStrip() {
         <h2 className="text-xl font-bold tracking-tight">En çok görüntülenenler</h2>
       </div>
       <DragScroller className="flex gap-4 overflow-x-auto pb-2">
-        {trending.map((car) => (
+        {shown.map((car) => (
           <Link
             key={car._id}
             href={`/cars/${car._id}`}

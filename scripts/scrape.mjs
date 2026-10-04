@@ -146,6 +146,12 @@ const MODES = {
     name: "IKINCIYENI.COM (Anadolu Grubu / Çelik Motor envanteri, ~2 dk)",
     jobs: [{ source: "ikinciyeni", limit: 400, label: "İkinciyeni tam kurumsal envanter" }],
   },
+  20: {
+    name: "Seyrek marka/model/yıl emsallerini tamamla (aykırı değer sonrası 3'ten az ilan)",
+    jobs: [
+      { mode: "sparse-market-segments", maxSegments: 100, pagesPerYear: 4, maxListings: 500, label: "Seyrek piyasa emsalleri" },
+    ],
+  },
 };
 
 const mode = MODES[process.argv[2]] || MODES[1];

@@ -7,6 +7,7 @@ import { findCarsPage, parseCarFilters } from "@/lib/car-query";
 import { getMarketMap } from "@/lib/market-price";
 import { attachMarketToCars, isLeanCarDoc } from "@/lib/serialize-car";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
+import { isCacheableFeedSeed } from "@/lib/car-mix";
 
 export async function GET(request: Request) {
   try {
@@ -47,7 +48,10 @@ export async function GET(request: Request) {
       },
       {
         headers: {
-          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          // Yanıt kullanıcıya göre değişmez; tohum havuzdaysa (ya da yoksa) 5 dk CDN'de saklanır.
+          "Cache-Control": isCacheableFeedSeed(filters.seed)
+            ? "public, s-maxage=300, stale-while-revalidate=900"
+            : "private, no-cache, no-store, must-revalidate",
         },
       }
     );

@@ -98,6 +98,12 @@ export function classifyRedirect(originalUrl: string, finalUrl: string): "same" 
  */
 export const ARABAM_PAGE_GAP_MS = { min: 1500, spread: 900 };
 
+/** Arka plan doğrulayıcı (scripts/arabam-bekci.ts) ilanlar arası beklemeyi kendi hızına göre ayarlar. */
+export function setArabamPageGap(minMs: number, spreadMs: number): void {
+  ARABAM_PAGE_GAP_MS.min = Math.max(0, minMs);
+  ARABAM_PAGE_GAP_MS.spread = Math.max(0, spreadMs);
+}
+
 let arabamGate: Promise<void> = Promise.resolve();
 
 /** Sıra beklenir; sonraki çağrı en az min..min+spread ms sonra başlar (işçi sayısından bağımsız). */

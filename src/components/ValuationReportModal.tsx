@@ -67,28 +67,38 @@ export function ValuationReportModal({
     .padStart(6, "0")
     .slice(0, 6)}`;
 
-  const avgPrice = car.marketAvgPrice || predictedPrice || car.price;
+  const hasMarketAverage =
+    Boolean(car.marketAvgPrice) && (car.marketListingCount ?? 0) >= 3;
+  const avgPrice = hasMarketAverage
+    ? car.marketAvgPrice!
+    : predictedPrice || car.price;
   const diffFromAvg = car.price - avgPrice;
   const diffPct = Math.round((Math.abs(diffFromAvg) / avgPrice) * 100);
 
   let marketStatusBadge = {
-    label: "Piyasa Değerinde (Adil Fiyat)",
-    desc: "Aracın fiyatı benzer emsal araçların piyasa ortalamasıyla birebir uyumludur.",
+    label: hasMarketAverage ? "Piyasa ortalamasına yakın" : "AI tahminine yakın",
+    desc: hasMarketAverage
+      ? "İlan fiyatı, aynı marka/model/yıldaki aktif ilan ortalamasına yakındır."
+      : "Yeterli canlı ilan verisi yok; bu karşılaştırmada AI tahmini referans alınmıştır.",
     color: "bg-blue-500/15 text-blue-400 border-blue-500/30",
     printColor: "bg-blue-100 text-blue-800 border-blue-300",
   };
 
   if (diffFromAvg < -avgPrice * 0.04) {
     marketStatusBadge = {
-      label: `%${diffPct} Piyasa Ortalamasının Altında (Fırsat)`,
-      desc: `Bu araç aynı marka, model ve yıldaki araçların piyasa ortalamasından %${diffPct} daha avantajlı fiyata sahiptir.`,
+      label: `%${diffPct} ${hasMarketAverage ? "Piyasa ortalamasının" : "AI tahmininin"} altında`,
+      desc: hasMarketAverage
+        ? `Bu ilan aynı marka, model ve yıldaki aktif ilan ortalamasından %${diffPct} daha düşük fiyatlı.`
+        : `İlan fiyatı modelin AI tahmininden %${diffPct} düşük. Bu, canlı piyasa ortalaması değildir.`,
       color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
       printColor: "bg-emerald-100 text-emerald-800 border-emerald-300",
     };
   } else if (diffFromAvg > avgPrice * 0.04) {
     marketStatusBadge = {
-      label: `%${diffPct} Piyasa Ortalamasının Üstünde`,
-      desc: `Bu araç segment ortalamasının %${diffPct} üzerinde fiyatlandırılmıştır. Donanım paketi, kilometre ve hasar beyanı kontrol edilmelidir.`,
+      label: `%${diffPct} ${hasMarketAverage ? "Piyasa ortalamasının" : "AI tahmininin"} üstünde`,
+      desc: hasMarketAverage
+        ? `Bu ilan aynı marka, model ve yıldaki aktif ilan ortalamasından %${diffPct} daha yüksek fiyatlı.`
+        : `İlan fiyatı modelin AI tahmininden %${diffPct} yüksek. Bu, canlı piyasa ortalaması değildir.`,
       color: "bg-amber-500/15 text-amber-400 border-amber-500/30",
       printColor: "bg-amber-100 text-amber-800 border-amber-300",
     };
@@ -336,21 +346,21 @@ export function ValuationReportModal({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 p-5 space-y-3">
                       <span className="text-[11px] font-black uppercase tracking-wider text-amber-400">
-                        OtoPiyasa AI Piyasa Değeri
+                        {hasMarketAverage ? "Aktif ilan ortalaması" : "OtoPiyasa AI fiyat tahmini"}
                       </span>
                       <div>
                         <p className="text-3xl font-black text-white">{formatPrice(avgPrice)}</p>
                         <p className="text-xs text-slate-400 mt-1">
-                          Adil Emsal Bandı: {formatPrice(Math.round(avgPrice * 0.96))} –{" "}
+                          Referans aralığı: {formatPrice(Math.round(avgPrice * 0.96))} –{" "}
                           {formatPrice(Math.round(avgPrice * 1.04))}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 pt-2 border-t border-slate-800 text-xs text-slate-300">
-                        <span>Piyasa Güven Skoru:</span>
+                        <span>Hesap dayanağı:</span>
                         <span className="font-bold text-emerald-400">
-                          {car.marketListingCount && car.marketListingCount >= 10
-                            ? "%94 Yüksek Piyasa Güveni"
-                            : "%78 Orta Güvenilirlik"}
+                          {hasMarketAverage
+                            ? `${car.marketListingCount} aktif ilan`
+                            : `${comparables?.length ?? 0} emsal + AI tahmini`}
                         </span>
                       </div>
                     </div>

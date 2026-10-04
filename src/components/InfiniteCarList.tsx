@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CarListItem } from "@/types";
 import { CarCard } from "@/components/CarCard";
+import { FEED_SEED_COOKIE, FEED_SEED_POOL, randomFeedSeed } from "@/lib/car-mix";
 
 export function InfiniteCarList({
   initialItems,
@@ -25,6 +26,103 @@ export function InfiniteCarList({
   const [error, setError] = useState("");
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
+  const activeQueryRef = useRef(query);
+  const previousQueryRef = useRef(query);
+  const initializedFeedRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const navigation = performance.getEntriesByType("navigation")[0] as
+      | PerformanceNavigationTiming
+      | undefined;
+    if (navigation?.type !== "reload") return;
+
+    const previousRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    window.scrollTo(0, 0);
+    return () => {
+      window.history.scrollRestoration = previousRestoration;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (initializedFeedRef.current) {
+      if (previousQueryRef.current !== query) {
+        previousQueryRef.current = query;
+        activeQueryRef.current = query;
+        setItems(initialItems);
+        setPage(initialPage);
+        setError("");
+        const nextSeed = Number(new URLSearchParams(query).get("seed"));
+        if (Number.isInteger(nextSeed) && nextSeed >= 1 && nextSeed <= FEED_SEED_POOL) {
+          const secure = window.location.protocol === "https:" ? "; Secure" : "";
+          document.cookie = `${FEED_SEED_COOKIE}=${nextSeed}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
+        }
+      }
+      return;
+    }
+
+    const params = new URLSearchParams(query);
+    const seedValue = params.get("seed");
+    const serverSeed = Number(seedValue);
+    if (!seedValue || !Number.isInteger(serverSeed) || serverSeed < 1 || serverSeed > FEED_SEED_POOL) return;
+
+    const previousSeedValue = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith(`${FEED_SEED_COOKIE}=`))
+      ?.slice(FEED_SEED_COOKIE.length + 1);
+    const previousSeed = Number(previousSeedValue);
+    const hasPreviousSeed = Number.isInteger(previousSeed) && previousSeed >= 1 && previousSeed <= FEED_SEED_POOL;
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const isRefresh =
+      !initializedFeedRef.current && navigation?.type === "reload" && hasPreviousSeed;
+    initializedFeedRef.current = true;
+    previousQueryRef.current = query;
+
+    // Sunucu çerezden farklı bir tohumu seçtiyse SSR zaten güncel sıradadır;
+    // yalnızca eski/önbellekte kalmış HTML aynı tohumu verdiyse API'den yenile.
+    const seed = isRefresh && serverSeed === previousSeed ? randomFeedSeed(previousSeed) : serverSeed;
+    params.set("seed", String(seed));
+    params.delete("page");
+    activeQueryRef.current = params.toString();
+
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${FEED_SEED_COOKIE}=${seed}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
+
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("seed")) {
+      url.searchParams.delete("seed");
+      const search = url.searchParams.toString();
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${url.pathname}${search ? `?${search}` : ""}${url.hash}`
+      );
+    }
+
+    if (isRefresh && seed !== serverSeed) {
+      const refreshParams = new URLSearchParams(activeQueryRef.current);
+      refreshParams.set("page", "1");
+      refreshParams.set("limit", String(pageSize));
+      refreshParams.set("compact", "1");
+      loadingRef.current = true;
+      setLoading(true);
+      setError("");
+      void fetch(`/api/cars?${refreshParams.toString()}`, { credentials: "same-origin" })
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Yeni ilan sıralaması yüklenemedi.");
+          return (await response.json()) as { items?: CarListItem[]; page?: number };
+        })
+        .then((data) => {
+          setItems(Array.isArray(data.items) ? data.items : []);
+          setPage(data.page || 1);
+        })
+        .catch((cause) => setError(cause instanceof Error ? cause.message : "İlanlar yüklenemedi."))
+        .finally(() => {
+          loadingRef.current = false;
+          setLoading(false);
+        });
+    }
+  }, [initialItems, initialPage, pageSize, query]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingRef.current || page >= totalPages) return;
@@ -32,7 +130,7 @@ export function InfiniteCarList({
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams(query);
+      const params = new URLSearchParams(activeQueryRef.current);
       params.set("page", String(page + 1));
       params.set("limit", String(pageSize));
       params.set("compact", "1");
@@ -51,7 +149,7 @@ export function InfiniteCarList({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [page, pageSize, query, totalPages]);
+  }, [page, pageSize, totalPages]);
 
   useEffect(() => {
     const target = sentinelRef.current;

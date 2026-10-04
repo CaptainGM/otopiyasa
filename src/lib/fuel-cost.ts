@@ -7,9 +7,10 @@ import { modelFamilyKey } from "@/lib/model-family";
  *
  * Tüketim ilandaki "Ort. Yakıt Tüketimi" alanından (lt/100 km) okunur; yoksa aynı marka, model ve
  * motor hacmindeki (yoksa aynı modeldeki) diğer ilanların resmi değerinin medyanı kullanılır
- * (en az 3 örnek; model adı ve motor hacmi kaynaktan bağımsız eşleştirilir, bkz. baseModel). Tahmin
- * uydurulmaz: ikisi de yoksa maliyet gösterilmez. Elektrikli araçlarda kaynaklar kWh vermediği
- * için hesap yapılmaz. MTV ve sigorta bilerek dahil edilmez (sık değişiyor).
+ * (en az 3 örnek; model adı ve motor hacmi kaynaktan bağımsız eşleştirilir, bkz. baseModel). O da
+ * yoksa aynı sınıftaki (kasa + yakıt) araçların medyanı "tahmini" diye etiketlenerek kullanılır
+ * (en az 20 örnek). Elektrikli araçlarda kaynaklar kWh vermediği için sınıfına göre tipik kWh
+ * değeri alınır ve kartta tahmin olduğu yazılır. MTV ve sigorta bilerek dahil edilmez (sık değişiyor).
  */
 export const MIN_CONSUMPTION = 1;
 export const MAX_CONSUMPTION = 25;
@@ -18,6 +19,8 @@ export const LPG_CONSUMPTION_FACTOR = 1.2;
 /** Bunun altındaki resmi hibrit değerleri plug-in (şarjlı) araçlara aittir. */
 const PLUG_IN_THRESHOLD = 3;
 const MIN_MODEL_SAMPLES = 3;
+/** Sınıf ortalamasının tahmin olarak kullanılabilmesi için gereken en az ilan sayısı. */
+const MIN_SEGMENT_SAMPLES = 20;
 
 /** "5,4 lt" → 5.4; tanınmayan ya da gerçek dışı değerler (0,8 lt, 40 lt) → null. */
 export function parseConsumption(raw?: string | number | null): number | null {
@@ -93,6 +96,9 @@ export const ELECTRICITY = {
   publicAcPerKwh: 10.5,
   /** Şarjlı hibritlerin resmi ağırlıklı elektrik tüketimi 13–19 kWh/100 km arasındadır; ortası. */
   kwhPer100Km: 16,
+  /** Elektrikli araçlar: ilanlar kWh vermiyor; binek için tipik değer ve SUV/van için daha yüksek değer, kWh/100 km. */
+  evKwhPer100Km: 17,
+  evLargeKwhPer100Km: 21,
   reviewed: "Ağustos 2026",
 } as const;
 
@@ -160,11 +166,11 @@ export interface FuelCost {
   fuelType: string;
   /** Resmi ortalama tüketim, lt/100 km (LPG'li araçta benzin değeri). */
   consumption: number;
-  consumptionSource: "ilan" | "model";
+  consumptionSource: "ilan" | "model" | "sinif";
   /** Tüketim ilandan değilse nereden alındığı (kartlarda gösterilir). */
   consumptionNote?: string;
   /** Hesapta kullanılan yakıt ve litre fiyatı. */
-  priceFuel: "benzin" | "motorin" | "LPG";
+  priceFuel: "benzin" | "motorin" | "LPG" | "elektrik";
   pricePerLiter: number;
   place: string;
   perKm: number;
@@ -186,6 +192,14 @@ export interface FuelCost {
     emptyBatteryConsumption?: number;
     electricityReviewed: string;
   };
+  /** Elektrikli araç: `perKm`/`per100Km` evde şarjla; `consumption` kWh/100 km, `pricePerLiter` ₺/kWh'dir. */
+  electric?: {
+    kwhPer100: number;
+    homePricePerKwh: number;
+    publicPricePerKwh: number;
+    perKmPublicCharge: number;
+    electricityReviewed: string;
+  };
   rating?: "low" | "high";
   ratingText?: string;
   note?: string;
@@ -196,10 +210,45 @@ export interface FuelCost {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const FUEL_ADJECTIVE: Record<string, string> = { Benzin: "benzinli", Dizel: "dizel", "LPG & Benzin": "LPG'li", Hibrit: "hibrit" };
 
+/**
+ * Elektrikli araç: ilanlarda kWh/100 km yok, sınıfına göre tipik değer alınır (SUV ve van daha çok çeker).
+ * Evde şarj `perKm`'dir; halka açık şarj ayrıca yazılır. Hepsi tahmindir, kart bunu söyler.
+ */
+function computeElectricCost(car: FuelCostInput, prices: FuelPrices): FuelCost {
+  const cls = bodyClass(car.features?.bodyType);
+  const large = cls === "SUV" || cls === "MPV / Van";
+  const kwh = large ? ELECTRICITY.evLargeKwhPer100Km : ELECTRICITY.evKwhPer100Km;
+  const per100Km = round2(kwh * ELECTRICITY.homePerKwh);
+  return {
+    fuelType: "Elektrik",
+    consumption: kwh,
+    consumptionSource: "sinif",
+    consumptionNote: `ilanda kWh bilgisi yok; ${large ? "SUV ve van" : "binek"} araçlar için tipik değer, tahmini`,
+    priceFuel: "elektrik",
+    pricePerLiter: ELECTRICITY.homePerKwh,
+    place: "Türkiye",
+    perKm: round2(per100Km / 100),
+    per100Km,
+    electric: {
+      kwhPer100: kwh,
+      homePricePerKwh: ELECTRICITY.homePerKwh,
+      publicPricePerKwh: ELECTRICITY.publicAcPerKwh,
+      perKmPublicCharge: round2((kwh * ELECTRICITY.publicAcPerKwh) / 100),
+      electricityReviewed: ELECTRICITY.reviewed,
+    },
+    note:
+      "İlanda elektrik tüketimi yok; araç sınıfına göre tipik değer alındı. Elektrik fiyatları tahminidir " +
+      `(${ELECTRICITY.reviewed} itibarıyla), pompa fiyatı gibi günlük güncellenmez.`,
+    priceSource: "tahmini tarife",
+    priceDate: new Date(prices.fetchedAt).toISOString(),
+  };
+}
+
 export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: ConsumptionStats): FuelCost | null {
   let consumption = parseConsumption(car.features?.avgFuelConsumption);
   let plugIn = isPlugInHybrid(car, consumption);
   const fuel = plugIn ? "Hibrit" : normalizeFuelType(car.features?.fuelType);
+  if (fuel === "Elektrik") return computeElectricCost(car, prices);
   if (!["Benzin", "Dizel", "LPG & Benzin", "Hibrit"].includes(fuel)) return null;
 
   let consumptionSource: FuelCost["consumptionSource"] = "ilan";
@@ -211,13 +260,30 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
     if (byEngine && byEngine.count >= MIN_MODEL_SAMPLES) {
       consumption = byEngine.median;
       consumptionNote = `aynı model ve motordaki ${byEngine.count} ilanın resmi değeri`;
+      consumptionSource = "model";
     } else if (byModel && byModel.count >= MIN_MODEL_SAMPLES) {
       consumption = byModel.median;
       consumptionNote = `aynı modeldeki ${byModel.count} ilanın resmi değeri`;
+      consumptionSource = "model";
     } else {
-      return null;
+      // Model için yeterli örnek yok: aynı sınıftaki (kasa + yakıt) araçların medyanı, tahmin diye etiketlenerek.
+      // Başlığında şarjlı hibrit yazan araçta sınıf ortalaması yanıltır (1 lt'ye karşı 5 lt), orada göstermeyiz.
+      if (plugIn) return null;
+      const cls = bodyClass(car.features?.bodyType);
+      const adj = FUEL_ADJECTIVE[fuel] || fuel;
+      const classStat = cls ? stats.segment[`${cls}|${fuel}`] : undefined;
+      const wide = stats.segment[fuel];
+      if (classStat && classStat.count >= MIN_SEGMENT_SAMPLES) {
+        consumption = classStat.median;
+        consumptionNote = `ilanda resmi değer yok; ${cls} sınıfındaki ${adj} ${classStat.count} ilanın ortalaması, tahmini`;
+      } else if (wide && wide.count >= MIN_SEGMENT_SAMPLES) {
+        consumption = wide.median;
+        consumptionNote = `ilanda resmi değer yok; ${adj} ${wide.count} ilanın ortalaması, tahmini`;
+      } else {
+        return null;
+      }
+      consumptionSource = "sinif";
     }
-    consumptionSource = "model";
     // Tüketim model istatistiğinden geldiyse şarjlı hibrit tespiti onunla da yapılır.
     plugIn = plugIn || isPlugInHybrid(car, consumption);
   }
@@ -275,7 +341,8 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
   }
 
   const segment = (cls && stats.segment[`${cls}|${fuel}`]) || stats.segment[fuel];
-  if (segment && segment.count >= 20) {
+  // Tüketim zaten sınıf ortalamasından alındıysa "ortalamaya göre az/çok yakıyor" demenin anlamı yok.
+  if (segment && segment.count >= 20 && consumptionSource !== "sinif") {
     const ratio = consumption / segment.median;
     const adj = FUEL_ADJECTIVE[fuel] || fuel;
     const label = cls ? `${cls} sınıfındaki ${adj} araçların` : `${adj} araçların`;

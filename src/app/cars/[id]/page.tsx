@@ -36,6 +36,7 @@ import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
 import { FuelCostCard } from "@/components/FuelCostCard";
+import { ListingDescription } from "@/components/ListingDescription";
 import { getFuelCostForCar } from "@/lib/fuel-cost-data";
 import { resolvePlacement } from "@/lib/district-coords";
 import { getCurrentUser } from "@/lib/auth";
@@ -166,6 +167,8 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
 
   const market = marketMap.get(segmentKey(brand, model, year));
   const car = serializeCar(carDoc, market);
+  // Hiç yeniden doğrulanmamış ilanda son kontrol, ilanın kaynakta ilk görüldüğü andır.
+  const lastChecked = car.lastVerifiedAt || car.createdAt;
   // Derlenen ilanların çoğunda kayıtlı koordinat yok; harita ve "yakınımdaki" ekranlarıyla aynı
   // yaklaşık konum (ilçe, yoksa il merkezi) şehir/adres/açıklamadan hesaplanır.
   const mapPoint = car.location?.lat
@@ -325,12 +328,12 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
             <p className="mt-2 text-slate-400">
               {car.city} • {formatNumber(car.mileage)} km
             </p>
-            {car.status === "active" && car.sourceSite !== "user" && car.lastVerifiedAt && (
+            {car.status === "active" && car.sourceSite !== "user" && lastChecked && (
               <p
                 className="mt-1 text-xs text-emerald-300/80"
-                title={new Date(car.lastVerifiedAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
+                title={new Date(lastChecked).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
               >
-                ✓ Kaynakta son kontrol: {formatRelativeTr(car.lastVerifiedAt)}
+                ✓ Kaynakta son kontrol: {formatRelativeTr(lastChecked)}
               </p>
             )}
           </div>
@@ -362,7 +365,7 @@ export default async function CarDetailPage({ params }: CarDetailPageProps) {
 
           {fuelCost && <FuelCostCard cost={fuelCost} />}
 
-          <p className="leading-7 text-slate-300">{car.description}</p>
+          <ListingDescription value={car.description} />
 
           {/* Üye ilanıysa iletişim + işletme rozeti */}
           {car.sourceSite === "user" && (

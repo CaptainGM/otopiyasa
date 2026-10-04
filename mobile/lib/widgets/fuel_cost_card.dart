@@ -22,10 +22,12 @@ class FuelCostCard extends StatelessWidget {
     final rating = cost['rating']?.toString();
     final ratingText = cost['ratingText']?.toString();
     final note = cost['note']?.toString();
-    final fromModel = cost['consumptionSource'] == 'model';
+    // Tüketim ilandan değilse (aynı model ya da sınıf ortalaması) nereden alındığı yazılır.
+    final fromEstimate = cost['consumptionSource'] != 'ilan';
     final date = DateTime.tryParse(cost['priceDate']?.toString() ?? '')?.toLocal();
     final dateText = date == null ? '' : DateFormat('d MMMM HH:mm', 'tr_TR').format(date);
     final plug = cost['plugIn'] as Map<String, dynamic>?;
+    final electric = cost['electric'] as Map<String, dynamic>?;
 
     final accent = rating == 'low'
         ? const Color(0xFF34D399)
@@ -47,7 +49,7 @@ class FuelCostCard extends StatelessWidget {
           const Text('⛽ Yakıt maliyeti', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           const SizedBox(height: 2),
           Text(
-            '${cost['place'] ?? ''} pompa fiyatı · ${cost['priceSource'] ?? ''} · $dateText',
+            electric != null ? 'Tahmini elektrik tarifesi' : '${cost['place'] ?? ''} pompa fiyatı · ${cost['priceSource'] ?? ''} · $dateText',
             style: const TextStyle(fontSize: 11, color: Colors.white54),
           ),
           const SizedBox(height: 8),
@@ -61,19 +63,20 @@ class FuelCostCard extends StatelessWidget {
                   text: '${_tl(perKm)} ₺',
                   style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF5B942)),
                 ),
-                TextSpan(text: plug != null ? ' / km (evde şarjla)' : ' / km', style: const TextStyle(fontSize: 13, color: Colors.white60)),
+                TextSpan(text: plug != null || electric != null ? ' / km (evde şarjla)' : ' / km', style: const TextStyle(fontSize: 13, color: Colors.white60)),
               ])),
               Text('100 km: ${_tl(per100, 0)} ₺', style: const TextStyle(fontSize: 13)),
               if (petrol100 != null)
                 Text('Benzinle 100 km: ${_tl(petrol100, 0)} ₺', style: const TextStyle(fontSize: 12, color: Colors.white60)),
             ],
           ),
-          if (plug != null) ..._plugInLines(plug, consumption, priceFuel, pricePerLiter, note)
+          if (electric != null) ..._electricLines(electric, per100, note)
+          else if (plug != null) ..._plugInLines(plug, consumption, priceFuel, pricePerLiter, note)
           else ...[
           const SizedBox(height: 8),
           Text(
             'Resmi ortalama tüketim ${_tl(consumption, 1)} lt/100 km'
-            '${fromModel ? ' (${cost['consumptionNote'] ?? 'aynı modelin resmi değeri'})' : ''} × $priceFuel ${_tl(pricePerLiter)} ₺/lt'
+            '${fromEstimate ? ' (${cost['consumptionNote'] ?? 'aynı modelin resmi değeri'})' : ''} × $priceFuel ${_tl(pricePerLiter)} ₺/lt'
             '${priceFuel == 'LPG' ? ' (LPG\'de tüketim ~%20 fazla hesaplandı)' : ''}.',
             style: const TextStyle(fontSize: 11, color: Colors.white54),
           ),
@@ -92,6 +95,33 @@ class FuelCostCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Elektrikli araç: ilanda kWh yok, sınıfına göre tipik değerle tahmin (bkz. src/lib/fuel-cost.ts, electric).
+  List<Widget> _electricLines(Map<String, dynamic> electric, num per100, String? note) {
+    final publicKm = (electric['perKmPublicCharge'] as num?) ?? 0;
+    final kwh = (electric['kwhPer100'] as num?) ?? 0;
+    final home = (electric['homePricePerKwh'] as num?) ?? 0;
+    final pub = (electric['publicPricePerKwh'] as num?) ?? 0;
+    return [
+      const SizedBox(height: 8),
+      Text.rich(
+        TextSpan(style: const TextStyle(fontSize: 13), children: [
+          const TextSpan(text: 'Halka açık şarjla '),
+          TextSpan(text: '${_tl(publicKm)} ₺/km', style: const TextStyle(fontWeight: FontWeight.w700)),
+        ]),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        '${kwh.toStringAsFixed(0)} kWh/100 km × ${_tl(home, 1)} ₺/kWh (ev) = ${_tl(per100, 0)} ₺. '
+        'Halka açık AC şarj ~${_tl(pub, 1)} ₺/kWh alındı.',
+        style: const TextStyle(fontSize: 11, color: Colors.white54),
+      ),
+      if (note != null && note.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Text('ℹ️ $note', style: const TextStyle(fontSize: 11, color: Colors.white54)),
+      ],
+    ];
   }
 
   /// Şarjlı hibrit: benzin + elektrik dökümü ve diğer senaryolar (bkz. src/lib/fuel-cost.ts, plugIn).

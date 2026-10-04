@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
@@ -23,7 +24,11 @@ export async function GET(request: Request) {
     const cars = await Car.find({ _id: { $in: ids }, ...PUBLIC_LISTING_FILTER }).lean();
     const docs = (cars as unknown[]).filter(isLeanCarDoc);
 
-    const marketMap = await getMarketMap(docs.map((c) => ({ brand: c.brand, model: c.model, year: c.year })));
+    const excludedListingIds = docs.map((car) => new Types.ObjectId(car._id.toString()));
+    const marketMap = await getMarketMap(
+      docs.map((c) => ({ brand: c.brand, model: c.model, year: c.year })),
+      excludedListingIds
+    );
     const serialized = docs.map((d) =>
       serializeCarPublic(d, marketMap.get(segmentKey(d.brand, d.model, d.year)))
     );

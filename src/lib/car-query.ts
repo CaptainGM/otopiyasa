@@ -10,6 +10,7 @@ import { cached, CACHE_TTL } from "@/lib/cache";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
 import { modelFamilyRegex } from "@/lib/model-family";
+import { normalizeColor } from "@/lib/normalize-color";
 
 export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   
@@ -39,13 +40,10 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
 
   
   if (filters.color) {
-    const c = turkishSearchRegex(filters.color);
-    (query.$and ||= []).push({
-      $or: [
-        { title: { $regex: c, $options: "i" } },
-        { description: { $regex: c, $options: "i" } },
-      ],
-    });
+    query["features.color"] = {
+      $regex: `^${turkishSearchRegex(normalizeColor(filters.color))}$`,
+      $options: "i",
+    };
   }
   // Mobil "LPG" gönderiyor, kayıtlar "LPG & Benzin"; ikisi de aynı yazıma çevrilir.
   if (filters.fuelType) query["features.fuelType"] = normalizeFuelType(filters.fuelType);

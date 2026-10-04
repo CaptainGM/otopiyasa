@@ -3,7 +3,7 @@ import { CarFilters } from "@/types";
 import { turkishSearchRegex } from "@/lib/utils";
 import { Car } from "@/models/Car";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
-import { isMixedSort, resolveFeedSeed, seedToStart } from "@/lib/car-mix";
+import { feedOrderForSeed, isMixedSort, resolveFeedSeed } from "@/lib/car-mix";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { LIST_IMAGE_LIMIT } from "@/lib/serialize-car";
 import { cached, CACHE_TTL } from "@/lib/cache";
@@ -131,22 +131,19 @@ async function findCarsPageUncached(
   const limit = filters.limit || 12;
   const skip = (page - 1) * limit;
 
-  // 0. KEŞFET akışı (varsayılan): herkese ve her yenilemeye farklı, sayfalar arası tutarlı.
-  // Her ilanda kalıcı bir rastgele sayı (rand) var; tohumdan bir başlangıç noktası seçilir ve
-  // {status, rand} indeksi üzerinden o noktadan itibaren sıralanır. Eski çözümler: sabit "en yeni"
-  // (hep aynı kaynağın ilanları peş peşe geliyordu) ve tüm koleksiyonu pencere fonksiyonuyla
-  // sıralayan karma (~1 sn; ayrıca 30 dakikada bir değişen ortak tohum).
+  // Her tohum, indeksli ve bağımsız tam liste sıralamalarından birini seçer.
+  // Aynı tohum tüm sayfalarda kaldığı için kayıt atlanmaz veya yinelenmez.
   // Arama metni varsa alaka sırası korunur (aşağıdaki arama yolu).
   if (isMixedSort(filters.sort) && !filters.q?.trim()) {
-    const start = seedToStart(resolveFeedSeed(filters.seed));
+    const { field, direction } = feedOrderForSeed(resolveFeedSeed(filters.seed));
     const [docs, total] = await Promise.all([
-      Car.find({ ...query, rand: { $gte: start } })
-        .sort({ rand: 1 as const })
+      Car.find(query)
+        .sort({ [field]: direction })
         .skip(skip)
         .limit(limit)
         .slice("images", LIST_IMAGE_LIMIT)
         .lean(),
-      Car.countDocuments({ ...query, rand: { $gte: start } }),
+      Car.countDocuments(query),
     ]);
     return { docs: docs as unknown[], total, page, limit };
   }

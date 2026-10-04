@@ -47,6 +47,10 @@ export async function POST() {
       sourceSite: index % 2 === 0 ? "sahibinden" : "arabam",
       source: index % 2 === 0 ? "sahibinden" : "arabam",
       externalId: `demo-${index + 1}`,
+      rand: Math.random(),
+      rand2: Math.random(),
+      rand3: Math.random(),
+      rand4: Math.random(),
       listingUrl:
         index % 2 === 0
           ? `https://www.sahibinden.com/ilan/demo-${index + 1}`

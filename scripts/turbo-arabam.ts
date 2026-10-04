@@ -582,6 +582,10 @@ async function main() {
             listingUrl: car.listingUrl,
             externalId: car.externalId,
             createdAt: new Date(),
+            rand: Math.random(),
+            rand2: Math.random(),
+            rand3: Math.random(),
+            rand4: Math.random(),
           };
 
           if (!setFields.images) {

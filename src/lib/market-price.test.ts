@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { aggregate } = vi.hoisted(() => ({ aggregate: vi.fn() }));
 vi.mock("@/models/Car", () => ({ Car: { aggregate } }));
 
-import { getMarketMap, MIN_MARKET_SAMPLE, summarizeMarketPrices } from "./market-price";
+import { getMarketMap, MIN_MARKET_SAMPLE, selectSparseMarketSegments, summarizeMarketPrices } from "./market-price";
 
 describe("piyasa ortalaması örnek sayısı", () => {
   it("tek ya da iki ilanı piyasa ortalaması diye göstermez", () => {
@@ -25,6 +25,17 @@ describe("piyasa ortalaması örnek sayısı", () => {
       avgPrice: 1_000_000,
       listingCount: 3,
     });
+  });
+
+  it("aykırı fiyatlardan sonra iki emsal kalıyorsa ortalama vermez ve segmenti taramaya alır", () => {
+    const prices = [1_000_000, 1_100_000, 20_000_000];
+    expect(summarizeMarketPrices(prices)).toEqual({ avgPrice: 0, listingCount: 2 });
+    expect(selectSparseMarketSegments([
+      { brand: "Mazda", model: "B2500", year: 1998, prices },
+      { brand: "Honda", model: "CR-V", year: 2011, prices: [900_000, 1_000_000, 1_100_000, 20_000_000] },
+    ])).toEqual([
+      { brand: "Mazda", model: "B2500", year: 1998, listingCount: 2 },
+    ]);
   });
 
   it("karşılaştırılan ilanları piyasa örnekleminden çıkarır", async () => {

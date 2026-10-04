@@ -14,6 +14,28 @@ const segmentCache = new Map<string, { stat: MarketSegmentStats; expires: number
 const SEGMENT_CACHE_TTL = 30 * 60 * 1000; // 30 dakika
 export const MIN_MARKET_SAMPLE = 3;
 
+export function selectSparseMarketSegments(
+  groups: Array<{ brand: string; model: string; year: number; prices: number[] }>,
+  limit = 100
+) {
+  return groups
+    .map((group) => ({
+      brand: group.brand,
+      model: group.model,
+      year: group.year,
+      listingCount: robustTrimmedPrices(group.prices || []).length,
+    }))
+    .filter((group) => group.brand && group.model && group.year && group.listingCount < MIN_MARKET_SAMPLE)
+    .sort((a, b) => a.listingCount - b.listingCount)
+    .slice(0, Math.max(0, Math.trunc(limit)));
+}
+
+export function invalidateMarketSegments(segments: Array<{ brand: string; model: string; year: number }>) {
+  for (const segment of segments) {
+    segmentCache.delete(segmentKey(segment.brand, segment.model, segment.year));
+  }
+}
+
 export async function getMarketMap(
   segments: Array<{ brand: string; model: string; year: number }>,
   excludedListingIds: Types.ObjectId[] = []

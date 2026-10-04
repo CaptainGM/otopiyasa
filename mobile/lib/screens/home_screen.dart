@@ -76,10 +76,17 @@ class _HomeScreenState extends State<HomeScreen> {
   final _random = Random();
   // Her yenilemede (aşağı çekme, filtre değişimi, ilk açılış) yeni tohum: akış her seferinde
   // farklıdır, aynı yenilemenin sonraki sayfaları tutarlı kalır.
-  // Akış tohumu 1..12 havuzundan: rastgele 31 bitlik tohum her isteği benzersiz yapıp sunucu önbelleğini
+  // Akış tohumu küçük havuzdan: rastgele 31 bitlik tohum her isteği benzersiz yapıp sunucu önbelleğini
   // işe yaramaz kılıyordu (bkz. src/lib/car-mix.ts FEED_SEED_POOL).
-  static const _feedSeedPool = 12;
+  static const _feedSeedPool = 8;
   int _feedSeed = 1 + Random().nextInt(_feedSeedPool);
+
+  int _nextFeedSeed() {
+    final candidates = List<int>.generate(_feedSeedPool, (index) => index + 1)
+        .where((seed) => seed != _feedSeed)
+        .toList();
+    return candidates[_random.nextInt(candidates.length)];
+  }
 
   String _brand = '';
   String _model = '';
@@ -156,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadCars({required bool reset}) async {
     final requestId = ++_carsRequestId;
     if (reset) {
-      _feedSeed = 1 + _random.nextInt(_feedSeedPool);
+      _feedSeed = _nextFeedSeed();
       setState(() {
         _loading = true;
         _loadingMore = false;

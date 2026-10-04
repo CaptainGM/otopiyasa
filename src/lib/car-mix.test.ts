@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isMixedSort, mixedSortStages, dailyMixSeed } from "./car-mix";
+import { isMixedSort, dailyMixSeed } from "./car-mix";
 
 describe("isMixedSort", () => {
   it("varsayılan (sıralama seçilmemiş) karışıktır", () => {
@@ -23,68 +23,7 @@ describe("dailyMixSeed", () => {
   });
 });
 
-describe("mixedSortStages", () => {
-  const stages = mixedSortStages();
-
-  it("tohum mixKey hesabına girer (dizilim günden güne tazelensin)", () => {
-    const withSeed = JSON.stringify(mixedSortStages(12345));
-    const noSeed = JSON.stringify(mixedSortStages(0));
-    expect(withSeed).toContain("12345");
-    expect(withSeed).not.toBe(noSeed);
-  });
-
-  it("marka+model segmentine göre bölümler", () => {
-    const win = stages[0] as { $setWindowFields: { partitionBy: unknown } };
-    expect(JSON.stringify(win.$setWindowFields.partitionBy)).toContain("$brand");
-    expect(JSON.stringify(win.$setWindowFields.partitionBy)).toContain("$model");
-  });
-
-  it("$documentNumber TEK alanlı sortBy ile kullanılır", () => {
-    
-    const win = stages[0] as { $setWindowFields: { sortBy: Record<string, number> } };
-    expect(Object.keys(win.$setWindowFields.sortBy)).toHaveLength(1);
-  });
-
-  it("sıralama önce segment sırası, sonra dağıtıcı anahtar", () => {
-    const sortStage = stages.find((s) => "$sort" in s) as { $sort: Record<string, number> };
-    const keys = Object.keys(sortStage.$sort);
-    expect(keys[0]).toBe("segmentRank");
-    expect(keys).toContain("mixKey");
-    
-    expect(keys[keys.length - 1]).toBe("_id");
-  });
-
-  it("yardımcı alanlar sonuçtan temizlenir", () => {
-    const unset = stages.find((s) => "$unset" in s) as { $unset: string[] };
-    expect(unset.$unset).toEqual(expect.arrayContaining(["segmentRank", "mixKey"]));
-  });
-
-  it("rastgelelik kullanmaz — sayfalama tutarlı olmalı", () => {
-    
-    const json = JSON.stringify(stages);
-    expect(json).not.toContain("$sample");
-    expect(json).not.toContain("$rand");
-  });
-});
-
 describe("Keşfet akışı tohumu", () => {
-  it("aynı tohum aynı başlangıcı, farklı tohumlar farklı başlangıçları verir", async () => {
-    const { seedToStart } = await import("./car-mix");
-    expect(seedToStart(12345)).toBe(seedToStart(12345));
-    const starts = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((s) => seedToStart(s).toFixed(6)));
-    expect(starts.size).toBe(10);
-  });
-
-  it("başlangıç noktası [0, 0.5) aralığında kalır (sayfa sonuna gelip başa sarmak gerekmez)", async () => {
-    const { seedToStart } = await import("./car-mix");
-    for (let seed = 1; seed < 2000; seed += 7) {
-      const start = seedToStart(seed);
-      expect(start).toBeGreaterThanOrEqual(0);
-      expect(start).toBeLessThan(0.5);
-    }
-    expect(seedToStart(2_147_483_647)).toBeLessThan(0.5);
-  });
-
   it("tohum yoksa (eski istemci) 30 dakikalık ortak tohuma düşer", async () => {
     const { resolveFeedSeed, dailyMixSeed } = await import("./car-mix");
     const now = Date.UTC(2026, 8, 30, 12, 0, 0);
@@ -95,7 +34,7 @@ describe("Keşfet akışı tohumu", () => {
 });
 
 describe("akış tohumu havuzu (CDN önbelleği)", () => {
-  it("rastgele tohum her zaman 1..12 arasındadır", async () => {
+  it("rastgele tohum her zaman 1..8 arasındadır", async () => {
     const { randomFeedSeed, FEED_SEED_POOL } = await import("./car-mix");
     for (let i = 0; i < 500; i++) {
       const seed = randomFeedSeed();
@@ -109,6 +48,7 @@ describe("akış tohumu havuzu (CDN önbelleği)", () => {
     const { isCacheableFeedSeed } = await import("./car-mix");
     expect(isCacheableFeedSeed(undefined)).toBe(true);
     expect(isCacheableFeedSeed(1)).toBe(true);
+    expect(isCacheableFeedSeed(8)).toBe(true);
     expect(isCacheableFeedSeed(12)).toBe(true);
     expect(isCacheableFeedSeed(13)).toBe(false);
     expect(isCacheableFeedSeed(492230507)).toBe(false);
@@ -122,5 +62,15 @@ describe("akış tohumu havuzu (CDN önbelleği)", () => {
         expect(randomFeedSeed(previous)).not.toBe(previous);
       }
     }
+  });
+});
+
+describe("indeksli keşfet sıralamaları", () => {
+  it("havuzdaki her tohum tam liste için farklı ve tekrarlanabilir sıra seçer", async () => {
+    const { FEED_SEED_POOL, feedOrderForSeed } = await import("./car-mix");
+    const orders = Array.from({ length: FEED_SEED_POOL }, (_, index) => feedOrderForSeed(index + 1));
+    expect(new Set(orders.map(({ field, direction }) => `${field}:${direction}`)).size).toBe(FEED_SEED_POOL);
+    expect(feedOrderForSeed(3)).toEqual(feedOrderForSeed(3));
+    expect(feedOrderForSeed(0)).toEqual(feedOrderForSeed(FEED_SEED_POOL));
   });
 });

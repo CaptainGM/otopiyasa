@@ -148,6 +148,10 @@ CarSchema.index({ status: 1, rand4: 1 });
 // Ana sayfa varsayılan akışı { createdAt: -1, _id: -1 } ile sıralanıyor; _id'yi
 // içermeyen indeksle Mongo 28 bin belgeyi bellekte sıralıyordu (~1,1 sn → ~5 ms).
 CarSchema.index({ status: 1, createdAt: -1, _id: -1 });
+// Arabam bekçisi panelinde saat saat "arşive giden / yeni eklenen" listesi için
+// (kaynak + durum + tarih aralığı); bu olmadan arşiv büyüdükçe tüm "removed" kayıtları taranırdı.
+CarSchema.index({ sourceSite: 1, status: 1, removedAt: -1 });
+CarSchema.index({ sourceSite: 1, createdAt: -1 });
 CarSchema.index({ sourceSite: 1, status: 1, lastVerifiedAt: 1 });
 
 export const Car = models.Car || model("Car", CarSchema);

@@ -6,6 +6,7 @@ import { hashPassword, hashResetToken } from "@/lib/password";
 import { checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { Session } from "@/models/Session";
 import { attemptsLeft, checkResetCode } from "@/lib/reset-code";
+import { MAX_CODE_ATTEMPTS } from "@/lib/email-change";
 
 export async function POST(request: Request) {
   try {
@@ -72,20 +73,25 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-      if (state === "locked") {
-        user.resetCodeHash = null;
-        user.resetCodeExpires = null;
-        user.resetCodeAttempts = 0;
-        await user.save();
+      // Deneme hakkı denemeden ÖNCE ve tek atomik işlemle harcanır: aynı anda gelen istekler okuduktan
+      // sonra sayacı artırırsa 5 hakkın çok üstünde tahmin yapılabilirdi (6 haneli kod için kritik).
+      const reserved = await User.findOneAndUpdate(
+        { _id: user._id, resetCodeHash: user.resetCodeHash, resetCodeAttempts: { $lt: MAX_CODE_ATTEMPTS } },
+        { $inc: { resetCodeAttempts: 1 } },
+        { new: true }
+      ).select("resetCodeAttempts");
+      if (!reserved) {
+        await User.updateOne(
+          { _id: user._id },
+          { $set: { resetCodeHash: null, resetCodeExpires: null, resetCodeAttempts: 0 } }
+        );
         return NextResponse.json(
           { error: "Çok fazla hatalı deneme. Yeni bir kod iste." },
           { status: 429 }
         );
       }
       if (state === "wrong") {
-        user.resetCodeAttempts = (user.resetCodeAttempts || 0) + 1;
-        await user.save();
-        const left = attemptsLeft(user.resetCodeAttempts);
+        const left = attemptsLeft(reserved.resetCodeAttempts || 0);
         return NextResponse.json(
           { error: `Kod hatalı.${left > 0 ? ` ${left} deneme hakkın kaldı.` : " Yeni bir kod iste."}` },
           { status: 400 }

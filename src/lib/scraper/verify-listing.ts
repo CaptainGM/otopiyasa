@@ -1,6 +1,12 @@
 import type { Types } from "mongoose";
 import { Car } from "@/models/Car";
-import { fetchPageWithBrowser, isCloudflareChallenge, isListingGone, pickUserAgent } from "@/lib/scraper/browser-scrape";
+import {
+  fetchPageWithBrowser,
+  isCloudflareChallenge,
+  isListingGone,
+  parseArabamDetailHtml,
+  pickUserAgent,
+} from "@/lib/scraper/browser-scrape";
 import {
   LIFECYCLE,
   SCRAPED_SOURCE_FILTER,
@@ -9,6 +15,7 @@ import {
   markSeenAlive,
   markVerifyAttempt,
 } from "@/lib/scraper/listing-lifecycle";
+import type { ScrapedListing } from "@/lib/scraper/types";
 
 export interface VerifyListingResult {
   /**
@@ -22,6 +29,8 @@ export interface VerifyListingResult {
   statusCode?: number;
   reason: string;
   finalUrl?: string;
+  /** "active" çıkan Arabam ilanlarında, zaten indirilmiş sayfadan ayrıştırılan güncel veri (fiyat/km/açıklama yenilensin diye). */
+  listing?: ScrapedListing;
 }
 
 /**
@@ -174,7 +183,17 @@ async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListin
       };
     }
     if (/\/ilan\//.test(page.finalUrl) && /"@type"\s*:\s*"Car"/.test(page.html)) {
-      return { status: "active", statusCode: page.status, finalUrl: page.finalUrl, reason: "İlan sayfası canlı (tarayıcıyla doğrulandı)." };
+      // Sayfa zaten indirildi; aynı HTML'den fiyat/km/açıklama da okunur ki "canlı" ilanlar
+      // yalnızca tarih değil, gerçek içerik de güncellensin (bkz. saveListing çağıran taraf).
+      let listing: ScrapedListing | undefined;
+      try {
+        const { enrichListing } = await import("@/lib/scraper/adapters");
+        const parsed = parseArabamDetailHtml(page.html, page.finalUrl);
+        listing = parsed ? enrichListing(parsed) : undefined;
+      } catch {
+        // ayrıştırma başarısızsa yalnızca "canlı" bilgisi kalır, ilana dokunulmaz
+      }
+      return { status: "active", statusCode: page.status, finalUrl: page.finalUrl, reason: "İlan sayfası canlı (tarayıcıyla doğrulandı).", listing };
     }
     return { status: "error", statusCode: page.status, finalUrl: page.finalUrl, reason: "İlan sayfası tanınamadı (ilan korunur)." };
   } catch (err: any) {
@@ -276,6 +295,23 @@ export async function verifySingleListing(car: {
   }
 }
 
+/**
+ * Canlı doğrulama sırasında okunan ilan, kayıtlı ilanı bozmadan yenilemek için süzülür:
+ *  - satıcı açıklama yazmamışsa ayrıştırıcının uydurduğu "<başlık> - Arabam ilanı" metni mevcut açıklamayı ezmesin,
+ *  - fiyat okunamadıysa ya da eskisinin %20'sinin altına / 5 katının üstüne çıktıysa (ayrıştırma hatası)
+ *    fiyat değişmesin.
+ */
+export function sanitizeRefresh(listing: ScrapedListing, oldPrice?: number): ScrapedListing {
+  const out: ScrapedListing = { ...listing };
+  if (/- Arabam ilanı$/.test(out.description || "")) out.description = "";
+  if (!(out.price > 0)) {
+    out.price = 0;
+  } else if (oldPrice && oldPrice > 0 && (out.price < oldPrice * 0.2 || out.price > oldPrice * 5)) {
+    out.price = 0;
+  }
+  return out;
+}
+
 type SweepDetail = { id: string; title: string; source: string; status: string; reason: string };
 
 /**
@@ -322,15 +358,17 @@ export async function sweepAndCleanDeadListings(options: {
   })
     .sort({ lastVerifiedAt: 1 })
     .limit(limit)
-    .select("_id title sourceSite listingUrl externalId")
+    .select("_id title sourceSite listingUrl externalId price")
     .maxTimeMS(8000)
-    .lean<Array<{ _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string }>>();
+    .lean<Array<{ _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string; price?: number }>>();
 
   const details: SweepDetail[] = [];
   if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, errors: 0, breaker: [], pausedSources: [], details };
 
   const aliveIds: Types.ObjectId[] = [];
   const attemptedIds: Types.ObjectId[] = [];
+  const refreshListings: ScrapedListing[] = [];
+  const oldPrices = new Map<string, number>();
   const goneBySource = new Map<string, Array<{ id: Types.ObjectId; reason: string }>>();
   const checkedBySource = new Map<string, number>();
   const aliveBySource = new Map<string, number>();
@@ -368,6 +406,10 @@ export async function sweepAndCleanDeadListings(options: {
         if (result.status === "active") {
           aliveIds.push(item._id);
           aliveBySource.set(source, (aliveBySource.get(source) || 0) + 1);
+          if (result.listing) {
+            refreshListings.push(result.listing);
+            if (item.price) oldPrices.set(result.listing.externalId, item.price);
+          }
         } else if (result.status === "gone" || result.status === "redirected") {
           const list = goneBySource.get(source) || [];
           list.push({ id: item._id, reason: result.reason });
@@ -385,6 +427,19 @@ export async function sweepAndCleanDeadListings(options: {
 
   await markSeenAlive(aliveIds, now);
   await markVerifyAttempt(attemptedIds, now);
+
+  // Canlı çıkan Arabam ilanlarında fiyat/km/açıklama da güncellensin (yalnızca "görüldü" tarihi değil).
+  // saveListing zaten değişiklik yoksa yazmıyor, değiştiyse fiyat geçmişine ve favori bildirimine de işliyor.
+  if (refreshListings.length > 0) {
+    const { saveListing } = await import("@/lib/scraper/run-scrape");
+    for (const listing of refreshListings) {
+      try {
+        await saveListing(sanitizeRefresh(listing, oldPrices.get(listing.externalId)), { markVerified: true });
+      } catch {
+        // ayrıştırılan veri kaydedilemezse canlı/tarih bilgisi yine de yukarıda işlendi
+      }
+    }
+  }
 
   let archivedCount = 0;
   const breaker: string[] = [...blockNotes];

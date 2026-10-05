@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { BlockStreak, classifyOtokocHtml, classifyRedirect, listingIdFromUrl } from "./verify-listing";
+import { BlockStreak, classifyOtokocHtml, classifyRedirect, listingIdFromUrl, sanitizeRefresh } from "./verify-listing";
+import type { ScrapedListing } from "./types";
 
 describe("classifyOtokocHtml", () => {
   const notFoundBoundary = '{"children":"404 | Sayfa Bulunamadı"}';
@@ -72,5 +73,28 @@ describe("BlockStreak", () => {
     const streak = new BlockStreak(2);
     for (let i = 0; i < 10; i++) streak.record("arabam", "error");
     expect(streak.isPaused("arabam")).toBe(false);
+  });
+});
+
+describe("sanitizeRefresh", () => {
+  const base = { externalId: "arabam-1", title: "Golf", price: 500000, description: "Golf - Arabam ilanı" } as ScrapedListing;
+
+  it("satıcı açıklaması yoksa uydurma açıklamayı atar", () => {
+    expect(sanitizeRefresh(base, 500000).description).toBe("");
+    expect(sanitizeRefresh({ ...base, description: "Kazasız, bakımlı, sahibinden." }, 500000).description).toBe("Kazasız, bakımlı, sahibinden.");
+  });
+
+  it("makul fiyat değişimini geçirir", () => {
+    expect(sanitizeRefresh({ ...base, price: 470000 }, 500000).price).toBe(470000);
+  });
+
+  it("okunamayan ya da absürt fiyatı yok sayar", () => {
+    expect(sanitizeRefresh({ ...base, price: 0 }, 500000).price).toBe(0);
+    expect(sanitizeRefresh({ ...base, price: 5000 }, 500000).price).toBe(0);
+    expect(sanitizeRefresh({ ...base, price: 9_000_000 }, 500000).price).toBe(0);
+  });
+
+  it("eski fiyat bilinmiyorsa pozitif fiyatı korur", () => {
+    expect(sanitizeRefresh({ ...base, price: 470000 }).price).toBe(470000);
   });
 });

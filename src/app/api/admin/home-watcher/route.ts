@@ -37,7 +37,52 @@ export async function GET(request: Request) {
     }
     await connectDB();
 
-    const dateParam = new URL(request.url).searchParams.get("date");
+    const url = new URL(request.url);
+    const dateParam = url.searchParams.get("date");
+    const hourParam = url.searchParams.get("hour");
+    const kindParam = url.searchParams.get("kind");
+
+    // Saat satırına tıklayınca o saatte arşive giden / yeni eklenen ilanların kendisi (başlık, bağlantı).
+    if (dateParam && hourParam && kindParam) {
+      if (!/^\d{2}\.\d{2}\.\d{4}$/.test(dateParam) || !/^\d{1,2}$/.test(hourParam)) {
+        return NextResponse.json({ error: "Tarih/saat geçersiz." }, { status: 400 });
+      }
+      if (kindParam !== "archived" && kindParam !== "inserted") {
+        return NextResponse.json({ error: "Geçersiz liste türü." }, { status: 400 });
+      }
+      const hourRow = await HomeWatcherHour.findOne({
+        watcherId: HOME_WATCHER_ID,
+        dateStr: dateParam,
+        hour: Number(hourParam),
+      })
+        .select("timestamp")
+        .lean<{ timestamp: Date } | null>();
+      if (!hourRow) {
+        return NextResponse.json({ items: [] }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const from = new Date(hourRow.timestamp);
+      const to = new Date(from.getTime() + 60 * 60 * 1000);
+      const LIMIT = 200;
+      if (kindParam === "archived") {
+        const items = await Car.find(
+          { sourceSite: "arabam", status: "removed", removedAt: { $gte: from, $lt: to } },
+          { title: 1, brand: 1, model: 1, year: 1, price: 1, listingUrl: 1, removedAt: 1, removedReason: 1 }
+        )
+          .sort({ removedAt: 1 })
+          .limit(LIMIT)
+          .lean();
+        return NextResponse.json({ items }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const items = await Car.find(
+        { sourceSite: "arabam", createdAt: { $gte: from, $lt: to } },
+        { title: 1, brand: 1, model: 1, year: 1, price: 1, listingUrl: 1, createdAt: 1 }
+      )
+        .sort({ createdAt: 1 })
+        .limit(LIMIT)
+        .lean();
+      return NextResponse.json({ items }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     if (dateParam) {
       if (!/^\d{2}\.\d{2}\.\d{4}$/.test(dateParam)) {
         return NextResponse.json({ error: "Tarih GG.AA.YYYY biçiminde olmalı." }, { status: 400 });

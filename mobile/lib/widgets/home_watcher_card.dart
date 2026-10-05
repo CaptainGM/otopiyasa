@@ -20,6 +20,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
   static const _emerald = Color(0xFF10B981);
   static const _rose = Color(0xFFF43F5E);
   static const _amber = Color(0xFFF5B942);
+  static const _sky = Color(0xFF7DD3FC);
 
   final _api = ApiService();
   final _nf = NumberFormat.decimalPattern('tr_TR');
@@ -169,6 +170,8 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                                 TextSpan(text: '$checked', style: const TextStyle(fontWeight: FontWeight.w800)),
                                 TextSpan(text: ' · ${_n(h['alive'])}c', style: const TextStyle(color: _emerald)),
                                 TextSpan(text: ' · ${_n(h['archived'])}a', style: const TextStyle(color: _rose)),
+                                if (((h['inserted'] as num?) ?? 0) > 0)
+                                  TextSpan(text: ' · ${_n(h['inserted'])}y', style: const TextStyle(color: _sky)),
                                 if (blocked > 0) TextSpan(text: ' · ${blocked}e', style: const TextStyle(color: _amber)),
                                 if (paused > 0) TextSpan(text: ' · ${paused}dk', style: const TextStyle(color: _amber)),
                               ]),
@@ -182,7 +185,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
             }),
           const SizedBox(height: 4),
           const Text(
-            'c: canlı · a: arşive taşınan · e: engel · dk: mola',
+            'c: canlı · a: arşive taşınan · y: yeni eklenen · e: engel · dk: mola',
             style: TextStyle(fontSize: 10, color: Colors.white38),
           ),
         ],
@@ -263,6 +266,8 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                               const SizedBox(width: 6),
                               _tile('Arşive', _n(today['archived']), color: _rose),
                               const SizedBox(width: 6),
+                              _tile('Yeni', _n(today['inserted']), color: _sky),
+                              const SizedBox(width: 6),
                               _tile('Engel', _n(today['blocked']), color: _amber),
                             ],
                           ),
@@ -303,6 +308,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                                           TextSpan(text: ' kontrol · ', style: const TextStyle(color: Colors.white54)),
                                           TextSpan(text: _duration(d['activeSeconds']), style: const TextStyle(color: Colors.white70)),
                                           TextSpan(text: ' · ${_n(d['archived'])}a', style: const TextStyle(color: _rose)),
+                                          TextSpan(text: ' · ${_n(d['inserted'])}y', style: const TextStyle(color: _sky)),
                                         ]),
                                       ),
                                     ],

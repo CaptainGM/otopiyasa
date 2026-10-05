@@ -82,6 +82,8 @@ export interface HourRow {
   pauses?: number;
   pausedMinutes?: number;
   activeSeconds?: number;
+  /** Keşifle eklenen yeni ilan. */
+  inserted?: number;
 }
 
 export interface DaySummary {
@@ -95,6 +97,8 @@ export interface DaySummary {
   /** Bekçinin o gün ilan kontrol ederek geçirdiği süre (sn); molalar ve bekleme hariç. */
   activeSeconds: number;
   pausedMinutes: number;
+  /** Keşifle eklenen yeni ilan. */
+  inserted: number;
 }
 
 /** Saatlik kayıtları Türkiye gününe göre toplar; en yeni gün başta. */
@@ -103,7 +107,7 @@ export function summarizeDays(rows: HourRow[]): DaySummary[] {
   for (const r of rows) {
     const day =
       byDay.get(r.dateStr) ||
-      { dateStr: r.dateStr, checked: 0, alive: 0, archived: 0, blocked: 0, uncertain: 0, activeSeconds: 0, pausedMinutes: 0 };
+      { dateStr: r.dateStr, checked: 0, alive: 0, archived: 0, blocked: 0, uncertain: 0, activeSeconds: 0, pausedMinutes: 0, inserted: 0 };
     day.checked += r.checked;
     day.alive += r.alive;
     day.archived += r.archived;
@@ -111,6 +115,7 @@ export function summarizeDays(rows: HourRow[]): DaySummary[] {
     day.uncertain += r.uncertain;
     day.pausedMinutes += r.pausedMinutes || 0;
     day.activeSeconds += r.activeSeconds || 0;
+    day.inserted += r.inserted || 0;
     byDay.set(r.dateStr, day);
   }
   const key = (d: string) => d.split(".").reverse().join("");
@@ -139,6 +144,7 @@ export function fillDayHours(dateStr: string, rows: HourRow[]): HourSlot[] {
       pauses: r?.pauses || 0,
       pausedMinutes: r?.pausedMinutes || 0,
       activeSeconds: r?.activeSeconds || 0,
+      inserted: r?.inserted || 0,
     };
   });
 }

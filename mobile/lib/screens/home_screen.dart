@@ -73,20 +73,25 @@ class _HomeScreenState extends State<HomeScreen> {
   int _totalPages = 1;
   int _refreshSignal = 0;
   int _carsRequestId = 0;
-  final _random = Random();
-  // Her yenilemede (aşağı çekme, filtre değişimi, ilk açılış) yeni tohum: akış her seferinde
-  // farklıdır, aynı yenilemenin sonraki sayfaları tutarlı kalır.
-  // Akış tohumu küçük havuzdan: rastgele 31 bitlik tohum her isteği benzersiz yapıp sunucu önbelleğini
-  // işe yaramaz kılıyordu (bkz. src/lib/car-mix.ts FEED_SEED_POOL).
-  static const _feedSeedPool = 8;
-  int _feedSeed = 1 + Random().nextInt(_feedSeedPool);
+  final _random = Random.secure();
+  // Keşfet: sunucu 15 dakikada bir dönen 24 "dilim" verir (CDN'de saklanır, web ile aynı, bkz.
+  // src/lib/car-mix.ts). Her yenileme rastgele başka bir dilim seçer ve gelen ilanları kendi içinde
+  // karıştırır: her açılışta farklı ilanlar/sıra, sunucuya kullanıcı başına ek yük yok.
+  static const _feedSlots = 24;
+  static const _feedRotateMs = 15 * 60 * 1000;
+  int _feedSlot = -1;
+  int _feedBucket = 0;
 
-  int _nextFeedSeed() {
-    final candidates = List<int>.generate(_feedSeedPool, (index) => index + 1)
-        .where((seed) => seed != _feedSeed)
-        .toList();
-    return candidates[_random.nextInt(candidates.length)];
+  void _pickFeedSlot() {
+    var slot = _random.nextInt(_feedSlots);
+    while (slot == _feedSlot) {
+      slot = _random.nextInt(_feedSlots);
+    }
+    _feedSlot = slot;
+    _feedBucket = DateTime.now().millisecondsSinceEpoch ~/ _feedRotateMs;
   }
+
+  bool get _isFeed => _sort == 'mixed' && _searchController.text.trim().isEmpty;
 
   String _brand = '';
   String _model = '';
@@ -163,7 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadCars({required bool reset}) async {
     final requestId = ++_carsRequestId;
     if (reset) {
-      _feedSeed = _nextFeedSeed();
+      _pickFeedSlot();
       setState(() {
         _loading = true;
         _loadingMore = false;
@@ -186,12 +191,16 @@ class _HomeScreenState extends State<HomeScreen> {
         sort: _sort,
         discountOnly: _discountOnly,
         page: nextPage,
-        seed: _feedSeed,
+        slot: _isFeed ? _feedSlot : null,
+        bucket: _isFeed ? _feedBucket : null,
       );
       if (!mounted || requestId != _carsRequestId) return;
+      final incoming = [...data.items];
+      if (_isFeed) incoming.shuffle(_random);
       setState(() {
         if (reset) _cars.clear();
-        _cars.addAll(data.items);
+        final known = _cars.map((c) => c.id).toSet();
+        _cars.addAll(incoming.where((c) => !known.contains(c.id)));
         _total = data.total;
         _page = data.page;
         _totalPages = data.totalPages;

@@ -74,3 +74,45 @@ describe("indeksli keşfet sıralamaları", () => {
     expect(feedOrderForSeed(0)).toEqual(feedOrderForSeed(FEED_SEED_POOL));
   });
 });
+
+describe("Keşfet dilimleri (CDN'de paylaşılan, kişiye göre seçilen)", () => {
+  it("24 dilim aynı dönemde farklı başlangıç noktaları ve 8 farklı sıralama kullanır", async () => {
+    const { FEED_SLOTS, feedOrderForSlot } = await import("./car-mix");
+    const orders = Array.from({ length: FEED_SLOTS }, (_, slot) => feedOrderForSlot(slot, 1000));
+    expect(new Set(orders.map((o) => `${o.field}:${o.direction}`)).size).toBe(8);
+    expect(new Set(orders.map((o) => o.pivot.toFixed(6))).size).toBe(FEED_SLOTS);
+    for (const o of orders) expect(o.pivot).toBeGreaterThanOrEqual(0), expect(o.pivot).toBeLessThan(1);
+  });
+
+  it("aynı dilim aynı dönemde tekrarlanabilir, sonraki dönemde başka noktadan başlar", async () => {
+    const { feedOrderForSlot } = await import("./car-mix");
+    expect(feedOrderForSlot(5, 1000)).toEqual(feedOrderForSlot(5, 1000));
+    expect(feedOrderForSlot(5, 1001).pivot).not.toBe(feedOrderForSlot(5, 1000).pivot);
+  });
+
+  it("önbelleği delmek için uydurulan dönemi kabul etmez", async () => {
+    const { FEED_ROTATE_MS, resolveFeedBucket } = await import("./car-mix");
+    const now = 1000 * FEED_ROTATE_MS + 5;
+    expect(resolveFeedBucket(998, now)).toBe(998);
+    expect(resolveFeedBucket(1001, now)).toBe(1000);
+    expect(resolveFeedBucket(990, now)).toBe(1000);
+    expect(resolveFeedBucket(undefined, now)).toBe(1000);
+  });
+
+  it("geçersiz dilimleri reddeder, bir önceki dilimi tekrar seçmez", async () => {
+    const { isValidFeedSlot, randomFeedSlot } = await import("./car-mix");
+    expect(isValidFeedSlot(0)).toBe(true);
+    expect(isValidFeedSlot(23)).toBe(true);
+    expect(isValidFeedSlot(24)).toBe(false);
+    expect(isValidFeedSlot(-1)).toBe(false);
+    expect(isValidFeedSlot(1.5)).toBe(false);
+    for (let i = 0; i < 200; i++) expect(randomFeedSlot(7)).not.toBe(7);
+    expect(randomFeedSlot(undefined, () => 0.999999)).toBe(23);
+  });
+
+  it("karıştırma öğeleri kaybetmez", async () => {
+    const { shuffleInPlace } = await import("./car-mix");
+    const items = Array.from({ length: 24 }, (_, i) => i);
+    expect([...shuffleInPlace([...items])].sort((a, b) => a - b)).toEqual(items);
+  });
+});

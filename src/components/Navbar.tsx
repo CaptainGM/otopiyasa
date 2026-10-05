@@ -1,33 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useViewer } from "@/components/useViewer";
 import { LogoutButton } from "@/components/LogoutButton";
 import { Logo } from "@/components/Logo";
 import { NotificationBell } from "@/components/NotificationBell";
 import { MobileMenu } from "@/components/MobileMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-type NavbarUser = { name: string; role: "user" | "admin" };
-
 export function Navbar() {
-  const [user, setUser] = useState<NavbarUser | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/auth/navbar", { credentials: "same-origin", cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((data: { user?: NavbarUser | null }) => {
-        if (active) setUser(data.user ?? null);
-      })
-      .catch(() => {
-        if (active) setUser(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Giriş işareti yoksa sunucuya hiç sorulmaz (bkz. useViewer); sayfadaki diğer parçalarla tek istek paylaşılır.
+  const { viewer: user } = useViewer();
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[var(--nav-bg)] backdrop-blur-xl">

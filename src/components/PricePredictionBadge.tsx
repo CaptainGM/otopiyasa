@@ -14,11 +14,15 @@ export function PricePredictionBadge({
   prediction,
   marketAvgPrice,
   marketListingCount,
+  marketScope,
+  marketFamilyLabel,
 }: {
   actualPrice: number;
   prediction: PricePrediction;
   marketAvgPrice?: number;
   marketListingCount?: number;
+  marketScope?: "model" | "family";
+  marketFamilyLabel?: string;
 }) {
   if (prediction.sampleSize < 3) {
     return null;
@@ -109,7 +113,9 @@ export function PricePredictionBadge({
               {formatPrice(marketAvgPrice)}
             </p>
             <p className="text-[10px] text-slate-500">
-              Aynı marka/model/yıl: {marketListingCount} aktif ilan
+              {marketScope === "family" && marketFamilyLabel
+                ? `${marketFamilyLabel} ailesi, aynı yıl (tüm donanımlar): ${marketListingCount} aktif ilan`
+                : `Aynı marka/model/yıl: ${marketListingCount} aktif ilan`}
             </p>
           </div>
         ) : null}

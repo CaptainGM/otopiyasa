@@ -1,3 +1,4 @@
+import { revalidateListing } from "@/lib/revalidate-listing";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
       car.removedAt = new Date();
       car.removedReason = `manuel: ${admin.email || "yönetici"}`;
       await car.save();
+      revalidateListing(car._id);
       return NextResponse.json({
         success: true,
         status: "gone",
@@ -56,6 +58,7 @@ export async function POST(req: NextRequest) {
     let archived = false;
     if ((checkResult.status === "gone" || checkResult.status === "redirected") && autoArchive) {
       archived = (await archiveListings([car._id], `${car.sourceSite}: ${checkResult.reason}`)) > 0;
+      revalidateListing(car._id);
     } else if (checkResult.status === "active") {
       // Canlı teyit updatedAt'i ("son değişiklik") oynatmaz.
       await markSeenAlive([car._id]);

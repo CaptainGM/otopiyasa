@@ -117,10 +117,11 @@ export function HomeWatcherPanel() {
             {!w.lastHeartbeat && <p className="mt-1 text-slate-500">Bekçiyi kurmak için proje klasöründe arabam-bekci-kur.bat dosyasına çift tıkla.</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
             <Tile label="Bugün kontrol" value={nf(data.today.checked)} />
             <Tile label="Canlı çıkan" value={nf(data.today.alive)} tone="text-emerald-300" />
             <Tile label="Arşive taşınan" value={nf(data.today.archived)} tone="text-rose-300" />
+            <Tile label="Yeni eklenen" value={nf(data.today.inserted ?? 0)} tone="text-sky-300" />
             <Tile label="Engel / belirsiz" value={`${nf(data.today.blocked)} / ${nf(data.today.uncertain)}`} tone="text-amber-300" />
             <Tile label="Bugün çalışma süresi" value={formatActiveTime(data.today.activeSeconds)} />
           </div>
@@ -154,6 +155,7 @@ export function HomeWatcherPanel() {
                       <th className="p-2 text-right">Kontrol</th>
                       <th className="p-2 text-right">Canlı</th>
                       <th className="p-2 text-right">Arşive</th>
+                      <th className="p-2 text-right">Yeni</th>
                       <th className="p-2 text-right">Engel</th>
                       <th className="p-2 text-right">Belirsiz</th>
                     </tr>
@@ -170,6 +172,7 @@ export function HomeWatcherPanel() {
                         <td className="p-2 text-right font-semibold">{nf(d.checked)}</td>
                         <td className="p-2 text-right text-emerald-300">{nf(d.alive)}</td>
                         <td className="p-2 text-right text-rose-300">{nf(d.archived)}</td>
+                        <td className="p-2 text-right text-sky-300">{nf(d.inserted ?? 0)}</td>
                         <td className="p-2 text-right text-amber-300">{nf(d.blocked)}</td>
                         <td className="p-2 text-right text-slate-400">{nf(d.uncertain)}</td>
                       </tr>
@@ -204,6 +207,7 @@ export function HomeWatcherPanel() {
                           <span className="w-64 shrink-0 text-slate-300">
                             <strong>{nf(h.checked)}</strong> kontrol · <span className="text-emerald-300">{nf(h.alive)} canlı</span> ·{" "}
                             <span className="text-rose-300">{nf(h.archived)} arşiv</span>
+                            {h.inserted ? <span className="text-sky-300"> · {nf(h.inserted)} yeni</span> : null}
                             {h.blocked > 0 && <span className="text-amber-300"> · {nf(h.blocked)} engel</span>}
                             {h.pausedMinutes ? <span className="text-amber-300"> · {nf(h.pausedMinutes)} dk mola</span> : null}
                           </span>

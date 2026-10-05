@@ -94,7 +94,7 @@ async function main() {
   }
   const { connectDB } = await import("@/lib/mongodb");
   const { Car } = await import("@/models/Car");
-  const { recordWatcherBatch, updateWatcherState } = await import("@/models/HomeWatcher");
+  const { recordWatcherBatch, recordWatcherDiscovery, updateWatcherState } = await import("@/models/HomeWatcher");
   const os = await import("node:os");
 
   // Yönetim ekranı için kalp atışı: durum, ne yaptığı, son satırlar. Dakikada bir ve her olayda yazılır.
@@ -133,12 +133,17 @@ async function main() {
   const { sweepAndCleanDeadListings, setArabamPageGap } = await import("@/lib/scraper/verify-listing");
   const { closeSharedBrowser } = await import("@/lib/scraper/browser-scrape");
   const { PACING, planNextStep } = await import("@/lib/scraper/arabam-pacing");
+  const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
+  const { isSitemapSyncDue, syncArabamSitemap } = await import("@/lib/scraper/arabam-sitemap");
 
   const baseGap = Number.isFinite(configuredGap) && configuredGap >= 3 ? configuredGap : PACING.baseGapSeconds;
+  const maxDiscoveryCreditMs = PACING.maxGapSeconds * 2_000;
   let state = { gapSeconds: baseGap, pauseMinutes: 0 };
   let rounds = 0;
   let todayChecked = 0;
   let todayArchived = 0;
+  let sessionInserted = 0;
+  let discoveryCreditMs = 0;
   let day = new Date().toDateString();
 
   log(`Arabam bekçisi başladı (parti ${batchSize} ilan, ilanlar arası ~${baseGap} sn).`);
@@ -212,6 +217,53 @@ async function main() {
         );
       }
       if (singleRound) break;
+
+      // Ayırılan aktif süre 90/10: yeni detay sayfaları kontrol sayfalarıyla aynı kapı ve aralığı kullanır.
+      // Bilgisayarın kapalı/uykuda olduğu ve Cloudflare molası verilen zaman bütçeye girmez.
+      if (res.checked > 0) {
+        discoveryCreditMs = Math.min(
+          maxDiscoveryCreditMs,
+          discoveryCreditMs + ((Date.now() - batchStarted) * 0.1) / 0.9
+        );
+      }
+      const safeToDiscover = blocked === 0 && res.errors === 0 && (plan.sleepMinutes === 0 || plan.reason === "idle");
+      if (safeToDiscover && discoveryCreditMs >= state.gapSeconds * 1000) {
+        if (await isSitemapSyncDue()) {
+          await setBeat("running", "Yeni ilan adayları için sitemap yenileniyor", state.gapSeconds);
+          const sitemap = await syncArabamSitemap({ log });
+          if (sitemap.status !== "ok") log(`Sitemap aday listesi yenilenemedi: ${sitemap.message}`);
+        }
+
+        let discoveredPages = 0;
+        while (discoveryCreditMs >= state.gapSeconds * 1000 && discoveredPages < 3) {
+          await setBeat("running", "Yeni ilan detayı güvenli aralıkla çekiliyor", state.gapSeconds);
+          const discoveryStarted = Date.now();
+          const found = await runSitemapDiscovery(1, { safeForWatcher: true });
+          const discoveryDuration = Math.max(1, Date.now() - discoveryStarted);
+          discoveryCreditMs = Math.max(0, discoveryCreditMs - discoveryDuration);
+
+          if (found.blocked) {
+            const slower = planNextStep(state, { checked: 1, blocked: 1, errors: 0, paused: false });
+            state = { gapSeconds: slower.gapSeconds, pauseMinutes: slower.pauseMinutes };
+            log(`${found.message} Yeni istek aralığı ${state.gapSeconds} sn oldu.`);
+            await setBeat("running", "Yeni ilan çekiminde engel görüldü; hız azaltıldı", state.gapSeconds);
+            break;
+          }
+          if (found.failed) {
+            log(found.message);
+            break;
+          }
+          if (found.picked === 0) {
+            if (found.message !== "Keşif kuyruğu boş.") log(found.message);
+            break;
+          }
+
+          discoveredPages += found.picked;
+          sessionInserted += found.inserted;
+          await recordWatcherDiscovery(found.inserted);
+          log(`${found.message} | bu çalıştırmada ${sessionInserted} yeni ilan eklendi.`);
+        }
+      }
 
       // Tarayıcı günlerce açık kalınca şişer: ~2.000 sayfada bir yenilenir.
       if (rounds % 100 === 0) await closeSharedBrowser();

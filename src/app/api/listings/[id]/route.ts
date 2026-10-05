@@ -1,3 +1,4 @@
+import { revalidateListing } from "@/lib/revalidate-listing";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
@@ -101,6 +102,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     car.moderationStatus = outcome.status;
     car.rejectionReason = outcome.status === "rejected" ? outcome.reason : "";
     await car.save();
+    revalidateListing(car._id);
 
     if (outcome.status === "approved") {
       await logAudit({ action: "listing_approved", targetLabel: car.title });
@@ -127,6 +129,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     if (!car) return NextResponse.json({ error: "İlan bulunamadı veya yetkiniz yok." }, { status: 404 });
 
     await car.deleteOne();
+    revalidateListing(car._id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/listings/[id] error:", error);

@@ -1,3 +1,4 @@
+import { revalidateListing } from "@/lib/revalidate-listing";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
@@ -126,6 +127,7 @@ export async function DELETE(
     await connectDB();
     const { id } = await context.params;
     const deleted = await Car.findByIdAndDelete(id);
+    revalidateListing(id);
     if (!deleted) {
       return NextResponse.json({ error: "Araç bulunamadı." }, { status: 404 });
     }

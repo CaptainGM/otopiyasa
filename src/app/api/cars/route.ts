@@ -7,7 +7,7 @@ import { findCarsPage, parseCarFilters } from "@/lib/car-query";
 import { getMarketMap } from "@/lib/market-price";
 import { attachMarketToCars, isLeanCarDoc } from "@/lib/serialize-car";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
-import { isCacheableFeedSeed } from "@/lib/car-mix";
+import { isCacheableFeedSeed, isValidFeedSlot } from "@/lib/car-mix";
 
 export async function GET(request: Request) {
   try {
@@ -48,8 +48,11 @@ export async function GET(request: Request) {
       },
       {
         headers: {
-          // Yanıt kullanıcıya göre değişmez; tohum havuzdaysa (ya da yoksa) 5 dk CDN'de saklanır.
-          "Cache-Control": isCacheableFeedSeed(filters.seed)
+          // Eski küçük ortak tohumlar CDN'de paylaşılır; kişiye özel rastgele akış yanıtları saklanmaz.
+          // Keşfet dilimleri herkes için aynı (sıra istemcide karıştırılır) → 15 dk CDN'de.
+          "Cache-Control": isValidFeedSlot(filters.slot)
+            ? "public, s-maxage=900, stale-while-revalidate=300"
+            : isCacheableFeedSeed(filters.seed)
             ? "public, s-maxage=300, stale-while-revalidate=900"
             : "private, no-cache, no-store, must-revalidate",
         },

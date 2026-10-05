@@ -1,6 +1,7 @@
 import { Car } from "@/models/Car";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { Types } from "mongoose";
+import { modelFamily, modelFamilyKey } from "@/lib/model-family";
 
 export interface MarketSegmentStats {
   brand: string;
@@ -8,31 +9,70 @@ export interface MarketSegmentStats {
   year: number;
   avgPrice: number;
   listingCount: number;
+  /**
+   * "model": aynı donanım adıyla en az 3 emsal var. "family": donanımda yetmediği için aynı yılın
+   * tüm donanımları ("Corolla 1.6 Vision" + "Corolla 1.5 Dream" ...) birlikte sayıldı.
+   */
+  scope?: "model" | "family";
+  /** scope "family" ise gösterilecek aile adı ("Corolla", "3 Serisi"). */
+  familyLabel?: string;
 }
 
 const segmentCache = new Map<string, { stat: MarketSegmentStats; expires: number }>();
 const SEGMENT_CACHE_TTL = 30 * 60 * 1000; // 30 dakika
 export const MIN_MARKET_SAMPLE = 3;
 
+/**
+ * Piyasa ortalaması gösterilemeyen segmentler: aynı yılın tüm donanımları birlikte sayıldığında bile
+ * (bkz. computeMarketMap) üçten az emsal kalan marka + model ailesi + yıl grupları.
+ * Önce 2 emsalli olanlar gelir (tek yeni ilan ortalamayı açar), sonra yeni yıllar (piyasada daha çok ilanı var).
+ */
 export function selectSparseMarketSegments(
   groups: Array<{ brand: string; model: string; year: number; prices: number[] }>,
   limit = 100
 ) {
-  return groups
-    .map((group) => ({
-      brand: group.brand,
-      model: group.model,
-      year: group.year,
-      listingCount: robustTrimmedPrices(group.prices || []).length,
-    }))
-    .filter((group) => group.brand && group.model && group.year && group.listingCount < MIN_MARKET_SAMPLE)
-    .sort((a, b) => a.listingCount - b.listingCount)
+  const families = new Map<
+    string,
+    { brand: string; model: string; familyKey: string; year: number; prices: number[]; hiddenListings: number }
+  >();
+  for (const group of groups) {
+    if (!group.brand || !group.model || !group.year) continue;
+    const familyKey = modelFamilyKey(group.model, group.brand);
+    if (!familyKey) continue;
+    const key = `${group.brand}::${familyKey}::${group.year}`;
+    const label = modelFamily(group.model, group.brand);
+    const current = families.get(key);
+    if (current) {
+      current.prices.push(...(group.prices || []));
+      current.hiddenListings += (group.prices || []).length;
+      // Aramada kullanılacak ad: karışık harfli ve kısa olan ("Juke" > "JUKE").
+      if (current.model === current.model.toLocaleUpperCase("tr-TR") && label !== label.toLocaleUpperCase("tr-TR")) {
+        current.model = label;
+      }
+    } else {
+      families.set(key, {
+        brand: group.brand,
+        model: label,
+        familyKey,
+        year: group.year,
+        prices: [...(group.prices || [])],
+        hiddenListings: (group.prices || []).length,
+      });
+    }
+  }
+  return [...families.values()]
+    .map(({ prices, ...family }) => ({ ...family, listingCount: robustTrimmedPrices(prices).length }))
+    .filter((family) => family.listingCount < MIN_MARKET_SAMPLE)
+    .sort((a, b) => b.listingCount - a.listingCount || b.year - a.year)
     .slice(0, Math.max(0, Math.trunc(limit)));
 }
 
+/** Aile ortalaması aynı marka + yılın diğer donanımlarını da etkilediği için marka + yıl düzeyinde silinir. */
 export function invalidateMarketSegments(segments: Array<{ brand: string; model: string; year: number }>) {
-  for (const segment of segments) {
-    segmentCache.delete(segmentKey(segment.brand, segment.model, segment.year));
+  const brandYears = new Set(segments.map((segment) => `${segment.brand}::${segment.year}`));
+  for (const key of segmentCache.keys()) {
+    const [brand, , year] = key.split("::");
+    if (brandYears.has(`${brand}::${year}`)) segmentCache.delete(key);
   }
 }
 
@@ -165,16 +205,21 @@ async function computeMarketMap(
   excludedListingIds: Types.ObjectId[] = []
 ) {
   if (uniqueKeys.size === 0) return new Map<string, MarketSegmentStats>();
-  const orConditions = [...uniqueKeys].map((key) => {
+  const requested = [...uniqueKeys].map((key) => {
     const [brand, model, year] = key.split("::");
-    return { brand, model, year: Number(year) };
+    return { key, brand, model, year: Number(year) };
   });
+  // Aynı marka + yıl içindeki tüm modeller çekilir; aile eşleşmesi aşağıda yapılır. Kaynaklar aynı aracı
+  // "Corolla 1.6 Vision", "COROLLA", "Corolla" diye yazdığı için tam model eşleşmesinde ilanların ~%37'si
+  // emsalsiz kalıyor ve ortalama hiç gösterilmiyordu.
+  const brandYears = new Map<string, { brand: string; year: number }>();
+  for (const r of requested) brandYears.set(`${r.brand}::${r.year}`, { brand: r.brand, year: r.year });
 
   // GÜVENLİK: Piyasa ortalamasında yalnızca aktif/onaylı ilanları say.
   const rows = await Car.aggregate([
     {
       $match: {
-        $or: orConditions,
+        $or: [...brandYears.values()],
         ...PUBLIC_LISTING_FILTER,
         ...(excludedListingIds.length > 0 ? { _id: { $nin: excludedListingIds } } : {}),
       },
@@ -188,16 +233,35 @@ async function computeMarketMap(
     },
   ]);
 
-  const map = new Map<string, MarketSegmentStats>();
+  const exactPrices = new Map<string, number[]>();
+  const familyPrices = new Map<string, number[]>();
   for (const row of rows) {
-    const { avgPrice, listingCount } = summarizeMarketPrices(row.prices || []);
-    map.set(`${row._id.brand}::${row._id.model}::${row._id.year}`, {
-      brand: row._id.brand,
-      model: row._id.model,
-      year: row._id.year,
-      avgPrice,
-      listingCount,
-    });
+    const { brand, model, year } = row._id;
+    const prices: number[] = row.prices || [];
+    exactPrices.set(segmentKey(brand, model, year), prices);
+    const familyKey = `${brand}::${modelFamilyKey(model, brand)}::${year}`;
+    const bucket = familyPrices.get(familyKey);
+    if (bucket) bucket.push(...prices);
+    else familyPrices.set(familyKey, [...prices]);
+  }
+
+  const map = new Map<string, MarketSegmentStats>();
+  for (const r of requested) {
+    const exact = summarizeMarketPrices(exactPrices.get(r.key) || []);
+    const base = { brand: r.brand, model: r.model, year: r.year };
+    if (exact.listingCount >= MIN_MARKET_SAMPLE) {
+      map.set(r.key, { ...base, ...exact, scope: "model" });
+      continue;
+    }
+    const familyKey = modelFamilyKey(r.model, r.brand);
+    const family = familyKey
+      ? summarizeMarketPrices(familyPrices.get(`${r.brand}::${familyKey}::${r.year}`) || [])
+      : exact;
+    if (family.listingCount >= MIN_MARKET_SAMPLE) {
+      map.set(r.key, { ...base, ...family, scope: "family", familyLabel: modelFamily(r.model, r.brand) });
+    } else if (exact.listingCount > 0 || family.listingCount > 0) {
+      map.set(r.key, { ...base, avgPrice: 0, listingCount: Math.max(exact.listingCount, family.listingCount) });
+    }
   }
   return map;
 }

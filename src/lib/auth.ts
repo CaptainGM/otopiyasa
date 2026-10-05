@@ -88,11 +88,23 @@ export async function setAuthCookie(token: string) {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
   });
+  // Tarayıcının "giriş yapılmış mı" diye sunucuya sormadan bilmesi için okunabilir işaret (gizli bilgi yok).
+  cookieStore.set(SESSION_FLAG_COOKIE, "1", {
+    httpOnly: false,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  });
 }
+
+/** Tarayıcıdaki giriş işareti (bkz. components/useViewer.ts). */
+export const SESSION_FLAG_COOKIE = "op_session";
 
 export async function clearAuthCookie() {
   const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAME);
+  cookieStore.delete(SESSION_FLAG_COOKIE);
 }
 
 export async function getCurrentUser(): Promise<AuthPayload | null> {

@@ -61,6 +61,8 @@ export interface HomeWatcherHourDoc {
   pausedMinutes: number;
   /** Bu saatte ilan kontrol ederek geçen süre (sn); molalar ve bekleme hariç. */
   activeSeconds: number;
+  /** Zamanın %10'unda yapılan keşifle bu saatte eklenen yeni ilan sayısı. */
+  inserted: number;
 }
 
 const HomeWatcherHourSchema = new Schema<HomeWatcherHourDoc>(
@@ -78,6 +80,7 @@ const HomeWatcherHourSchema = new Schema<HomeWatcherHourDoc>(
     pauses: { type: Number, default: 0 },
     pausedMinutes: { type: Number, default: 0 },
     activeSeconds: { type: Number, default: 0 },
+    inserted: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
@@ -132,6 +135,21 @@ export async function recordWatcherBatch(result: WatcherBatchResult, now = new D
     );
   } catch (err) {
     console.error("[HomeWatcher] saatlik kayıt hatası:", err);
+  }
+}
+
+/** Keşifte eklenen yeni ilanları içinde bulunulan saate ekler (kontrol partilerinden ayrı sayılır). */
+export async function recordWatcherDiscovery(inserted: number, now = new Date()): Promise<void> {
+  if (!(inserted > 0)) return;
+  try {
+    const { timestamp, dateStr, hour } = turkeyHourOf(now);
+    await HomeWatcherHour.findOneAndUpdate(
+      { watcherId: HOME_WATCHER_ID, timestamp },
+      { $setOnInsert: { dateStr, hour }, $inc: { inserted } },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error("[HomeWatcher] keşif kaydı hatası:", err);
   }
 }
 

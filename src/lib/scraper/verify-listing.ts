@@ -107,7 +107,7 @@ export function setArabamPageGap(minMs: number, spreadMs: number): void {
 let arabamGate: Promise<void> = Promise.resolve();
 
 /** Sıra beklenir; sonraki çağrı en az min..min+spread ms sonra başlar (işçi sayısından bağımsız). */
-async function waitForArabamTurn(): Promise<void> {
+export async function waitForArabamTurn(): Promise<void> {
   const previous = arabamGate;
   let release!: () => void;
   arabamGate = new Promise<void>((resolve) => {

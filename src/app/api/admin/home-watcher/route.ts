@@ -64,6 +64,7 @@ export async function GET(request: Request) {
       uncertain: 0,
       activeSeconds: 0,
       pausedMinutes: 0,
+      inserted: 0,
     };
 
     return NextResponse.json(

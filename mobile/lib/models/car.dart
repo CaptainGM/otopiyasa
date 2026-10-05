@@ -78,6 +78,7 @@ class CarListing {
     required this.listingUrl,
     this.marketAvgPrice,
     this.marketListingCount,
+    this.marketFamilyLabel,
     this.priceVsMarket,
     this.fuelType = 'Bilinmiyor',
     this.transmission = 'Bilinmiyor',
@@ -121,6 +122,9 @@ class CarListing {
   final String listingUrl;
   final int? marketAvgPrice;
   final int? marketListingCount;
+
+  /// Doluysa piyasa ortalaması aynı yılın tüm donanımlarından hesaplandı ("Corolla").
+  final String? marketFamilyLabel;
   final int? priceVsMarket;
   final String fuelType;
   final String transmission;
@@ -200,6 +204,7 @@ class CarListing {
       listingUrl: json['listingUrl'] as String? ?? '',
       marketAvgPrice: (json['marketAvgPrice'] as num?)?.toInt(),
       marketListingCount: (json['marketListingCount'] as num?)?.toInt(),
+      marketFamilyLabel: json['marketScope'] == 'family' ? json['marketFamilyLabel'] as String? : null,
       priceVsMarket: (json['priceVsMarket'] as num?)?.toInt(),
       fuelType: features['fuelType'] as String? ?? 'Bilinmiyor',
       transmission: features['transmission'] as String? ?? 'Bilinmiyor',

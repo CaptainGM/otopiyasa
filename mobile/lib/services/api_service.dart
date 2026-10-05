@@ -42,28 +42,6 @@ class ApiService {
   final String baseUrl;
   static const _tokenKey = 'auth_token';
 
-  /// İlan fotoğraflarını telefon ekranına uygun, CDN üzerinden küçültülmüş
-  /// boyutta indir. Next.js kaynağı işleyemezse ListingImage ham URL'ye döner.
-  String? optimizedListingImageUrl(String source, {int width = 480, int quality = 75}) {
-    final uri = Uri.tryParse(source);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
-    final host = uri.host.toLowerCase();
-    // This source often times out behind Next Image's server-side proxy. Load
-    // its existing sized variants directly from the CDN on the device.
-    if (host.endsWith('.mncdn.com')) return null;
-    final isAllowed = host == 'images.unsplash.com' ||
-        host == 'www.sahibinden.com' || host.endsWith('.sahibinden.com') ||
-        host == 'www.arabam.com' || host == 'asset.otomerkezi.net' ||
-        host.endsWith('.mncdn.com') || host.endsWith('.otokoc.com.tr');
-    if (!isAllowed || uri.path == '/_next/image') return null;
-
-    return Uri.parse(baseUrl).resolve('/_next/image').replace(queryParameters: {
-      'url': source,
-      'w': '${width.clamp(64, 1920)}',
-      'q': '${quality.clamp(40, 90)}',
-    }).toString();
-  }
-
   /// GÜVENLİK: JWT token'ı şifrelenmiş depolama alanında tutulur.
   /// Android → Keystore, iOS → Keychain. SharedPreferences'tan daha güvenli.
   static const _secureStorage = FlutterSecureStorage(
@@ -146,12 +124,14 @@ class ApiService {
     bool discountOnly = false,
     int page = 1,
     int limit = 24,
-    // "Keşfet" akışı tohumu: her yenilemede yeni bir sayı; aynı yenilemenin sayfaları aynı tohumu kullanır.
-    int? seed,
+    // "Keşfet" dilimi ve dönemi (bkz. home_screen.dart _pickFeedSlot); aynı yenilemenin sayfaları aynısını kullanır.
+    int? slot,
+    int? bucket,
   }) async {
     final response = await http.get(
       _uri('/api/cars', {
-        if (seed != null && seed > 0) 'seed': '$seed',
+        if (slot != null && slot >= 0) 'slot': '$slot',
+        if (slot != null && bucket != null) 'b': '$bucket',
         if (q != null && q.isNotEmpty) 'q': q,
         if (brand != null && brand.isNotEmpty) 'brand': brand,
         if (model != null && model.isNotEmpty) 'model': model,

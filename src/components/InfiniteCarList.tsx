@@ -3,8 +3,35 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CarListItem } from "@/types";
 import { CarCard } from "@/components/CarCard";
-import { FEED_SEED_COOKIE, FEED_SEED_POOL, randomFeedSeed } from "@/lib/car-mix";
+import { feedBucket, isValidFeedSlot, randomFeedSlot, shuffleInPlace } from "@/lib/car-mix";
 
+const SLOT_KEY = "op_feed_slot";
+
+function readPreviousSlot(): number | undefined {
+  try {
+    const value = Number(window.localStorage.getItem(SLOT_KEY));
+    return isValidFeedSlot(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function rememberSlot(slot: number) {
+  try {
+    window.localStorage.setItem(SLOT_KEY, String(slot));
+  } catch {
+    // gizli sekme vb.: yalnızca "öncekini seçme" kuralı devre dışı kalır
+  }
+}
+
+/**
+ * İlan listesi + sonsuz kaydırma.
+ *
+ * `feed` (Keşfet, karışık sıra): sunucu herkes için aynı, CDN'de saklanan dilim sayfaları verir
+ * (bkz. lib/car-mix.ts FEED_SLOTS); burada her açılışta rastgele bir dilim seçilir ve her sayfa kendi
+ * içinde karıştırılır. Böylece farklı tarayıcılar ve her yenileme farklı ilanlar/sıra görür, sunucu
+ * yükü ise kullanıcı sayısıyla artmaz. Diğer sıralamalarda (en yeni, fiyat...) ilk sayfa sunucudan gelir.
+ */
 export function InfiniteCarList({
   initialItems,
   initialPage,
@@ -12,6 +39,7 @@ export function InfiniteCarList({
   total,
   pageSize,
   query,
+  feed = false,
 }: {
   initialItems: CarListItem[];
   initialPage: number;
@@ -19,110 +47,81 @@ export function InfiniteCarList({
   total: number;
   pageSize: number;
   query: string;
+  feed?: boolean;
 }) {
   const [items, setItems] = useState(initialItems);
-  const [page, setPage] = useState(initialPage);
-  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(feed ? 0 : initialPage);
+  const [loading, setLoading] = useState(feed);
   const [error, setError] = useState("");
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const activeQueryRef = useRef(query);
-  const previousQueryRef = useRef(query);
-  const initializedFeedRef = useRef(false);
 
+  // Tarayıcı yenilemesinde sayfanın altına değil başa dön (yeni akış baştan görünsün).
   useLayoutEffect(() => {
-    const navigation = performance.getEntriesByType("navigation")[0] as
-      | PerformanceNavigationTiming
-      | undefined;
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
     if (navigation?.type !== "reload") return;
-
-    const previousRestoration = window.history.scrollRestoration;
+    const previous = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
     window.scrollTo(0, 0);
     return () => {
-      window.history.scrollRestoration = previousRestoration;
+      window.history.scrollRestoration = previous;
     };
   }, []);
 
+  const fetchPage = useCallback(
+    async (pageNumber: number): Promise<CarListItem[]> => {
+      const params = new URLSearchParams(activeQueryRef.current);
+      params.set("page", String(pageNumber));
+      params.set("limit", String(pageSize));
+      params.set("compact", "1");
+      const response = await fetch(`/api/cars?${params.toString()}`);
+      if (!response.ok) throw new Error("İlanlar yüklenemedi. Yeniden deneyin.");
+      const data = (await response.json()) as { items?: CarListItem[] };
+      const list = Array.isArray(data.items) ? data.items : [];
+      return feed ? shuffleInPlace([...list]) : list;
+    },
+    [feed, pageSize]
+  );
+
+  // Filtre/sorgu değişince (ve Keşfet'in ilk açılışında) listeyi baştan kur.
   useEffect(() => {
-    if (initializedFeedRef.current) {
-      if (previousQueryRef.current !== query) {
-        previousQueryRef.current = query;
-        activeQueryRef.current = query;
-        setItems(initialItems);
-        setPage(initialPage);
-        setError("");
-        const nextSeed = Number(new URLSearchParams(query).get("seed"));
-        if (Number.isInteger(nextSeed) && nextSeed >= 1 && nextSeed <= FEED_SEED_POOL) {
-          const secure = window.location.protocol === "https:" ? "; Secure" : "";
-          document.cookie = `${FEED_SEED_COOKIE}=${nextSeed}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
-        }
-      }
+    let cancelled = false;
+    setError("");
+    if (!feed) {
+      activeQueryRef.current = query;
+      setItems(initialItems);
+      setPage(initialPage);
+      setLoading(false);
       return;
     }
 
+    const slot = randomFeedSlot(readPreviousSlot());
+    rememberSlot(slot);
     const params = new URLSearchParams(query);
-    const seedValue = params.get("seed");
-    const serverSeed = Number(seedValue);
-    if (!seedValue || !Number.isInteger(serverSeed) || serverSeed < 1 || serverSeed > FEED_SEED_POOL) return;
-
-    const previousSeedValue = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith(`${FEED_SEED_COOKIE}=`))
-      ?.slice(FEED_SEED_COOKIE.length + 1);
-    const previousSeed = Number(previousSeedValue);
-    const hasPreviousSeed = Number.isInteger(previousSeed) && previousSeed >= 1 && previousSeed <= FEED_SEED_POOL;
-    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-    const isRefresh =
-      !initializedFeedRef.current && navigation?.type === "reload" && hasPreviousSeed;
-    initializedFeedRef.current = true;
-    previousQueryRef.current = query;
-
-    // Sunucu çerezden farklı bir tohumu seçtiyse SSR zaten güncel sıradadır;
-    // yalnızca eski/önbellekte kalmış HTML aynı tohumu verdiyse API'den yenile.
-    const seed = isRefresh && serverSeed === previousSeed ? randomFeedSeed(previousSeed) : serverSeed;
-    params.set("seed", String(seed));
-    params.delete("page");
+    params.delete("seed");
+    params.set("slot", String(slot));
+    params.set("b", String(feedBucket()));
     activeQueryRef.current = params.toString();
 
-    const secure = window.location.protocol === "https:" ? "; Secure" : "";
-    document.cookie = `${FEED_SEED_COOKIE}=${seed}; Path=/; Max-Age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
-
-    const url = new URL(window.location.href);
-    if (url.searchParams.has("seed")) {
-      url.searchParams.delete("seed");
-      const search = url.searchParams.toString();
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${url.pathname}${search ? `?${search}` : ""}${url.hash}`
-      );
-    }
-
-    if (isRefresh && seed !== serverSeed) {
-      const refreshParams = new URLSearchParams(activeQueryRef.current);
-      refreshParams.set("page", "1");
-      refreshParams.set("limit", String(pageSize));
-      refreshParams.set("compact", "1");
-      loadingRef.current = true;
-      setLoading(true);
-      setError("");
-      void fetch(`/api/cars?${refreshParams.toString()}`, { credentials: "same-origin" })
-        .then(async (response) => {
-          if (!response.ok) throw new Error("Yeni ilan sıralaması yüklenemedi.");
-          return (await response.json()) as { items?: CarListItem[]; page?: number };
-        })
-        .then((data) => {
-          setItems(Array.isArray(data.items) ? data.items : []);
-          setPage(data.page || 1);
-        })
-        .catch((cause) => setError(cause instanceof Error ? cause.message : "İlanlar yüklenemedi."))
-        .finally(() => {
-          loadingRef.current = false;
-          setLoading(false);
-        });
-    }
-  }, [initialItems, initialPage, pageSize, query]);
+    loadingRef.current = true;
+    setLoading(true);
+    setItems([]);
+    fetchPage(1)
+      .then((list) => {
+        if (cancelled) return;
+        setItems(list);
+        setPage(1);
+      })
+      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "İlanlar yüklenemedi."))
+      .finally(() => {
+        loadingRef.current = false;
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [feed, fetchPage, initialItems, initialPage, query]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingRef.current || page >= totalPages) return;
@@ -130,17 +129,10 @@ export function InfiniteCarList({
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams(activeQueryRef.current);
-      params.set("page", String(page + 1));
-      params.set("limit", String(pageSize));
-      params.set("compact", "1");
-      const response = await fetch(`/api/cars?${params.toString()}`, { credentials: "same-origin" });
-      if (!response.ok) throw new Error("İlanlar yüklenemedi. Yeniden deneyin.");
-      const data = (await response.json()) as { items?: CarListItem[] };
-      const nextItems = Array.isArray(data.items) ? data.items : [];
+      const nextItems = await fetchPage(page + 1);
       setItems((current) => {
-        const knownIds = new Set(current.map((car) => car._id));
-        return [...current, ...nextItems.filter((car) => !knownIds.has(car._id))];
+        const known = new Set(current.map((car) => car._id));
+        return [...current, ...nextItems.filter((car) => !known.has(car._id))];
       });
       setPage((current) => current + 1);
     } catch (cause) {
@@ -149,11 +141,11 @@ export function InfiniteCarList({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [page, pageSize, totalPages]);
+  }, [fetchPage, page, totalPages]);
 
   useEffect(() => {
     const target = sentinelRef.current;
-    if (!target || page >= totalPages) return;
+    if (!target || page === 0 || page >= totalPages) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) void loadNextPage();
@@ -170,11 +162,11 @@ export function InfiniteCarList({
       <div className="space-y-2" aria-live="polite">
         {items.map((car, i) => <CarCard key={car._id} car={car} priority={i < 3} />)}
       </div>
-      {page < totalPages ? (
+      {page === 0 || page < totalPages ? (
         <div ref={sentinelRef} className="flex min-h-16 flex-col items-center justify-center gap-2 py-3">
-          {loading && <><span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" aria-hidden /><span className="text-sm text-slate-400">Daha fazla ilan yükleniyor…</span></>}
-          {error && <><p role="alert" className="text-sm text-rose-300">{error}</p><button type="button" onClick={() => void loadNextPage()} className="btn btn-secondary text-sm">Yeniden dene</button></>}
-          {!loading && !error && <button type="button" onClick={() => void loadNextPage()} className="btn btn-secondary text-sm">Daha fazla ilan göster</button>}
+          {loading && <><span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" aria-hidden /><span className="text-sm text-slate-400">{page === 0 ? "İlanlar yükleniyor…" : "Daha fazla ilan yükleniyor…"}</span></>}
+          {error && <><p role="alert" className="text-sm text-rose-300">{error}</p><button type="button" onClick={() => void (page === 0 ? window.location.reload() : loadNextPage())} className="btn btn-secondary text-sm">Yeniden dene</button></>}
+          {!loading && !error && page > 0 && <button type="button" onClick={() => void loadNextPage()} className="btn btn-secondary text-sm">Daha fazla ilan göster</button>}
         </div>
       ) : <p className="py-4 text-center text-sm text-slate-500">{items.length < total ? `${items.length} / ${total} ilan yüklendi` : "Tüm ilanlar yüklendi"}</p>}
     </div>

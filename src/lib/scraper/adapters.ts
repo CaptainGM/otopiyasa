@@ -193,28 +193,60 @@ export function arabamModelSlug(brand: string, model: string): string {
 }
 
 
+/** Model sayfası kategorileri: arazi/pick-up ve ticari araçlar "otomobil" altında değil ("toyota-hilux"). */
+const ARABAM_MODEL_CATEGORIES = ["otomobil", "arazi-suv-pick-up", "minivan-panelvan"];
+const resolvedModelBaseCache = new Map<string, string | null>();
+
+/**
+ * Model sayfasının gerçek adresi. Kaynak bazı adları kısaltarak yönlendiriyor ("mercedes-benz-c-serisi" →
+ * "mercedes-benz-c"): marka adından uzun ve istenen adın başı olan sayfa kabul edilir. Markanın genel
+ * sayfasına düşen yönlendirme ("toyota-hilux" → ".../toyota") reddedilir; yoksa tüm marka taranırdı.
+ */
+async function resolveArabamModelBase(brand: string, model: string): Promise<string | null> {
+  const brandSlug = arabamBrandSlug(brand);
+  const modelSlug = arabamModelSlug(brand, model);
+  if (resolvedModelBaseCache.has(modelSlug)) return resolvedModelBaseCache.get(modelSlug)!;
+
+  let resolved: string | null = null;
+  for (const category of ARABAM_MODEL_CATEGORIES) {
+    try {
+      const probe = await fetchPageHtml(`https://www.arabam.com/ikinci-el/${category}/${modelSlug}`);
+      if (!probe.ok || !probe.finalUrl.includes("/ikinci-el/")) continue;
+      const base = probe.finalUrl.split("?")[0];
+      const last = base.split("/").filter(Boolean).pop() || "";
+      if (last === modelSlug || (last.startsWith(`${brandSlug}-`) && modelSlug.startsWith(last))) {
+        resolved = base;
+        break;
+      }
+    } catch {
+      // bir sonraki kategori denenir
+    }
+  }
+  resolvedModelBaseCache.set(modelSlug, resolved);
+  return resolved;
+}
+
 export async function collectArabamHrefsForModel(
   brand: string,
   model: string,
   pages: number,
-  year?: number
+  year?: number,
+  maxHrefs = Number.MAX_SAFE_INTEGER
 ): Promise<string[]> {
-  const modelSlug = arabamModelSlug(brand, model);
-  const base = await resolveArabamBase(modelSlug);
-
-  
-  const lastSegment = base.split("?")[0].split("/").filter(Boolean).pop() || "";
-  if (lastSegment !== modelSlug) return [];
+  const base = await resolveArabamModelBase(brand, model);
+  if (!base) return [];
 
   const hrefs = new Set<string>();
 
-  for (let page = 1; page <= pages; page++) {
+  for (let page = 1; page <= pages && hrefs.size < maxHrefs; page++) {
     let found: string[] = [];
     try {
       const params = new URLSearchParams({ page: String(page) });
       if (year && Number.isInteger(year)) {
-        params.set("yearMin", String(year));
-        params.set("yearMax", String(year));
+        // Kaynağın yıl filtresi minYear/maxYear; eskiden yazılan yearMin/yearMax yok sayılıyordu ve
+        // her yıl hedefi için alakasız yıllardan ilanlar indirilip atılıyordu.
+        params.set("minYear", String(year));
+        params.set("maxYear", String(year));
       }
       found = await hrefsFromUrl(`${base}?${params.toString()}`);
     } catch {
@@ -223,11 +255,11 @@ export async function collectArabamHrefsForModel(
     if (found.length === 0) break;
     const before = hrefs.size;
     found.forEach((h) => hrefs.add(h));
-    
+
     if (hrefs.size === before) break;
   }
 
-  return [...hrefs];
+  return [...hrefs].slice(0, maxHrefs);
 }
 
 
@@ -556,11 +588,15 @@ export async function scrapeArabamForModels(
 }
 
 /** Model ve yıl aralığına göre hedefli Arabam taraması; hedef dışı yıllar kaydedilmez. */
+/** Seyrek segment başına en fazla bu kadar ilan adayı: ortalama için 3 emsal yeter, bütçe çok segmente yayılsın. */
+export const MARKET_YEAR_CANDIDATES = 12;
+
 export async function scrapeArabamForMarketYears(
   segments: { brand: string; model: string; years: number[] }[],
   pagesPerYear: number,
   onListing: OnListing,
-  maxListings = Number.MAX_SAFE_INTEGER
+  maxListings = Number.MAX_SAFE_INTEGER,
+  perYearCandidates = MARKET_YEAR_CANDIDATES
 ): Promise<number> {
   const seen = new Set<string>();
   let fetched = 0;
@@ -579,7 +615,7 @@ export async function scrapeArabamForMarketYears(
     const candidates = new Set<string>();
     for (const year of years) {
       try {
-        const hrefs = await collectArabamHrefsForModel(segment.brand, segment.model, pagesPerYear, year);
+        const hrefs = await collectArabamHrefsForModel(segment.brand, segment.model, pagesPerYear, year, perYearCandidates);
         hrefs.forEach((href) => candidates.add(href));
       } catch {
         // Bir yılın arama sonucu hata verirse kalan hedef yıl grupları devam eder.

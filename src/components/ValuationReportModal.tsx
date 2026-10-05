@@ -29,6 +29,8 @@ interface ValuationReportModalProps {
     damageParts?: { name: string; state: string }[];
     marketAvgPrice?: number | null;
     marketListingCount?: number | null;
+    /** Doluysa ortalama aynı yılın tüm donanımlarından hesaplandı. */
+    marketFamilyLabel?: string;
   };
   predictedPrice?: number | null;
   comparables?: Array<{
@@ -359,7 +361,7 @@ export function ValuationReportModal({
                         <span>Hesap dayanağı:</span>
                         <span className="font-bold text-emerald-400">
                           {hasMarketAverage
-                            ? `${car.marketListingCount} aktif ilan`
+                            ? `${car.marketListingCount} aktif ilan${car.marketFamilyLabel ? ` (${car.marketFamilyLabel}, tüm donanımlar)` : ""}`
                             : `${comparables?.length ?? 0} emsal + AI tahmini`}
                         </span>
                       </div>

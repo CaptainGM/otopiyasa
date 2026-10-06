@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { appBaseUrl } from "@/lib/app-url";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
     const limited = await checkSharedRateLimit(request, "comment", { limit: 15, windowMs: 60 * 60 * 1000 });
     if (limited) return limited;
 
-    const body = await request.json();
+    const body = await readJson(request);
     const { carId, text, rating } = body;
 
     if (!carId || !text || typeof rating !== "number") {

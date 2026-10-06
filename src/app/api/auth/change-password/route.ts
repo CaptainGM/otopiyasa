@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { passwordError } from "@/lib/password-policy";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
@@ -13,7 +14,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
     }
 
-    const { currentPassword, newPassword, confirmPassword } = await request.json();
+    const { currentPassword, newPassword, confirmPassword } = await readJson(request, { flat: true });
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       return NextResponse.json(

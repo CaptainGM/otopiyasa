@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { appBaseUrl } from "@/lib/app-url";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/mongodb";
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     await connectDB();
-    const { name, email, password } = await request.json();
+    const { name, email, password } = await readJson(request, { flat: true });
 
     if (!name || !email || !password) {
       return NextResponse.json(

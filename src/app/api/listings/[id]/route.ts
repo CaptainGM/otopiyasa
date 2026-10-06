@@ -1,4 +1,5 @@
 import { revalidateListing } from "@/lib/revalidate-listing";
+import { readJson } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
@@ -37,7 +38,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const car = await ownedCar(id, authUser.userId);
     if (!car) return NextResponse.json({ error: "İlan bulunamadı veya yetkiniz yok." }, { status: 404 });
 
-    const body = await request.json();
+    const body = await readJson(request);
     /**
      * Fotoğraflar moderasyona da GİRMELİ.
      *

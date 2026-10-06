@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { passwordError } from "@/lib/password-policy";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     await connectDB();
-    const { email, token, code, password, confirmPassword } = await request.json();
+    const { email, token, code, password, confirmPassword } = await readJson(request, { flat: true });
 
     // Web e-postadaki bağlantıdan gelen `token` ile, mobil uygulama 6 haneli `code` ile sıfırlar.
     if (!email || (!token && !code) || !password) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { appBaseUrl } from "@/lib/app-url";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     await connectDB();
-    const { email } = await request.json();
+    const { email } = await readJson(request, { flat: true });
     if (!email) {
       return NextResponse.json({ error: "E-posta zorunludur." }, { status: 400 });
     }

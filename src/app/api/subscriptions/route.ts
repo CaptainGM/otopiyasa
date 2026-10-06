@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { Subscription } from "@/models/Subscription";
 import { getCurrentUser } from "@/lib/auth";
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     const limited = await checkSharedRateLimit(request, "subscription-create", { limit: 20, windowMs: 60 * 60 * 1000 });
     if (limited) return limited;
 
-    const body = await request.json();
+    const body = await readJson(request);
     const { email, brand, model, yearMin, yearMax, maxPrice, targetAvgPrice } = body;
     if (!email) return NextResponse.json({ error: "E-posta zorunludur." }, { status: 400 });
     if (targetAvgPrice && !brand) {
@@ -60,7 +61,7 @@ export async function DELETE(request: Request) {
     const auth = await getCurrentUser();
     if (!auth) return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
 
-    const body = await request.json();
+    const body = await readJson(request);
     const { id } = body;
     if (!id) return NextResponse.json({ error: "id zorunludur." }, { status: 400 });
 

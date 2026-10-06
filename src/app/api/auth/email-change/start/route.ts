@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     const limited = await checkSharedRateLimit(request, "email-change-start", { limit: 5 });
     if (limited) return limited;
 
-    const { newEmail } = await request.json();
+    const { newEmail } = await readJson(request, { flat: true });
 
     if (typeof newEmail !== "string" || !EMAIL_PATTERN.test(newEmail)) {
       return NextResponse.json({ error: "Geçerli bir e-posta adresi giriniz." }, { status: 400 });

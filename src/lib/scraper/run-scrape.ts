@@ -24,7 +24,7 @@ import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/ty
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
 import { fetchDetailPatch, isDetailSource, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
 import { isPermanentRemoval, knownFeatureUpdates, PLATFORM_SCOPE_REASON } from "@/lib/scraper/feature-merge";
-import { outOfScopeReason } from "@/lib/vehicle-scope";
+import { outOfScopeReason, vehicleClassOf } from "@/lib/vehicle-scope";
 import { fuelWithTitleHint } from "@/lib/normalize-fuel";
 import { normalizeCity } from "@/lib/normalize-city";
 import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
@@ -92,14 +92,17 @@ export async function saveListing(
     externalId: listing.externalId,
   });
 
-  // Platform kapsamı (bkz. vehicle-scope.ts): kamyon, pickup, motosiklet, ATV... hiçbir kaynaktan eklenmez;
-  // daha önce eklenmişse arşive alınır.
-  const scope = outOfScopeReason({
+  // Platform kapsamı (bkz. vehicle-scope.ts): ATV/UTV, deniz/hava aracı, kiralık ve araç olmayan ilanlar hiçbir
+  // kaynaktan eklenmez; daha önce eklenmişse arşive alınır. Kapsamdaki her ilanın bir araç tipi vardır.
+  const scopeInput = {
     brand: listing.brand,
     model: listing.model,
     title: listing.title,
     bodyType: listing.features?.bodyType,
-  });
+    sourceCategory: listing.sourceCategory,
+  };
+  const scope = outOfScopeReason(scopeInput);
+  const vehicleClass = vehicleClassOf(scopeInput);
   if (scope) {
     if (existing && existing.status !== "removed") {
       await archiveListings([existing._id], `${listing.sourceSite}: ${PLATFORM_SCOPE_REASON} (${scope})`, now);
@@ -155,9 +158,14 @@ export async function saveListing(
     const storedVerified: string[] = (existing as any).verifiedFeatures || [];
     const needsVerifyFlag = confirmedKeys.some((key) => !storedVerified.includes(key));
 
+    // Kaynağın kategorisi okunduysa (ilan/liste sayfası) tip kesindir; yoksa yalnızca boş tip doldurulur.
+    const classChanged = listing.sourceCategory
+      ? (existing as any).vehicleClass !== vehicleClass
+      : !(existing as any).vehicleClass;
+
     const hasAnyChange =
       priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged ||
-      featuresChanged || needsVerifyFlag;
+      featuresChanged || needsVerifyFlag || classChanged;
 
     // GERÇEKTE HİÇBİR ŞEY DEĞİŞMEDİYSE içerik yazılmaz (updatedAt oynamaz);
     // yalnızca "canlı görüldü" bilgisi seyrek olarak işlenir.
@@ -206,6 +214,7 @@ export async function saveListing(
     }
     existing.listingUrl = listing.listingUrl || existing.listingUrl;
     existing.source = listing.sourceSite;
+    if (classChanged) (existing as any).vehicleClass = vehicleClass;
     if (confirmedKeys.length > 0) {
       (existing as any).featuresVerifiedAt = now;
       (existing as any).verifiedFeatures = [...new Set([...storedVerified, ...confirmedKeys])];
@@ -294,6 +303,7 @@ export async function saveListing(
     detailCheckedAt,
     featuresVerifiedAt: (listing.confirmedFeatures?.length ?? 0) > 0 ? now : undefined,
     verifiedFeatures: listing.confirmedFeatures?.length ? listing.confirmedFeatures : undefined,
+    vehicleClass,
   });
   return "inserted";
 }

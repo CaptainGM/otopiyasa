@@ -1,60 +1,73 @@
 import { describe, expect, it } from "vitest";
-import { outOfScopeBodyType, outOfScopeReason } from "./vehicle-scope";
+import { classFromBodyType, classFromSourceCategory, outOfScopeReason, vehicleClassOf } from "./vehicle-scope";
 
 describe("outOfScopeReason", () => {
-  it("otomobil, SUV ve hafif ticari arabaları kapsamda tutar", () => {
-    for (const [brand, model, bodyType] of [
-      ["Fiat", "Doblo Combi 1.3 Multijet", "MPV"],
-      ["Fiat", "Doblo Cargo 1.3 Multijet Maxi", "Panelvan"],
-      ["Citroen", "Berlingo 1.6 HDi", "Kombi"],
-      ["Volkswagen", "Caddy", "Camlı Van"],
-      ["Ford", "Tourneo Courier", "Minivan"],
-      ["Mitsubishi", "L 300", "Panelvan"],
-      ["Toyota", "Corolla", "Sedan"],
-      ["Dacia", "Duster", "SUV"],
-      ["Honda", "Civic", "Sedan"],
-      ["Honda", "CR-V", "SUV"],
-      ["BMW", "X5", "SUV"],
-      ["Mercedes-Benz", "Vito", "Minivan"],
-      ["Suzuki", "Vitara", "SUV"],
-    ]) {
-      expect(outOfScopeReason({ brand, model, bodyType }), `${brand} ${model}`).toBeNull();
-    }
-  });
-
-  it("pickup'ları eler", () => {
-    expect(outOfScopeReason({ brand: "Toyota", model: "Hilux 2.4 D-4D" })).toBe("pickup");
-    expect(outOfScopeReason({ brand: "Ford", model: "Ranger 2.0 EcoBlue Wildtrak" })).toBe("pickup");
-    expect(outOfScopeReason({ brand: "Mitsubishi", model: "L 200 2.4 Double Cab" })).toBe("pickup");
-    expect(outOfScopeReason({ brand: "Nissan", model: "Navara" })).toBe("pickup");
-    expect(outOfScopeReason({ brand: "Isuzu", model: "D-Max" })).toBe("pickup / kamyonet");
-    expect(outOfScopeReason({ brand: "Volkswagen", model: "Amarok" })).toBe("pickup");
-    // Kaynak kasa tipini yazıyorsa model listesinde olmasa da elenir.
-    expect(outOfScopeReason({ brand: "Bilinmeyen", model: "X", bodyType: "Pick-up" })).toBe("pickup");
-  });
-
-  it("kamyon, otobüs, kamyonet ve minibüsleri eler", () => {
-    expect(outOfScopeReason({ brand: "Mercedes-Benz", model: "Axor 2521" })).toBe("kamyon / otobüs");
-    expect(outOfScopeReason({ brand: "Ford Trucks", model: "Cargo" })).toBe("kamyon / otobüs");
-    expect(outOfScopeReason({ brand: "Iveco-Otoyol", model: "35" })).toBe("kamyon / otobüs");
-    expect(outOfScopeReason({ brand: "Ford", model: "Transit", bodyType: "Şasi kabin" })).toBe("kamyon / kamyonet");
-    expect(outOfScopeReason({ brand: "Volkswagen", model: "Crafter", bodyType: "Minibüs" })).toBe("otobüs / minibüs");
-  });
-
-  it("motosiklet, scooter, ATV ve karavanları eler", () => {
-    expect(outOfScopeReason({ brand: "Yamaha", model: "X-Max 250 ABS" })).toBe("motosiklet / ATV");
-    expect(outOfScopeReason({ brand: "Honda", model: "Activa 125" })).toBe("motosiklet");
-    expect(outOfScopeReason({ brand: "BMW", model: "R 1250 GS" })).toBe("motosiklet");
-    expect(outOfScopeReason({ brand: "Sahibinden", model: "Karavan Motokaravan" })).toBe("araç ilanı değil");
+  it("yalnızca ATV/UTV, deniz/hava, kiralık ve araç olmayan ilanları dışarıda bırakır", () => {
+    expect(outOfScopeReason({ sourceCategory: "atv" })).not.toBeNull();
+    expect(outOfScopeReason({ sourceCategory: "utv/can-am" })).not.toBeNull();
+    expect(outOfScopeReason({ sourceCategory: "deniz-araclari" })).not.toBeNull();
+    expect(outOfScopeReason({ sourceCategory: "kiralik-araclar" })).not.toBeNull();
+    expect(outOfScopeReason({ sourceCategory: "ticari-araclar-hat-plaka" })).not.toBeNull();
     expect(outOfScopeReason({ brand: "Galeriden", model: "ATV &" })).toBe("araç ilanı değil");
+    expect(outOfScopeReason({ brand: "Polaris", model: "Sportsman 570" })).toBe("ATV / UTV");
+    expect(outOfScopeReason({ brand: "Sahibinden", model: "Ticari Araçlar", title: "Sahibinden Ticari Araçlar Hat & Plaka Taksi Plakası" })).toBe("araç ilanı değil");
+  });
+
+  it("motosiklet, pickup, kamyon, minibüs ve karavanı kapsamda tutar", () => {
+    for (const input of [
+      { brand: "Yamaha", model: "X-Max 250" },
+      { brand: "Toyota", model: "Hilux" },
+      { brand: "Mercedes-Benz", model: "Axor 2521" },
+      { brand: "Volkswagen", model: "Caravelle", bodyType: "Minibüs" },
+      { brand: "Ford", model: "Transit", bodyType: "Şasi kabin" },
+      { brand: "Sahibinden", model: "Karavan Motokaravan" },
+      { sourceCategory: "motosiklet/yamaha" },
+      { sourceCategory: "ticari-araclar" },
+    ]) {
+      expect(outOfScopeReason(input), JSON.stringify(input)).toBeNull();
+    }
   });
 });
 
-describe("outOfScopeBodyType", () => {
-  it("panelvan ve minivanı kapsam içinde sayar", () => {
-    expect(outOfScopeBodyType("Panelvan")).toBeNull();
-    expect(outOfScopeBodyType("Minivan / Van")).toBeNull();
-    expect(outOfScopeBodyType("Kombi")).toBeNull();
-    expect(outOfScopeBodyType("yandan yüklemeli kasa")).toBe("kamyon / kamyonet");
+describe("vehicleClassOf", () => {
+  it("önce kaynağın kategorisini kullanır", () => {
+    expect(vehicleClassOf({ sourceCategory: "arazi-suv-pick-up/toyota-hilux", brand: "Toyota", model: "Hilux" })).toBe("suv-pickup");
+    expect(vehicleClassOf({ sourceCategory: "motosiklet/honda", brand: "Honda", model: "Civic" })).toBe("motosiklet");
+    expect(vehicleClassOf({ sourceCategory: "minivan-panelvan/fiat-doblo", brand: "Fiat", model: "Doblo" })).toBe("minivan-panelvan");
+  });
+
+  it("kategori yoksa marka, model ve kasadan çıkarır", () => {
+    expect(vehicleClassOf({ brand: "Yamaha", model: "X-Max 250 ABS" })).toBe("motosiklet");
+    expect(vehicleClassOf({ brand: "Honda", model: "Activa 125" })).toBe("motosiklet");
+    expect(vehicleClassOf({ brand: "Honda", model: "Civic", bodyType: "Sedan" })).toBe("otomobil");
+    expect(vehicleClassOf({ brand: "Mitsubishi", model: "L 200 2.4" })).toBe("suv-pickup");
+    expect(vehicleClassOf({ brand: "Mitsubishi", model: "L 300", bodyType: "Panelvan" })).toBe("minivan-panelvan");
+    expect(vehicleClassOf({ brand: "Iveco-Otoyol", model: "35" })).toBe("ticari");
+    expect(vehicleClassOf({ brand: "Ford", model: "Transit", bodyType: "yandan yüklemeli kasa" })).toBe("ticari");
+    expect(vehicleClassOf({ brand: "Dacia", model: "Duster", bodyType: "SUV" })).toBe("suv-pickup");
+    expect(vehicleClassOf({ brand: "Fiat", model: "Egea", bodyType: "Belirtilmemiş" })).toBe("otomobil");
+    expect(vehicleClassOf({ brand: "Sahibinden", model: "Karavan Motokaravan" })).toBe("karavan");
+  });
+});
+
+describe("classFromSourceCategory / classFromBodyType", () => {
+  it("kaynak yazımlarını eşler", () => {
+    expect(classFromSourceCategory("otomobil")).toBe("otomobil");
+    expect(classFromSourceCategory("karavan-motokaravan")).toBe("karavan");
+    expect(classFromSourceCategory("")).toBeNull();
+    expect(classFromBodyType("Pick-up")).toBe("suv-pickup");
+    expect(classFromBodyType("Minibüs")).toBe("ticari");
+    expect(classFromBodyType("Hatchback/5")).toBeNull();
+  });
+});
+
+describe("vehicleClassOf hafif ticari", () => {
+  it("kasa tipi bilinmese de Doblo, Caddy, Berlingo gibi araçları minivan & panelvan sayar", () => {
+    expect(vehicleClassOf({ brand: "Fiat", model: "Doblo Combi 1.3 Multijet", bodyType: "Belirtilmemiş" })).toBe("minivan-panelvan");
+    expect(vehicleClassOf({ brand: "Volkswagen", model: "Caddy" })).toBe("minivan-panelvan");
+    expect(vehicleClassOf({ brand: "Ford", model: "Tourneo Courier" })).toBe("minivan-panelvan");
+    expect(vehicleClassOf({ brand: "Mercedes-Benz", model: "Vito 114 CDI" })).toBe("minivan-panelvan");
+    // Kaynak kategorisi her zaman önce gelir.
+    expect(vehicleClassOf({ brand: "Fiat", model: "Doblo", sourceCategory: "otomobil" })).toBe("otomobil");
   });
 });

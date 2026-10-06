@@ -50,7 +50,7 @@ class _SellScreenState extends State<SellScreen> {
   static const _transmissions = ['Manuel', 'Otomatik', 'Yarı Otomatik'];
   static const _bodyTypes = [
     'Sedan', 'Hatchback', 'SUV', 'Station Wagon', 'Coupe',
-    'Cabrio', 'MPV', 'Panelvan', 'Belirtilmemiş',
+    'Cabrio', 'MPV', 'Pickup', 'Panelvan', 'Belirtilmemiş',
   ];
   static const _colors = [
     'Beyaz', 'Siyah', 'Gri', 'Gümüş Gri', 'Kırmızı', 'Mavi', 'Lacivert',

@@ -14,7 +14,7 @@ import { formatNumber, formatPrice, trPercent } from "@/lib/utils";
 import { StatsResponse } from "@/types";
 import { CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
-import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { MARKET_LISTING_FILTER as PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { mergeCategoryStats, normalizeBodyType, normalizeTransmission, trustedFeatureFilter } from "@/lib/vehicle-attrs";
 
 // ISR: 2 dakikada bir arka planda tazeler — anlık yükleme + güncel veri
@@ -200,7 +200,7 @@ const getAnalyticsData = unstable_cache(
       },
     };
   },
-  ["analytics:all:v7"],
+  ["analytics:all:v8"],
   { revalidate: CACHE_TTL.medium / 1000 }
 );
 
@@ -281,7 +281,7 @@ async function AnalyticsContent() {
       <div>
         <h1 className="text-3xl font-extrabold text-white">İkinci El Araç Piyasası Analizi</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Türkiye pazarındaki güncel aktif ilan verileriyle bütçe segmentleri, yakıt, vites, kasa tipleri ve fiyat trendleri.
+          Türkiye pazarındaki güncel otomobil, SUV ve hafif ticari ilanlarıyla bütçe segmentleri, yakıt, vites, kasa tipleri ve fiyat trendleri (motosiklet, kamyon ve karavan bu göstergelere katılmaz).
           Arşivdeki (kaldırılmış) ilanlar bu analize katılmaz; veriler en fazla 5 dakika gecikmeyle otomatik yenilenir.
           {insightsData.generatedAt && (
             <> Son hesaplama: {new Date(insightsData.generatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })}.</>
@@ -304,7 +304,7 @@ async function AnalyticsContent() {
             <div className="card p-5 border-l-4 border-blue-500">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Aktif İlan Havuzu</p>
               <p className="mt-2 text-3xl font-black text-white">{formatNumber(stats.totalCars)}</p>
-              <p className="mt-1 text-[11px] text-emerald-400">✓ Gerçek yayındaki ilanlar</p>
+              <p className="mt-1 text-[11px] text-emerald-400">✓ Yayındaki otomobil, SUV ve minivan ilanları</p>
             </div>
 
             <div className="card p-5 border-l-4 border-emerald-500">

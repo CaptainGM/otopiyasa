@@ -96,9 +96,9 @@ export function validateListingFields(input: ListingInput): FieldCheck {
   if ((input.description?.length ?? 0) > 5000)
     add("Açıklama çok uzun (en fazla 5000 karakter).");
 
-  // Kaynak ilanlarla aynı kapsam: kamyon, pickup, motosiklet, ATV... yayınlanmaz (bkz. vehicle-scope.ts).
+  // Kaynak ilanlarla aynı kapsam: ATV/UTV, deniz aracı, plaka ilanı yayınlanmaz (bkz. vehicle-scope.ts).
   if (input.brand?.trim() && outOfScopeReason({ brand: input.brand, model: input.model, bodyType: input.bodyType })) {
-    add("OtoPiyasa yalnızca otomobil, SUV ve hafif ticari araç ilanlarını kabul eder (kamyon, pickup, motosiklet ve ATV kabul edilmez).");
+    add("Bu araç türü OtoPiyasa kapsamında değil (ATV/UTV, deniz aracı ve plaka ilanları kabul edilmez).");
   }
 
   return { valid: errors.length === 0, errors };

@@ -28,6 +28,8 @@ export interface ScrapedListing {
    * yazılır ve ilan "özellikleri doğrulandı" sayılır; liste sayfasından gelen tahminler bunları ezmez.
    */
   confirmedFeatures?: Array<"transmission" | "fuelType" | "bodyType" | "color">;
+  /** Kaynağın kategori yolu ("otomobil", "motosiklet/yamaha", "arazi-suv-pick-up/toyota-hilux"); araç tipi buradan çıkar. */
+  sourceCategory?: string;
   features: {
     fuelType: string;
     transmission: string;

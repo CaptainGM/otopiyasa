@@ -25,6 +25,15 @@ export interface ArabamListDoc {
   city: string | null;
   /** Kaynağın model sayfası yolu, ör. "arazi-suv-pick-up/chevrolet-captiva". */
   modelPath: string | null;
+  /** Ana kategori yolu ("otomobil", "motosiklet", "ticari-araclar"...); araç tipi buradan çıkar. */
+  categoryPath: string | null;
+  /** Satıcının ilan başlığı. */
+  title: string | null;
+  /** Kaynağın marka + model + donanım adı ("Chevrolet Captiva 2.0 D LT High"). */
+  modelName: string | null;
+  /** Kapak fotoğrafı (800x600). */
+  photo: string | null;
+  town: string | null;
 }
 
 export interface ArabamListPage {
@@ -118,6 +127,9 @@ function toDoc(raw: Record<string, any>): ArabamListDoc | null {
   const priceText = typeof raw.FormattedPrice === "string" ? raw.FormattedPrice : "";
   const categories: any[] = Array.isArray(raw.Categories) ? raw.Categories : [];
   const modelPath = categories[2]?.AbsolutePath;
+  const categoryPath = categories[0]?.AbsolutePath;
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.replace(/\s+/g, " ").trim() : null);
+  const photoPath = typeof raw.PhotoPath === "string" ? raw.PhotoPath : "";
 
   return {
     id,
@@ -130,6 +142,11 @@ function toDoc(raw: Record<string, any>): ArabamListDoc | null {
     color: colorProp?.Description?.trim() ? normalizeColor(colorProp.Description) : null,
     city: typeof raw.City === "string" && raw.City.trim() ? raw.City.trim() : null,
     modelPath: typeof modelPath === "string" && modelPath.includes("/") ? modelPath : null,
+    categoryPath: typeof categoryPath === "string" && categoryPath ? categoryPath : null,
+    title: text(raw.Title),
+    modelName: text(raw.ModelName),
+    photo: photoPath.startsWith("http") && !/noimage/i.test(photoPath) ? photoPath.replace("{0}", "800x600") : null,
+    town: text(raw.Town),
   };
 }
 

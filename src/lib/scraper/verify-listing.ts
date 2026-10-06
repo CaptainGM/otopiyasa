@@ -185,12 +185,12 @@ async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListin
       };
     }
     if (/\/ilan\//.test(page.finalUrl) && isNonCarArabamPage(page.html)) {
-      // Motosiklet/ATV/karavan/hat-plaka ilanı yanlışlıkla eklenmiş: araç ilanı olmadığı kesin, arşive alınır.
+      // ATV/UTV, deniz aracı, kiralık ya da hat-plaka ilanı yanlışlıkla eklenmiş: kapsam dışı olduğu kesin, arşive alınır.
       return {
         status: "gone",
         statusCode: page.status,
         finalUrl: page.finalUrl,
-        reason: "Otomobil ilanı değil (motosiklet/ATV/karavan vb. kategorisinde).",
+        reason: "Platform dışı araç (ATV/UTV, deniz aracı, kiralık ya da hat-plaka kategorisinde).",
       };
     }
     if (/\/ilan\//.test(page.finalUrl) && /"@type"\s*:\s*"Car"/.test(page.html)) {

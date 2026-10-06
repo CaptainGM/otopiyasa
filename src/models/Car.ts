@@ -131,6 +131,11 @@ const CarSchema = new Schema(
      * gömülü verisi vites/yakıt/rengi verir ama kasa tipini vermez; analiz her özellik için yalnızca doğrulanmışı sayar.
      */
     verifiedFeatures: { type: [String], default: undefined },
+    /**
+     * Araç tipi: "otomobil" | "suv-pickup" | "minivan-panelvan" | "ticari" | "motosiklet" | "karavan"
+     * (bkz. lib/vehicle-scope.ts). Liste filtresi ve analiz tipleri karıştırmasın diye.
+     */
+    vehicleClass: { type: String, default: undefined },
   },
   { timestamps: true }
 );
@@ -140,6 +145,7 @@ CarSchema.index({ sourceSite: 1, externalId: 1 }, { unique: true, sparse: true }
 CarSchema.index({ title: "text", brand: "text", model: "text" });
 
 CarSchema.index({ status: 1, createdAt: -1 });
+CarSchema.index({ status: 1, vehicleClass: 1, createdAt: -1 });
 CarSchema.index({ status: 1, moderationStatus: 1, createdAt: -1 });
 CarSchema.index({ status: 1, viewCount: -1 });
 CarSchema.index({ status: 1, updatedAt: -1 });

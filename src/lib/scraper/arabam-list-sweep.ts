@@ -10,7 +10,7 @@ import { fetchPageWithBrowser, isCloudflareChallenge } from "@/lib/scraper/brows
 import { waitForArabamTurn } from "@/lib/scraper/verify-listing";
 import { ArabamListDoc, ArabamListPage, dominantBodyType, parseArabamListPage } from "@/lib/scraper/arabam-list";
 import { isPermanentRemoval, isUnknownFeature } from "@/lib/scraper/feature-merge";
-import { outOfScopeReason } from "@/lib/vehicle-scope";
+import { classFromSourceCategory, outOfScopeReason } from "@/lib/vehicle-scope";
 
 /**
  * BEKÇİ LİSTE TARAMASI
@@ -52,6 +52,14 @@ const slug = (text: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
+/** Araç tipine göre denenecek kaynak kategori yolları (model sayfası: "<kategori>/<marka>-<model>"). */
+const LIST_CATEGORIES: Record<string, string[]> = {
+  otomobil: ["otomobil", "arazi-suv-pick-up"],
+  "suv-pickup": ["arazi-suv-pick-up", "otomobil"],
+  "minivan-panelvan": ["minivan-panelvan", "otomobil"],
+  motosiklet: ["motosiklet"],
+};
+
 /** Doğrulanmamış vites: ilan sayfasından da listeden de teyit edilmemiş. */
 const UNVERIFIED_GEAR_EXPR = {
   $and: [
@@ -62,30 +70,33 @@ const UNVERIFIED_GEAR_EXPR = {
 
 /** Ailelerdeki aktif ve doğrulanmamış ilan sayılarını yeniler (bekçinin taranan sayfa durumu korunur). */
 export async function refreshListSweepPlan(now = new Date()): Promise<number> {
-  const rows = await Car.aggregate<{ _id: { b: string; m: string }; n: number; u: number; suv: number }>([
+  const rows = await Car.aggregate<{ _id: { b: string; m: string; c?: string }; n: number; u: number }>([
     { $match: { sourceSite: "arabam", status: "active" } },
     {
       $group: {
-        _id: { b: "$brand", m: "$model" },
+        _id: { b: "$brand", m: "$model", c: "$vehicleClass" },
         n: { $sum: 1 },
         u: { $sum: { $cond: [UNVERIFIED_GEAR_EXPR, 1, 0] } },
-        suv: { $sum: { $cond: [{ $eq: ["$features.bodyType", "SUV"] }, 1, 0] } },
       },
     },
   ]).option({ maxTimeMS: 30000 });
 
-  const families = new Map<string, { brand: string; model: string; ours: number; unverified: number; suv: number }>();
+  const families = new Map<
+    string,
+    { brand: string; model: string; ours: number; unverified: number; classes: Map<string, number> }
+  >();
   for (const row of rows) {
     const brand = normalizeBrand(row._id.b || "");
     const key = modelFamilyKey(row._id.m, brand);
     if (!brand || !key) continue;
-    // Kapsam dışı modellerin (pickup, kamyon...) liste sayfası gezilmez; bu ilanlar zaten arşive alınır.
+    // Kapsam dışı (ATV vb.) modellerin liste sayfası gezilmez; bu ilanlar zaten arşive alınır.
     if (outOfScopeReason({ brand, model: row._id.m })) continue;
     const k = `${slug(brand)}|${key}`;
-    const f = families.get(k) || { brand, model: modelFamily(row._id.m, brand), ours: 0, unverified: 0, suv: 0 };
+    const f = families.get(k) || { brand, model: modelFamily(row._id.m, brand), ours: 0, unverified: 0, classes: new Map() };
     f.ours += row.n;
     f.unverified += row.u;
-    f.suv += row.suv;
+    const cls = row._id.c || "otomobil";
+    f.classes.set(cls, (f.classes.get(cls) || 0) + row.n);
     families.set(k, f);
   }
 
@@ -93,7 +104,13 @@ export async function refreshListSweepPlan(now = new Date()): Promise<number> {
     updateOne: {
       filter: { key },
       update: {
-        $set: { brand: f.brand, model: f.model, ours: f.ours, unverified: f.unverified, suvLikely: f.suv >= f.ours * 0.8 },
+        $set: {
+          brand: f.brand,
+          model: f.model,
+          ours: f.ours,
+          unverified: f.unverified,
+          vehicleClass: [...f.classes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "otomobil",
+        },
         $setOnInsert: { key, nextPage: 1, pagesFetched: 0, matched: 0 },
       },
       upsert: true,
@@ -222,6 +239,8 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
       keys.push("color");
     }
     if (doc.mileage && doc.mileage < 2_000_000 && Math.abs(doc.mileage - (car.mileage || 0)) > 50) set.mileage = doc.mileage;
+    const cls = classFromSourceCategory(doc.modelPath);
+    if (cls && cls !== "excluded") set.vehicleClass = cls;
     // Fiyat ayrıştırma hatasına karşı aynı alt/üst sınır (bkz. verify-listing sanitizeRefresh).
     if (doc.price && car.price > 0 && doc.price !== car.price && doc.price >= car.price * 0.2 && doc.price <= car.price * 5) {
       priceUpdates.push({ id: car._id, price: doc.price, oldPrice: car.price });
@@ -314,7 +333,14 @@ export async function runListSweepStep(now = new Date()): Promise<ListSweepStepR
   if (!path) {
     pageNo = 1;
     const familySlug = `${slug(family.brand)}-${slug(family.model)}`;
-    const categories = family.suvLikely ? ["arazi-suv-pick-up", "otomobil"] : ["otomobil", "arazi-suv-pick-up"];
+    const categories = LIST_CATEGORIES[family.vehicleClass || "otomobil"] || [];
+    if (categories.length === 0) {
+      await ArabamListSweep.updateOne(
+        { key: family.key },
+        { $set: { skipUntil: new Date(now.getTime() + LIST_SWEEP.notFoundRetryMs), note: "Bu araç tipinde model liste sayfası taranmıyor" } }
+      );
+      return { ...base, picked: true, message: `${label}: bu araç tipinde liste taraması yok, atlandı.` };
+    }
     for (const category of categories) {
       const res = await fetchListPage(`https://www.arabam.com/ikinci-el/${category}/${familySlug}`);
       requests++;

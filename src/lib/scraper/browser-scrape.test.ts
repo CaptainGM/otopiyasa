@@ -130,20 +130,25 @@ describe("isNonCarArabamPage", () => {
     paths.map((p, i) => `,{"@type":"ListItem","position":${i + 3},"item":{"@id":"https://www.arabam.com/ikinci-el/${p}","name":"x"}}`).join("") +
     `]}</script>`;
 
-  it("motosiklet, karavan ve hat-plaka ilanlarını ayırır", async () => {
+  it("ATV, deniz aracı ve hat-plaka ilanlarını kapsam dışı sayar", async () => {
     const { isNonCarArabamPage, parseArabamDetailHtml } = await import("./browser-scrape");
-    expect(isNonCarArabamPage(crumb("motosiklet", "motosiklet/yamaha"))).toBe(true);
-    expect(isNonCarArabamPage(crumb("karavan", "karavan-motokaravan"))).toBe(true);
+    expect(isNonCarArabamPage(crumb("atv", "atv/polaris"))).toBe(true);
+    expect(isNonCarArabamPage(crumb("deniz-araclari"))).toBe(true);
     expect(isNonCarArabamPage(crumb("ticari-araclar", "ticari-araclar-hat-plaka"))).toBe(true);
-    const car = '<script type="application/ld+json">' + JSON.stringify({ "@type": "Car", brand: "Yamaha", name: "X-Max", offers: { price: 195000 } }) + "</script>";
-    expect(parseArabamDetailHtml(crumb("motosiklet") + car, "https://www.arabam.com/ilan/x/44612422")).toBeNull();
+    const ld = (brand: string) => '<script type="application/ld+json">' + JSON.stringify({ "@type": "Car", brand, name: brand, offers: { price: 195000 } }) + "</script>";
+    expect(parseArabamDetailHtml(crumb("atv") + ld("Polaris"), "https://www.arabam.com/ilan/x/44612422")).toBeNull();
+    // Motosiklet kapsamdadır; kategori ilanla birlikte saklanır.
+    expect(parseArabamDetailHtml(crumb("motosiklet", "motosiklet/yamaha") + ld("Yamaha"), "https://www.arabam.com/ilan/x/44612422")?.sourceCategory).toBe("motosiklet");
   });
 
-  it("otomobil, SUV ve ticari kategorileri araç sayar", async () => {
+  it("otomobil, SUV, panelvan, motosiklet, ticari ve karavanı kapsamda sayar", async () => {
     const { isNonCarArabamPage } = await import("./browser-scrape");
     expect(isNonCarArabamPage(crumb("otomobil", "otomobil/renault"))).toBe(false);
     expect(isNonCarArabamPage(crumb("arazi-suv-pick-up", "arazi-suv-pick-up/dacia-duster"))).toBe(false);
     expect(isNonCarArabamPage(crumb("minivan-panelvan", "minivan-panelvan/fiat-doblo"))).toBe(false);
+    expect(isNonCarArabamPage(crumb("motosiklet", "motosiklet/yamaha"))).toBe(false);
+    expect(isNonCarArabamPage(crumb("ticari-araclar", "ticari-araclar-kamyon-kamyonet"))).toBe(false);
+    expect(isNonCarArabamPage(crumb("karavan", "karavan-motokaravan"))).toBe(false);
     expect(isNonCarArabamPage("<html></html>")).toBe(false);
   });
 });

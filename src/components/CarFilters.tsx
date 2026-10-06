@@ -6,6 +6,7 @@ import { brands as fallbackBrands, fuelTypes, transmissions } from "@/lib/seed-d
 import { COLORS } from "@/lib/derive-specs";
 import type { ColorOption } from "@/lib/color-counts";
 import { FormattedNumberInput } from "@/components/FormattedNumberInput";
+import { VEHICLE_CLASSES } from "@/lib/vehicle-scope";
 
 
 export function CarFilters({
@@ -256,6 +257,25 @@ export function CarFilters({
             {fuelTypes.map((fuel) => (
               <option key={fuel} value={fuel}>
                 {fuel}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="vehicleClass">
+            Araç tipi
+          </label>
+          <select
+            id="vehicleClass"
+            name="vehicleClass"
+            defaultValue={searchParams.get("vehicleClass") || ""}
+            className="select"
+          >
+            <option value="">Tümü</option>
+            {VEHICLE_CLASSES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
               </option>
             ))}
           </select>

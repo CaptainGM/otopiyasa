@@ -26,6 +26,9 @@ export async function POST(request: Request) {
     if (businessName.length < 2) {
       return NextResponse.json({ error: "Firma adı zorunludur." }, { status: 400 });
     }
+    if (businessName.length > 80) {
+      return NextResponse.json({ error: "Firma adı en fazla 80 karakter olabilir." }, { status: 400 });
+    }
     if (!/^[\d\s()+-]{7,20}$/.test(businessPhone)) {
       return NextResponse.json({ error: "Geçerli bir işletme telefonu girin." }, { status: 400 });
     }

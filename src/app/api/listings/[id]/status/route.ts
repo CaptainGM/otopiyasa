@@ -42,6 +42,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({ error: "İlan bulunamadı veya yetkiniz yok." }, { status: 404 });
     }
 
+    // Yönetici tarafından kaldırılan (arşive alınan) ilan sahibince yeniden yayına alınamaz.
+    if (car.status === "removed") {
+      return NextResponse.json({ error: "Bu ilan yönetici tarafından kaldırıldı; durumu değiştirilemez." }, { status: 403 });
+    }
+
     car.status = status;
     await car.save();
     revalidateListing(car._id);

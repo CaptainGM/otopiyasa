@@ -2,7 +2,7 @@ import { Subscription } from "@/models/Subscription";
 import { appBaseUrl } from "@/lib/app-url";
 import { Car } from "@/models/Car";
 import { connectDB } from "@/lib/mongodb";
-import { sendEmail } from "@/lib/mailer";
+import { escapeHtml, safeUrl, sendEmail } from "@/lib/mailer";
 import { shouldNotifySegmentAlert } from "@/lib/segment-alert";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { modelFamilyRegex } from "@/lib/model-family";
@@ -43,7 +43,7 @@ async function checkNewListingSubscription(sub: SubscriptionDoc) {
   const rows = matches
     .map(
       (m) =>
-        `<li style="margin-bottom:8px"><a href="${appUrl}/cars/${m._id}" style="font-weight:bold">${m.title}</a><br/>${m.year} • ${m.city} • <strong style="color:#059669">${m.price.toLocaleString("tr-TR")} TL</strong></li>`
+        `<li style="margin-bottom:8px"><a href="${safeUrl(`${appUrl}/cars/${m._id}`)}" style="font-weight:bold">${escapeHtml(m.title)}</a><br/>${escapeHtml(m.year)} • ${escapeHtml(m.city)} • <strong style="color:#059669">${m.price.toLocaleString("tr-TR")} TL</strong></li>`
     )
     .join("");
   const html = `<p>Kayıtlı aramanla eşleşen <strong>${matches.length} yeni ilan</strong> bulundu:</p><ul style="padding-left:18px">${rows}</ul><p style="color:#888;font-size:12px">Bu bildirimi OtoPiyasa'da araç aboneliği oluşturduğun için aldın.</p>`;
@@ -88,7 +88,7 @@ async function checkSegmentAlertSubscription(sub: SubscriptionDoc) {
   const roundedAvg = Math.round(avgPrice as number).toLocaleString("tr-TR");
   const target = sub.targetAvgPrice.toLocaleString("tr-TR");
   const link = `${appUrl}/?brand=${encodeURIComponent(sub.brand)}${sub.model ? `&model=${encodeURIComponent(sub.model)}` : ""}`;
-  const html = `<p><strong>${segmentLabel}</strong> segmentinin ortalama fiyatı <strong style="color:#059669">${roundedAvg} TL</strong>'ye düştü (hedefin: ${target} TL, ${count} ilan üzerinden).</p><p><a href="${link}">İlanları gör →</a></p>`;
+  const html = `<p><strong>${escapeHtml(segmentLabel)}</strong> segmentinin ortalama fiyatı <strong style="color:#059669">${roundedAvg} TL</strong>'ye düştü (hedefin: ${target} TL, ${count} ilan üzerinden).</p><p><a href="${safeUrl(link)}">İlanları gör →</a></p>`;
   const text = `${segmentLabel} ortalaması ${roundedAvg} TL'ye düştü (hedef ${target} TL, ${count} ilan). ${link}`;
 
   try {

@@ -12,7 +12,8 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const token = body.token;
-    if (typeof token !== "string" || !token) {
+    // FCM jetonu ~150-250 karakterlik base64url/":" dizisidir; sınırsız metin veritabanına yazılmasın.
+    if (typeof token !== "string" || !/^[\w:.-]{20,4096}$/.test(token)) {
       return NextResponse.json({ error: "Geçersiz jeton." }, { status: 400 });
     }
 

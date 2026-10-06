@@ -7,7 +7,6 @@ interface Props {
 }
 
 export function SubscriptionForm({ onCreated }: Props) {
-  const [email, setEmail] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [maxPrice, setMaxPrice] = useState<number | "">("");
@@ -26,7 +25,7 @@ export function SubscriptionForm({ onCreated }: Props) {
 
     setLoading(true);
     try {
-      const body: Record<string, unknown> = { email, brand: brand || null, model: model || null };
+      const body: Record<string, unknown> = { brand: brand || null, model: model || null };
       if (maxPrice !== "") body.maxPrice = Number(maxPrice);
       if (targetAvgPrice !== "") body.targetAvgPrice = Number(targetAvgPrice);
       const res = await fetch("/api/subscriptions", {
@@ -36,7 +35,6 @@ export function SubscriptionForm({ onCreated }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Hata");
-      setEmail("");
       setBrand("");
       setModel("");
       setMaxPrice("");
@@ -52,10 +50,7 @@ export function SubscriptionForm({ onCreated }: Props) {
   return (
     <form onSubmit={submit} className="card space-y-3 p-4">
       {error && <p className="text-sm text-red-300">{error}</p>}
-      <div>
-        <label className="label">E-posta</label>
-        <input className="input w-full" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      </div>
+      <p className="text-xs text-slate-400">Bildirimler hesabındaki e-posta adresine gönderilir.</p>
       <div>
         <label className="label">Marka (opsiyonel)</label>
         <input className="input w-full" value={brand} onChange={(e) => setBrand(e.target.value)} />

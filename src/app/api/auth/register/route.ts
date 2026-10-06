@@ -26,6 +26,10 @@ export async function POST(request: Request) {
       );
     }
 
+    if (String(name).trim().length > 60) {
+      return NextResponse.json({ error: "Ad en fazla 60 karakter olabilir." }, { status: 400 });
+    }
+
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (typeof email !== "string" || !emailPattern.test(email)) {
       return NextResponse.json(
@@ -76,7 +80,7 @@ export async function POST(request: Request) {
 
     const { token: verifyToken, tokenHash: verifyTokenHash } = createVerifyToken();
     const user = await User.create({
-      name,
+      name: String(name).trim().slice(0, 60),
       email: email.toLowerCase(),
       canonicalEmail: canonical,
       passwordHash,

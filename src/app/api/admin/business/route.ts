@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Types } from "mongoose";
 import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
@@ -32,7 +33,9 @@ export async function POST(request: Request) {
     if (!admin) return NextResponse.json({ error: "Yetkiniz yok." }, { status: 403 });
 
     const { userId, approve, reason } = await readJson(request);
-    if (!userId) return NextResponse.json({ error: "userId zorunludur." }, { status: 400 });
+    if (typeof userId !== "string" || !Types.ObjectId.isValid(userId)) {
+      return NextResponse.json({ error: "userId zorunludur." }, { status: 400 });
+    }
 
     await connectDB();
     const user = await User.findById(userId);

@@ -6,7 +6,7 @@ import { User } from "@/models/User";
 import { createResetToken } from "@/lib/password";
 import { sendResetEmail, sendResetCodeEmail } from "@/lib/mailer";
 import { generateCode, hashCode, codeExpiry } from "@/lib/email-change";
-import { checkSharedRateLimit } from "@/lib/api-rate-limit";
+import { checkKeyRateLimit, checkSharedRateLimit } from "@/lib/api-rate-limit";
 
 export async function POST(request: Request) {
   try {
@@ -19,6 +19,10 @@ export async function POST(request: Request) {
     if (!email) {
       return NextResponse.json({ error: "E-posta zorunludur." }, { status: 400 });
     }
+
+    // Aynı adrese farklı IP'lerden sıfırlama e-postası yağdırılmasın.
+    const accountLimited = await checkKeyRateLimit("forgot-account", email, { limit: 3, windowMs: 60 * 60 * 1000 });
+    if (accountLimited) return accountLimited;
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 

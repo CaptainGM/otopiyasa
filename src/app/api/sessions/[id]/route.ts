@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import { getCurrentUser, clearAuthCookie } from "@/lib/auth";
 import { Session } from "@/models/Session";
@@ -13,8 +14,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
     }
 
-    await connectDB();
     const { id } = await context.params;
+    if (!Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Oturum bulunamadı." }, { status: 404 });
+    }
+    await connectDB();
     // Sahiplik kontrolü — başka bir kullanıcının oturumu iptal edilemez.
     const session = await Session.findOne({ _id: id, userId: user.userId });
     if (!session) {

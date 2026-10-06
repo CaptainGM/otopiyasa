@@ -103,6 +103,8 @@ const CarSchema = new Schema(
     // Son doğrulama DENEMESİ (başarılı ya da engellenmiş). Kuyruğun aynı
     // erişilemeyen ilanlarda takılı kalmaması için kullanılır.
     lastVerifyAttemptAt: { type: Date, default: undefined },
+    /** Son doğrulama denemesi sonuçsuz kaldıysa nedeni: blocked (bot engeli), error, gone-held (kaldırılmış görünüyor, güvenlik freni arşivlemedi). */
+    lastVerifyStatus: { type: String, default: undefined },
     // Zayıf "kaynakta yok" sinyali (ör. tam envanterde görünmedi). Tek başına
     // arşivletmez; tekrar eden gözlemle teyit edilir (bkz. listing-lifecycle.ts).
     missingSince: { type: Date, default: undefined },

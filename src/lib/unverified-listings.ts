@@ -21,4 +21,20 @@ export const UNVERIFIED_PROJECTION = {
   listingUrl: 1,
   createdAt: 1,
   lastVerifyAttemptAt: 1,
+  lastVerifyStatus: 1,
 } as const;
+
+/** Listede "neden hâlâ doğrulanmadı" açıklaması. */
+export function describeVerifyStatus(status?: string | null, attemptedAt?: Date | string | null): string {
+  if (!attemptedAt) return "sırada (henüz denenmedi)";
+  switch (status) {
+    case "gone-held":
+      return "kaynakta kaldırılmış görünüyor; sıradaki denemede arşive alınacak";
+    case "blocked":
+      return "bot engeline takıldı, tekrar denenecek";
+    case "error":
+      return "yanıt anlaşılamadı, tekrar denenecek";
+    default:
+      return "denendi, sonuç bekleniyor";
+  }
+}

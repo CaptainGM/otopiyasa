@@ -777,7 +777,7 @@ class _UnverifiedListState extends State<_UnverifiedList> {
               style: const TextStyle(fontSize: 12.5),
             ),
             subtitle: Text(
-              '${_nf.format((it['price'] as num?) ?? 0)} TL · ${it['city'] ?? ''} · ${_lastTry(it['lastVerifyAttemptAt'])}',
+              '${_nf.format((it['price'] as num?) ?? 0)} TL · ${it['city'] ?? ''} · ${it['statusText'] ?? _lastTry(it['lastVerifyAttemptAt'])}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 11, color: Colors.white54),

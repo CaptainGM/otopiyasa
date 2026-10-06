@@ -12,6 +12,7 @@ import {
   SCRAPED_SOURCE_FILTER,
   archiveListings,
   breakerTripped,
+  arabamBreakerTripped,
   markSeenAlive,
   markVerifyAttempt,
 } from "@/lib/scraper/listing-lifecycle";
@@ -367,6 +368,7 @@ export async function sweepAndCleanDeadListings(options: {
 
   const aliveIds: Types.ObjectId[] = [];
   const attemptedIds: Types.ObjectId[] = [];
+  const attemptedByStatus = new Map<"blocked" | "error", Types.ObjectId[]>();
   const refreshListings: ScrapedListing[] = [];
   const oldPrices = new Map<string, number>();
   const goneBySource = new Map<string, Array<{ id: Types.ObjectId; reason: string }>>();
@@ -416,6 +418,8 @@ export async function sweepAndCleanDeadListings(options: {
           goneBySource.set(source, list);
         } else {
           attemptedIds.push(item._id);
+          const kind = result.status === "blocked" ? "blocked" : "error";
+          attemptedByStatus.set(kind, [...(attemptedByStatus.get(kind) || []), item._id]);
           errorCount++;
         }
         details.push({ id: String(item._id), title: item.title, source, status: result.status, reason: result.reason });
@@ -426,7 +430,7 @@ export async function sweepAndCleanDeadListings(options: {
   );
 
   await markSeenAlive(aliveIds, now);
-  await markVerifyAttempt(attemptedIds, now);
+  for (const [kind, ids] of attemptedByStatus) await markVerifyAttempt(ids, now, kind);
 
   // Canlı çıkan Arabam ilanlarında fiyat/km/açıklama da güncellensin (yalnızca "görüldü" tarihi değil).
   // saveListing zaten değişiklik yoksa yazmıyor, değiştiyse fiyat geçmişine ve favori bildirimine de işliyor.
@@ -445,9 +449,11 @@ export async function sweepAndCleanDeadListings(options: {
   const breaker: string[] = [...blockNotes];
   for (const [source, gone] of goneBySource) {
     const checked = checkedBySource.get(source) || 0;
-    if (breakerTripped(checked, gone.length, aliveBySource.get(source) || 0)) {
+    const aliveCount = aliveBySource.get(source) || 0;
+    const tripped = source === "arabam" ? arabamBreakerTripped(checked, gone.length, aliveCount) : breakerTripped(checked, gone.length, aliveCount);
+    if (tripped) {
       breaker.push(`${source}: ${gone.length}/${checked} ölü göründü, arşivleme durduruldu`);
-      await markVerifyAttempt(gone.map((g) => g.id), now);
+      await markVerifyAttempt(gone.map((g) => g.id), now, "gone-held");
       continue;
     }
     for (const g of gone) {

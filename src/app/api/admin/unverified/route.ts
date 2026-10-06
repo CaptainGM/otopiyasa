@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
-import { UNVERIFIED_ARABAM_FILTER, UNVERIFIED_PAGE_SIZE, UNVERIFIED_PROJECTION } from "@/lib/unverified-listings";
+import {
+  UNVERIFIED_ARABAM_FILTER,
+  UNVERIFIED_PAGE_SIZE,
+  UNVERIFIED_PROJECTION,
+  describeVerifyStatus,
+} from "@/lib/unverified-listings";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +29,12 @@ export async function GET(request: Request) {
         .lean(),
     ]);
     return NextResponse.json(
-      { items, total, page, totalPages: Math.max(1, Math.ceil(total / UNVERIFIED_PAGE_SIZE)) },
+      {
+        items: items.map((item: any) => ({ ...item, statusText: describeVerifyStatus(item.lastVerifyStatus, item.lastVerifyAttemptAt) })),
+        total,
+        page,
+        totalPages: Math.max(1, Math.ceil(total / UNVERIFIED_PAGE_SIZE)),
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

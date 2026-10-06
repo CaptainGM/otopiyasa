@@ -4,7 +4,12 @@ import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { formatPrice, formatRelativeTr } from "@/lib/utils";
-import { UNVERIFIED_ARABAM_FILTER, UNVERIFIED_PAGE_SIZE, UNVERIFIED_PROJECTION } from "@/lib/unverified-listings";
+import {
+  UNVERIFIED_ARABAM_FILTER,
+  UNVERIFIED_PAGE_SIZE,
+  UNVERIFIED_PROJECTION,
+  describeVerifyStatus,
+} from "@/lib/unverified-listings";
 
 export const metadata = { title: "Kontrol Edilmemiş İlanlar | OtoPiyasa" };
 export const dynamic = "force-dynamic";
@@ -41,6 +46,7 @@ export default async function UnverifiedListingsPage({ searchParams }: PageProps
           <h1 className="mt-1 text-2xl font-black md:text-3xl">Kontrol Edilmemiş İlanlar</h1>
           <p className="mt-0.5 text-sm text-slate-400">
             Arabam bekçisinin henüz hiç doğrulamadığı aktif ilanlar. Bekçi sırayla kontrol ettikçe buradan düşer.
+            Kaynakta kaldırılmış bir ilanın &quot;Orijinal&quot; bağlantısı Arabam&apos;ın arama/kategori sayfasına yönlenir; bu ilanlar &quot;kaldırılmış görünüyor&quot; olarak işaretlenir ve arşive alınır.
           </p>
         </div>
         <div className="rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-2 text-right">
@@ -62,7 +68,7 @@ export default async function UnverifiedListingsPage({ searchParams }: PageProps
                 <th className="px-4 py-3">Yıl</th>
                 <th className="px-4 py-3">Fiyat</th>
                 <th className="px-4 py-3">Eklendi</th>
-                <th className="px-4 py-3">Son deneme</th>
+                <th className="px-4 py-3">Son deneme / durum</th>
                 <th className="px-4 py-3 text-right">Bağlantı</th>
               </tr>
             </thead>
@@ -83,7 +89,10 @@ export default async function UnverifiedListingsPage({ searchParams }: PageProps
                     {car.createdAt ? new Date(car.createdAt).toLocaleDateString("tr-TR") : "—"}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-400">
-                    {car.lastVerifyAttemptAt ? formatRelativeTr(car.lastVerifyAttemptAt) : "hiç denenmedi"}
+                    {car.lastVerifyAttemptAt ? <span className="text-slate-300">{formatRelativeTr(car.lastVerifyAttemptAt)}</span> : null}
+                    <p className={`text-[11px] ${car.lastVerifyStatus === "gone-held" ? "text-rose-300" : "text-slate-500"}`}>
+                      {describeVerifyStatus(car.lastVerifyStatus, car.lastVerifyAttemptAt)}
+                    </p>
                   </td>
                   <td className="px-4 py-3 text-right">
                     {car.listingUrl && (

@@ -39,7 +39,11 @@ const configuredGap = Number(process.env.ARABAM_BEKCI_ARALIK);
 /** Yönetim ekranındaki mini konsol için son satırlar (kalp atışıyla veritabanına gider). */
 const recentLines: string[] = [];
 
+/** Son ilerleme anı (günlük satırı ya da yeni aşama); bkz. main'deki bekçi köpeği. */
+let lastActivityAt = Date.now();
+
 function log(message: string) {
+  lastActivityAt = Date.now();
   const line = `[${new Date().toLocaleString("tr-TR")}] ${message}`;
   recentLines.push(line);
   if (recentLines.length > 30) recentLines.shift();
@@ -121,6 +125,7 @@ async function main() {
       )
       .catch(() => {});
   const setBeat = (status: "running" | "paused", phase: string, gapSeconds: number, pausedUntil: Date | null = null, extra: { lastBatchAt?: Date } = {}) => {
+    lastActivityAt = Date.now();
     beat = { status, phase, gapSeconds, pausedUntil };
     return heartbeat(extra);
   };
@@ -166,6 +171,30 @@ async function main() {
   // Uzun beklemelerde (engel molası, sırada ilan yok) de "yaşıyorum" sinyali gitsin.
   const timer = setInterval(() => void heartbeat(), 60 * 1000);
   timer.unref();
+
+  // BEKÇİ KÖPEĞİ: zaman aşımı olmayan bir tarayıcı çağrısı takılırsa (ör. paketler çalışırken güncellendi) döngü
+  // sonsuza dek bekliyordu; kalp atışı sürdüğü için yönetim ekranı da "çalışıyor" gösteriyordu. 20 dk hiçbir adım
+  // tamamlanmazsa süreç kapanır, başlatıcı (arabam-bekci-gizli.vbs) 1 dk sonra temiz bir kopya açar. Planlı molalar
+  // ve bilgisayarın uykuda geçirdiği süre sayılmaz.
+  const STALL_MS = 20 * 60 * 1000;
+  let quietUntil = 0;
+  let seenActivity = lastActivityAt;
+  let sleepAtActivity = sleepMeter.total();
+  const watchdog = setInterval(() => {
+    if (lastActivityAt !== seenActivity) {
+      seenActivity = lastActivityAt;
+      sleepAtActivity = sleepMeter.total();
+    }
+    const stalled = Date.now() - Math.max(lastActivityAt, quietUntil) - (sleepMeter.total() - sleepAtActivity);
+    if (stalled < STALL_MS) return;
+    log(`Bekçi ${Math.round(stalled / 60_000)} dk hiçbir adımı tamamlayamadı (tarayıcı takılmış olabilir); kapanıp yeniden başlayacak.`);
+    clearInterval(watchdog);
+    releaseLock();
+    beat = { ...beat, status: "stopped", phase: "Takıldı, yeniden başlatılıyor" };
+    // 1 = hata: başlatıcı yeniden dener (2 olsaydı "başka kopya var" sayıp bırakırdı).
+    Promise.race([heartbeat(), sleep(3000)]).finally(() => process.exit(1));
+  }, 60 * 1000);
+  watchdog.unref();
 
   for (;;) {
     try {
@@ -337,6 +366,7 @@ async function main() {
         await setBeat(plan.reason === "blocked-pause" ? "paused" : "running", reasonText, plan.gapSeconds, plan.reason === "blocked-pause" ? until : null, {
           lastBatchAt: new Date(),
         });
+        quietUntil = until.getTime();
         await sleep(plan.sleepMinutes * 60 * 1000);
       } else {
         await heartbeat({ lastBatchAt: new Date() });
@@ -345,6 +375,7 @@ async function main() {
       log(`Beklenmeyen hata: ${err instanceof Error ? err.message : err} (5 dk sonra yeniden denenecek)`);
       if (singleRound) break;
       await closeSharedBrowser().catch(() => {});
+      quietUntil = Date.now() + 5 * 60 * 1000;
       await sleep(5 * 60 * 1000);
     }
   }

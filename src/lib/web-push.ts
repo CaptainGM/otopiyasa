@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { PushSubscription } from "@/models/PushSubscription";
+import { keepActiveRecipients } from "@/lib/push-sessions";
 import { sendFcmToUsers } from "@/lib/fcm";
 
 let configured = false;
@@ -50,9 +51,13 @@ async function sendWebPushToUsers(
   if (!isPushConfigured() || userIds.length === 0) return 0;
   ensureConfigured();
 
-  const subs = await PushSubscription.find({ userId: { $in: userIds } }).lean<
-    { _id: unknown; endpoint: string; keys: { p256dh: string; auth: string } }[]
-  >();
+  // Yalnızca oturumu hâlâ açık tarayıcılar (bkz. lib/push-sessions.ts).
+  const subs = await keepActiveRecipients(
+    await PushSubscription.find({ userId: { $in: userIds } }).lean<
+      { _id: unknown; endpoint: string; keys: { p256dh: string; auth: string }; jti?: string | null }[]
+    >(),
+    (dead) => PushSubscription.deleteMany({ endpoint: { $in: dead.map((d) => d.endpoint) } })
+  );
   if (subs.length === 0) return 0;
 
   const body = JSON.stringify(payload);

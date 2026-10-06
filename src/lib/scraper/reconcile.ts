@@ -8,7 +8,6 @@ import { scrapeOtomerkeziListings } from "@/lib/scraper/otomerkezi";
 import { scrapeOtokocListings } from "@/lib/scraper/otokoc";
 import { scrapeOtoplusListings } from "@/lib/scraper/otoplus";
 import { scrapeCarvakListings } from "@/lib/scraper/carvak";
-import { scrapeIkinciyeniListings } from "@/lib/scraper/ikinciyeni";
 import { dodExternalIdFromUrl, fetchDodCarUrls, scrapeDodDetails } from "@/lib/scraper/dod";
 import { verifySingleListing } from "@/lib/scraper/verify-listing";
 import {
@@ -35,8 +34,8 @@ import { newCrawlReport, type CrawlReport, type ScrapedListing } from "@/lib/scr
  *    (404 / ilan numarası kaybolan yönlendirme → hemen arşiv), aksi hâlde ikinci
  *    gözlemde arşive taşınır (listing-lifecycle.ts kuralları).
  */
-export const RECONCILE_SOURCES = ["vavacars", "carvak", "otoplus", "otomerkezi", "ikinciyeni", "otokoc", "dod"] as const;
-export type ReconcileSource = (typeof RECONCILE_SOURCES)[number];
+import { RECONCILE_SOURCES, type ReconcileSource } from "@/lib/scraper/reconcile-sources";
+export { RECONCILE_SOURCES, type ReconcileSource };
 
 const HOUR = 60 * 60 * 1000;
 export const RECONCILE_INTERVAL_MS: Record<ReconcileSource, number> = {
@@ -44,7 +43,6 @@ export const RECONCILE_INTERVAL_MS: Record<ReconcileSource, number> = {
   carvak: 12 * HOUR, // ~105 araç, ~5 istek
   otoplus: 12 * HOUR, // ~170 araç, ~15 istek
   otomerkezi: 12 * HOUR, // ~200 araç, ~15 istek
-  ikinciyeni: 12 * HOUR, // tek istek
   otokoc: 24 * HOUR, // ~1.300 araç, ~90 istek
   dod: 24 * HOUR, // sitemap + sınırlı detay yenileme
 };
@@ -98,9 +96,6 @@ async function crawlInventory(
       return;
     case "carvak":
       await scrapeCarvakListings(FULL_CRAWL_LIMIT, wrap, false, 1, report);
-      return;
-    case "ikinciyeni":
-      await scrapeIkinciyeniListings(50, wrap, false, report);
       return;
     case "dod":
       await crawlDodInventory(wrap, report, seen);

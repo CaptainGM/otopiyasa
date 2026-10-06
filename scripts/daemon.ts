@@ -241,7 +241,6 @@ async function main() {
           { source: "vavacars", limit: 30 },
           { source: "otoplus", limit: 25 },
           { source: "carvak", limit: 25 },
-          { source: "ikinciyeni", limit: 25 },
           { source: "dod", limit: 20 },
         ];
         currentPhase = `🚗 Yeni ilan keşfi (${targets.length} kaynak)`;

@@ -9,6 +9,8 @@ const PushSubscriptionSchema = new Schema(
       p256dh: { type: String, required: true },
       auth: { type: String, required: true },
     },
+    /** Aboneliğin açıldığı oturum (JWT jti): oturum kapanınca bu tarayıcıya bildirim gitmez. */
+    jti: { type: String, default: null, index: true },
   },
   { timestamps: true }
 );

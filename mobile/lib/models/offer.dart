@@ -25,7 +25,7 @@ class OfferEvent {
   final bool mine;
   final DateTime? createdAt;
 
-  /// off-platform | prepayment — bkz. web lib/chat-safety.ts (aynı sunucu
+  /// off-platform | prepayment | payment-info | external-link — bkz. web lib/chat-safety.ts (aynı sunucu
   /// tarafı hesaplama, mobil yalnızca sonucu gösterir).
   final List<String> riskFlags;
 
@@ -43,6 +43,8 @@ class OfferEvent {
 const Map<String, String> riskFlagLabels = {
   'off-platform': 'Platform dışı iletişime yönlendiriyor olabilir',
   'prepayment': 'Görmeden önce ödeme/kapora istiyor olabilir',
+  'payment-info': 'Hesap/IBAN ya da havale bilgisi paylaşıyor olabilir; aracı görmeden ödeme yapma',
+  'external-link': 'Harici bir siteye yönlendiriyor olabilir; bağlantıya tıklama, kart/hesap bilgisi girme',
 };
 
 class Offer {

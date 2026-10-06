@@ -19,6 +19,9 @@ export interface MarketInsightData {
   transmissionStats: Array<{ transmission: string; count: number; avgPrice: number; sharePct: number }>;
   bodyTypeStats: Array<{ bodyType: string; count: number; avgPrice: number; sharePct: number }>;
   topBrands: Array<{ brand: string; count: number; avgPrice: number }>;
+  /** Vites/yakıt/kasa dağılımlarının hesaplandığı güvenilir (ilan sayfasından doğrulanmış) ilan sayısı ve toplam aktif ilan. */
+  featureBase?: { trusted: number; total: number };
+  generatedAt?: string;
 }
 
 interface MarketInsightsChartsProps {
@@ -37,6 +40,17 @@ const darkTooltip = {
 const BRACKET_COLORS = ["#38bdf8", "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899"];
 const FUEL_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#06b6d4", "#a855f7"];
 const BODY_COLORS = ["#f97316", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899", "#64748b"];
+
+/** Dağılımın kaç ilana dayandığı: doğrulanmamış (tahmini) ilanlar hesaba katılmaz. */
+function FeatureBaseNote({ base }: { base?: { trusted: number; total: number } }) {
+  if (!base || base.total <= 0) return null;
+  const pct = Math.round((base.trusted / base.total) * 100);
+  return (
+    <p className="mt-1 text-[11px] text-amber-300/80">
+      {formatNumber(base.trusted)} ilan üzerinden (ilan sayfasından doğrulanmış, aktif ilanların %{pct}'i). Doğrulama sürdükçe kapsam büyür.
+    </p>
+  );
+}
 
 export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
   const autoPremium = automaticPremiumPct(data.transmissionStats.map((t) => ({ label: t.transmission, avgPrice: t.avgPrice })));
@@ -181,6 +195,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Pazar payı ve ortalama satış fiyatları
             </p>
+            <FeatureBaseNote base={data.featureBase} />
           </div>
 
           <div className="mt-4 space-y-3">
@@ -224,6 +239,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Otomatik vs Manuel pazar oranı ve fiyat farkı
             </p>
+            <FeatureBaseNote base={data.featureBase} />
           </div>
 
           <div className="mt-4 space-y-4">
@@ -276,6 +292,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Piyasadaki gövde tipleri ve ortalamaları
             </p>
+            <FeatureBaseNote base={data.featureBase} />
           </div>
 
           <div className="mt-4 space-y-3">

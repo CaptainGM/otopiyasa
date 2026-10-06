@@ -63,6 +63,7 @@ export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record
   const fill = (key: "color" | "bodyType" | "fuelType" | "transmission", value?: string) =>
     value && !isUnknownValue(value) && isUnknownValue(f[key]) ? { [`features.${key}`]: value } : {};
   const x = listing.features || ({} as ScrapedListing["features"]);
+  const confirmed = new Set(listing.confirmedFeatures || []);
 
   return {
     ...(listing.images && listing.images.length > 0 ? { images: listing.images, imageUrl: listing.images[0] } : {}),
@@ -75,10 +76,16 @@ export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record
     ...(listing.city && !car.city ? { city: listing.city } : {}),
     ...(listing.address && !car.address ? { address: listing.address } : {}),
     ...fill("color", x.color),
-    ...fill("bodyType", x.bodyType),
+    // Sayfada AÇIKÇA yazan kasa tipi, listeden tahmin edilenin ("Sedan"/"SUV" anahtar kelime tahmini) yerine geçer.
+    ...(confirmed.has("bodyType") && x.bodyType && !isUnknownValue(x.bodyType) ? { "features.bodyType": x.bodyType } : fill("bodyType", x.bodyType)),
     // Liste sayfasından gelen yakıt/vites tahmindir (bulamayınca "Benzin"/"Manuel" yazılıyordu:
     // 2021 Evoque manuel görünüyordu). İlan sayfasındaki değer onu düzeltir.
-    ...(shouldReplaceFuel(f.fuelType, x.fuelType) ? { "features.fuelType": normalizeFuelType(x.fuelType) } : {}),
+    // Sayfada AÇIKÇA yazan yakıt tipi her zaman geçerlidir; yoksa yalnızca belirsiz/tahmin değer değiştirilir.
+    ...(confirmed.has("fuelType") && x.fuelType && !isUnknownValue(x.fuelType)
+      ? { "features.fuelType": normalizeFuelType(x.fuelType) }
+      : shouldReplaceFuel(f.fuelType, x.fuelType)
+        ? { "features.fuelType": normalizeFuelType(x.fuelType) }
+        : {}),
     ...(x.transmission && !isUnknownValue(x.transmission) && x.transmission !== f.transmission
       ? { "features.transmission": x.transmission }
       : {}),
@@ -88,6 +95,7 @@ export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record
     ...(x.avgFuelConsumption ? { "features.avgFuelConsumption": x.avgFuelConsumption } : {}),
     ...(x.fuelTank ? { "features.fuelTank": x.fuelTank } : {}),
     detailCheckedAt: new Date(),
+    ...(confirmed.size > 0 ? { featuresVerifiedAt: new Date() } : {}),
   };
 }
 

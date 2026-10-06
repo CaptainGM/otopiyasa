@@ -18,7 +18,17 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { mergeCategoryStats, normalizeBodyType, normalizeTransmission } from "@/lib/vehicle-attrs";
 
 // ISR: 2 dakikada bir arka planda tazeler — anlık yükleme + güncel veri
-export const revalidate = 120;
+// Analiz verisi en fazla 5 dakika gecikmeli: yeni ilan eklenince/arşive gidince sayfa kendiliğinden yenilenir.
+export const revalidate = 300;
+
+/**
+ * Vites, yakıt ve kasa tipi Arabam liste sayfalarında ilan BAŞLIĞINDAN tahmin ediliyordu (örn. başlıkta "otomatik"
+ * yoksa "Manuel"). Gerçek ilan sayfasından doğrulanmamış Arabam ilanları bu dağılımlara katılmaz; diğer kaynaklar
+ * (galeri siteleri) bilgiyi doğrudan verdiği için dahildir. Bekçi ilanları gezdikçe örnek büyür.
+ */
+const TRUSTED_FEATURES: { $or: Record<string, unknown>[] } = {
+  $or: [{ sourceSite: { $ne: "arabam" } }, { featuresVerifiedAt: { $exists: true } }],
+};
 
 const getAnalyticsData = unstable_cache(
   async () => {
@@ -34,6 +44,7 @@ const getAnalyticsData = unstable_cache(
 
     // 2. Çoklu analitik agregasyonlar
     const [
+      trustedTotal,
       byYearRaw,
       activeTotal,
       fuelRaw,
@@ -42,6 +53,7 @@ const getAnalyticsData = unstable_cache(
       bodyRaw,
       topBrandsRaw,
     ] = await Promise.all([
+      Car.countDocuments({ ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES }),
       // Temizlenmiş Yıl Eğrisi (1995-2026 arası, aşırı trol/hatalı fiyatlar elenmiş)
       Car.aggregate([
         {
@@ -68,7 +80,7 @@ const getAnalyticsData = unstable_cache(
 
       // Yakıt Türü Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, "features.fuelType": { $exists: true, $ne: "" } } },
+        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.fuelType": { $exists: true, $ne: "" } } },
         { $group: { _id: "$features.fuelType", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
@@ -76,7 +88,7 @@ const getAnalyticsData = unstable_cache(
 
       // Vites Türü Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, "features.transmission": { $exists: true, $ne: "" } } },
+        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.transmission": { $exists: true, $ne: "" } } },
         { $group: { _id: "$features.transmission", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
       ]),
 
@@ -95,7 +107,7 @@ const getAnalyticsData = unstable_cache(
 
       // Kasa Tipi Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, "features.bodyType": { $exists: true, $ne: "" } } },
+        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.bodyType": { $exists: true, $ne: "" } } },
         { $group: { _id: "$features.bodyType", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
       ]),
 
@@ -169,11 +181,13 @@ const getAnalyticsData = unstable_cache(
         transmissionStats,
         bodyTypeStats,
         topBrands,
+        featureBase: { trusted: trustedTotal, total: activeTotal },
+        generatedAt: new Date().toISOString(),
       },
     };
   },
-  ["analytics:all:v4"],
-  { revalidate: CACHE_TTL.long / 1000 }
+  ["analytics:all:v5"],
+  { revalidate: CACHE_TTL.medium / 1000 }
 );
 
 function AnalyticsLoading() {
@@ -254,6 +268,10 @@ async function AnalyticsContent() {
         <h1 className="text-3xl font-extrabold text-white">İkinci El Araç Piyasası Analizi</h1>
         <p className="mt-1 text-sm text-slate-400">
           Türkiye pazarındaki güncel aktif ilan verileriyle bütçe segmentleri, yakıt, vites, kasa tipleri ve fiyat trendleri.
+          Arşivdeki (kaldırılmış) ilanlar bu analize katılmaz; veriler en fazla 5 dakika gecikmeyle otomatik yenilenir.
+          {insightsData.generatedAt && (
+            <> Son hesaplama: {new Date(insightsData.generatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })}.</>
+          )}
         </p>
       </div>
 

@@ -21,6 +21,7 @@ import { Car } from "@/models/Car";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
 import { detectPriceAnomaly } from "@/lib/anomaly";
 import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
+import { featureChips } from "@/lib/feature-chips";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
 import { FuelCostCard } from "@/components/FuelCostCard";
@@ -279,10 +280,11 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
 
           <div className="flex flex-wrap gap-2">
-            <span className="badge">{car.features.fuelType}</span>
-            <span className="badge">{car.features.transmission}</span>
-            <span className="badge">{car.features.bodyType}</span>
-            <span className="badge">{car.features.color}</span>
+            {featureChips([car.features.fuelType, car.features.transmission, car.features.bodyType, car.features.color]).map((c) => (
+              <span key={c.label} className={c.pending ? "badge border-dashed text-slate-500" : "badge"}>
+                {c.label}
+              </span>
+            ))}
           </div>
 
           {fuelCost && <FuelCostCard cost={fuelCost} />}

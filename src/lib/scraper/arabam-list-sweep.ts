@@ -9,6 +9,8 @@ import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { fetchPageWithBrowser, isCloudflareChallenge } from "@/lib/scraper/browser-scrape";
 import { waitForArabamTurn } from "@/lib/scraper/verify-listing";
 import { ArabamListDoc, ArabamListPage, dominantBodyType, parseArabamListPage } from "@/lib/scraper/arabam-list";
+import { isPermanentRemoval, isUnknownFeature } from "@/lib/scraper/feature-merge";
+import { outOfScopeReason } from "@/lib/vehicle-scope";
 
 /**
  * BEKÇİ LİSTE TARAMASI
@@ -77,6 +79,8 @@ export async function refreshListSweepPlan(now = new Date()): Promise<number> {
     const brand = normalizeBrand(row._id.b || "");
     const key = modelFamilyKey(row._id.m, brand);
     if (!brand || !key) continue;
+    // Kapsam dışı modellerin (pickup, kamyon...) liste sayfası gezilmez; bu ilanlar zaten arşive alınır.
+    if (outOfScopeReason({ brand, model: row._id.m })) continue;
     const k = `${slug(brand)}|${key}`;
     const f = families.get(k) || { brand, model: modelFamily(row._id.m, brand), ours: 0, unverified: 0, suv: 0 };
     f.ours += row.n;
@@ -194,8 +198,8 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
     const doc = byExternal.get(car.externalId);
     if (!doc) continue;
     if (car.status === "removed") {
-      // Yalnızca otomatik arşivlenen (yönetici ya da şikâyet ile kaldırılmamış) ilan yeniden kontrole alınır.
-      if (/^arabam/i.test(car.removedReason || "")) recheckIds.push(car._id);
+      // Yalnızca otomatik arşivlenen (yönetici, şikâyet ya da kapsam dışı diye kaldırılmamış) ilan yeniden kontrole alınır.
+      if (/^arabam/i.test(car.removedReason || "") && !isPermanentRemoval(car.removedReason)) recheckIds.push(car._id);
       continue;
     }
     if (car.status !== "active") continue;
@@ -206,7 +210,8 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
     if (doc.transmission) {
       set["features.transmission"] = doc.transmission;
       keys.push("transmission");
-      if (doc.transmission !== car.features?.transmission) out.corrected++;
+      // Düzeltme: kayıtlı (bilinen) değer farklıydı. Bilinmiyordu ise yalnızca doğrulanmış sayılır.
+      if (!isUnknownFeature(car.features?.transmission) && doc.transmission !== car.features?.transmission) out.corrected++;
     }
     if (doc.fuelType) {
       set["features.fuelType"] = doc.fuelType;

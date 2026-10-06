@@ -40,15 +40,16 @@ export function transmissionMatch(label: string): string | { $regex: string; $op
 
 export type VerifiableFeature = "transmission" | "fuelType" | "bodyType" | "color";
 
+/** Veritabanındaki "bilinmiyor" yer tutucuları (bkz. scraper/feature-merge.ts). */
+const UNKNOWN_FEATURE_VALUES = [null, "", "-", "Bilinmiyor", "Belirtilmemiş", "Belirtilmemis", "Otomobil", "Diğer"];
+
 /**
- * Bu özelliği güvenilir olan ilanlar: Arabam dışındaki kaynaklar (bilgiyi doğrudan veriyor), ilan sayfasından
- * doğrulanan Arabam ilanları ve özelliği liste sayfası verisinden tek tek doğrulananlar (`verifiedFeatures`).
- * Arabam toplu çekiminin başlıktan tahmin ettiği değerler ("otomatik" yazmıyorsa "Manuel") dahil değildir.
+ * Bu özelliği bilinen ilanlar. 2026-10-06'dan beri kaynaklar tahmin yazmıyor ve eski tahminler silindi:
+ * veritabanındaki her değer kaynağın kendi verisinden okunmuştur, bilinmeyen "Bilinmiyor" kalır. Analiz ve
+ * kapsam oranları bu süzgeçle hesaplanır.
  */
 export function trustedFeatureFilter(feature: VerifiableFeature) {
-  return {
-    $or: [{ sourceSite: { $ne: "arabam" } }, { featuresVerifiedAt: { $exists: true } }, { verifiedFeatures: feature }],
-  };
+  return { [`features.${feature}`]: { $exists: true, $nin: UNKNOWN_FEATURE_VALUES } };
 }
 
 export type BodyTypeLabel =

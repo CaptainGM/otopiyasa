@@ -40,18 +40,6 @@ function extractCityFromUrl(url: string): string {
   return "İstanbul";
 }
 
-function detectBodyType(name: string): string {
-  const lower = name.toLowerCase();
-  if (/suv|crossover|arazi/i.test(lower)) return "SUV";
-  if (/sedan/i.test(lower)) return "Sedan";
-  if (/hatchback|hb\b/i.test(lower)) return "Hatchback";
-  if (/station|wagon/i.test(lower)) return "Station Wagon";
-  if (/coupe|coupé/i.test(lower)) return "Coupe";
-  if (/cabrio|cabriolet/i.test(lower)) return "Cabrio";
-  // Eskiden varsayılan "Sedan"dı: Doblo, Rifter, 2008 gibi araçlar yanlışlıkla sedan görünüyordu.
-  return "Belirtilmemiş";
-}
-
 export async function scrapeOtoplusListings(
   limit: number,
   onListing: (listing: ScrapedListing) => Promise<void>,
@@ -169,13 +157,14 @@ export async function scrapeOtoplusListings(
       const city = extractCityFromUrl(v.url || "");
       const coords = cityToCoords(city);
 
+      // Kaynakta yazmayan özellik tahmin edilmez; kasa tipi başlıktan değil ilan sayfasından (enrich-detail) gelir.
       const rawTrans = (v.vehicleTransmission || "").toLowerCase();
-      const transmission = TRANSMISSION_MAP[rawTrans] || "Otomatik";
+      const transmission = TRANSMISSION_MAP[rawTrans] || "Bilinmiyor";
 
       const rawFuel = (v.vehicleEngine?.fuelType || "").toLowerCase();
-      const fuelType = FUEL_MAP[rawFuel] || "Benzin";
+      const fuelType = FUEL_MAP[rawFuel] || "Bilinmiyor";
 
-      const bodyType = detectBodyType(title);
+      const bodyType = "Belirtilmemiş";
       const imageUrl = v.image || "";
 
       // Model name extraction

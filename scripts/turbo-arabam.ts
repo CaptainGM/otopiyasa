@@ -12,9 +12,10 @@ import { fileURLToPath } from "node:url";
 import * as cheerio from "cheerio";
 import { fetchPageHtml } from "../src/lib/scraper/browser-scrape";
 import { normalizeBrandModel } from "../src/lib/normalize-brand";
-import { normalizeFuelType } from "../src/lib/normalize-fuel";
 import { normalizeCity } from "../src/lib/normalize-city";
 import { parseArabamListPage } from "../src/lib/scraper/arabam-list";
+import { isPermanentRemoval } from "../src/lib/scraper/feature-merge";
+import { outOfScopeReason } from "../src/lib/vehicle-scope";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -78,7 +79,7 @@ interface ParsedCar {
   verifiedKeys: string[];
 }
 
-function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): ParsedCar[] {
+function parseArabamSearchPage(html: string): ParsedCar[] {
   const $ = cheerio.load(html);
   // Tablo vites/yakıt göstermez; sayfaya gömülü veride her ilanın gerçek vitesi, yakıtı ve rengi yazar.
   const embedded = new Map(parseArabamListPage(html).docs.map((d) => [d.id, d]));
@@ -148,44 +149,16 @@ function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): Pars
       modelFull.split(" ").slice(1).join(" ") || modelFull
     );
 
-    const checkText = (modelFull + " " + title).toLowerCase();
+    // Vites/yakıt yalnızca sayfanın gömülü verisinden (gerçek değer); bulunamazsa "Bilinmiyor". Kasa tipi liste
+    // verisinde yok: "Belirtilmemiş" yazılır, bekçi model sayımından ya da ilan sayfasından doldurur. Eskiden
+    // başlıktan tahmin ediliyordu ("otomatik" yazmıyorsa Manuel, anahtar kelime yoksa Sedan).
     const real = embedded.get(extId);
     const verifiedKeys: string[] = [];
-    let fuelType = "Benzin";
-    if (/elektrik|electric|\bev\b|taycan|eqs|eqe|eqc|ioniq 5|t10x/.test(checkText)) fuelType = "Elektrik";
-    else if (/hibrit|hybrid|phev|mhev|e-power/.test(checkText)) fuelType = "Hibrit";
-    else if (/dizel|diesel|multijet|tdci|dci|tdi|hdi|crdi|cdti|d-4d|bluehdi/.test(checkText)) fuelType = "Dizel";
-    else if (/lpg|otogaz|eco/.test(checkText)) fuelType = "Benzin & LPG";
-
-    let transmission = "Manuel";
-    if (/otomatik|auto|edc|dsg|eat[68]|dct|powershift|cvt|s-tronic|tiptronic|steptronic|xtronic|7g-tronic|9g-tronic/.test(checkText)) {
-      transmission = "Otomatik";
-    } else if (/yarı otomatik|dualtronic|easytronic|mmt/.test(checkText)) {
-      transmission = "Yarı Otomatik";
-    }
-
-    // Gömülü veri varsa tahminin yerine gerçek değer.
-    if (real?.transmission) {
-      transmission = real.transmission;
-      verifiedKeys.push("transmission");
-    }
-    if (real?.fuelType) {
-      fuelType = real.fuelType;
-      verifiedKeys.push("fuelType");
-    }
-
-    let bodyType = "Sedan";
-    if (defaultCategory === "arazi-suv-pick-up" || /suv|cross|stepway|qashqai|duster|tucson|sportage|tiguan|3008|2008|c-hr|kuga|kadjar|captur|mokka|x[135]|gl[ace]/.test(checkText)) {
-      bodyType = "SUV";
-    } else if (defaultCategory === "minivan-panelvan" || /doblo|courier|fiorino|caddy|kangoo|partner|berlingo|transporter|vito|custom|combo/.test(checkText)) {
-      bodyType = "Minivan / Van";
-    } else if (/clio|i20|polo|corsa|fiesta|golf|yaris|c3|208|fabia|ibiza|leon|a3|116i|118i|hatchback|\bhb\b/.test(checkText)) {
-      bodyType = "Hatchback";
-    } else if (/coupe|cabrio|roadster/.test(checkText)) {
-      bodyType = "Coupe";
-    } else if (/station wagon|\bsw\b|variant|touring|avant/.test(checkText)) {
-      bodyType = "Station Wagon";
-    }
+    const transmission = real?.transmission || "Bilinmiyor";
+    if (real?.transmission) verifiedKeys.push("transmission");
+    const fuelType = real?.fuelType || "Bilinmiyor";
+    if (real?.fuelType) verifiedKeys.push("fuelType");
+    const bodyType = "Belirtilmemiş";
 
     listings.push({
       externalId: `arabam-${extId}`,
@@ -203,7 +176,7 @@ function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): Pars
       imageUrl: hdImg,
       images: [hdImg].filter(Boolean),
       features: {
-        fuelType: normalizeFuelType(fuelType),
+        fuelType,
         transmission,
         bodyType,
         color: real?.color || color,
@@ -512,8 +485,12 @@ async function main() {
           continue;
         }
 
-        const cars = parseArabamSearchPage(html, task.category);
-        if (cars.length === 0) {
+        // Kapsam dışı araçlar (pickup, kamyon, motosiklet...) hiç eklenmez (bkz. vehicle-scope.ts).
+        const parsed = parseArabamSearchPage(html);
+        const cars = parsed.filter(
+          (c) => !outOfScopeReason({ brand: c.brand, model: c.model, title: c.title, bodyType: c.features.bodyType })
+        );
+        if (parsed.length === 0) {
           activeTasks.delete(qIdx);
           continue;
         }
@@ -528,7 +505,7 @@ async function main() {
         // ("manuel: ...") ya da moderasyondaki ilana dokunulmaz (eskiden her görülen ilan "active" yapılıyordu).
         const lockedSet = new Set(
           (existingDocs as any[])
-            .filter((d) => (d.status === "removed" && !/^arabam/i.test(d.removedReason || "")) || (d.status && d.status !== "active" && d.status !== "removed"))
+            .filter((d) => (d.status === "removed" && (!/^arabam/i.test(d.removedReason || "") || isPermanentRemoval(d.removedReason))) || (d.status && d.status !== "active" && d.status !== "removed"))
             .map((d) => d.externalId)
         );
         const newCars = cars.filter((c) => !existingSet.has(c.externalId));

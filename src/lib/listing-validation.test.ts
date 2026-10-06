@@ -86,3 +86,11 @@ describe("median", () => {
     expect(median([])).toBeNull();
   });
 });
+
+describe("validateListingFields kapsam", () => {
+  it("pickup ve motosiklet ilanını reddeder, hafif ticariyi kabul eder", () => {
+    expect(validateListingFields({ ...validListing, brand: "Toyota", model: "Hilux" }).valid).toBe(false);
+    expect(validateListingFields({ ...validListing, brand: "Yamaha", model: "X-Max 250" }).valid).toBe(false);
+    expect(validateListingFields({ ...validListing, brand: "Fiat", model: "Doblo", bodyType: "Panelvan" }).valid).toBe(true);
+  });
+});

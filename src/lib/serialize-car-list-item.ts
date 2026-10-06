@@ -1,4 +1,5 @@
 import { Car, CarListItem } from "@/types";
+import { withPendingLabels } from "@/lib/scraper/feature-merge";
 
 /** Strip fields the listing row never renders before sending it to a client. */
 type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> & {
@@ -13,6 +14,8 @@ type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> 
   priceHistory?: Array<{ price: number; recordedAt: string | Date }>;
   marketAvgPrice?: number;
   marketListingCount?: number;
+  verifiedFeatures?: string[];
+  featuresVerifiedAt?: Date | string;
 };
 
 export const CARD_PHOTO_LIMIT = 6;
@@ -32,10 +35,13 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
     sourceSite: car.sourceSite ?? "demo",
     status: car.status ?? "active",
     listingDate: car.listingDate,
-    features: {
-      fuelType: car.features?.fuelType ?? "Belirtilmemiş",
-      transmission: car.features?.transmission ?? "Belirtilmemiş",
-    },
+    features: withPendingLabels(
+      {
+        fuelType: car.features?.fuelType ?? "Belirtilmemiş",
+        transmission: car.features?.transmission ?? "Belirtilmemiş",
+      },
+      car
+    ),
     priceHistory: (car.priceHistory ?? []).slice(-2).map((point) => ({
       price: point.price,
       recordedAt: point.recordedAt.toString(),

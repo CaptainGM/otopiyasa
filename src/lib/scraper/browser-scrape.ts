@@ -650,11 +650,13 @@ export function arabamCategoriesFromHtml(html: string): string[] {
 
 /**
  * Otomobil platformunda yeri olmayan ilan mı? Sitemap'teki ilan adresleri kategori taşımıyor; keşif motosiklet,
- * ATV, karavan ve "taksi hat & plaka" ilanlarını da otomobil sanıp ekliyordu (bkz. 2026-10-06 ölçümü).
+ * ATV, karavan ve "taksi hat & plaka" ilanlarını da otomobil sanıp ekliyordu (bkz. 2026-10-06 ölçümü). "Ticari
+ * araçlar" kategorisi kamyon, kamyonet, otobüs ve minibüstür; hafif ticari arabalar (Doblo, Berlingo) "minivan-panelvan"
+ * kategorisindedir ve kapsamda kalır.
  */
 export function isNonCarArabamPage(html: string): boolean {
   return arabamCategoriesFromHtml(html).some((path) =>
-    /(^|[/-])(motosiklet|atv|utv|karavan|deniz|traktor|is-makina|yedek-parca|bisiklet|tarim|hat-plaka)/.test(path)
+    /(^|[/-])(motosiklet|atv|utv|karavan|deniz|traktor|is-makina|yedek-parca|bisiklet|tarim|hat-plaka|ticari-araclar)/.test(path)
   );
 }
 
@@ -772,10 +774,12 @@ export function parseArabamDetailHtml(
     damageParts: extractArabamDamageParts(html),
     confirmedFeatures,
     features: {
-      fuelType: props["Yakıt Tipi"] || extractFromKeywords(html, FUEL_TYPES),
+      // Sayfada yazmayan yakıt/renk tahmin edilmez: eskiden sayfanın tamamında (menüler, öneri kartları) geçen ilk
+      // yakıt/renk kelimesi alınıyordu.
+      fuelType: props["Yakıt Tipi"] || "Bilinmiyor",
       transmission,
-      bodyType: (props["Kasa Tipi"] || "Otomobil").split("/")[0].trim(),
-      color: carData.color || props["Renk"] || extractFromKeywords(html, COLORS),
+      bodyType: (props["Kasa Tipi"] || "Belirtilmemiş").split("/")[0].trim(),
+      color: carData.color || props["Renk"] || "Belirtilmemiş",
       engineSize: engineSizeCc ? Math.round((engineSizeCc / 1000) * 10) / 10 : undefined,
       horsepower: horsepowerMatch ? Number(horsepowerMatch[0].replace(/\D/g, "")) : undefined,
       drivetrain: props["Çekiş"] || undefined,

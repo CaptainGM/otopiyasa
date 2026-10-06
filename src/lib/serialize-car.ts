@@ -1,6 +1,7 @@
 import { Car } from "@/types";
 import { MarketSegmentStats, segmentKey } from "@/lib/market-price";
 import { enrichFeatures } from "@/lib/derive-specs";
+import { withPendingLabels } from "@/lib/scraper/feature-merge";
 
 export type LeanCarDoc = {
   _id: { toString(): string };
@@ -38,6 +39,8 @@ export type LeanCarDoc = {
   damageParts?: { name: string; state: string }[];
   businessName?: string;
   priceHistory?: Array<{ price: number; recordedAt: Date | string }>;
+  verifiedFeatures?: string[];
+  featuresVerifiedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -73,7 +76,7 @@ export function serializeCar(
     damageFlag: doc.damageFlag || false,
     location: doc.location,
   
-    features: enrichFeatures(doc.features, doc.title, doc.description),
+    features: withPendingLabels(enrichFeatures(doc.features, doc.title, doc.description), doc),
     source: doc.source,
     sourceSite: doc.sourceSite || "demo",
     listingUrl: doc.listingUrl || "",

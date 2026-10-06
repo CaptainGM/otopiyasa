@@ -1,5 +1,7 @@
 import { Car } from "@/models/Car";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { normalizeTransmission } from "@/lib/vehicle-attrs";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { turkishSearchRegex, levenshtein, extractVehicleTokens, calculateTitleMatchScore } from "@/lib/utils";
 
 export type Condition = "clean" | "painted" | "damaged";
@@ -54,8 +56,9 @@ interface TrainingRow {
   engineSize: number | null;
  
   horsepower: number | null;
-  automatic: number; 
-  diesel: number; 
+  /** 1/0; vites ya da yakıt kaynakta bilinmiyorsa null (segmentin bilinen oranıyla doldurulur). */
+  automatic: number | null;
+  diesel: number | null;
 }
 
 
@@ -153,14 +156,17 @@ export interface FeatureInput {
   painted: number;
   engineSize?: number | null;
   horsepower?: number | null;
-  automatic?: number;
-  diesel?: number;
+  automatic?: number | null;
+  diesel?: number | null;
 }
 
 
 export interface FeatureMedians {
   engineSize: number;
   horsepower: number;
+  /** Vitesi/yakıtı bilinen satırlarda otomatik ve dizel oranı (0-1). */
+  automatic: number;
+  diesel: number;
 }
 
 export function median(values: number[]): number {
@@ -178,7 +184,15 @@ export function featureMedians(rows: TrainingRow[]): FeatureMedians {
     horsepower: median(
       rows.map((r) => r.horsepower).filter((v): v is number => !!v && v > 0)
     ),
+    automatic: knownShare(rows.map((r) => r.automatic)),
+    diesel: knownShare(rows.map((r) => r.diesel)),
   };
+}
+
+/** Bilinen (null olmayan) 1/0 değerlerin ortalaması; hiç bilinen yoksa 0. */
+function knownShare(values: Array<number | null | undefined>): number {
+  const known = values.filter((v): v is number => v === 0 || v === 1);
+  return known.length ? known.reduce((a, b) => a + b, 0) / known.length : 0;
 }
 
 
@@ -195,8 +209,9 @@ function toFeatures(r: FeatureInput, medians: FeatureMedians): number[] {
     r.painted,
     engine,
     hp / 100,
-    r.automatic ?? 0,
-    r.diesel ?? 0,
+    // Bilinmeyen vites/yakıt "manuel/benzinli" sayılmaz; segmentteki bilinen oranla doldurulur.
+    r.automatic ?? medians.automatic,
+    r.diesel ?? medians.diesel,
   ];
 }
 
@@ -220,6 +235,16 @@ interface TrainingDoc {
  */
 const UNMODERATED_EXCLUDED = { moderationStatus: { $nin: ["pending", "rejected"] } } as const;
 
+function gearIndicator(raw?: string): number | null {
+  const gear = normalizeTransmission(raw);
+  return gear === null ? null : gear === "Manuel" ? 0 : 1;
+}
+
+function dieselIndicator(raw?: string): number | null {
+  const fuel = normalizeFuelType(raw);
+  return fuel === "Bilinmiyor" ? null : fuel === "Dizel" ? 1 : 0;
+}
+
 async function loadTrainingRows(
   filter: Record<string, unknown>,
   limit: number
@@ -239,8 +264,8 @@ async function loadTrainingRows(
       painted: derivePainted(d.paintChange),
       engineSize: d.features?.engineSize ?? null,
       horsepower: d.features?.horsepower ?? null,
-      automatic: /otomatik|yarı otomatik|tiptronic/i.test(d.features?.transmission || "") ? 1 : 0,
-      diesel: /dizel/i.test(d.features?.fuelType || "") ? 1 : 0,
+      automatic: gearIndicator(d.features?.transmission),
+      diesel: dieselIndicator(d.features?.fuelType),
     }));
 }
 
@@ -434,14 +459,12 @@ export async function predictPrice(
 
   const withSegmentSpecs = (rows: TrainingRow[]): FeatureInput => {
     const m = featureMedians(rows);
-    const auto = rows.filter((r) => r.automatic).length / Math.max(1, rows.length);
-    const dsl = rows.filter((r) => r.diesel).length / Math.max(1, rows.length);
     return {
       ...input,
       engineSize: m.engineSize,
       horsepower: m.horsepower,
-      automatic: auto >= 0.5 ? 1 : 0,
-      diesel: dsl >= 0.5 ? 1 : 0,
+      automatic: m.automatic >= 0.5 ? 1 : 0,
+      diesel: m.diesel >= 0.5 ? 1 : 0,
     };
   };
 

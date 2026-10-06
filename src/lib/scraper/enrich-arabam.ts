@@ -55,6 +55,12 @@ type StoredCar = {
   features?: { color?: string; bodyType?: string; fuelType?: string; transmission?: string };
 };
 
+/** Sayfada açıkça yazan özellikler "doğrulandı" listesine eklenir (bkz. Car.verifiedFeatures). */
+function verifiedAdd(listing: ScrapedListing) {
+  const keys = listing.confirmedFeatures || [];
+  return keys.length ? { $addToSet: { verifiedFeatures: { $each: keys } } } : {};
+}
+
 /** Ayrıştırılan ilandan DB'ye yazılacak alanlar (yalnızca gerçekten bilinenler). */
 export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record<string, unknown> {
   // Satıcı açıklama yazmamışsa ayrıştırıcı "<başlık> - Arabam ilanı" döndürür; mevcut metni ezmesin.
@@ -122,7 +128,7 @@ export async function enrichArabamCarIfNeeded(carDoc: any): Promise<void> {
         carDoc[key] = value;
       }
     }
-    await Car.updateOne({ _id: carDoc._id }, { $set: set }, { timestamps: false }).exec();
+    await Car.updateOne({ _id: carDoc._id }, { $set: set, ...verifiedAdd(result.listing) }, { timestamps: false }).exec();
   })().catch(() => {});
 
   await Promise.race([task, new Promise((resolve) => setTimeout(resolve, 600))]);
@@ -191,6 +197,7 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
             lastVerifyAttemptAt: new Date(),
           },
           $unset: { missingSince: 1, missingChecks: 1 },
+          ...verifiedAdd(listing),
         },
         { timestamps: priceChanged }
       );

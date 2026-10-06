@@ -22,7 +22,9 @@ import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
-import { fetchDetailPatch, isDetailSource, isUnknownValue, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
+import { fetchDetailPatch, isDetailSource, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
+import { isPermanentRemoval, knownFeatureUpdates, PLATFORM_SCOPE_REASON } from "@/lib/scraper/feature-merge";
+import { outOfScopeReason } from "@/lib/vehicle-scope";
 import { fuelWithTitleHint } from "@/lib/normalize-fuel";
 import { normalizeCity } from "@/lib/normalize-city";
 import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
@@ -90,9 +92,28 @@ export async function saveListing(
     externalId: listing.externalId,
   });
 
+  // Platform kapsamı (bkz. vehicle-scope.ts): kamyon, pickup, motosiklet, ATV... hiçbir kaynaktan eklenmez;
+  // daha önce eklenmişse arşive alınır.
+  const scope = outOfScopeReason({
+    brand: listing.brand,
+    model: listing.model,
+    title: listing.title,
+    bodyType: listing.features?.bodyType,
+  });
+  if (scope) {
+    if (existing && existing.status !== "removed") {
+      await archiveListings([existing._id], `${listing.sourceSite}: ${PLATFORM_SCOPE_REASON} (${scope})`, now);
+    }
+    return "skipped";
+  }
+
   if (existing) {
     // "Eksik" diye arşive alınmış ilanı, liste sayfası yine tek fotoğraf veriyorsa geri açma.
     if (existing.status === "removed" && isIncompleteRemoval(existing.removedReason) && lacksGallery(listing.sourceSite, listing.images)) {
+      return "unchanged";
+    }
+    // Yöneticinin elle kaldırdığı ya da kapsam dışı diye arşivlenen ilan, kaynakta görülse de geri açılmaz.
+    if (existing.status === "removed" && isPermanentRemoval(existing.removedReason)) {
       return "unchanged";
     }
     // Detayı ilan sayfasından tamamlanmış kurumsal ilanlarda liste sayfasındaki şablon açıklama,
@@ -124,15 +145,15 @@ export async function saveListing(
     // Kaynak adres formatını değiştirdiğinde (ör. VavaCars → tr.vava.cars) kayıt kendini onarsın.
     const urlChanged = Boolean(listing.listingUrl && listing.listingUrl !== existing.listingUrl);
 
-    // İlan sayfasından AÇIKÇA okunan özellikler (vites/yakıt/kasa/renk): liste sayfasından gelen tahminin yerine yazılır
-    // ve ilan "özellikleri doğrulandı" işaretlenir. Okunamayan alanlara dokunulmaz.
+    // Vites/yakıt/kasa/renk: kaynaklar artık yalnızca kendi verisinde yazan değeri ya da "Bilinmiyor" verir (tahmin
+    // yok). Bilinen yeni değer yazılır; bilinmeyen değer kayıtlı bilgiyi asla ezmez (eskiden liste sayfasının
+    // tahmini, ilan sayfasından okunmuş gerçek değerin üstüne her taramada yeniden yazılıyordu).
     const confirmedKeys = listing.confirmedFeatures || [];
-    const sameText = (a?: string, b?: string) => (a || "").toLocaleLowerCase("tr-TR") === (b || "").toLocaleLowerCase("tr-TR");
     const storedFeatures = ((existing as any).features || {}) as Record<string, string | undefined>;
-    const featuresChanged = confirmedKeys.some(
-      (key) => listing.features?.[key] && !sameText(storedFeatures[key], listing.features[key])
-    );
-    const needsVerifyFlag = confirmedKeys.length > 0 && !(existing as any).featuresVerifiedAt;
+    const featureUpdates = knownFeatureUpdates(listing.features as Record<string, unknown>, storedFeatures);
+    const featuresChanged = Object.keys(featureUpdates).length > 0;
+    const storedVerified: string[] = (existing as any).verifiedFeatures || [];
+    const needsVerifyFlag = confirmedKeys.some((key) => !storedVerified.includes(key));
 
     const hasAnyChange =
       priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged ||
@@ -174,26 +195,21 @@ export async function saveListing(
     }
     if (listing.location) existing.location = listing.location;
     if (listing.features) {
-      if (Array.isArray(listing.confirmedFeatures)) {
-        // Yalnızca sayfada yazan alanlar güncellenir; diğerleri (ör. daha önce bilinen kasa tipi) korunur.
-        for (const key of confirmedKeys) {
-          if (listing.features[key]) existing.set(`features.${key}`, listing.features[key]);
-        }
+      for (const [key, value] of Object.entries(featureUpdates)) existing.set(`features.${key}`, value);
+      // Motor bilgileri: detayı ilan sayfasından tamamlanmış kurumsal ilanda liste verisi ezmez.
+      if (!detailKept || confirmedKeys.length > 0) {
         for (const key of ["engineSize", "horsepower", "drivetrain", "avgFuelConsumption"] as const) {
           const value = listing.features[key];
           if (value !== undefined && value !== null && value !== "") existing.set(`features.${key}`, value);
         }
-      } else if (detailKept) {
-        // Yalnızca listeden güvenilir gelenleri güncelle; detaydan gelen renk/kasa/motor kalsın.
-        if (!isUnknownValue(listing.features.fuelType)) existing.set("features.fuelType", listing.features.fuelType);
-        if (!isUnknownValue(listing.features.transmission)) existing.set("features.transmission", listing.features.transmission);
-      } else {
-        existing.features = listing.features;
       }
     }
     existing.listingUrl = listing.listingUrl || existing.listingUrl;
     existing.source = listing.sourceSite;
-    if (confirmedKeys.length > 0) (existing as any).featuresVerifiedAt = now;
+    if (confirmedKeys.length > 0) {
+      (existing as any).featuresVerifiedAt = now;
+      (existing as any).verifiedFeatures = [...new Set([...storedVerified, ...confirmedKeys])];
+    }
 
     if (priceChanged) {
       existing.priceHistory.push({
@@ -277,6 +293,7 @@ export async function saveListing(
     lastVerifyAttemptAt: now,
     detailCheckedAt,
     featuresVerifiedAt: (listing.confirmedFeatures?.length ?? 0) > 0 ? now : undefined,
+    verifiedFeatures: listing.confirmedFeatures?.length ? listing.confirmedFeatures : undefined,
   });
   return "inserted";
 }

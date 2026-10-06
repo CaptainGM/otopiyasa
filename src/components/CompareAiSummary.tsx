@@ -62,7 +62,7 @@ export function CompareAiSummary({ items }: { items: Car[] }) {
         <div className="card border border-amber-400/30 bg-[var(--bg-soft)] p-5">
           <div className="mb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-base font-semibold text-amber-300">
-              🤖 AI Önerisi
+              AI Önerisi
             </span>
             <button
               type="button"
@@ -103,7 +103,7 @@ export function CompareAiSummary({ items }: { items: Car[] }) {
           onClick={() => setOpen(true)}
           className="btn btn-secondary rounded-full"
         >
-          🤖 AI Önerisi
+          AI Önerisi
         </button>
       )}
     </div>

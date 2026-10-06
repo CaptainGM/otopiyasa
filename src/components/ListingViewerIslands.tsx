@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useViewer } from "@/components/useViewer";
+import { Icon } from "@/components/Icon";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { ReportListingButton } from "@/components/ReportListingButton";
 import { OfferBox } from "@/components/OfferBox";
@@ -53,7 +54,8 @@ export function FavoriteOrLogin({ carId }: { carId: string }) {
   if (ready && viewer) return <FavoriteButton carId={carId} />;
   return (
     <Link href={`/login?next=/cars/${carId}`} className="btn btn-secondary">
-      ♡ Favori için giriş yap
+      <Icon name="heart" size={16} />
+      Favori için giriş yap
     </Link>
   );
 }
@@ -68,7 +70,7 @@ export function SellerPhoneNote({ carId }: { carId: string }) {
   if (info?.isOwner && info.contactPhone) {
     return (
       <a href={`tel:${info.contactPhone.replace(/\s/g, "")}`} className="text-lg font-black text-[var(--text)] hover:text-amber-300">
-        📞 {info.contactPhone}
+        {info.contactPhone}
         <span className="ml-2 align-middle text-xs font-normal text-slate-400">(yalnızca sen görüyorsun)</span>
       </a>
     );

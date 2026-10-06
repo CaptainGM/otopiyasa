@@ -81,7 +81,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
           <div>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>💰</span> Bütçe Segmentleri Dağılımı
+                Bütçe Segmentleri Dağılımı
               </h3>
               {under2mPct !== null && (
                 <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 font-semibold border border-blue-500/20">
@@ -151,7 +151,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
           <div>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>🏆</span> En Çok İlana Sahip 10 Marka
+                En Çok İlana Sahip 10 Marka
               </h3>
               <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
                 Pazar Liderleri
@@ -216,7 +216,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
         <div className="card p-5 flex flex-col justify-between">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>⛽</span> Yakıt Türü Dağılımı
+              Yakıt Türü Dağılımı
             </h3>
             <p className="mt-1 text-xs text-slate-400">
               Pazar payı ve ortalama satış fiyatları
@@ -260,7 +260,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
         <div className="card p-5 flex flex-col justify-between">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>⚙️</span> Vites Türü Tercihleri
+              Vites Türü Tercihleri
             </h3>
             <p className="mt-1 text-xs text-slate-400">
               Otomatik vs Manuel pazar oranı ve fiyat farkı
@@ -297,14 +297,14 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
           <div className="mt-4 text-[11px] text-slate-400 bg-blue-500/5 border border-blue-500/10 p-2.5 rounded-lg text-center">
             {autoPremium !== null ? (
               <>
-                💡 Otomatik vitesli ilanların ortalama fiyatı manuel olanlardan{" "}
+                Otomatik vitesli ilanların ortalama fiyatı manuel olanlardan{" "}
                 <strong className="text-blue-300">
                   %{Math.abs(autoPremium)} {autoPremium >= 0 ? "daha yüksek" : "daha düşük"}
                 </strong>{" "}
                 (otomatik araçlar daha yeni ve üst segment olma eğiliminde).
               </>
             ) : (
-              <>💡 Karşılaştırma için yeterli otomatik/manuel ilan verisi yok.</>
+              <>Karşılaştırma için yeterli otomatik/manuel ilan verisi yok.</>
             )}
           </div>
         </div>
@@ -313,7 +313,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
         <div className="card p-5 flex flex-col justify-between">
           <div>
             <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>🚙</span> Kasa Tipi Dağılımı
+              Kasa Tipi Dağılımı
             </h3>
             <p className="mt-1 text-xs text-slate-400">
               Piyasadaki gövde tipleri ve ortalamaları

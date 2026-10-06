@@ -153,7 +153,7 @@ export function PricePredictorForm() {
     <div className="space-y-4">
       <div className="card space-y-3 p-5">
         <div className="flex items-center gap-2">
-          <span className="text-lg">📸</span>
+          
           <div>
             <p className="font-semibold">Fotoğrafla otomatik doldur</p>
             <p className="text-xs text-slate-500">
@@ -200,7 +200,7 @@ export function PricePredictorForm() {
 
         {photoNote && (
           <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-            🤖 {photoNote}
+            {photoNote}
             <span className="mt-1 block text-xs text-amber-200/70">
               Alanları kontrol edip gerekiyorsa düzelt, sonra “Fiyat Tahmin Et”e bas.
             </span>
@@ -320,7 +320,7 @@ export function PricePredictorForm() {
                   <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3.5 space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2">
-                        <span className="text-base">🎯</span>
+                        
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
                           Yapay Zeka Piyasa Güveni
                         </span>
@@ -334,10 +334,10 @@ export function PricePredictorForm() {
                       {confidenceText}
                     </p>
                     <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-1.5 border-t border-white/5 flex-wrap">
-                      <span>📊 {sampleCount} İlan Verisi</span>
-                      <span>⚙️ {METHOD_LABELS[result.method]}</span>
-                      {result.r2 !== null && <span>📐 Doğruluk Skoru: R² ≈ {result.r2.toFixed(2)}</span>}
-                      {result.outliersRemoved ? <span>🧹 {result.outliersRemoved} Aykırı İlan Elendi</span> : null}
+                      <span>{sampleCount} İlan Verisi</span>
+                      <span>{METHOD_LABELS[result.method]}</span>
+                      {result.r2 !== null && <span>Doğruluk Skoru: R² ≈ {result.r2.toFixed(2)}</span>}
+                      {result.outliersRemoved ? <span>{result.outliersRemoved} Aykırı İlan Elendi</span> : null}
                     </div>
                   </div>
                 );
@@ -347,7 +347,7 @@ export function PricePredictorForm() {
               {typeof result.segmentSize === "number" &&
                 result.segmentSize < THIN_SEGMENT_LIMIT && (
                   <p className="rounded-lg bg-sky-500/10 px-3 py-2 text-xs text-sky-200">
-                    ⚠️ Bu model için veritabanında yalnızca{" "}
+                    Bu model için veritabanında yalnızca{" "}
                     <span className="font-semibold">{result.segmentSize} ilan</span> var.
                     {result.segmentSize > 0
                       ? " Tahmin marka geneline dayanıyor, mevcut ilanlarla düzeltildi — yine de geniş bir aralık bekle."
@@ -356,14 +356,14 @@ export function PricePredictorForm() {
                 )}
               {result.matchedModel && (
                 <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  🔎 “{model}” yerine <span className="font-semibold">{result.matchedModel}</span> modeli
+                  “{model}” yerine <span className="font-semibold">{result.matchedModel}</span> modeli
                   eşleştirildi (yazım farkı düzeltildi).
                 </p>
               )}
               {typeof result.annualDepreciationPct === "number" &&
                 result.annualDepreciationPct > 0 && (
                   <p className="rounded-lg bg-white/5 px-3 py-2 text-xs text-slate-300">
-                    📉 Bu model yıllara göre ortalama{" "}
+                    Bu model yıllara göre ortalama{" "}
                     <span className="font-semibold text-amber-300">
                       %{result.annualDepreciationPct}
                     </span>{" "}
@@ -414,12 +414,12 @@ export function PricePredictorForm() {
                 }`}
               >
                 <div className="flex items-center gap-2 font-bold">
-                  <span className="text-base">💡</span>
+                  
                   <span>Satın Alma Öncesi Uzman Kontrol Tavsiyesi ({advisory.title})</span>
                 </div>
                 <p className="mt-1.5 text-slate-300 leading-relaxed">{advisory.advice}</p>
                 <div className="mt-2 text-[11px] font-semibold text-amber-300">
-                  🔍 Öncelikli Kontrol Noktası: {advisory.checkItem}
+                  Öncelikli Kontrol Noktası: {advisory.checkItem}
                 </div>
               </div>
             );
@@ -428,7 +428,7 @@ export function PricePredictorForm() {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900 p-4">
             <div>
               <h4 className="text-sm font-bold text-amber-200">
-                📄 Kapsamlı AI Piyasa Değerleme & İstihbarat Raporu
+                Kapsamlı AI Piyasa Değerleme & İstihbarat Raporu
               </h4>
               <p className="text-xs text-slate-400">
                 10 emsal ilan, 12 aylık amortisman projeksiyonu ve resmi mühürlü analiz belgesini incele (Ücretsiz Rapor).

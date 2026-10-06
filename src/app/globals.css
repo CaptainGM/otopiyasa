@@ -1,25 +1,42 @@
 @import "tailwindcss";
 
+/*
+ * OTOPİYASA TASARIM SİSTEMİ — "fiyat istihbaratı"
+ * Kimlik: grafit zemin, tek vurgu rengi (amber, yalnızca ana eylem ve marka), veriyi anlatan üç renk
+ * (ucuz = nane, adil = buz mavisi, pahalı = mercan). Başlıklar geniş Archivo, rakamlar eş aralıklı IBM Plex Mono.
+ * Bileşenler burada; sayfalar renk yazmak yerine bu değişkenleri ve sınıfları kullanır.
+ */
 :root {
-  --bg: #0a0b0d;
-  --bg-soft: #131519;
-  --card: #16181c;
-  --card-hover: #1c1f24;
-  --text: #f5f5f2;
-  --muted: #9a9a94;
-  --accent: #eeb95c;
-  --accent-strong: #f0b23c;
+  --font-sans: var(--font-inter), "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: var(--font-archivo), var(--font-inter), "Segoe UI", sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --bg: #0b0c0e;
+  --bg-soft: #111317;
+  --card: #131519;
+  --card-hover: #171a1f;
+  --surface-2: #1a1d23;
+  --text: #f2f1ec;
+  --muted: #8f8d86;
+  --faint: #5f5e59;
+  --accent: #f2b544;
+  --accent-strong: #f5b832;
+  --accent-ink: #1a1203;
   --accent-2: #7dd3c0;
   --success: #34d399;
   --danger: #f87171;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.18);
-  --shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 32px 80px -20px rgba(0, 0, 0, 0.65);
-  --radius: 20px;
-  --radius-sm: 12px;
-  --nav-bg: rgba(5, 8, 14, 0.82);
-  --menu-bg: rgba(12, 14, 20, 0.98);
+  /* Veri renkleri: fiyatın piyasadaki yeri */
+  --cheap: #34d399;
+  --fair: #7dd3fc;
+  --pricey: #fb7185;
+  --border: rgba(255, 255, 255, 0.075);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 14px 34px -22px rgba(0, 0, 0, 0.9);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 60px -28px rgba(0, 0, 0, 0.95);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --nav-bg: rgba(11, 12, 14, 0.82);
+  --menu-bg: rgba(17, 19, 23, 0.98);
 }
 
 * {
@@ -31,13 +48,11 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
-  background:
-    radial-gradient(ellipse 1000px 560px at 12% -10%, rgba(240, 178, 60, 0.09), transparent 60%),
-    var(--bg);
-  background-attachment: fixed;
+  background: var(--bg);
   color: var(--text);
-  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
 }
 
 a {
@@ -52,109 +67,233 @@ select {
 }
 
 ::selection {
-  background: rgba(240, 178, 60, 0.28);
+  background: rgba(242, 181, 68, 0.3);
   color: #fff;
 }
 
 .container {
-  width: min(1480px, calc(100% - 3rem));
+  width: min(1440px, calc(100% - 2rem));
   margin-inline: auto;
 }
 
+@media (min-width: 640px) {
+  .container {
+    width: min(1440px, calc(100% - 3rem));
+  }
+}
+
+/* --- Yazı --- */
+/* Sayfa ve bölüm başlıkları her sayfada aynı aileden (tek tek bileşenlere yazmaya gerek kalmasın). */
+h1,
+h2 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  letter-spacing: -0.02em;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Küçük, eş aralıklı, büyük harfli üst etiket ("PİYASA · 26.153 İLAN") */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- Yüzeyler --- */
 .card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%), var(--card);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease, background 0.25s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
 }
 
 .card:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-lg);
 }
 
+.surface-2 {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  border: 0;
+}
+
+/* --- Butonlar: birincil (tek ana eylem), ikincil (çerçeveli), sade (yalnızca metin) --- */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
   border-radius: var(--radius-sm);
-  padding: 0.8rem 1.15rem;
+  padding: 0.7rem 1.1rem;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: 0.2s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
   font-weight: 600;
   font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.btn:active {
+  transform: translateY(1px);
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #c98a2c, var(--accent-strong));
-  color: #221202;
-  box-shadow: 0 8px 24px -8px rgba(240, 178, 60, 0.45);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .btn-primary:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-  box-shadow: 0 12px 28px -8px rgba(240, 178, 60, 0.55);
+  background: var(--accent-strong);
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
-  transform: none;
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   border-color: var(--border-strong);
   color: var(--text);
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  padding-inline: 0.6rem;
+}
+
+.btn-ghost:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: transparent;
+  transition: 0.15s ease;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Asistan düğmesi: koyu cam hap, vurgu yalnızca ikonda (sayfanın ana eylemiyle yarışmasın) */
+.chat-fab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-width: 3.25rem;
+  height: 3.25rem;
+  padding: 0 1.05rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.88rem;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.chat-fab:hover {
+  border-color: var(--accent);
+}
+
+.chat-fab:active {
+  transform: translateY(1px);
+}
+
+/* Katlanır "daha fazla filtre" bölümü */
+.filter-more > summary {
+  list-style: none;
+}
+
+.filter-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-more-icon {
+  transition: transform 0.2s ease;
+}
+
+.filter-more[open] .filter-more-icon {
+  transform: rotate(45deg);
+}
+
+/* --- Form --- */
 .input,
 .select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.75rem 0.9rem;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 0.7rem 0.85rem;
+  background: var(--bg-soft);
   color: var(--text);
-  transition: 0.2s ease;
+  transition: 0.15s ease;
 }
 
 .input::placeholder {
-  color: #5b6b81;
+  color: var(--faint);
 }
 
 /* İçinde ikon olan arama kutusu (navbar).
    NOT: `.input` katmansız (unlayered) CSS'tir; Tailwind utility'leri ise
    `@layer utilities` içindedir ve katmansız kurallar her zaman katmanlıları
-   ezer. Bu yüzden input'a `pl-9` yazmak ÇALIŞMIYOR — padding `.input`ten
-   geliyor ve büyüteç ikonu ilk harfin (Marka'daki "M") üstüne biniyordu.
-   Doğru padding'i burada, aynı katmanda veriyoruz. */
+   ezer. Bu yüzden input'a `pl-9` yazmak ÇALIŞMIYOR — doğru padding'i burada veriyoruz. */
 .input-search {
   padding-left: 2.4rem;
   padding-top: 0.55rem;
   padding-bottom: 0.55rem;
 }
 
-/* Chrome, type="search" için soldaki yerleşik süsleme alanını çizip metni
-   kaydırabiliyor; ikonu biz koyduğumuz için gereksiz. */
+/* Chrome, type="search" için soldaki yerleşik süsleme alanını çizip metni kaydırabiliyor. */
 .input-search::-webkit-search-decoration {
   -webkit-appearance: none;
   appearance: none;
 }
 
-/* Native <select> açılır listesindeki seçenekler koyu temada beyaz-üstüne-beyaz
-   kalıyordu; option'ları elle koyu zeminli/açık yazılı yapıyoruz. */
+/* Native <select> açılır listesindeki seçenekler koyu temada okunur kalsın. */
 .select option {
-  background-color: #16181c;
+  background-color: var(--card);
   color: var(--text);
 }
 
@@ -167,44 +306,204 @@ select {
 .select:focus {
   outline: none;
   border-color: var(--accent);
-  background: rgba(240, 178, 60, 0.05);
-  box-shadow: 0 0 0 3px rgba(240, 178, 60, 0.15);
+  box-shadow: 0 0 0 3px rgba(242, 181, 68, 0.14);
 }
 
 .label {
   display: block;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
   margin-bottom: 0.4rem;
-  color: #9fb0c6;
+  color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.12em;
 }
 
+/* --- Rozet ve etiketler --- */
 .badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
-  padding: 0.28rem 0.7rem;
-  font-size: 0.75rem;
-  font-weight: 700;
+  gap: 0.3rem;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
   background: rgba(255, 255, 255, 0.06);
-  color: #c7c7c0;
+  color: #d4d3cd;
   border: 1px solid var(--border-strong);
 }
 
 .badge-accent {
-  /* Dolu amber + koyu yazı: fotoğraf üstünde (kart) dahil her zeminde okunur.
-     Eski soluk hali açık renkli araç fotoğraflarında yılı görünmez yapıyordu. */
-  background: #eab24a;
-  color: #1c160b;
+  /* Fotoğraf üstünde her zeminde okunur: dolu amber + koyu yazı. */
+  background: var(--accent);
+  color: var(--accent-ink);
   border-color: rgba(0, 0, 0, 0.15);
 }
 
 .badge-danger {
   background: rgba(248, 113, 113, 0.14);
   color: #fca5a5;
-  border-color: rgba(248, 113, 113, 0.25);
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
+/* Fotoğraf üstündeki koyu cam etiket */
+.badge-glass {
+  background: rgba(8, 9, 11, 0.62);
+  color: #f2f1ec;
+  border-color: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: transparent;
+  transition: 0.15s ease;
+}
+
+.chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.chip[aria-current="true"],
+.chip-active {
+  color: var(--accent-ink);
+  background: var(--text);
+  border-color: var(--text);
+}
+
+/* Fotoğraf üstündeki dolu rozetler: her fotoğrafta (beyaz stüdyo dahil) okunur. */
+.badge-photo-danger {
+  background: #c8281f;
+  color: #fff;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.badge-photo-drop {
+  background: #0f9d63;
+  color: #fff;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Fotoğraf üstündeki yuvarlak cam düğme (büyüt, karşılaştır) */
+.photo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(8, 9, 11, 0.55);
+  color: #fff;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.photo-btn:hover {
+  background: rgba(8, 9, 11, 0.78);
+}
+
+.photo-btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* --- İlan kartı --- */
+.listing-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listing-card:hover {
+    transform: none;
+  }
+}
+
+.listing-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 268px), 1fr));
+}
+
+@media (max-width: 520px) {
+  .listing-grid {
+    gap: 0.75rem;
+  }
+}
+
+/* --- Piyasa göstergesi: fiyatın kendi segmentindeki yeri (ucuz ← adil → pahalı) --- */
+.gauge {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cheap) 0%, var(--fair) 50%, var(--pricey) 100%);
+  opacity: 0.85;
+}
+
+.gauge-marker {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: var(--text);
+  box-shadow: 0 0 0 3px var(--card);
+}
+
+/* --- Piyasa şeridi (borsa bandı) --- */
+.ticker {
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  gap: 2.5rem;
+  animation: ticker-scroll 60s linear infinite;
+}
+
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+}
+
+/* Hero zeminindeki ince ölçü ızgarası (grafik kâğıdı) */
+.grid-paper {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 .hero {
@@ -219,6 +518,113 @@ select {
   inset: 0;
   z-index: -1;
   background: radial-gradient(640px 360px at 6% 10%, rgba(240, 178, 60, 0.14), transparent 65%);
+}
+
+/* Piyasa panosu: kılcal çizgilerle ayrılmış rakam hücreleri (borsa ekranı) */
+.board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+  margin: 0;
+}
+
+.board-cell {
+  padding: 1rem 1.1rem 1.05rem;
+  border-color: var(--border);
+  border-style: solid;
+  border-width: 0;
+}
+
+.board-cell:nth-child(odd) {
+  border-right-width: 1px;
+}
+
+.board-cell:nth-child(-n + 2) {
+  border-bottom-width: 1px;
+}
+
+.board-cell dd {
+  margin: 0;
+}
+
+.board-value {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: clamp(1.35rem, 2.4vw, 1.9rem);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.live-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--cheap);
+}
+
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 999px;
+  border: 1px solid var(--cheap);
+  opacity: 0;
+  animation: live-ping 2.4s ease-out infinite;
+}
+
+@keyframes live-ping {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot::after {
+    animation: none;
+  }
+}
+
+/* İki-üç seçenekli görünüm anahtarı (Liste / Harita) */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-soft);
+}
+
+.segmented > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.38rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: 0.15s ease;
+}
+
+.segmented > a:hover {
+  color: var(--text);
+}
+
+.segmented > [aria-current="true"] {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border-strong);
 }
 
 .hero-grid {
@@ -517,16 +923,16 @@ select {
 }
 
 .nav-link {
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 0.85rem;
-  color: #b7c3d6;
+  border-radius: 999px;
+  padding: 0.5rem 0.8rem;
+  color: var(--muted);
   font-weight: 500;
-  transition: 0.2s ease;
+  transition: 0.15s ease;
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: white;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
 }
 
 .user-pill {
@@ -534,10 +940,10 @@ select {
   align-items: center;
   gap: 0.4rem;
   border-radius: 999px;
-  border: 1px solid rgba(240, 178, 60, 0.25);
-  background: rgba(240, 178, 60, 0.08);
+  border: 1px solid var(--border-strong);
+  background: transparent;
   padding: 0.45rem 0.9rem 0.45rem 0.7rem;
-  color: #f3c877;
+  color: var(--text);
   font-weight: 600;
   font-size: 0.85rem;
 }
@@ -554,22 +960,28 @@ select {
    harita/lightbox gibi kasıtlı hep-koyu kalan yüzeyler dokunulmadı.
    ===================================================================== */
 [data-theme="light"] {
-  --bg: #f5f2ec;
-  --bg-soft: #ece7dc;
+  --bg: #f3f1eb;
+  --bg-soft: #ebe8e0;
   --card: #ffffff;
-  --card-hover: #faf7f1;
-  --text: #241a0d;
-  --muted: #6b6255;
-  --accent: #b9790f;
-  --accent-strong: #a5690a;
+  --card-hover: #fbfaf6;
+  --surface-2: #f6f4ee;
+  --text: #1c1a16;
+  --muted: #6c685f;
+  --faint: #9a958b;
+  --accent: #d79a1c;
+  --accent-strong: #c98a0f;
+  --accent-ink: #1a1203;
   --accent-2: #157a63;
   --success: #0f9d63;
   --danger: #c8281f;
-  --border: rgba(20, 15, 5, 0.1);
-  --border-strong: rgba(20, 15, 5, 0.22);
-  --shadow: 0 20px 50px -12px rgba(30, 20, 10, 0.12);
-  --shadow-lg: 0 32px 80px -20px rgba(30, 20, 10, 0.16);
-  --nav-bg: rgba(255, 255, 255, 0.86);
+  --cheap: #0f9d63;
+  --fair: #0b78b5;
+  --pricey: #d6334f;
+  --border: rgba(28, 26, 22, 0.1);
+  --border-strong: rgba(28, 26, 22, 0.2);
+  --shadow: 0 1px 2px rgba(28, 26, 22, 0.05), 0 10px 28px -18px rgba(28, 26, 22, 0.25);
+  --shadow-lg: 0 2px 4px rgba(28, 26, 22, 0.06), 0 24px 54px -26px rgba(28, 26, 22, 0.3);
+  --nav-bg: rgba(243, 241, 235, 0.86);
   --menu-bg: rgba(255, 255, 255, 0.98);
 }
 
@@ -599,8 +1011,8 @@ select {
 }
 
 [data-theme="light"] .btn-secondary:hover {
-  background: rgba(20, 15, 5, 0.07);
-  border-color: rgba(20, 15, 5, 0.3);
+  background: rgba(28, 26, 22, 0.05);
+  border-color: rgba(28, 26, 22, 0.3);
 }
 
 [data-theme="light"] .input,
@@ -630,7 +1042,7 @@ select {
 }
 
 [data-theme="light"] .user-pill {
-  color: #8a5a09;
+  color: var(--text);
 }
 
 /* Ham Tailwind metin renkleri: koyu zemin için seçilmiş soluk/açık tonlar
@@ -762,3 +1174,26 @@ select {
   }
 }
 
+
+[data-theme="light"] .grid-paper {
+  background-image:
+    linear-gradient(rgba(28, 26, 22, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 26, 22, 0.05) 1px, transparent 1px);
+}
+
+[data-theme="light"] .badge-glass {
+  background: rgba(255, 255, 255, 0.82);
+  color: #1c1a16;
+  border-color: rgba(28, 26, 22, 0.12);
+}
+
+[data-theme="light"] .chip:hover,
+[data-theme="light"] .icon-btn:hover,
+[data-theme="light"] .btn-ghost:hover {
+  background: rgba(28, 26, 22, 0.04);
+}
+
+[data-theme="light"] .chip[aria-current="true"],
+[data-theme="light"] .chip-active {
+  color: #fff;
+}

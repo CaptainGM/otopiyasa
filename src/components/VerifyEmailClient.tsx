@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -75,7 +76,7 @@ export function VerifyEmailClient() {
 
       {state === "success" && (
         <>
-          <p className="text-4xl">✅</p>
+          <Icon name="check" size={40} strokeWidth={2} className="mx-auto text-[var(--cheap)]" />
           <p className="text-emerald-300">{message}</p>
           <p className="text-sm text-slate-500">Ana sayfaya yönlendiriliyorsun…</p>
         </>
@@ -83,7 +84,7 @@ export function VerifyEmailClient() {
 
       {state === "error" && (
         <>
-          <p className="text-4xl">⚠️</p>
+          <Icon name="warning" size={40} className="mx-auto text-[var(--accent)]" />
           <p className="text-rose-300">{message}</p>
           {email && (
             <button

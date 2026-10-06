@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -61,6 +62,7 @@ export function FavoriteButton({ carId }: { carId: string }) {
       disabled={loading}
       className="btn btn-secondary"
     >
+      <Icon name="heart" size={16} className={isFavorite ? "fill-[var(--pricey)] text-[var(--pricey)]" : ""} />
       {isFavorite ? "Favoriden çıkar" : "Favorilere ekle"}
     </button>
   );

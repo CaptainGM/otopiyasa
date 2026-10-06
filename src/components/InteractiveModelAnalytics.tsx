@@ -269,7 +269,7 @@ export function InteractiveModelAnalytics({
             <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h3 className="text-base font-bold text-slate-200">
-                  📉 Model Yılına Göre Değer Kaybı (Amortisman Eğrisi)
+                  Model Yılına Göre Değer Kaybı (Amortisman Eğrisi)
                 </h3>
                 <p className="text-xs text-slate-400">
                   Her model yılı için piyasadaki ortalama satış fiyatı. Eğim aracın yaşlandıkça değerini ne hızla kaybettiğini gösterir.
@@ -372,7 +372,7 @@ export function InteractiveModelAnalytics({
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-2">
                   <div className="flex items-center gap-2">
                     <span className="text-amber-400 font-bold text-sm">
-                      🚗 {activeYearPoint.year} Model {selectedBrand} {selectedModel} İlanları
+                      {activeYearPoint.year} Model {selectedBrand} {selectedModel} İlanları
                     </span>
                     <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold text-amber-300">
                       {activeYearPoint.count} adet ilan
@@ -428,7 +428,7 @@ export function InteractiveModelAnalytics({
           <div className="rounded-2xl border border-white/5 bg-slate-950/40 p-4">
             <div className="mb-4">
               <h3 className="text-base font-bold text-slate-200">
-                🚗 Kilometre vs Ortalama Fiyat Dağılımı
+                Kilometre vs Ortalama Fiyat Dağılımı
               </h3>
               <p className="text-xs text-slate-400">
                 Seçilen modelin kat ettiği kilometre dilimlerine göre ortalama piyasa fiyatı. Kilometre arttıkça fiyattaki düşüş trendini gösterir.

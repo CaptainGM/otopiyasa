@@ -20,7 +20,7 @@ export default async function MapPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-300 mb-2">
-            <span>🗺️</span>
+            
             <span>İnteraktif Bölgesel Vitrin</span>
           </div>
           <h1 className="text-3xl font-black text-white">İlan Haritası</h1>

@@ -178,7 +178,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
       {info && (
         <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm text-emerald-200">
-          📧 {info}
+          {info}
         </div>
       )}
 

@@ -21,7 +21,7 @@ export function ReportListingButton({ carId, loggedIn }: { carId: string; logged
   if (!loggedIn) {
     return (
       <Link href={`/login?next=/cars/${carId}`} className="text-xs text-slate-500 hover:text-amber-300 hover:underline">
-        🚩 Bildirmek için giriş yap
+        Bildirmek için giriş yap
       </Link>
     );
   }
@@ -36,7 +36,7 @@ export function ReportListingButton({ carId, loggedIn }: { carId: string; logged
         onClick={() => setOpen(true)}
         className="text-xs text-slate-500 transition hover:text-rose-300 hover:underline"
       >
-        🚩 İlanı bildir
+        İlanı bildir
       </button>
     );
   }

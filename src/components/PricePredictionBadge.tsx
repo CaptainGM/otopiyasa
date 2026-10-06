@@ -1,6 +1,8 @@
 import { formatPrice } from "@/lib/utils";
 import { PricePrediction } from "@/lib/price-prediction";
 import { SUSPICIOUS_DISCOUNT } from "@/lib/deals";
+import { FAIR_BAND_PCT } from "@/lib/market-position";
+import { Icon } from "@/components/Icon";
 
 const METHOD_LABELS: Record<PricePrediction["method"], string> = {
   segment: "Aynı marka/model segmenti",
@@ -10,6 +12,19 @@ const METHOD_LABELS: Record<PricePrediction["method"], string> = {
   average: "Genel piyasa ortalaması",
 };
 
+type Band = "suspicious" | "cheap" | "fair" | "pricey";
+
+const BAND_STYLE: Record<Band, { text: string; chip: string }> = {
+  suspicious: { text: "text-[var(--accent)]", chip: "border-[var(--accent)] text-[var(--accent)]" },
+  cheap: { text: "text-[var(--cheap)]", chip: "border-[var(--cheap)] text-[var(--cheap)]" },
+  fair: { text: "text-[var(--fair)]", chip: "border-[var(--fair)] text-[var(--fair)]" },
+  pricey: { text: "text-[var(--pricey)]", chip: "border-[var(--pricey)] text-[var(--pricey)]" },
+};
+
+/**
+ * İlan sayfasındaki fiyat analizi: ilan fiyatı, aynı yıl/km/hasar durumundaki emsallerden hesaplanan adil değerle
+ * karşılaştırılır (bkz. lib/price-prediction.ts). Bantlar kart göstergesiyle aynı: ±%6 adil, %30+ altı şüpheli.
+ */
 export function PricePredictionBadge({
   actualPrice,
   prediction,
@@ -30,134 +45,107 @@ export function PricePredictionBadge({
   }
 
   const diff = actualPrice - prediction.predictedPrice;
-  const pct = prediction.predictedPrice
-    ? Math.round((diff / prediction.predictedPrice) * 100)
-    : 0;
+  const pct = prediction.predictedPrice ? Math.round((diff / prediction.predictedPrice) * 100) : 0;
 
-  // Termometre ibresi (0 fark %50 merkezde, her %1 fark için %2.5 kayma)
+  // İbre: 0 fark ortada, her %1 fark için %2,5 kayma.
   const pinPosition = Math.max(6, Math.min(94, 50 + pct * 2.5));
 
-  let statusTag = "Piyasa Değerinde";
-  let statusIcon = "🟢";
-  let statusColor = "text-sky-300 border-sky-500/30 bg-sky-500/10";
-  let analysisDesc = `İlan fiyatı, aracın model yılı, kilometresi ve hasar kondisyonuna göre hesaplanan adil piyasa ederiyle tam uyumludur.`;
+  let band: Band = "fair";
+  let statusTag = "Piyasa değerinde";
+  let analysisDesc =
+    "İlan fiyatı, aracın model yılı, kilometresi ve hasar durumuna göre hesaplanan adil piyasa değeriyle uyumlu.";
 
   if (pct <= -Math.round(SUSPICIOUS_DISCOUNT * 100)) {
+    band = "suspicious";
     statusTag = `Dikkat: piyasanın %${Math.abs(pct)} altında`;
-    statusIcon = "⚠️";
-    statusColor = "text-amber-200 border-amber-400/40 bg-amber-500/15";
-    analysisDesc = `Bu fiyat benzer araçların çok altında. Bu kadar düşük fiyatlar çoğu zaman hatalı girilmiş ya da kapora/dolandırıcılık amaçlı ilanlardır: aracı görmeden ve ekspertiz yaptırmadan ödeme yapma, IBAN'a kapora gönderme.`;
-  } else if (pct <= -6) {
-    statusTag = `Kondisyonuna Göre %${Math.abs(pct)} Hesaplı (Fırsat)`;
-    statusIcon = "🔥";
-    statusColor = "text-emerald-300 border-emerald-500/30 bg-emerald-500/15";
-    analysisDesc = `Bu araç, benzer kilometre ve hasar kondisyonundaki emsallerine göre %${Math.abs(pct)} daha avantajlı fiyatlandırılmıştır.`;
-  } else if (pct >= 6) {
-    statusTag = `Hasar ve KM Durumuna Göre %${pct} Yüksek`;
-    statusIcon = "🔴";
-    statusColor = "text-rose-300 border-rose-500/30 bg-rose-500/15";
-    analysisDesc = `Bu araç, aynı kilometre ve hasar durumundaki piyasa beklentisinin %${pct} üzerinde fiyatlandırılmıştır.`;
+    analysisDesc =
+      "Bu fiyat benzer araçların çok altında. Bu kadar düşük fiyatlar çoğu zaman hatalı girilmiş ya da kapora/dolandırıcılık amaçlı ilanlardır: aracı görmeden ve ekspertiz yaptırmadan ödeme yapma, IBAN'a kapora gönderme.";
+  } else if (pct <= -FAIR_BAND_PCT) {
+    band = "cheap";
+    statusTag = `Emsallerine göre %${Math.abs(pct)} hesaplı`;
+    analysisDesc = `Bu araç, benzer kilometre ve hasar durumundaki emsallerine göre %${Math.abs(pct)} daha uygun fiyatlı.`;
+  } else if (pct >= FAIR_BAND_PCT) {
+    band = "pricey";
+    statusTag = `Emsallerine göre %${pct} yüksek`;
+    analysisDesc = `Bu araç, aynı kilometre ve hasar durumundaki piyasa beklentisinin %${pct} üzerinde fiyatlandırılmış.`;
   }
 
   const lowConfidence =
-    (prediction.method === "brand" || prediction.method === "global") &&
-    (prediction.segmentSize ?? 0) < 3;
+    (prediction.method === "brand" || prediction.method === "global") && (prediction.segmentSize ?? 0) < 3;
+  const showSegment = !!marketAvgPrice && !!marketListingCount && marketListingCount >= 3;
+  const style = BAND_STYLE[band];
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-slate-900/80 p-4 space-y-3.5 shadow-xl backdrop-blur-md">
-      {/* Üst Başlık & Rozet */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🌡️</span>
-          <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Yapay Zeka Fiyat Analiz Termometresi
-            </h4>
-            <p className="text-[11px] text-slate-400">
-              {METHOD_LABELS[prediction.method]} · {prediction.sampleSize} emsal araç
-            </p>
-          </div>
+    <section className="surface-2 space-y-4 p-4" aria-label="Fiyat analizi">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="eyebrow flex items-center gap-1.5">
+            <Icon name="thermo" size={14} />
+            Fiyat analizi
+          </p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            {METHOD_LABELS[prediction.method]} · {prediction.sampleSize} emsal araç
+          </p>
         </div>
-        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${statusColor}`}>
-          <span>{statusIcon}</span>
+        <span className={`badge !bg-transparent ${style.chip}`}>
+          {band === "suspicious" && <Icon name="warning" size={13} />}
           {statusTag}
         </span>
       </div>
 
-      {/* Fiyat Kıyaslama Rakamları */}
-      <div
-        className={`grid ${
-          marketAvgPrice && marketListingCount && marketListingCount >= 3
-            ? "grid-cols-1 sm:grid-cols-3"
-            : "grid-cols-2"
-        } gap-3 rounded-xl bg-white/5 p-3 border border-white/5`}
-      >
+      <dl className={`grid gap-3 ${showSegment ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}>
         <div>
-          <p className="text-[11px] text-slate-400">AI Adil Piyasa Ederi</p>
-          <p className="text-base font-black text-emerald-300">
-            {formatPrice(prediction.predictedPrice)}
-          </p>
-          <p className="text-[10px] text-slate-500">KM ve hasara göre</p>
+          <dt className="text-[11px] text-[var(--muted)]">Adil piyasa değeri</dt>
+          <dd className="num mt-0.5 text-base font-semibold">{formatPrice(prediction.predictedPrice)}</dd>
+          <dd className="text-[10px] text-[var(--faint)]">km ve hasara göre</dd>
         </div>
         <div>
-          <p className="text-[11px] text-slate-400">Piyasa Farkı</p>
-          <p
-            className={`text-base font-bold ${
-              pct < 0 ? "text-emerald-400" : pct > 0 ? "text-rose-400" : "text-sky-300"
-            }`}
-          >
-            {diff > 0 ? "+" : ""}{formatPrice(diff)} ({pct > 0 ? "+" : ""}{pct}%)
-          </p>
-          <p className="text-[10px] text-slate-500">
-            {pct < 0 ? "Fırsat avantajı" : pct > 0 ? "Piyasa üzerinde" : "Tam ederinde"}
-          </p>
+          <dt className="text-[11px] text-[var(--muted)]">Fark</dt>
+          <dd className={`num mt-0.5 text-base font-semibold ${style.text}`}>
+            {diff > 0 ? "+" : ""}
+            {formatPrice(diff)} ({pct > 0 ? "+" : pct < 0 ? "−" : ""}%{Math.abs(pct)})
+          </dd>
+          <dd className="text-[10px] text-[var(--faint)]">
+            {pct < 0 ? "değerinin altında" : pct > 0 ? "değerinin üstünde" : "tam değerinde"}
+          </dd>
         </div>
-        {marketAvgPrice && marketListingCount && marketListingCount >= 3 ? (
+        {showSegment ? (
           <div>
-            <p className="text-[11px] text-slate-400">Segment Ham Ort.</p>
-            <p className="text-base font-bold text-amber-200">
-              {formatPrice(marketAvgPrice)}
-            </p>
-            <p className="text-[10px] text-slate-500">
+            <dt className="text-[11px] text-[var(--muted)]">Segment ortalaması</dt>
+            <dd className="num mt-0.5 text-base font-semibold">{formatPrice(marketAvgPrice!)}</dd>
+            <dd className="text-[10px] text-[var(--faint)]">
               {marketScope === "family" && marketFamilyLabel
                 ? `${marketFamilyLabel} ailesi, aynı yıl (tüm donanımlar): ${marketListingCount} aktif ilan`
                 : `Aynı marka/model/yıl: ${marketListingCount} aktif ilan`}
-            </p>
+            </dd>
           </div>
         ) : null}
-      </div>
+      </dl>
 
-      {/* Görsel Termometre Çubuğu */}
-      <div className="space-y-1.5 pt-1">
-        <div className="relative h-3 w-full rounded-full bg-gradient-to-r from-emerald-500 via-sky-400 to-rose-500 p-0.5 shadow-inner">
-          {/* İbre / Pin */}
-          <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center transition-all duration-500"
-            style={{ left: `${pinPosition}%` }}
-          >
-            <div className="h-4 w-4 rounded-full border-2 border-slate-900 bg-white shadow-md" />
-          </div>
+      <div className="space-y-1.5">
+        <div className="gauge">
+          <span className="gauge-marker" style={{ left: `${pinPosition}%` }} />
         </div>
-        {/* Termometre Bölge Açıklamaları */}
-        <div className="flex justify-between text-[10px] font-semibold text-slate-400">
-          <span className="text-emerald-400">Fırsat (Hesaplı)</span>
-          <span className="text-sky-300">Adil Değer</span>
-          <span className="text-rose-400">Piyasa Üstü</span>
+        <div className="num flex justify-between text-[10px] uppercase tracking-[0.08em]">
+          <span className="text-[var(--cheap)]">Hesaplı</span>
+          <span className="text-[var(--fair)]">Adil</span>
+          <span className="text-[var(--pricey)]">Yüksek</span>
         </div>
       </div>
 
-      {/* Açıklama Metni */}
-      <p className="text-xs leading-relaxed text-slate-300 border-t border-white/5 pt-2.5">
-        💡 {analysisDesc}
-      </p>
+      <p className="border-t border-[var(--border)] pt-3 text-xs leading-relaxed text-[var(--muted)]">{analysisDesc}</p>
 
       {lowConfidence && (
-        <p className="rounded-lg bg-amber-500/10 p-2.5 text-[11px] leading-relaxed text-amber-300/90 border border-amber-500/20">
-          ⚠️ Bu model segmentinde piyasada sınırlı sayıda ({prediction.segmentSize} ilan) veri bulunduğu için aralık geniş olabilir.
-          {prediction.comparableRange &&
-            ` Bulunan ilanlar: ${formatPrice(prediction.comparableRange.min)} – ${formatPrice(prediction.comparableRange.max)}.`}
+        <p className="flex gap-2 rounded-lg border border-[var(--border-strong)] p-2.5 text-[11px] leading-relaxed text-[var(--muted)]">
+          <Icon name="warning" size={14} className="mt-0.5 shrink-0 text-[var(--accent)]" />
+          <span>
+            Bu model segmentinde piyasada sınırlı sayıda ({prediction.segmentSize} ilan) veri bulunduğu için aralık geniş
+            olabilir.
+            {prediction.comparableRange &&
+              ` Bulunan ilanlar: ${formatPrice(prediction.comparableRange.min)} – ${formatPrice(prediction.comparableRange.max)}.`}
+          </span>
         </p>
       )}
-    </div>
+    </section>
   );
 }

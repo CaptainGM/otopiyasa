@@ -24,7 +24,7 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
   return (
     <section className={`rounded-2xl border p-4 ${tone}`} aria-label="Yakıt maliyeti">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-200">⛽ Yakıt maliyeti</h3>
+        <h3 className="eyebrow">Yakıt maliyeti</h3>
         <span className="text-xs text-slate-500">
           {electric ? "Tahmini elektrik tarifesi" : `${cost.place} pompa fiyatı · ${cost.priceSource} · ${date}`}
         </span>
@@ -50,7 +50,7 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
             {electric.kwhPer100} kWh/100 km × {tl(electric.homePricePerKwh, 1)} ₺/kWh (ev) = {tl(cost.per100Km, 0)} ₺. Halka açık AC şarj ~
             {tl(electric.publicPricePerKwh, 1)} ₺/kWh alındı.
           </p>
-          <p className="mt-2 text-xs text-slate-500">ℹ️ {cost.note}</p>
+          <p className="mt-2 text-xs text-slate-500">{cost.note}</p>
         </>
       ) : plug ? (
         <>
@@ -68,7 +68,7 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
             {tl(plug.electricPer100Km, 0)} ₺. Halka açık AC şarj ~{tl(plug.publicPricePerKwh, 1)} ₺/kWh alındı.
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            ℹ️ {cost.note} Elektrik fiyatları tahminidir ({plug.electricityReviewed} itibarıyla), pompa fiyatı gibi günlük güncellenmez.
+            {cost.note} Elektrik fiyatları tahminidir ({plug.electricityReviewed} itibarıyla), pompa fiyatı gibi günlük güncellenmez.
           </p>
         </>
       ) : (
@@ -81,11 +81,10 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
           </p>
           {cost.ratingText && (
             <p className={`mt-2 text-sm font-semibold ${cost.rating === "low" ? "text-emerald-300" : "text-orange-300"}`}>
-              {cost.rating === "low" ? "✅ " : "⚠️ "}
               {cost.ratingText}
             </p>
           )}
-          {cost.note && <p className="mt-2 text-xs text-slate-400">ℹ️ {cost.note}</p>}
+          {cost.note && <p className="mt-2 text-xs text-slate-400">{cost.note}</p>}
         </>
       )}
     </section>

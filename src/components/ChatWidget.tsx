@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/utils";
+import { Icon } from "@/components/Icon";
 import {
   availableChatSize,
   clampChatSize,
@@ -222,7 +223,7 @@ export function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-50">
+    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
       {open && (
         <div
           className="relative mb-3 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[rgba(12,14,20,0.98)] shadow-2xl backdrop-blur-xl"
@@ -251,7 +252,10 @@ export function ChatWidget() {
             </svg>
           </div>
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-            <strong className="pl-3 text-sm">OtoPiyasa Asistan</strong>
+            <strong className="flex items-center gap-2 pl-3 text-sm">
+              <Icon name="spark" size={15} className="text-[var(--accent)]" />
+              OtoPiyasa Asistan
+            </strong>
             <div className="flex items-center gap-2">
               <button
                 onClick={clearChat}
@@ -267,14 +271,14 @@ export function ChatWidget() {
                 aria-label={maximized ? "Küçült" : "Büyüt"}
                 title={maximized ? "Küçült" : "Büyüt"}
               >
-                {maximized ? "🗗" : "🗖"}
+                <Icon name="expand" size={15} />
               </button>
               <button
                 onClick={() => setOpen(false)}
                 className="text-slate-400 hover:text-white"
                 aria-label="Kapat"
               >
-                ✕
+                <Icon name="close" size={16} />
               </button>
             </div>
           </div>
@@ -319,7 +323,7 @@ export function ChatWidget() {
                       />
                     ) : (
                       <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-md bg-white/5 text-slate-600">
-                        🚗
+                        <Icon name="car" size={22} />
                       </div>
                     )}
                     <span className="min-w-0 flex-1">
@@ -387,10 +391,12 @@ export function ChatWidget() {
 
       <button
         onClick={() => setOpen((v) => !v)}
-        className="btn btn-primary h-14 w-14 rounded-full text-xl shadow-xl"
-        aria-label="Asistanı aç/kapat"
+        className="chat-fab ml-auto"
+        aria-label={open ? "Asistanı kapat" : "Asistana sor"}
+        aria-expanded={open}
       >
-        {open ? "✕" : "💬"}
+        <Icon name={open ? "close" : "spark"} size={18} className={open ? "" : "text-[var(--accent)]"} />
+        {!open && <span className="hidden sm:inline">Asistana sor</span>}
       </button>
     </div>
   );

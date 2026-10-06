@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@/components/Icon";
 
 
 export function ShareButton({ title }: { title: string }) {
@@ -37,10 +38,11 @@ export function ShareButton({ title }: { title: string }) {
   return (
     <div className="relative">
       <button onClick={share} className="btn btn-secondary">
-        ↗ Paylaş
+        <Icon name="share" size={16} />
+        Paylaş
       </button>
       {open && (
-        <div className="absolute z-10 mt-2 w-48 space-y-1 rounded-xl border border-white/10 bg-[#0f1420] p-2 shadow-xl">
+        <div className="absolute z-10 mt-2 w-48 space-y-1 rounded-xl border border-[var(--border-strong)] bg-[var(--menu-bg)] p-2 shadow-xl">
           <a
             href={whatsappHref}
             target="_blank"

@@ -109,7 +109,7 @@ export function OfferThread({ initial }: { initial: OfferView }) {
 
       {offer.status === "accepted" && offer.remainingMs !== null && (
         <p className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-          ⏳ Mesajlaşma açık — kalan süre: <strong>{formatRemaining(offer.remainingMs)}</strong>.
+          Mesajlaşma açık — kalan süre: <strong>{formatRemaining(offer.remainingMs)}</strong>.
           Süre dolduğunda bu sohbet kapanır.
         </p>
       )}
@@ -118,7 +118,7 @@ export function OfferThread({ initial }: { initial: OfferView }) {
           taşıma ve görmeden ödeme, buradaki en yaygın dolandırıcılık kalıpları. */}
       {offer.chatOpen && (
         <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-amber-100/90">
-          🛡️ <strong>Güvenliğin için (alıcı ve satıcı):</strong> Görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı
+          <strong>Güvenliğin için (alıcı ve satıcı):</strong> Görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı
           önerme ya da kabul etme — sorun çıkarsa kanıt burada kalır. Aracı görmeden/denemeden{" "}
           <strong>asla kapora ya da ön ödeme</strong> gönderme. <strong>IBAN/hesap numarası isteyen ya da gönderen</strong>,
           harici bir siteye veya &quot;güvenli ödeme&quot; bağlantısına yönlendiren kişiye güvenme; ödemeyi ve devri aracı görüp
@@ -129,7 +129,7 @@ export function OfferThread({ initial }: { initial: OfferView }) {
       {/* Telefon anlaşma sağlanınca açılır; ilan sayfasında hiç görünmüyor. */}
       {offer.sellerPhone && (
         <p className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-          📞 Satıcının telefonu:{" "}
+          Satıcının telefonu:{" "}
           <a href={`tel:${offer.sellerPhone.replace(/\s/g, "")}`} className="font-black hover:underline">
             {offer.sellerPhone}
           </a>
@@ -171,7 +171,7 @@ export function OfferThread({ initial }: { initial: OfferView }) {
                     <div className="mt-0.5 max-w-full space-y-0.5 px-1">
                       {e.riskFlags.map((flag) => (
                         <p key={flag} className="text-[10px] leading-tight text-rose-300">
-                          ⚠️ {RISK_FLAG_LABEL[flag]}
+                          {RISK_FLAG_LABEL[flag]}
                         </p>
                       ))}
                     </div>

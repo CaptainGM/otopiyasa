@@ -24,7 +24,7 @@ export function ReportChatButton({ offerId }: { offerId: string }) {
         onClick={() => setOpen(true)}
         className="text-xs text-slate-500 transition hover:text-rose-300 hover:underline"
       >
-        🚩 Bu sohbeti bildir
+        Bu sohbeti bildir
       </button>
     );
   }

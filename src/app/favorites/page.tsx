@@ -49,7 +49,7 @@ export default async function FavoritesPage() {
       ) : (
         <>
           {favorites.length > 0 && (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="listing-grid">
               {favorites.map((car) => (
                 <CarCard key={car._id} car={serializeCarListItem(car)} />
               ))}
@@ -62,7 +62,7 @@ export default async function FavoritesPage() {
               <p className="text-sm text-slate-500">
                 Bu ilanlar satıldı ya da kaynağından kaldırıldı. Ayrıntıları gösterilmez; istersen favorilerden çıkarabilirsin.
               </p>
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              <div className="listing-grid">
                 {unavailable.map((item) => (
                   <UnavailableFavoriteCard key={item._id} item={item} />
                 ))}

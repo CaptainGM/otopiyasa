@@ -4,7 +4,6 @@ export const revalidate = 0;
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { findCarsPage, parseCarFilters } from "@/lib/car-query";
-import { getMarketMap } from "@/lib/market-price";
 import { attachMarketToCars, isLeanCarDoc } from "@/lib/serialize-car";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 import { isCacheableFeedSeed, isValidFeedSlot } from "@/lib/car-mix";
@@ -18,21 +17,11 @@ export async function GET(request: Request) {
     const { docs: rawItems, total, page, limit } = await findCarsPage(filters);
     const docs = rawItems.filter(isLeanCarDoc);
     const compact = searchParams.get("compact") === "1";
-    // Listing rows never show market aggregates. Skipping the aggregation for
-    // compact requests avoids a second database query on every infinite-scroll
-    // page and on the mobile home list; detail/compare API responses stay full.
+    // Kartlardaki piyasa göstergesi ilanın üstündeki saatlik anlık görüntüyü okur (bkz. lib/market-snapshot.ts):
+    // her sayfada ayrıca piyasa hesabı yapılmaz. İlan sayfası ve karşılaştırma anlık hesaplar.
     const items = compact
       ? docs.map((car) => serializeCarListItem(car))
-      : attachMarketToCars(
-          docs,
-          await getMarketMap(
-            docs.map((car) => ({
-              brand: car.brand,
-              model: car.model,
-              year: car.year,
-            }))
-          )
-        );
+      : attachMarketToCars(docs, new Map());
 
     const isDefaultQuery =
       !searchParams.toString() ||

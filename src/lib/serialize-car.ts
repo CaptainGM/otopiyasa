@@ -41,6 +41,8 @@ export type LeanCarDoc = {
   priceHistory?: Array<{ price: number; recordedAt: Date | string }>;
   verifiedFeatures?: string[];
   featuresVerifiedAt?: Date;
+  /** Saatlik piyasa anlık görüntüsü (bkz. lib/market-snapshot.ts). */
+  market?: { avg?: number; count?: number; scope?: string } | null;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -55,8 +57,10 @@ export function serializeCar(
   doc: LeanCarDoc,
   market?: MarketSegmentStats
 ): Car {
-  const marketAvgPrice = market?.avgPrice;
-  const marketListingCount = market?.listingCount;
+  // Anlık hesap verilmediyse (liste sayfaları) ilanın üstündeki saatlik anlık görüntü kullanılır.
+  const stored = !market && doc.market?.avg ? doc.market : undefined;
+  const marketAvgPrice = market ? market.avgPrice : stored?.avg;
+  const marketListingCount = market ? market.listingCount : stored?.count;
   const priceVsMarket =
     marketAvgPrice !== undefined ? doc.price - marketAvgPrice : undefined;
 
@@ -98,7 +102,7 @@ export function serializeCar(
     businessName: doc.businessName || "",
     marketAvgPrice,
     marketListingCount,
-    marketScope: market?.scope,
+    marketScope: market?.scope ?? (stored?.scope === "family" ? "family" : stored ? "model" : undefined),
     marketFamilyLabel: market?.familyLabel,
     priceVsMarket,
     createdAt: doc.createdAt?.toISOString?.() || "",

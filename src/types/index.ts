@@ -95,6 +95,9 @@ export type CarListItem = Pick<
   | "marketListingCount"
   | "status"
 > & {
+  /** Kart başlığı marka + model (ilan başlığı satıcının serbest metni, ikinci satırda). */
+  brand?: string;
+  model?: string;
   images: string[];
   features: Pick<CarFeatures, "fuelType" | "transmission">;
   priceHistory: PricePoint[];

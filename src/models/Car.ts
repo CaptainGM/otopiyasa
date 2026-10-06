@@ -141,6 +141,14 @@ const CarSchema = new Schema(
      * listing-lifecycle.ts requestPriorityVerify). Kontrol edilince silinir.
      */
     verifyPriorityAt: { type: Date, default: undefined },
+    /**
+     * Segmentin piyasa ortalaması (saatlik anlık görüntü, bkz. lib/market-snapshot.ts): kartlardaki ucuz/adil/pahalı
+     * göstergesi her istekte hesaplanmasın diye. scope "family": aynı yılın tüm donanımları birlikte sayıldı.
+     */
+    market: {
+      type: new Schema({ avg: Number, count: Number, scope: String, at: Date }, { _id: false }),
+      default: undefined,
+    },
   },
   { timestamps: true }
 );

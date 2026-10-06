@@ -4,6 +4,8 @@ import { withPendingLabels } from "@/lib/scraper/feature-merge";
 /** Strip fields the listing row never renders before sending it to a client. */
 type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> & {
   _id: string | { toString(): string };
+  brand?: string;
+  model?: string;
   imageUrl?: string;
   images?: string[];
   damageFlag?: boolean;
@@ -14,6 +16,8 @@ type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> 
   priceHistory?: Array<{ price: number; recordedAt: string | Date }>;
   marketAvgPrice?: number;
   marketListingCount?: number;
+  /** Saatlik piyasa anlık görüntüsü (bkz. lib/market-snapshot.ts); kart göstergesi için. */
+  market?: { avg?: number; count?: number } | null;
   verifiedFeatures?: string[];
   featuresVerifiedAt?: Date | string;
 };
@@ -24,6 +28,8 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
   return {
     _id: car._id.toString(),
     title: car.title,
+    brand: car.brand,
+    model: car.model,
     year: car.year,
     price: car.price,
     mileage: car.mileage,
@@ -46,7 +52,7 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
       price: point.price,
       recordedAt: point.recordedAt.toString(),
     })),
-    marketAvgPrice: car.marketAvgPrice,
-    marketListingCount: car.marketListingCount,
+    marketAvgPrice: car.marketAvgPrice ?? car.market?.avg,
+    marketListingCount: car.marketListingCount ?? car.market?.count,
   };
 }

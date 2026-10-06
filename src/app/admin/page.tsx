@@ -8,6 +8,8 @@ import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
 import { DaemonStatsPanel } from "@/components/DaemonStatsPanel";
 import { HomeWatcherPanel } from "@/components/HomeWatcherPanel";
+import { SystemHealthCard } from "@/components/SystemHealthCard";
+import { collectHealthSnapshot, evaluateHealth } from "@/lib/health-check";
 import { UNVERIFIED_ARABAM_FILTER } from "@/lib/unverified-listings";
 import { ScrapePanel } from "@/components/ScrapePanel";
 import { SourceBadge } from "@/components/SourceBadge";
@@ -326,6 +328,10 @@ export default async function AdminPage() {
     { label: "Kontrol Edilmemiş", value: unverifiedCount, href: "/admin/unverified" },
   ];
 
+  // Anlık sistem sağlığı (yalnızca okuma; bildirim saatlik denetimde gider).
+  const healthAt = new Date();
+  const healthIssues = await collectHealthSnapshot(healthAt).then(evaluateHealth).catch(() => []);
+
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -377,6 +383,8 @@ export default async function AdminPage() {
           )
         ))}
       </div>
+
+      <SystemHealthCard issues={healthIssues} checkedAt={healthAt} />
 
       {/* 1. SIRADA: 7/24 OTONOM MOTOR & SAATLİK TAKİP */}
       <DaemonStatsPanel

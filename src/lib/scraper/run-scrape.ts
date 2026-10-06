@@ -174,7 +174,7 @@ export async function saveListing(
       if (markVerified && (existing.missingSince || now.getTime() - lastSeen > SEEN_WRITE_INTERVAL_MS)) {
         await Car.updateOne(
           { _id: existing._id },
-          { $set: { lastVerifiedAt: now, lastVerifyAttemptAt: now }, $unset: { missingSince: 1, missingChecks: 1 } },
+          { $set: { lastVerifiedAt: now, lastVerifyAttemptAt: now }, $unset: { missingSince: 1, missingChecks: 1, verifyPriorityAt: 1 } },
           { timestamps: false }
         );
       }
@@ -238,6 +238,7 @@ export async function saveListing(
       existing.lastVerifyAttemptAt = now;
       existing.missingSince = undefined;
       existing.missingChecks = undefined;
+      (existing as any).verifyPriorityAt = undefined;
     }
 
     if (descChanged || mileageChanged || damageChanged || imagesEnriched) {

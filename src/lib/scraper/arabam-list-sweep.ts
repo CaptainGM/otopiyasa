@@ -250,7 +250,7 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
         filter: { _id: car._id },
         update: {
           $set: set,
-          $unset: { missingSince: 1, missingChecks: 1, lastVerifyStatus: 1 },
+          $unset: { missingSince: 1, missingChecks: 1, lastVerifyStatus: 1, verifyPriorityAt: 1 },
           ...(keys.length ? { $addToSet: { verifiedFeatures: { $each: keys } } } : {}),
         },
         timestamps: false,

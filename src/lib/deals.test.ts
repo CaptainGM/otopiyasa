@@ -79,3 +79,10 @@ describe("pickDeals", () => {
     expect(deals[0].score).toBeGreaterThanOrEqual(deals[1]?.score ?? 0);
   });
 });
+
+describe("şüpheli ucuz ilan", () => {
+  it("piyasanın %30'undan fazla altındaki ilanı fırsat saymaz", () => {
+    expect(pickDeals([car({ price: 590_000, marketAvgPrice: 1_000_000, marketListingCount: 10 })])).toHaveLength(0);
+    expect(pickDeals([car({ price: 750_000, marketAvgPrice: 1_000_000, marketListingCount: 10 })])).toHaveLength(1);
+  });
+});

@@ -359,19 +359,30 @@ export async function sweepAndCleanDeadListings(options: {
       ? { sourceSite: options.source }
       : { sourceSite: { $nin: [...INVENTORY_ONLY_SOURCES, ...(options.excludeSource ? [options.excludeSource] : []), ...(options.excludeSources || [])] } };
 
-  const candidates = await Car.find({
-    $and: [
-      { status: "active", listingUrl: { $nin: ["", null] } },
-      SCRAPED_SOURCE_FILTER,
-      sourceFilter,
-      { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
-    ],
-  })
-    .sort({ lastVerifiedAt: 1 })
+  type Candidate = { _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string; price?: number };
+  const baseFilter = [
+    { status: "active", listingUrl: { $nin: ["", null] } },
+    SCRAPED_SOURCE_FILTER,
+    sourceFilter,
+    { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
+  ];
+  // Önce kullanıcıların açtığı ve son kontrolü eski ilanlar (bkz. requestPriorityVerify), sonra en eskiler.
+  const priority = await Car.find({ $and: [...baseFilter, { verifyPriorityAt: { $exists: true } }] })
+    .sort({ verifyPriorityAt: 1 })
     .limit(limit)
     .select("_id title sourceSite listingUrl externalId price")
     .maxTimeMS(8000)
-    .lean<Array<{ _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string; price?: number }>>();
+    .lean<Candidate[]>();
+  const rest =
+    priority.length < limit
+      ? await Car.find({ $and: [...baseFilter, { _id: { $nin: priority.map((c) => c._id) } }] })
+          .sort({ lastVerifiedAt: 1 })
+          .limit(limit - priority.length)
+          .select("_id title sourceSite listingUrl externalId price")
+          .maxTimeMS(8000)
+          .lean<Candidate[]>()
+      : [];
+  const candidates = [...priority, ...rest];
 
   const details: SweepDetail[] = [];
   if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, errors: 0, breaker: [], pausedSources: [], details };

@@ -49,7 +49,13 @@ class MarketBadge extends StatelessWidget {
     final Color statusColor;
     final String analysisDesc;
 
-    if (pct <= -6) {
+    // Piyasanın %30'undan fazla altı "fırsat" değil uyarıdır (web ile aynı kural, bkz. deals.ts SUSPICIOUS_DISCOUNT).
+    if (pct <= -30) {
+      statusTag = 'Dikkat: piyasanın %${pct.abs()} altında';
+      statusIcon = '⚠️';
+      statusColor = const Color(0xFFF59E0B);
+      analysisDesc = "Bu fiyat benzer araçların çok altında. Bu kadar düşük fiyatlar çoğu zaman hatalı girilmiş ya da kapora/dolandırıcılık amaçlı ilanlardır: aracı görmeden ve ekspertiz yaptırmadan ödeme yapma, IBAN'a kapora gönderme.";
+    } else if (pct <= -6) {
       statusTag = 'Kondisyonuna Göre %${pct.abs()} Hesaplı (Fırsat)';
       statusIcon = '🔥';
       statusColor = const Color(0xFF10B981);

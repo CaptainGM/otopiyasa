@@ -55,6 +55,8 @@ class _DetailScreenState extends State<DetailScreen> {
       _loading = widget.initialCar == null;
     }
     _load();
+    // Görüntülenme + bekçi önceliği (kaynakta son kontrolü eski ilan sıranın başına alınır).
+    _api.reportView(widget.carId);
     _api.fetchFuelCost(widget.carId).then((cost) {
       if (mounted && cost != null) setState(() => _fuelCost = cost);
     });

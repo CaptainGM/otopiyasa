@@ -4,10 +4,12 @@ import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { getNavbarUser } from "@/lib/auth";
 import { checkSharedRateLimit } from "@/lib/api-rate-limit";
+import { requestPriorityVerify } from "@/lib/scraper/listing-lifecycle";
 
 /**
  * İlan görüntülenme sayacı. İlan sayfası önbellekten geldiği için sayaç tarayıcıdan bir kez bildirilir
- * (bkz. components/ListingViewerIslands.tsx ViewCounter). İlan sahibi kendi ilanına bakınca artmaz.
+ * (bkz. components/ListingViewerIslands.tsx ViewCounter; mobil uygulama da ilan açılınca çağırır). İlan sahibi kendi
+ * ilanına bakınca artmaz. JavaScript çalıştırmayan botlar çağırmadığı için bekçi önceliği de yalnızca gerçek ziyaretçilerden gelir.
  */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -23,6 +25,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       { $inc: { viewCount: 1 } },
       { timestamps: false }
     );
+    // Kullanıcının gördüğü ilan kaynakta uzun süredir kontrol edilmediyse bekçi onu sıranın başına alır.
+    await requestPriorityVerify(id);
   } catch {
     // sayaç kritik değil
   }

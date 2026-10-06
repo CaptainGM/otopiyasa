@@ -39,6 +39,13 @@ import {
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { enrichArabamCarIfNeeded } from "@/lib/scraper/enrich-arabam";
+import { LIFECYCLE } from "@/lib/scraper/listing-lifecycle";
+
+/** Kaynaktaki son kontrol, açılınca öncelik verilecek kadar eski mi (bkz. requestPriorityVerify). */
+function isStaleCheck(lastChecked?: string | Date | null): boolean {
+  if (!lastChecked) return true;
+  return Date.now() - new Date(lastChecked).getTime() > LIFECYCLE.priorityStaleMs;
+}
 
 /** Fiyat dağılımı için segment fiyatları: önce marka+model, az ise yalnız marka. */
 async function loadSegmentPrices(
@@ -255,6 +262,12 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
                 title={new Date(lastChecked).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
               >
                 ✓ Kaynakta son kontrol: {formatRelativeTr(lastChecked)}
+              </p>
+            )}
+            {car.status === "active" && car.sourceSite === "arabam" && isStaleCheck(lastChecked) && (
+              <p className="mt-0.5 text-xs text-slate-400">
+                Bu ilan açıldığı için kaynağında yeniden kontrol sırasına alındı; fiyat ya da durum değiştiyse kısa süre içinde
+                güncellenir.
               </p>
             )}
           </div>

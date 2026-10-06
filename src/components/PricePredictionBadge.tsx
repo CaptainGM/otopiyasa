@@ -1,5 +1,6 @@
 import { formatPrice } from "@/lib/utils";
 import { PricePrediction } from "@/lib/price-prediction";
+import { SUSPICIOUS_DISCOUNT } from "@/lib/deals";
 
 const METHOD_LABELS: Record<PricePrediction["method"], string> = {
   segment: "Aynı marka/model segmenti",
@@ -41,7 +42,12 @@ export function PricePredictionBadge({
   let statusColor = "text-sky-300 border-sky-500/30 bg-sky-500/10";
   let analysisDesc = `İlan fiyatı, aracın model yılı, kilometresi ve hasar kondisyonuna göre hesaplanan adil piyasa ederiyle tam uyumludur.`;
 
-  if (pct <= -6) {
+  if (pct <= -Math.round(SUSPICIOUS_DISCOUNT * 100)) {
+    statusTag = `Dikkat: piyasanın %${Math.abs(pct)} altında`;
+    statusIcon = "⚠️";
+    statusColor = "text-amber-200 border-amber-400/40 bg-amber-500/15";
+    analysisDesc = `Bu fiyat benzer araçların çok altında. Bu kadar düşük fiyatlar çoğu zaman hatalı girilmiş ya da kapora/dolandırıcılık amaçlı ilanlardır: aracı görmeden ve ekspertiz yaptırmadan ödeme yapma, IBAN'a kapora gönderme.`;
+  } else if (pct <= -6) {
     statusTag = `Kondisyonuna Göre %${Math.abs(pct)} Hesaplı (Fırsat)`;
     statusIcon = "🔥";
     statusColor = "text-emerald-300 border-emerald-500/30 bg-emerald-500/15";

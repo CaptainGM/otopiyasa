@@ -136,6 +136,11 @@ const CarSchema = new Schema(
      * (bkz. lib/vehicle-scope.ts). Liste filtresi ve analiz tipleri karıştırmasın diye.
      */
     vehicleClass: { type: String, default: undefined },
+    /**
+     * Bir kullanıcı ilanı açtı ve kaynaktaki son kontrol eski: bekçi bu ilanı sıranın başına alır (bkz.
+     * listing-lifecycle.ts requestPriorityVerify). Kontrol edilince silinir.
+     */
+    verifyPriorityAt: { type: Date, default: undefined },
   },
   { timestamps: true }
 );
@@ -146,6 +151,7 @@ CarSchema.index({ title: "text", brand: "text", model: "text" });
 
 CarSchema.index({ status: 1, createdAt: -1 });
 CarSchema.index({ status: 1, vehicleClass: 1, createdAt: -1 });
+CarSchema.index({ verifyPriorityAt: 1 }, { sparse: true });
 CarSchema.index({ status: 1, moderationStatus: 1, createdAt: -1 });
 CarSchema.index({ status: 1, viewCount: -1 });
 CarSchema.index({ status: 1, updatedAt: -1 });

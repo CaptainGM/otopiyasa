@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     // değişimi) o kaydı bu kullanıcıya taşı — çift kayıt kalmasın.
     await FcmToken.updateOne(
       { token },
-      { $set: { userId: user.userId, token } },
+      { $set: { userId: user.userId, token, jti: user.jti } },
       { upsert: true }
     );
 

@@ -59,10 +59,16 @@ class PushService {
 
       await _registerToken();
       FirebaseMessaging.instance.onTokenRefresh.listen((_) => _registerToken());
+      // Giriş yapılınca jeton bu hesaba (ve bu oturuma) kaydedilir; çıkışta cihaz jetonu silinir. Sunucu da
+      // bildirimi yalnızca oturumu açık cihazlara gönderir: çıkış yapılan telefona yönetici/teklif bildirimi gelmez.
+      _wasLoggedIn = _api.isLoggedIn;
+      _api.authRevision.addListener(_onAuthChanged);
 
       // Uygulama açıkken gelen FCM mesajını, yoklamanın kullandığı aynı yerel
       // bildirim kanalından göster (tutarlı görünüm).
       FirebaseMessaging.onMessage.listen((message) {
+        // Çıkış yapılmışsa (jeton silinmeden önce yola çıkmış bir mesaj) gösterilmez.
+        if (!_api.isLoggedIn) return;
         final title = message.notification?.title;
         final body = message.notification?.body;
         if (title != null) {
@@ -74,6 +80,19 @@ class PushService {
       // düşer — beklenen durum, sessizce devam.
       developer.log('PushService devre dışı (Firebase yapılandırılmamış): $error');
     }
+  }
+
+  bool _wasLoggedIn = false;
+
+  void _onAuthChanged() {
+    final loggedIn = _api.isLoggedIn;
+    if (loggedIn && !_wasLoggedIn) {
+      _registerToken();
+    } else if (!loggedIn && _wasLoggedIn) {
+      // Sunucuya ulaşılamasa bile (çevrimdışı çıkış) eski jeton geçersiz olsun.
+      FirebaseMessaging.instance.deleteToken().catchError((_) {});
+    }
+    _wasLoggedIn = loggedIn;
   }
 
   Future<void> _registerToken() async {

@@ -3,6 +3,7 @@ import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import { getCurrentUser, clearAuthCookie } from "@/lib/auth";
 import { Session } from "@/models/Session";
+import { forgetPushForSessions } from "@/lib/push-sessions";
 
 export async function DELETE(
   _request: Request,
@@ -28,6 +29,7 @@ export async function DELETE(
     const wasCurrent = session.jti === user.jti;
     session.revokedAt = new Date();
     await session.save();
+    await forgetPushForSessions([session.jti]);
 
     if (wasCurrent) {
       // Kullanıcı kendi bulunduğu cihazı listeden çıkardıysa çerezi de temizle.

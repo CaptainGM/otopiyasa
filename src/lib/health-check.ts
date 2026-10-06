@@ -4,6 +4,7 @@ import { HOME_WATCHER_ID, HomeWatcherHour, HomeWatcherState } from "@/models/Hom
 import { SourceSyncState } from "@/models/SourceSyncState";
 import { SystemAlert } from "@/models/SystemAlert";
 import { User } from "@/models/User";
+import { RECONCILE_SOURCES } from "@/lib/scraper/reconcile-sources";
 
 /**
  * KENDİNİ İZLEYEN SİSTEM: site, sunucu motoru (Oracle) ve evdeki bekçi bir şey bozulduğunda yöneticiye haber verir;
@@ -85,7 +86,8 @@ export function evaluateHealth(s: HealthSnapshot): HealthIssue[] {
   }
 
   for (const src of s.sources) {
-    if (src.source.startsWith("arabam")) continue;
+    // Yalnızca otomatik senkronlanan kurumsal kaynaklar (bkz. reconcile.ts RECONCILE_SOURCES).
+    if (!(RECONCILE_SOURCES as readonly string[]).includes(src.source)) continue;
     if (age(src.lastSuccessAt) > HEALTH.sourceStaleMs) {
       issues.push({
         key: `source-${src.source}`,

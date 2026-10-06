@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { clearAuthCookie, verifyToken } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Session } from "@/models/Session";
+import { forgetPushForSessions } from "@/lib/push-sessions";
 
 export async function POST() {
   try {
@@ -16,6 +17,8 @@ export async function POST() {
           { jti: payload.jti },
           { $set: { revokedAt: new Date() } }
         );
+        // Bu cihazın bildirim jetonu/aboneliği de silinir: çıkış yapılan cihaza bildirim gitmez.
+        await forgetPushForSessions([payload.jti]);
       }
     }
   } catch (error) {

@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       {
         $set: {
           userId: user.userId,
+          jti: user.jti,
           endpoint: sub.endpoint,
           keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
         },

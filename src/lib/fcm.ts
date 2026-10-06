@@ -1,6 +1,7 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 import { FcmToken } from "@/models/FcmToken";
+import { keepActiveRecipients } from "@/lib/push-sessions";
 
 
 
@@ -39,9 +40,11 @@ export async function sendFcmToUsers(
   const fcmApp = getApp();
   if (!fcmApp || userIds.length === 0) return 0;
 
-  const tokens = await FcmToken.find({ userId: { $in: userIds } }).lean<
-    { token: string }[]
-  >();
+  // Yalnızca oturumu hâlâ açık cihazlar (çıkış yapılan telefona yönetici/teklif bildirimi gitmesin).
+  const tokens = await keepActiveRecipients(
+    await FcmToken.find({ userId: { $in: userIds } }).select("token jti").lean<{ token: string; jti?: string | null }[]>(),
+    (dead) => FcmToken.deleteMany({ token: { $in: dead.map((d) => d.token) } })
+  );
   if (tokens.length === 0) return 0;
 
   const response = await getMessaging(fcmApp).sendEachForMulticast({

@@ -1,4 +1,4 @@
-import { CARD_IMAGE_SIZE } from "@/lib/image-url";
+import { CARD_IMAGE_SIZE, sanitizeImageUrl } from "@/lib/image-url";
 import { describe, expect, it } from "vitest";
 
 
@@ -118,5 +118,26 @@ describe("cardImageUrl", () => {
     ]) {
       expect(cardImageUrl(url)).toBe(url);
     }
+  });
+});
+
+describe("sanitizeImageUrl", () => {
+  it("görsel sunucusu adresini (zaten kodlanmış) ÇİFT kodlamaz", () => {
+    const proxied = "/api/img?u=https%3A%2F%2Fcdn.otoplus.com%2Fimg%2Farac.jpg&w=480";
+    expect(sanitizeImageUrl(proxied)).toBe(proxied);
+  });
+
+  it("boşluk ve Türkçe karakterleri kodlar", () => {
+    expect(sanitizeImageUrl("https://x.com/a b/çarşı.jpg")).toBe("https://x.com/a%20b/%C3%A7ar%C5%9F%C4%B1.jpg");
+  });
+
+  it("kodlanmış adresi olduğu gibi bırakır, çıplak % işaretini kaçırır", () => {
+    expect(sanitizeImageUrl("https://x.com/a%20b.jpg")).toBe("https://x.com/a%20b.jpg");
+    expect(sanitizeImageUrl("https://x.com/%50?q=100%")).toBe("https://x.com/%50?q=100%25");
+  });
+
+  it("boş girdide boş döner", () => {
+    expect(sanitizeImageUrl(undefined)).toBe("");
+    expect(sanitizeImageUrl("   ")).toBe("");
   });
 });

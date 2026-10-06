@@ -175,7 +175,7 @@ export function InteractiveModelAnalytics({
 
         {/* Dropdown Filtreleri */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             <label htmlFor="brand-select" className="text-xs font-semibold text-slate-400">
               Marka:
             </label>
@@ -183,7 +183,7 @@ export function InteractiveModelAnalytics({
               id="brand-select"
               value={selectedBrand}
               onChange={(e) => handleBrandChange(e.target.value)}
-              className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 outline-none focus:border-amber-400"
+              className="min-w-0 max-w-full flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 outline-none focus:border-amber-400 sm:max-w-[16rem] sm:flex-none"
             >
               {brands.map((b) => (
                 <option key={b} value={b}>
@@ -193,7 +193,7 @@ export function InteractiveModelAnalytics({
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             <label htmlFor="model-select" className="text-xs font-semibold text-slate-400">
               Model:
             </label>
@@ -202,7 +202,7 @@ export function InteractiveModelAnalytics({
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               disabled={availableModels.length === 0}
-              className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 outline-none focus:border-amber-400 disabled:opacity-50"
+              className="min-w-0 max-w-full flex-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-200 outline-none focus:border-amber-400 disabled:opacity-50 sm:max-w-[16rem] sm:flex-none"
             >
               {availableModels.map((m) => (
                 <option key={m} value={m}>

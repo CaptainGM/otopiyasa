@@ -93,8 +93,9 @@ function formatAxisPrice(value: number): string {
 
 export function PriceCharts({ brandSummaries, byYear }: PriceChartsProps) {
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <div className="card p-5">
+    // min-w-0: ızgara öğesi, içindeki geniş grafiğin (marka sayısı × 54 px) genişliğine kadar uzamasın; telefonda sayfa 2.700 px yana taşıyordu.
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="card min-w-0 p-5">
         <h3 className="text-lg font-semibold">Markaya göre ortalama fiyat</h3>
         <p className="text-xs text-slate-500">
           Veritabanındaki {brandSummaries.length} markanın tamamı, ilan sayısına
@@ -155,7 +156,7 @@ export function PriceCharts({ brandSummaries, byYear }: PriceChartsProps) {
         </div>
       </div>
 
-      <div className="card p-5">
+      <div className="card min-w-0 p-5">
         <h3 className="text-lg font-semibold">Model yılına göre ortalama fiyat</h3>
         <p className="mb-4 text-xs text-slate-500">
           Her nokta, o yıl model araçların güncel ilan fiyatı ortalaması — eski

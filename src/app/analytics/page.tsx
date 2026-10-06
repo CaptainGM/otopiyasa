@@ -26,6 +26,12 @@ export const revalidate = 300;
  * yoksa "Manuel"). Gerçek ilan sayfasından doğrulanmamış Arabam ilanları bu dağılımlara katılmaz; diğer kaynaklar
  * (galeri siteleri) bilgiyi doğrudan verdiği için dahildir. Bekçi ilanları gezdikçe örnek büyür.
  */
+/**
+ * Doğrulanmış ilan oranı bunun altındayken vites/kasa dağılımı gösterilmez: o zaman örnek çoğunlukla galeri
+ * sitelerinden gelir ve piyasayı temsil etmez (otomatik oranı olduğundan çok yüksek çıkar).
+ */
+const MIN_TRUSTED_COVERAGE = 0.25;
+
 const TRUSTED_FEATURES: { $or: Record<string, unknown>[] } = {
   $or: [{ sourceSite: { $ne: "arabam" } }, { featuresVerifiedAt: { $exists: true } }],
 };
@@ -80,7 +86,7 @@ const getAnalyticsData = unstable_cache(
 
       // Yakıt Türü Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.fuelType": { $exists: true, $ne: "" } } },
+        { $match: { ...PUBLIC_LISTING_FILTER, "features.fuelType": { $exists: true, $ne: "" } } },
         { $group: { _id: "$features.fuelType", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
@@ -150,14 +156,15 @@ const getAnalyticsData = unstable_cache(
 
     // Kaynakların farklı yazdığı değerler birleştirilir (Tiptronik → Otomatik, Suv/Arazi aracı → SUV...) ve
     // yüzdeler tüm bilinen ilanlara göre hesaplanır (bkz. lib/vehicle-attrs.ts).
-    const transmissionStats = mergeCategoryStats(transRaw, normalizeTransmission, 3).map((t) => ({
+    const featureCoverageOk = activeTotal > 0 && trustedTotal / activeTotal >= MIN_TRUSTED_COVERAGE;
+    const transmissionStats = (featureCoverageOk ? mergeCategoryStats(transRaw, normalizeTransmission, 3) : []).map((t) => ({
       transmission: t.label,
       count: t.count,
       avgPrice: t.avgPrice,
       sharePct: t.sharePct,
     }));
 
-    const bodyTypeStats = mergeCategoryStats(bodyRaw, normalizeBodyType, 5).map((b) => ({
+    const bodyTypeStats = (featureCoverageOk ? mergeCategoryStats(bodyRaw, normalizeBodyType, 5) : []).map((b) => ({
       bodyType: b.label,
       count: b.count,
       avgPrice: b.avgPrice,
@@ -181,7 +188,12 @@ const getAnalyticsData = unstable_cache(
         transmissionStats,
         bodyTypeStats,
         topBrands,
-        featureBase: { trusted: trustedTotal, total: activeTotal },
+        featureBase: {
+          trusted: trustedTotal,
+          total: activeTotal,
+          minCoveragePct: Math.round(MIN_TRUSTED_COVERAGE * 100),
+          gated: !featureCoverageOk,
+        },
         generatedAt: new Date().toISOString(),
       },
     };

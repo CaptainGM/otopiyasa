@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { Types } from "mongoose";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { Notification } from "@/models/Notification";
 import { getCurrentUser } from "@/lib/auth";
@@ -35,11 +37,17 @@ export async function POST(request: Request) {
   const authUser = await getCurrentUser();
   if (!authUser) return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
-  await connectDB();
-
+  const body = await readJson(request);
   const filter: Record<string, unknown> = { user: authUser.userId, read: false };
-  if (body.id) filter._id = body.id;
+  if (body.id !== undefined && body.id !== null && body.id !== "") {
+    // Geçersiz kimlik Mongo'da CastError (500) veriyordu.
+    if (typeof body.id !== "string" || !Types.ObjectId.isValid(body.id)) {
+      return NextResponse.json({ error: "Geçersiz bildirim." }, { status: 400 });
+    }
+    filter._id = body.id;
+  }
+
+  await connectDB();
 
   await Notification.updateMany(filter, { $set: { read: true } });
   return NextResponse.json({ success: true });

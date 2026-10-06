@@ -30,7 +30,7 @@ export const BODY_TYPES = [
   "Coupe",
   "Cabrio",
   "MPV",
-  "Pickup",
+  "Panelvan",
   "Belirtilmemiş",
 ];
 

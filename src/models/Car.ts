@@ -126,6 +126,11 @@ const CarSchema = new Schema(
     detailCheckedAt: { type: Date, default: undefined },
     /** Vites/yakıt/kasa gibi özelliklerin ilan sayfasından doğrulandığı an (liste sayfası verisi tahmindir). */
     featuresVerifiedAt: { type: Date, default: undefined },
+    /**
+     * Kaynaktan tek tek doğrulanmış özellikler ("transmission", "fuelType", "color", "bodyType"). Liste sayfasının
+     * gömülü verisi vites/yakıt/rengi verir ama kasa tipini vermez; analiz her özellik için yalnızca doğrulanmışı sayar.
+     */
+    verifiedFeatures: { type: [String], default: undefined },
   },
   { timestamps: true }
 );

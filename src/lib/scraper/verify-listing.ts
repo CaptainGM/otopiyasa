@@ -4,6 +4,7 @@ import {
   fetchPageWithBrowser,
   isCloudflareChallenge,
   isListingGone,
+  isNonCarArabamPage,
   parseArabamDetailHtml,
   pickUserAgent,
 } from "@/lib/scraper/browser-scrape";
@@ -181,6 +182,15 @@ async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListin
         statusCode: page.status,
         finalUrl: page.finalUrl,
         reason: "İlan sayfası kaldırılmış (kategori sayfasına yönlendi ya da 'yayında değil' yazıyor).",
+      };
+    }
+    if (/\/ilan\//.test(page.finalUrl) && isNonCarArabamPage(page.html)) {
+      // Motosiklet/ATV/karavan/hat-plaka ilanı yanlışlıkla eklenmiş: araç ilanı olmadığı kesin, arşive alınır.
+      return {
+        status: "gone",
+        statusCode: page.status,
+        finalUrl: page.finalUrl,
+        reason: "Otomobil ilanı değil (motosiklet/ATV/karavan vb. kategorisinde).",
       };
     }
     if (/\/ilan\//.test(page.finalUrl) && /"@type"\s*:\s*"Car"/.test(page.html)) {

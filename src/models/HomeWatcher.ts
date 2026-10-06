@@ -64,6 +64,10 @@ export interface HomeWatcherHourDoc {
   activeSeconds: number;
   /** Zamanın %10'unda yapılan keşifle bu saatte eklenen yeni ilan sayısı. */
   inserted: number;
+  /** Model liste sayfası taraması: çekilen sayfa, sayfalarda bulunan ilanımız ve vitesi düzeltilen ilan. */
+  listPages: number;
+  listMatched: number;
+  listCorrected: number;
 }
 
 const HomeWatcherHourSchema = new Schema<HomeWatcherHourDoc>(
@@ -82,6 +86,9 @@ const HomeWatcherHourSchema = new Schema<HomeWatcherHourDoc>(
     pausedMinutes: { type: Number, default: 0 },
     activeSeconds: { type: Number, default: 0 },
     inserted: { type: Number, default: 0 },
+    listPages: { type: Number, default: 0 },
+    listMatched: { type: Number, default: 0 },
+    listCorrected: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
@@ -163,6 +170,21 @@ export async function recordWatcherDiscovery(inserted: number, now = new Date())
     );
   } catch (err) {
     console.error("[HomeWatcher] keşif kaydı hatası:", err);
+  }
+}
+
+/** Liste sayfası taramasının sonucunu içinde bulunulan saate ekler. */
+export async function recordWatcherListSweep(pages: number, matched: number, corrected: number, now = new Date()): Promise<void> {
+  if (!(pages > 0)) return;
+  try {
+    const { timestamp, dateStr, hour } = turkeyHourOf(now);
+    await HomeWatcherHour.findOneAndUpdate(
+      { watcherId: HOME_WATCHER_ID, timestamp },
+      { $setOnInsert: { dateStr, hour }, $inc: { listPages: pages, listMatched: matched, listCorrected: corrected } },
+      { upsert: true }
+    );
+  } catch (err) {
+    console.error("[HomeWatcher] liste taraması kaydı hatası:", err);
   }
 }
 

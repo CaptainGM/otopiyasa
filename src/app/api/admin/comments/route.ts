@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Comment } from "@/models/Comment";
@@ -41,7 +42,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
     }
 
-    const { commentId, reason } = await request.json();
+    const { commentId, reason } = await readJson(request);
     if (!commentId) {
       return NextResponse.json({ error: "commentId gereklidir" }, { status: 400 });
     }

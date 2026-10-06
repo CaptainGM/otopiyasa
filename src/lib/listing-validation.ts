@@ -1,8 +1,11 @@
 
 
+import { outOfScopeReason } from "@/lib/vehicle-scope";
+
 export interface ListingInput {
   brand?: string;
   model?: string;
+  bodyType?: string;
   year?: number;
   price?: number;
   mileage?: number;
@@ -92,6 +95,11 @@ export function validateListingFields(input: ListingInput): FieldCheck {
 
   if ((input.description?.length ?? 0) > 5000)
     add("Açıklama çok uzun (en fazla 5000 karakter).");
+
+  // Kaynak ilanlarla aynı kapsam: kamyon, pickup, motosiklet, ATV... yayınlanmaz (bkz. vehicle-scope.ts).
+  if (input.brand?.trim() && outOfScopeReason({ brand: input.brand, model: input.model, bodyType: input.bodyType })) {
+    add("OtoPiyasa yalnızca otomobil, SUV ve hafif ticari araç ilanlarını kabul eder (kamyon, pickup, motosiklet ve ATV kabul edilmez).");
+  }
 
   return { valid: errors.length === 0, errors };
 }

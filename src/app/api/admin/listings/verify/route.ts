@@ -1,6 +1,8 @@
 import { revalidateListing } from "@/lib/revalidate-listing";
 import { NextRequest, NextResponse } from "next/server";
+import { Types } from "mongoose";
 import { requireAdmin } from "@/lib/auth";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { verifySingleListing } from "@/lib/scraper/verify-listing";
@@ -15,10 +17,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readJson(req);
     const { carId, action = "verify", autoArchive = true } = body;
 
-    if (!carId) {
+    if (typeof carId !== "string" || !Types.ObjectId.isValid(carId)) {
       return NextResponse.json({ error: "carId gerekli" }, { status: 400 });
     }
 

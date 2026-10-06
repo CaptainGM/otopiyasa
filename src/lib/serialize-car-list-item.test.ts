@@ -28,3 +28,18 @@ describe("serializeCarListItem", () => {
     expect(item).not.toHaveProperty("brand");
   });
 });
+
+describe("serializeCarListItem doğrulanmamış özellik", () => {
+  it("toplu çekimden gelen ve henüz okunmamış Arabam ilanında 'Doğrulanıyor' gösterir", () => {
+    const base = { _id: "x", title: "t", year: 2020, price: 1, mileage: 1, city: "İstanbul", sourceSite: "arabam" as const };
+    const pending = serializeCarListItem({ ...base, features: { fuelType: "Bilinmiyor", transmission: "Bilinmiyor" } });
+    expect(pending.features).toEqual({ fuelType: "Doğrulanıyor", transmission: "Doğrulanıyor" });
+    // Liste sayfasından vitesi okunmuş, yakıtı sayfada yazmayan ilan
+    const partly = serializeCarListItem({
+      ...base,
+      features: { fuelType: "Bilinmiyor", transmission: "Otomatik" },
+      verifiedFeatures: ["transmission", "fuelType"],
+    });
+    expect(partly.features).toEqual({ fuelType: "Bilinmiyor", transmission: "Otomatik" });
+  });
+});

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
@@ -18,12 +19,15 @@ export async function POST(request: Request) {
     const limited = await checkSharedRateLimit(request, "business-request", { limit: 5, windowMs: 60 * 60 * 1000 });
     if (limited) return limited;
 
-    const body = await request.json();
+    const body = await readJson(request);
     const businessName = String(body.businessName || "").trim();
     const businessPhone = String(body.businessPhone || "").trim();
 
     if (businessName.length < 2) {
       return NextResponse.json({ error: "Firma adı zorunludur." }, { status: 400 });
+    }
+    if (businessName.length > 80) {
+      return NextResponse.json({ error: "Firma adı en fazla 80 karakter olabilir." }, { status: 400 });
     }
     if (!/^[\d\s()+-]{7,20}$/.test(businessPhone)) {
       return NextResponse.json({ error: "Geçerli bir işletme telefonu girin." }, { status: 400 });

@@ -6,23 +6,26 @@ import { HOME_WATCHER_ID, HomeWatcherHour, HomeWatcherState } from "@/models/Hom
 import { describeWatcher, estimateRemaining, fillDayHours, summarizeDays, type HourRow } from "@/lib/home-watcher-status";
 import { getTurkeyDateStr } from "@/lib/utils";
 import { UNVERIFIED_ARABAM_FILTER } from "@/lib/unverified-listings";
+import { trustedFeatureFilter } from "@/lib/vehicle-attrs";
 
 export const dynamic = "force-dynamic";
 
 const DAYS_SHOWN = 14;
 
-let cachedQueue: { active: number; neverVerified: number; verifiedLast24h: number; ts: number } | null = null;
+let cachedQueue: { active: number; neverVerified: number; verifiedLast24h: number; gearVerified: number; ts: number } | null = null;
 
 async function queueCounts() {
   const now = Date.now();
   if (cachedQueue && now - cachedQueue.ts < 60_000) return cachedQueue;
   const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
-  const [active, neverVerified, verifiedLast24h] = await Promise.all([
+  const [active, neverVerified, verifiedLast24h, gearVerified] = await Promise.all([
     Car.countDocuments({ sourceSite: "arabam", status: "active" }),
     Car.countDocuments(UNVERIFIED_ARABAM_FILTER),
     Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $gte: dayAgo } }),
+    // Vitesi kaynaktan (ilan ya da liste sayfasından) doğrulanmış aktif ilan: analiz kartlarının kapsamı.
+    Car.countDocuments({ $and: [{ sourceSite: "arabam", status: "active" }, trustedFeatureFilter("transmission")] }),
   ]);
-  cachedQueue = { active, neverVerified, verifiedLast24h, ts: now };
+  cachedQueue = { active, neverVerified, verifiedLast24h, gearVerified, ts: now };
   return cachedQueue;
 }
 
@@ -111,6 +114,9 @@ export async function GET(request: Request) {
       activeSeconds: 0,
       pausedMinutes: 0,
       inserted: 0,
+      listPages: 0,
+      listMatched: 0,
+      listCorrected: 0,
     };
 
     return NextResponse.json(
@@ -122,6 +128,7 @@ export async function GET(request: Request) {
           active: queue.active,
           neverVerified: queue.neverVerified,
           verifiedLast24h: queue.verifiedLast24h,
+          gearVerified: queue.gearVerified,
           estimate: estimateRemaining(queue.neverVerified, days),
         },
       },

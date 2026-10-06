@@ -7,6 +7,7 @@ import { archiveListings, breakerTripped } from "@/lib/scraper/listing-lifecycle
 import { EXTRA_DETAIL_SOURCES, fetchExtraDetail } from "@/lib/scraper/detail-sources";
 import { FUEL_TYPES, normalizeFuelType } from "@/lib/normalize-fuel";
 import { incompleteReason, lacksGallery } from "@/lib/scraper/listing-quality";
+import { isUnknownFeature, knownFeatureUpdates, type VerifiableFeature } from "@/lib/scraper/feature-merge";
 
 /**
  * KURUMSAL KAYNAKLARDA İLAN DETAYI
@@ -280,13 +281,23 @@ export async function fetchDetailPatch(source: string, url: string, externalId?:
   return outcome.kind === "ok" ? outcome.patch : null;
 }
 
+/** İlan sayfasından okunan özellikler (yakıt tek yazıma çevrilir). */
+function detailFeatureValues(patch: DetailPatch): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (patch.transmission) out.transmission = patch.transmission;
+  if (patch.fuelType && !isUnknownValue(patch.fuelType)) out.fuelType = normalizeFuelType(patch.fuelType);
+  if (patch.bodyType) out.bodyType = patch.bodyType;
+  if (patch.color) out.color = patch.color;
+  return out;
+}
+
 /** Yeni ilan kaydedilmeden önce detay bilgisini listeleme verisine işler. */
 export function mergeDetailIntoListing(listing: ScrapedListing, patch: DetailPatch): ScrapedListing {
   const features = { ...listing.features };
-  if (patch.color && shouldReplaceColor(features.color, patch.color)) features.color = patch.color;
-  if (patch.bodyType && isUnknownValue(features.bodyType)) features.bodyType = patch.bodyType;
-  if (shouldReplaceFuel(features.fuelType, patch.fuelType)) features.fuelType = normalizeFuelType(patch.fuelType);
-  if (patch.transmission && isUnknownValue(features.transmission)) features.transmission = patch.transmission;
+  // İlan sayfası aracın kendi kaydıdır: bildiği vites/yakıt/kasa/renk liste verisinin önüne geçer.
+  const detailFeatures = detailFeatureValues(patch);
+  Object.assign(features, knownFeatureUpdates(detailFeatures, features));
+  const confirmed = Object.keys(detailFeatures).filter((k) => !isUnknownFeature(detailFeatures[k])) as VerifiableFeature[];
   if (patch.engineSize && !features.engineSize) features.engineSize = patch.engineSize;
   if (patch.horsepower && !features.horsepower) features.horsepower = patch.horsepower;
   if (patch.avgFuelConsumption && !features.avgFuelConsumption) features.avgFuelConsumption = patch.avgFuelConsumption;
@@ -294,6 +305,7 @@ export function mergeDetailIntoListing(listing: ScrapedListing, patch: DetailPat
   const images = patch.images && patch.images.length > (listing.images?.length ?? 0) ? patch.images : listing.images;
   return {
     ...listing,
+    confirmedFeatures: [...new Set([...(listing.confirmedFeatures || []), ...confirmed])],
     images,
     imageUrl: images?.[0] || listing.imageUrl,
     description: patch.description || listing.description,
@@ -375,6 +387,7 @@ export async function runDetailBackfill(
 
     const patch = outcome.kind === "ok" ? outcome.patch : null;
     const set: Record<string, unknown> = { detailCheckedAt: now };
+    const verified: string[] = [];
     if (patch) {
       const f = doc.features || {};
       const currentCount = doc.images?.length ?? 0;
@@ -384,10 +397,9 @@ export async function runDetailBackfill(
         result.imagesAdded += patch.images.length - currentCount;
       }
       if (patch.description) set.description = patch.description;
-      if (patch.color && shouldReplaceColor(f.color, patch.color)) set["features.color"] = patch.color;
-      if (patch.bodyType && isUnknownValue(f.bodyType)) set["features.bodyType"] = patch.bodyType;
-      if (shouldReplaceFuel(f.fuelType, patch.fuelType)) set["features.fuelType"] = normalizeFuelType(patch.fuelType);
-      if (patch.transmission && isUnknownValue(f.transmission)) set["features.transmission"] = patch.transmission;
+      const detailFeatures = detailFeatureValues(patch);
+      for (const [key, value] of Object.entries(knownFeatureUpdates(detailFeatures, f))) set[`features.${key}`] = value;
+      for (const key of Object.keys(detailFeatures)) if (!isUnknownFeature(detailFeatures[key])) verified.push(key);
       if (patch.engineSize && !f.engineSize) set["features.engineSize"] = patch.engineSize;
       if (patch.horsepower && !f.horsepower) set["features.horsepower"] = patch.horsepower;
       if (patch.avgFuelConsumption && !f.avgFuelConsumption) set["features.avgFuelConsumption"] = patch.avgFuelConsumption;
@@ -409,7 +421,11 @@ export async function runDetailBackfill(
     }
 
     // updatedAt'e dokunulmaz: detay tamamlamak ilanın "son değişikliği" değildir.
-    await Car.updateOne({ _id: doc._id }, { $set: set }, { timestamps: false });
+    await Car.updateOne(
+      { _id: doc._id },
+      { $set: set, ...(verified.length ? { $addToSet: { verifiedFeatures: { $each: verified } } } : {}) },
+      { timestamps: false }
+    );
     await new Promise((r) => setTimeout(r, options.delayMs ?? 700));
   }
 

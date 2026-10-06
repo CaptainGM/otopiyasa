@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { appBaseUrl } from "@/lib/app-url";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
@@ -12,6 +13,8 @@ import { createNotification } from "@/lib/notify";
 import { isMailerConfigured, sendNewCommentEmail } from "@/lib/mailer";
 import { sendPushToUsers, isPushConfigured } from "@/lib/web-push";
 import { checkPublicText } from "@/lib/content-filter";
+import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { maskName } from "@/lib/form-options";
 
 /**
  * İlan bir üye ilanıysa (ownerId var) ve yorumu sahibinden BAŞKASI yaptıysa,
@@ -66,17 +69,20 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const carId = url.searchParams.get("carId");
 
-    if (!carId) {
-      return NextResponse.json({ error: "carId query param is required" }, { status: 400 });
+    if (!carId || !Types.ObjectId.isValid(carId)) {
+      return NextResponse.json({ error: "Geçerli bir carId gereklidir." }, { status: 400 });
     }
 
     const rows = await Comment.find({ car: carId })
       .sort({ createdAt: -1 })
+      .limit(100)
       .populate({ path: "user", model: User, select: "name" })
       .lean();
 
-    const commentsWithSentiment = rows.map((row) => ({
+    // Yorum yapanın adı herkese açık sayfada maskelenir (soru-cevap ile aynı: "Ahmet Y." yerine "A**** Y****").
+    const commentsWithSentiment = rows.map((row: any) => ({
       ...row,
+      user: row.user ? { _id: row.user._id, name: maskName(row.user.name || "") } : null,
       sentiment: analyzeSentiment(row.text).label,
     }));
     const summary = summarizeSentiments(commentsWithSentiment.map((c) => c.sentiment));
@@ -99,7 +105,7 @@ export async function POST(request: Request) {
     const limited = await checkSharedRateLimit(request, "comment", { limit: 15, windowMs: 60 * 60 * 1000 });
     if (limited) return limited;
 
-    const body = await request.json();
+    const body = await readJson(request);
     const { carId, text, rating } = body;
 
     if (!carId || !text || typeof rating !== "number") {
@@ -121,6 +127,12 @@ export async function POST(request: Request) {
     }
 
     await connectDB();
+
+    // Yalnızca yayındaki ilana yorum yapılır (arşivdeki/onaysız ya da var olmayan ilana değil).
+    const target = await Car.exists({ _id: carId, ...PUBLIC_LISTING_FILTER });
+    if (!target) {
+      return NextResponse.json({ error: "Bu ilana yorum yapılamaz." }, { status: 404 });
+    }
 
     const created = await Comment.create({
       car: carId,

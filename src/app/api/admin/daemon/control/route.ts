@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { setDaemonControl, setDaemonMode, getDaemonControl } from "@/models/ScrapeMetric";
 
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readJson(req);
     const action = body.action; // "start" | "stop" | "set_mode"
 
     await connectDB();
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("Daemon control API hatası:", error);
     return NextResponse.json(
-      { error: error?.message || "Sunucu hatası" },
+      { error: "Sunucu hatası" },
       {
         status: 500,
         headers: {

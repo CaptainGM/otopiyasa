@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { createSessionAndToken, setAuthCookie } from "@/lib/auth";
-import { checkSharedRateLimit } from "@/lib/api-rate-limit";
+import { checkKeyRateLimit, checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { isEmailVerified } from "@/lib/auth-verify";
+
+// Hesap yokken de bcrypt çalışsın: yanıt süresi "bu e-posta kayıtlı mı" bilgisini ele vermesin.
+let dummyHash: string | null = null;
+function getDummyHash(): string {
+  if (!dummyHash) dummyHash = bcrypt.hashSync("otopiyasa-olmayan-hesap", 10);
+  return dummyHash;
+}
 
 export async function POST(request: Request) {
   try {
@@ -12,7 +20,7 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     await connectDB();
-    const { email, password } = await request.json();
+    const { email, password } = await readJson(request, { flat: true });
 
     if (!email || !password) {
       return NextResponse.json(
@@ -21,8 +29,13 @@ export async function POST(request: Request) {
       );
     }
 
+    // Hesap başına sınır: farklı IP'lerden aynı hesaba şifre denemesi (IP sınırı tek başına durdurmaz).
+    const accountLimited = await checkKeyRateLimit("login-account", email, { limit: 10, windowMs: 15 * 60 * 1000 });
+    if (accountLimited) return accountLimited;
+
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
+      await bcrypt.compare(password, getDummyHash());
       return NextResponse.json(
         { error: "E-posta veya şifre hatalı." },
         { status: 401 }

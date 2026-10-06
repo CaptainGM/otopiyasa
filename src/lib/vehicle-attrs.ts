@@ -38,6 +38,20 @@ export function transmissionMatch(label: string): string | { $regex: string; $op
   return label;
 }
 
+export type VerifiableFeature = "transmission" | "fuelType" | "bodyType" | "color";
+
+/** Veritabanındaki "bilinmiyor" yer tutucuları (bkz. scraper/feature-merge.ts). */
+const UNKNOWN_FEATURE_VALUES = [null, "", "-", "Bilinmiyor", "Belirtilmemiş", "Belirtilmemis", "Otomobil", "Diğer"];
+
+/**
+ * Bu özelliği bilinen ilanlar. 2026-10-06'dan beri kaynaklar tahmin yazmıyor ve eski tahminler silindi:
+ * veritabanındaki her değer kaynağın kendi verisinden okunmuştur, bilinmeyen "Bilinmiyor" kalır. Analiz ve
+ * kapsam oranları bu süzgeçle hesaplanır.
+ */
+export function trustedFeatureFilter(feature: VerifiableFeature) {
+  return { [`features.${feature}`]: { $exists: true, $nin: UNKNOWN_FEATURE_VALUES } };
+}
+
 export type BodyTypeLabel =
   | "SUV"
   | "Sedan"

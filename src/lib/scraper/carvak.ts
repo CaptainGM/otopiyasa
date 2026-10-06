@@ -140,16 +140,19 @@ export async function scrapeCarvakListings(
       const city = car.regionName || "İstanbul";
       const coords = cityToCoords(city);
 
-      const fuelType = car.fuelType || car.vehicleEngine?.fuelType || "Benzin";
-      const transmission = car.transmission || car.vehicleTransmission || "Otomatik";
-      const bodyType = car.bodyType || "Otomobil";
+      // Kaynakta yazmayan özellik tahmin edilmez ("Otomatik"/"Benzin" varsayılanı yanlış veri üretiyordu);
+      // ilan sayfası okununca (enrich-detail) gerçek değer gelir.
+      const fuelType = car.fuelType || car.vehicleEngine?.fuelType || "Bilinmiyor";
+      const transmission = car.transmission || car.vehicleTransmission || "Bilinmiyor";
+      const bodyType = car.bodyType || "Belirtilmemiş";
       const color = car.color || "Belirtilmemiş";
 
       const mainImage = extractImageUrl(car.imageUrl || car.image || car.images || car.photos || car.gallery);
       const images: string[] = mainImage ? [mainImage] : [];
 
       const listingUrl = car.url || car.offers?.url || CARVAK_URL;
-      const description = `${title} - Carvak Garantili İkinci El. ${city} merkezli, ${transmission} vites, ${mileage.toLocaleString("tr-TR")} km.`;
+      const gearText = transmission !== "Bilinmiyor" ? ` ${transmission} vites,` : "";
+      const description = `${title} - Carvak Garantili İkinci El. ${city} merkezli,${gearText} ${mileage.toLocaleString("tr-TR")} km.`;
 
       const listing: ScrapedListing = {
         externalId: extId,

@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatNumber, formatPrice } from "@/lib/utils";
+import { formatNumber, formatPrice, trPercent } from "@/lib/utils";
 import { automaticPremiumPct } from "@/lib/vehicle-attrs";
 
 export interface MarketInsightData {
@@ -19,10 +19,12 @@ export interface MarketInsightData {
   transmissionStats: Array<{ transmission: string; count: number; avgPrice: number; sharePct: number }>;
   bodyTypeStats: Array<{ bodyType: string; count: number; avgPrice: number; sharePct: number }>;
   topBrands: Array<{ brand: string; count: number; avgPrice: number }>;
-  /** Vites/yakıt/kasa dağılımlarının hesaplandığı güvenilir (ilan sayfasından doğrulanmış) ilan sayısı ve toplam aktif ilan. */
-  featureBase?: { trusted: number; total: number; minCoveragePct?: number; gated?: boolean };
+  /** Her dağılımın hesaplandığı doğrulanmış ilan sayısı ve toplam aktif ilan (özellik başına ayrı). */
+  featureBases?: Partial<Record<"fuelType" | "transmission" | "bodyType", FeatureBase>>;
   generatedAt?: string;
 }
+
+type FeatureBase = { trusted: number; total: number; minCoveragePct?: number; gated?: boolean };
 
 interface MarketInsightsChartsProps {
   data: MarketInsightData;
@@ -42,26 +44,34 @@ const FUEL_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#06b6d4", "#a855f7"];
 const BODY_COLORS = ["#f97316", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899", "#64748b"];
 
 /** Dağılımın kaç ilana dayandığı: doğrulanmamış (tahmini) ilanlar hesaba katılmaz. */
-function FeatureBaseNote({ base }: { base?: { trusted: number; total: number; minCoveragePct?: number; gated?: boolean } }) {
+function FeatureBaseNote({ base }: { base?: FeatureBase }) {
   if (!base || base.total <= 0) return null;
   const pct = Math.round((base.trusted / base.total) * 100);
   if (base.gated) {
     return (
       <p className="mt-1 text-[11px] text-amber-300/80">
-        Doğrulama sürüyor: aktif ilanların %{pct}'inin bilgisi ilan sayfasından doğrulandı. Güvenilir dağılım için %{base.minCoveragePct ?? 25}'e
-        ulaşması bekleniyor; o zamana kadar yanıltıcı olmaması için gösterilmiyor.
+        Doğrulama sürüyor: aktif ilanlarda bu bilginin kaynaktan doğrulanma oranı %{pct}. Güvenilir dağılım için oranın
+        %{base.minCoveragePct ?? 25}&apos;e ulaşması bekleniyor; o zamana kadar yanıltıcı olmaması için gösterilmiyor.
       </p>
     );
   }
   return (
     <p className="mt-1 text-[11px] text-amber-300/80">
-      {formatNumber(base.trusted)} ilan üzerinden (ilan sayfasından doğrulanmış, aktif ilanların %{pct}'i). Doğrulama sürdükçe kapsam büyür.
+      {formatNumber(base.trusted)} ilan üzerinden (kaynaktan doğrulanmış; aktif ilanlarda kapsam %{pct}). Doğrulama sürdükçe kapsam büyür.
     </p>
   );
 }
 
 export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
   const autoPremium = automaticPremiumPct(data.transmissionStats.map((t) => ({ label: t.transmission, avgPrice: t.avgPrice })));
+  // Rozet ve en pahalı/en ucuz marka veriden hesaplanır (eskiden "%80" ve "Audi"/"Fiat" sabit yazılıydı).
+  const knownBrackets = data.priceBrackets.filter((b) => b.label !== "Diğer");
+  const bracketTotal = knownBrackets.reduce((sum, b) => sum + b.count, 0);
+  const under2mCount = knownBrackets.filter((b) => !/^(2M|4M)/.test(b.label)).reduce((sum, b) => sum + b.count, 0);
+  const under2mPct = bracketTotal > 0 ? Math.round((under2mCount / bracketTotal) * 100) : null;
+  const pricedBrands = data.topBrands.filter((b) => b.avgPrice > 0);
+  const priciestBrand = pricedBrands.length ? pricedBrands.reduce((a, b) => (b.avgPrice > a.avgPrice ? b : a)) : null;
+  const cheapestBrand = pricedBrands.length ? pricedBrands.reduce((a, b) => (b.avgPrice < a.avgPrice ? b : a)) : null;
   return (
     <div className="space-y-8">
       {/* 1. BÜTÇE SEGMENTLERİ & EN ÇOK İLANLI 10 MARKA */}
@@ -73,9 +83,11 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <span>💰</span> Bütçe Segmentleri Dağılımı
               </h3>
-              <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 font-semibold border border-blue-500/20">
-                Pazarın %80&apos;i &lt;2M ₺
-              </span>
+              {under2mPct !== null && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-400 font-semibold border border-blue-500/20">
+                  İlanların {trPercent(under2mPct)} &lt;2M ₺
+                </span>
+              )}
             </div>
             <p className="mt-1 text-xs text-slate-400">
               Piyasadaki araçların fiyat aralıklarına göre adedi ve pazar payı yüzdesi.
@@ -186,8 +198,14 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
           </div>
 
           <div className="mt-4 flex items-center justify-between text-xs text-slate-400 border-t border-white/5 pt-3">
-            <span>En yüksek ortalama: <strong className="text-slate-200">Audi ({formatPrice(data.topBrands.find(b => b.brand === "Audi")?.avgPrice || 0)})</strong></span>
-            <span>En ekonomik ortalama: <strong className="text-slate-200">Fiat ({formatPrice(data.topBrands.find(b => b.brand === "Fiat")?.avgPrice || 0)})</strong></span>
+            {priciestBrand && cheapestBrand ? (
+              <>
+                <span>En yüksek ortalama: <strong className="text-slate-200">{priciestBrand.brand} ({formatPrice(priciestBrand.avgPrice)})</strong></span>
+                <span>En ekonomik ortalama: <strong className="text-slate-200">{cheapestBrand.brand} ({formatPrice(cheapestBrand.avgPrice)})</strong></span>
+              </>
+            ) : (
+              <span>Yeterli veri yok.</span>
+            )}
           </div>
         </div>
       </div>
@@ -203,7 +221,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Pazar payı ve ortalama satış fiyatları
             </p>
-            <p className="mt-1 text-[11px] text-slate-500">Bazı ilanlarda yakıt tipi ilan başlığından tahmin edilir.</p>
+            <FeatureBaseNote base={data.featureBases?.fuelType} />
           </div>
 
           <div className="mt-4 space-y-3">
@@ -247,7 +265,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Otomatik vs Manuel pazar oranı ve fiyat farkı
             </p>
-            <FeatureBaseNote base={data.featureBase} />
+            <FeatureBaseNote base={data.featureBases?.transmission} />
           </div>
 
           <div className="mt-4 space-y-4">
@@ -300,7 +318,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Piyasadaki gövde tipleri ve ortalamaları
             </p>
-            <FeatureBaseNote base={data.featureBase} />
+            <FeatureBaseNote base={data.featureBases?.bodyType} />
           </div>
 
           <div className="mt-4 space-y-3">

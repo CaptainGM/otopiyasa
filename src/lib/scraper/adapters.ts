@@ -15,6 +15,7 @@ import { scrapeOtokocListings } from "@/lib/scraper/otokoc";
 import { scrapeDodListings } from "@/lib/scraper/dod";
 import { scrapeIkinciyeniListings } from "@/lib/scraper/ikinciyeni";
 import { reportProgress } from "@/lib/scraper/progress";
+import { parseArabamListPage } from "@/lib/scraper/arabam-list";
 import { ScrapedListing, ScrapeAdapter, OnListing } from "@/lib/scraper/types";
 import { seedCars } from "@/lib/seed-data";
 import { Car } from "@/models/Car";
@@ -134,21 +135,24 @@ export function arabamBrandSlug(brand: string): string {
 }
 
 
-async function hrefsFromUrl(url: string): Promise<string[]> {
+async function listHtmlFromUrl(url: string): Promise<string> {
   const direct = await fetchPageHtml(url);
   if (direct.status === 429 || direct.status === 403) {
     throw new Error(`Arabam.com hız sınırı / Cloudflare koruması (HTTP ${direct.status})`);
   }
-  let hrefs = extractArabamListingHrefs(direct.ok ? direct.html : "", 30);
-  if (hrefs.length === 0 && !direct.status) {
+  let html = direct.ok ? direct.html : "";
+  if (extractArabamListingHrefs(html, 30).length === 0 && !direct.status) {
     try {
-      const html = await fetchPageHtmlWithBrowser(url);
-      hrefs = extractArabamListingHrefs(html, 30);
+      html = await fetchPageHtmlWithBrowser(url);
     } catch {
       // ignore
     }
   }
-  return hrefs;
+  return html;
+}
+
+async function hrefsFromUrl(url: string): Promise<string[]> {
+  return extractArabamListingHrefs(await listHtmlFromUrl(url), 30);
 }
 
 
@@ -237,26 +241,34 @@ export async function collectArabamHrefsForModel(
   if (!base) return [];
 
   const hrefs = new Set<string>();
+  const wantYear = year && Number.isInteger(year) ? year : null;
+  // robots.txt yıl filtresini (?minYear=/?maxYear=) yasaklıyor. Model sayfası süzgeçsiz gezilir; liste sayfasının
+  // gömülü verisinde her ilanın yılı yazdığı için hedef dışı yılların ilan sayfası hiç açılmaz. Hedef yıl seyrek
+  // olabileceğinden yıl aranırken daha çok sayfaya bakılır.
+  const maxPages = wantYear ? pages * 4 : pages;
 
-  for (let page = 1; page <= pages && hrefs.size < maxHrefs; page++) {
+  for (let page = 1; page <= maxPages && hrefs.size < maxHrefs; page++) {
     let found: string[] = [];
+    let pageSize = 0;
     try {
-      const params = new URLSearchParams({ page: String(page) });
-      if (year && Number.isInteger(year)) {
-        // Kaynağın yıl filtresi minYear/maxYear; eskiden yazılan yearMin/yearMax yok sayılıyordu ve
-        // her yıl hedefi için alakasız yıllardan ilanlar indirilip atılıyordu.
-        params.set("minYear", String(year));
-        params.set("maxYear", String(year));
+      const html = await listHtmlFromUrl(page > 1 ? `${base}?page=${page}` : base);
+      const all = extractArabamListingHrefs(html, 30);
+      pageSize = all.length;
+      if (wantYear) {
+        const years = new Map(parseArabamListPage(html).docs.map((d) => [d.id, d.year]));
+        // Gömülü veri okunamazsa eski davranış: ilan sayfası açılınca yıl yine kontrol edilir.
+        found = years.size ? all.filter((href) => years.get(arabamIdFromHref(href) || "") === wantYear) : all;
+      } else {
+        found = all;
       }
-      found = await hrefsFromUrl(`${base}?${params.toString()}`);
     } catch {
       break;
     }
-    if (found.length === 0) break;
+    if (pageSize === 0) break;
     const before = hrefs.size;
     found.forEach((h) => hrefs.add(h));
 
-    if (hrefs.size === before) break;
+    if (!wantYear && hrefs.size === before) break;
   }
 
   return [...hrefs].slice(0, maxHrefs);

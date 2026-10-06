@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { createSessionAndToken, setAuthCookie } from "@/lib/auth";
@@ -11,7 +12,7 @@ import { hashVerifyToken } from "@/lib/auth-verify";
 export async function POST(request: Request) {
   try {
     await connectDB();
-    const { email, token } = await request.json();
+    const { email, token } = await readJson(request, { flat: true });
 
     if (!email || !token) {
       return NextResponse.json(

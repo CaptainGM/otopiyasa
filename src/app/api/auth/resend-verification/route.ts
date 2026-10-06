@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { appBaseUrl } from "@/lib/app-url";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
-import { checkSharedRateLimit } from "@/lib/api-rate-limit";
+import { checkKeyRateLimit, checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { isMailerConfigured, sendVerifyEmail } from "@/lib/mailer";
 import { createVerifyToken, buildVerifyUrl, VERIFY_TOKEN_TTL_MS } from "@/lib/auth-verify";
 
@@ -16,10 +17,13 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     await connectDB();
-    const { email } = await request.json();
+    const { email } = await readJson(request, { flat: true });
     if (!email) {
       return NextResponse.json({ error: "E-posta zorunludur." }, { status: 400 });
     }
+
+    const accountLimited = await checkKeyRateLimit("resend-account", String(email), { limit: 3, windowMs: 60 * 60 * 1000 });
+    if (accountLimited) return accountLimited;
 
     const genericMessage = {
       message: "Hesap doğrulanmamışsa yeni bir doğrulama bağlantısı gönderildi.",

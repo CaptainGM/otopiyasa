@@ -1,4 +1,5 @@
 import { revalidateListing } from "@/lib/revalidate-listing";
+import { readJson } from "@/lib/http";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
@@ -9,6 +10,7 @@ import { validateListingFields, validateListingImages } from "@/lib/listing-vali
 import { moderateNewListing } from "@/lib/listing-moderation";
 import { validateMinOffer } from "@/lib/offers";
 import { logAudit } from "@/lib/audit-log";
+import { normalizeFuelType } from "@/lib/normalize-fuel";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const car = await ownedCar(id, authUser.userId);
     if (!car) return NextResponse.json({ error: "İlan bulunamadı veya yetkiniz yok." }, { status: 404 });
 
-    const body = await request.json();
+    const body = await readJson(request);
     /**
      * Fotoğraflar moderasyona da GİRMELİ.
      *
@@ -67,6 +69,11 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       contactPhone: String(body.contactPhone ?? car.contactPhone).trim(),
       minOffer: Math.trunc(Number(body.minOffer ?? car.minOffer) || 0),
       images: images ?? (car.images as string[] | undefined) ?? [],
+      // Düzenleme formu yakıt/vites/kasa/renk de gönderiyor; eskiden bunlar yok sayılıyordu (değişiklik kayboluyordu).
+      fuelType: body.fuelType !== undefined ? normalizeFuelType(String(body.fuelType || "")) : undefined,
+      transmission: body.transmission !== undefined ? String(body.transmission || "").trim() : undefined,
+      bodyType: body.bodyType !== undefined ? String(body.bodyType || "").trim() : undefined,
+      color: body.color !== undefined ? String(body.color || "").trim() : (car as any).features?.color,
     };
 
     const fields = validateListingFields(input);
@@ -91,6 +98,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     car.contactPhone = input.contactPhone;
     car.minOffer = input.minOffer;
     car.title = `${input.brand} ${input.model} ${input.year}`.trim();
+    if (input.fuelType) car.set("features.fuelType", input.fuelType);
+    if (input.transmission) car.set("features.transmission", input.transmission);
+    if (input.bodyType) car.set("features.bodyType", input.bodyType);
+    if (input.color) car.set("features.color", input.color);
     if (images) {
       car.images = images;
       car.imageUrl = images[0] || car.imageUrl;

@@ -7,6 +7,9 @@
 // kontrol" tarihi yenilenir; kaldırılmış olduğu KESİN anlaşılanlar arşive taşınır (karar kuralları ve
 // güvenlik freni temizle-olu-ilanlari.bat ile aynı: verify-listing.ts + listing-lifecycle.ts).
 //
+// Ayrıca ilan sayfası kontrolüne ayrılan sürenin ~0,8'i kadar model liste sayfası gezilir: bir liste sayfası
+// bizdeki birkaç ilanın gerçek vites/yakıt/renk/fiyatını tek istekte verir (bkz. arabam-list-sweep.ts).
+//
 // Cloudflare'a takılmamak için: ilanlar arası ~10 sn (±%25), art arda engelde 15 dk → 30 → 60 → 120 dk mola
 // (bkz. arabam-pacing.ts), engel gidince kendiliğinden devam. Tek kopya çalışır (kilit dosyası).
 //
@@ -94,7 +97,7 @@ async function main() {
   }
   const { connectDB } = await import("@/lib/mongodb");
   const { Car } = await import("@/models/Car");
-  const { recordWatcherBatch, recordWatcherDiscovery, updateWatcherState } = await import("@/models/HomeWatcher");
+  const { recordWatcherBatch, recordWatcherDiscovery, recordWatcherListSweep, updateWatcherState } = await import("@/models/HomeWatcher");
   const os = await import("node:os");
 
   // Yönetim ekranı için kalp atışı: durum, ne yaptığı, son satırlar. Dakikada bir ve her olayda yazılır.
@@ -136,18 +139,26 @@ async function main() {
   const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
   const { isSitemapSyncDue, syncArabamSitemap } = await import("@/lib/scraper/arabam-sitemap");
   const { SleepMeter } = await import("@/lib/scraper/sleep-meter");
+  const { runListSweepStep } = await import("@/lib/scraper/arabam-list-sweep");
   // Bilgisayar uykuya girdiğinde geçen süre "çalışma süresi"ne yazılmasın (bkz. sleep-meter.ts).
   const sleepMeter = new SleepMeter();
   sleepMeter.start();
 
   const baseGap = Number.isFinite(configuredGap) && configuredGap >= 3 ? configuredGap : PACING.baseGapSeconds;
   const maxDiscoveryCreditMs = PACING.maxGapSeconds * 2_000;
+  /** İlan sayfası süresine göre liste taramasına ayrılan pay (ilan:liste ≈ 55:45). */
+  const LIST_SHARE = 0.8;
+  const maxListCreditMs = PACING.maxGapSeconds * 8_000;
   let state = { gapSeconds: baseGap, pauseMinutes: 0 };
   let rounds = 0;
   let todayChecked = 0;
   let todayArchived = 0;
   let sessionInserted = 0;
   let discoveryCreditMs = 0;
+  let listCreditMs = 0;
+  let sessionListMatched = 0;
+  let sessionListCorrected = 0;
+  let listIdleLogged = false;
   let day = new Date().toDateString();
 
   log(`Arabam bekçisi başladı (parti ${batchSize} ilan, ilanlar arası ~${baseGap} sn).`);
@@ -226,13 +237,14 @@ async function main() {
       }
       if (singleRound) break;
 
-      // Ayırılan aktif süre 90/10: yeni detay sayfaları kontrol sayfalarıyla aynı kapı ve aralığı kullanır.
-      // Bilgisayarın kapalı/uykuda olduğu ve Cloudflare molası verilen zaman bütçeye girmez.
+      // Ayırılan aktif süre: kontrol 90 / keşif 10, liste taraması kontrol süresinin 0,8'i. Hepsi aynı kapı ve
+      // aralığı kullanır. Bilgisayarın kapalı/uykuda olduğu ve Cloudflare molası verilen zaman bütçeye girmez.
       if (res.checked > 0) {
         discoveryCreditMs = Math.min(
           maxDiscoveryCreditMs,
           discoveryCreditMs + (batchActiveMs * 0.1) / 0.9
         );
+        listCreditMs = Math.min(maxListCreditMs, listCreditMs + batchActiveMs * LIST_SHARE);
       }
       const safeToDiscover = blocked === 0 && res.errors === 0 && (plan.sleepMinutes === 0 || plan.reason === "idle");
       if (safeToDiscover && discoveryCreditMs >= state.gapSeconds * 1000) {
@@ -270,6 +282,43 @@ async function main() {
           sessionInserted += found.inserted;
           await recordWatcherDiscovery(found.inserted);
           log(`${found.message} | bu çalıştırmada ${sessionInserted} yeni ilan eklendi.`);
+        }
+      }
+
+      if (safeToDiscover && listCreditMs >= state.gapSeconds * 1000) {
+        let requests = 0;
+        let matched = 0;
+        let corrected = 0;
+        while (listCreditMs >= state.gapSeconds * 1000 && requests < 12) {
+          await setBeat("running", "Model liste sayfaları taranıyor (vites/yakıt/fiyat doğrulama)", state.gapSeconds);
+          const stepStarted = Date.now();
+          const step = await runListSweepStep();
+          listCreditMs = Math.max(0, listCreditMs - Math.max(1, Date.now() - stepStarted));
+          requests += step.requests;
+          if (!step.picked) {
+            // Verimli aile kalmadıysa süre ilan sayfası kontrolüne kalır.
+            listCreditMs = 0;
+            if (!listIdleLogged) log(step.message);
+            listIdleLogged = true;
+            break;
+          }
+          listIdleLogged = false;
+          matched += step.matched;
+          corrected += step.corrected;
+          if (step.blocked) {
+            const slower = planNextStep(state, { checked: 1, blocked: 1, errors: 0, paused: false });
+            state = { gapSeconds: slower.gapSeconds, pauseMinutes: slower.pauseMinutes };
+            log(`${step.message} Yeni istek aralığı ${state.gapSeconds} sn oldu.`);
+            break;
+          }
+          log(step.message);
+          if (step.failed) break;
+        }
+        if (requests > 0) {
+          sessionListMatched += matched;
+          sessionListCorrected += corrected;
+          await recordWatcherListSweep(requests, matched, corrected);
+          log(`  liste taraması: ${requests} sayfa, ${matched} ilan doğrulandı (${corrected} vites düzeltildi) | bu çalıştırmada ${sessionListMatched} ilan, ${sessionListCorrected} düzeltme`);
         }
       }
 

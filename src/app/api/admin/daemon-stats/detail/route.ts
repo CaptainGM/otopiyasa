@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
 
     // 1. Gerçek zamanlı veritabanı sayıları (senkronizasyon için)
     const [realRemovedCount, realNewCount, priceDocs, removedCars, newCars, detailDocs] = await Promise.all([
-      Car.countDocuments({ status: "removed", updatedAt: { $gte: start, $lt: end } }),
+      // Arşive gidiş zamanı removedAt'tır; updatedAt başka nedenlerle de değişir.
+      Car.countDocuments({ status: "removed", removedAt: { $gte: start, $lt: end } }),
       Car.countDocuments({ createdAt: { $gte: start, $lt: end } }),
       Car.find({
         "priceHistory.1": { $exists: true },
@@ -51,8 +52,8 @@ export async function GET(req: NextRequest) {
         .lean(),
 
       // Bu saatte kaldırılan/arşivlenen araçlar (ilk 50)
-      Car.find({ status: "removed", updatedAt: { $gte: start, $lt: end } })
-        .sort({ updatedAt: -1 })
+      Car.find({ status: "removed", removedAt: { $gte: start, $lt: end } })
+        .sort({ removedAt: -1 })
         .limit(50)
         .select("title brand model price city imageUrl sourceSite listingUrl updatedAt")
         .lean(),
@@ -122,42 +123,9 @@ export async function GET(req: NextRequest) {
       updatedAt: c.updatedAt,
     }));
 
-    // İstek & Ağ Sağlık Analizi (Cloudflare / Rate Limit / HTTP Durumları)
-    let diagnostics = (stat as any).diagnostics;
-    if (!diagnostics) {
-      // Geçmiş loglardan çıkarım: Taranan yüksek fakat güncellenen/eklenen 0 ise Cloudflare 429'a takılmıştır
-      const isCloudflareBlocked =
-        stat.scanned >= 200 &&
-        stat.inserted === 0 &&
-        stat.updated === 0 &&
-        (stat.deleted || 0) === 0;
-
-      if (isCloudflareBlocked) {
-        diagnostics = {
-          totalRequests: stat.scanned,
-          successRequests: 0,
-          failedRequests: stat.scanned,
-          rateLimitHits: stat.scanned,
-          healthStatus: "warning",
-          statusCode: 429,
-          statusLabel: "Cloudflare Hız Sınırı (HTTP 429 Too Many Requests)",
-          explanation:
-            "Arabam ilan detay istekleri oturum çerezi olmadan gönderildiği için Cloudflare korumasına takılmış ve 0 ilan güncellenmiştir. Oturum çerezi (_cfuvid) ve Referer koruması entegre edilmiştir.",
-        };
-      } else {
-        diagnostics = {
-          totalRequests: stat.scanned,
-          successRequests: Math.max(stat.scanned, (stat.inserted || 0) + (stat.updated || 0) + (stat.deleted || 0)),
-          failedRequests: 0,
-          rateLimitHits: 0,
-          healthStatus: "success",
-          statusCode: 200,
-          statusLabel: "Tüm İstekler Başarılı (HTTP 200 OK)",
-          explanation:
-            "Bu saat diliminde yapılan tüm ağ istekleri başarıyla yanıt verdi. Cloudflare engeli veya hız sınırı yaşanmadı.",
-        };
-      }
-    }
+    // Ağ teşhisi yalnızca motor ölçüp kaydettiyse gösterilir. Eskiden kayıt yoksa sayılardan tahmin edilip
+    // "Tüm istekler başarılı (HTTP 200)" ya da "Cloudflare 429" diye UYDURMA bir sonuç yazılıyordu.
+    const diagnostics = (stat as any).diagnostics || null;
 
     return NextResponse.json({
       success: true,

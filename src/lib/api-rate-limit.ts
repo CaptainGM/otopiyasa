@@ -22,6 +22,19 @@ function tooManyRequests(resetAt: Date) {
   );
 }
 
+/**
+ * IP'den bağımsız, bir anahtara (ör. hesap e-postası) göre sınır. IP sınırı tek başına yetmez: farklı IP'lerden
+ * aynı hesaba şifre denemesi (credential stuffing) ya da aynı adrese e-posta yağdırma engellenmeli.
+ */
+export async function checkKeyRateLimit(
+  bucket: string,
+  subject: string,
+  options: { limit?: number; windowMs?: number } = {}
+): Promise<NextResponse | null> {
+  const subjectHash = createHash("sha256").update(String(subject).toLowerCase().trim()).digest("hex");
+  return consumeRateLimit(`${bucket}:${subjectHash}`, options.limit ?? 10, options.windowMs ?? 15 * 60 * 1000);
+}
+
 /** Shared, atomic IP + bucket rate limiting backed by MongoDB. */
 export async function checkSharedRateLimit(
   request: Request,
@@ -31,7 +44,10 @@ export async function checkSharedRateLimit(
   const limit = options.limit ?? 10;
   const windowMs = options.windowMs ?? 15 * 60 * 1000;
   const ipHash = createHash("sha256").update(clientIp(request)).digest("hex");
-  const key = `${bucket}:${ipHash}`;
+  return consumeRateLimit(`${bucket}:${ipHash}`, limit, windowMs);
+}
+
+async function consumeRateLimit(key: string, limit: number, windowMs: number): Promise<NextResponse | null> {
   const now = new Date();
 
   const { connectDB } = await import("@/lib/mongodb");

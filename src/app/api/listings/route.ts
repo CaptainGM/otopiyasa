@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { randomUUID } from "node:crypto";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     const limited = await checkSharedRateLimit(request, "create-listing", { limit: 10, windowMs: 60 * 60 * 1000 });
     if (limited) return limited;
 
-    const body = await request.json();
+    const body = await readJson(request);
     const input = {
       brand: String(body.brand || "").trim(),
       model: String(body.model || "").trim(),

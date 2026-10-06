@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { appBaseUrl } from "@/lib/app-url";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { createResetToken } from "@/lib/password";
 import { sendResetEmail, sendResetCodeEmail } from "@/lib/mailer";
 import { generateCode, hashCode, codeExpiry } from "@/lib/email-change";
-import { checkSharedRateLimit } from "@/lib/api-rate-limit";
+import { checkKeyRateLimit, checkSharedRateLimit } from "@/lib/api-rate-limit";
 
 export async function POST(request: Request) {
   try {
@@ -13,11 +14,15 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     await connectDB();
-    const { email, method } = await request.json();
+    const { email, method } = await readJson(request, { flat: true });
 
     if (!email) {
       return NextResponse.json({ error: "E-posta zorunludur." }, { status: 400 });
     }
+
+    // Aynı adrese farklı IP'lerden sıfırlama e-postası yağdırılmasın.
+    const accountLimited = await checkKeyRateLimit("forgot-account", email, { limit: 3, windowMs: 60 * 60 * 1000 });
+    if (accountLimited) return accountLimited;
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 

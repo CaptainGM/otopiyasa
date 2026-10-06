@@ -148,9 +148,11 @@ export async function scrapeDodDetails(
       else if (/Hibrit|Hybrid|Ibrida|e-TSI|\b[MP]?HEV\b/i.test(desc)) fuelType = "Hibrit";
       else if (/Elektrik/i.test(desc) || /\bEV\b/.test(desc)) fuelType = "Elektrik";
 
+      // Yalnızca donanım adındaki açık şanzıman ifadeleri. Eskiden büyük/küçük harf duyarsız "AT\b" deseni
+      // "Seat" kelimesiyle eşleştiği için her Seat "Otomatik" görünüyordu. Kesin değer ilan sayfasından gelir.
       let transmission = "Bilinmiyor";
-      if (/STRONIC|DSG|EDCT|Otomatik|AT\b/i.test(desc)) transmission = "Otomatik";
-      else if (/Manuel|MT\b/i.test(desc)) transmission = "Manuel";
+      if (/S[\s-]?tronic|\bDSG\b|\bEDC\b|Otomatik/i.test(desc)) transmission = "Otomatik";
+      else if (/\bManuel\b/i.test(desc)) transmission = "Manuel";
 
       // Şehir tespiti
       let city = "İstanbul";
@@ -167,7 +169,10 @@ export async function scrapeDodDetails(
       const coords = cityToCoords(city);
 
       const title = `${brand} ${rawModel} ${year} ${mileage.toLocaleString("tr-TR")} km`.trim();
-      const description = `${title} - DOD Doğuş Otomotiv Kurumsal Ekspertizli 2. El. ${city} Doğuş Otomotiv Yetkili Satıcısı. ${transmission} vites, ${fuelType} yakıt.`;
+      const specText = [transmission !== "Bilinmiyor" ? `${transmission} vites` : "", fuelType !== "Bilinmiyor" ? `${fuelType} yakıt` : ""]
+        .filter(Boolean)
+        .join(", ");
+      const description = `${title} - DOD Doğuş Otomotiv Kurumsal Ekspertizli 2. El. ${city} Doğuş Otomotiv Yetkili Satıcısı.${specText ? ` ${specText}.` : ""}`;
 
       const listing: ScrapedListing = {
         externalId: item.externalId,

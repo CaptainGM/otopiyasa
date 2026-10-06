@@ -69,3 +69,19 @@ describe("turkishSearchRegex", () => {
     expect(matches("(a+)+$", "aaaa")).toBe(false);
   });
 });
+
+describe("trPercent", () => {
+  it("sayının okunuşuna göre iyelik eki ekler", async () => {
+    const { trPercent } = await import("./utils");
+    expect(trPercent(81)).toBe("%81'i");
+    expect(trPercent(40)).toBe("%40'ı");
+    expect(trPercent(17)).toBe("%17'si");
+    expect(trPercent(6)).toBe("%6'sı");
+    expect(trPercent(3)).toBe("%3'ü");
+    expect(trPercent(9)).toBe("%9'u");
+    expect(trPercent(30)).toBe("%30'u");
+    expect(trPercent(50)).toBe("%50'si");
+    expect(trPercent(100)).toBe("%100'ü");
+    expect(trPercent(0)).toBe("%0'ı");
+  });
+});

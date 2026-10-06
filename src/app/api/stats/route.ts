@@ -8,8 +8,10 @@ export async function GET() {
   try {
     await connectDB();
 
-    const data = await cached("api:stats:v1", CACHE_TTL.long, async () => {
-      const publicMatch = { $match: { ...PUBLIC_LISTING_FILTER } };
+    const data = await cached("api:stats:v2", CACHE_TTL.long, async () => {
+      // Ortalamalar web analiz sayfasıyla aynı süzgeçle: hatalı/trol fiyatlar (1 TL, 999 milyon) ortalamayı bozmasın.
+      // Eskiden mobil süzgeçsiz ortalama gösterdiği için web ile mobil farklı "piyasa ortalaması" yazıyordu.
+      const publicMatch = { $match: { ...PUBLIC_LISTING_FILTER, price: { $gte: 50_000, $lte: 40_000_000 } } };
 
       const [byBrand, byYear, totalCars, overall] = await Promise.all([
         Car.aggregate([

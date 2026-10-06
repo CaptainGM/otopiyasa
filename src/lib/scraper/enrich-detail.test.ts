@@ -129,7 +129,7 @@ describe("mergeDetailIntoListing", () => {
     features: { fuelType: "Benzin", transmission: "Otomatik", bodyType: "Belirtilmemiş", color: "Beyaz" },
   };
 
-  it("daha zengin galeriyi ve bilinmeyen alanları doldurur, bilinenleri ezmez", () => {
+  it("daha zengin galeriyi alır, ilan sayfasındaki özellikler liste verisinin önüne geçer", () => {
     const merged = mergeDetailIntoListing(base, {
       images: ["https://cdn/1.webp", "https://cdn/2.webp", "https://cdn/3.webp"],
       description: "detaylı açıklama",
@@ -140,7 +140,9 @@ describe("mergeDetailIntoListing", () => {
     expect(merged.images).toHaveLength(3);
     expect(merged.description).toBe("detaylı açıklama");
     expect(merged.features.bodyType).toBe("Hatchback");
-    expect(merged.features.color).toBe("Beyaz"); // listedeki bilinen değer korunur
+    // İlan sayfası aracın kendi kaydıdır: liste kartındaki renk ondan farklıysa sayfadaki yazılır.
+    expect(merged.features.color).toBe("Siyah");
+    expect(merged.confirmedFeatures).toEqual(expect.arrayContaining(["bodyType", "color"]));
     expect(merged.damageFlag).toBe(false);
   });
 

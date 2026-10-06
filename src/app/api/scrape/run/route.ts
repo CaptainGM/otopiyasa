@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import {
   runScrapeJob,
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
 
     let body: any = {};
     try {
-      body = await request.json();
+      body = await readJson(request);
     } catch {
       // Body boş veya geçersiz JSON
     }

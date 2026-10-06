@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { connectDB } from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     const limited = await checkSharedRateLimit(request, "email-change-verify", { limit: 20 });
     if (limited) return limited;
 
-    const { code } = await request.json();
+    const { code } = await readJson(request, { flat: true });
     if (!code) {
       return NextResponse.json({ error: "Kod zorunludur." }, { status: 400 });
     }

@@ -34,8 +34,9 @@ export async function GET() {
       .limit(30)
       .lean();
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    // "Bugün" Türkiye gününe göre (sunucu UTC'de çalışıyor; eskiden gün 03:00'te başlıyordu).
+    const trNow = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    const todayStart = new Date(Date.UTC(trNow.getUTCFullYear(), trNow.getUTCMonth(), trNow.getUTCDate()) - 3 * 60 * 60 * 1000);
 
     let todayScanned = 0;
     let todayInserted = 0;
@@ -56,7 +57,7 @@ export async function GET() {
     }
 
     const today = {
-      date: new Date().toLocaleDateString("tr-TR"),
+      date: new Date().toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }),
       scanned: todayScanned,
       inserted: todayInserted,
       updated: todayUpdated,
@@ -69,7 +70,9 @@ export async function GET() {
       { success: true, logs, today },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=5, stale-while-revalidate=15",
+          // Yöneticiye özel veri: CDN'de ortak önbelleğe ALINMAZ (eskiden public idi; 5 sn içinde gelen
+          // herhangi bir ziyaretçi yöneticinin tarama günlüğünü alabilirdi).
+          "Cache-Control": "private, no-store",
         },
       }
     );

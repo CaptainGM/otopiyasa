@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJson } from "@/lib/http";
 import { appBaseUrl } from "@/lib/app-url";
 import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/mongodb";
@@ -16,13 +17,17 @@ export async function POST(request: Request) {
     if (limited) return limited;
 
     await connectDB();
-    const { name, email, password } = await request.json();
+    const { name, email, password } = await readJson(request, { flat: true });
 
     if (!name || !email || !password) {
       return NextResponse.json(
         { error: "Ad, e-posta ve şifre zorunludur." },
         { status: 400 }
       );
+    }
+
+    if (String(name).trim().length > 60) {
+      return NextResponse.json({ error: "Ad en fazla 60 karakter olabilir." }, { status: 400 });
     }
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -75,7 +80,7 @@ export async function POST(request: Request) {
 
     const { token: verifyToken, tokenHash: verifyTokenHash } = createVerifyToken();
     const user = await User.create({
-      name,
+      name: String(name).trim().slice(0, 60),
       email: email.toLowerCase(),
       canonicalEmail: canonical,
       passwordHash,

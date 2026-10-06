@@ -123,9 +123,11 @@ export function OfferThread({ initial }: { initial: OfferView }) {
           taşıma ve görmeden ödeme, buradaki en yaygın dolandırıcılık kalıpları. */}
       {offer.chatOpen && (
         <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.06] px-3 py-2.5 text-xs leading-relaxed text-amber-100/90">
-          🛡️ <strong>Güvenliğin için:</strong> Görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı
+          🛡️ <strong>Güvenliğin için (alıcı ve satıcı):</strong> Görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı
           önerme ya da kabul etme — sorun çıkarsa kanıt burada kalır. Aracı görmeden/denemeden{" "}
-          <strong>asla kapora ya da ön ödeme</strong> gönderme. Şüpheli bir durumda sohbeti aşağıdan bildir.
+          <strong>asla kapora ya da ön ödeme</strong> gönderme. <strong>IBAN/hesap numarası isteyen ya da gönderen</strong>,
+          harici bir siteye veya &quot;güvenli ödeme&quot; bağlantısına yönlendiren kişiye güvenme; ödemeyi ve devri aracı görüp
+          yüz yüze, noterde yap. OtoPiyasa ödeme almaz ve aracılık etmez. Şüpheli bir durumda sohbeti aşağıdan bildir.
         </div>
       )}
 

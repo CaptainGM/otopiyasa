@@ -32,15 +32,19 @@ export function cardImageUrl(url: string): string {
   return url;
 }
 
+/**
+ * Adresteki boşluk/Türkçe harf gibi geçersiz karakterleri kodlar; ZATEN kodlanmış kısımlara (%XX) dokunmaz.
+ * Eskiden `encodeURI(decodeURI(url))` kullanılıyordu: decodeURI ayrılmış karakterlerin (%3A, %2F) kodunu çözmediği için
+ * `/api/img?u=https%3A%2F%2F...` adresi `%253A` olarak ÇİFT kodlanıyor, görsel sunucusu 400 verip Otoplus,
+ * Otomerkezi, VavaCars ve Carvak fotoğraflarının hiçbiri yüklenmiyordu.
+ */
 export function sanitizeImageUrl(url: string | undefined): string {
   if (!url || typeof url !== "string") return "";
   const trimmed = url.trim();
   if (!trimmed) return "";
-  try {
-    return encodeURI(decodeURI(trimmed));
-  } catch {
-    return encodeURI(trimmed);
-  }
+  return trimmed
+    .replace(/%(?![0-9a-fA-F]{2})/g, "%25")
+    .replace(/[^!-~]|["<>\^`{|}]/gu, (char) => encodeURIComponent(char));
 }
 
 export function sizeVariants(url: string, preferSize?: string): string[] {

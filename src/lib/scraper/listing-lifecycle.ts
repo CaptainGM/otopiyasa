@@ -33,6 +33,13 @@ export const LIFECYCLE = {
    */
   breakerMinAlive: 5,
   breakerMinAliveRatio: 0.25,
+  /**
+   * Gerçek tarayıcıyla açılan Arabam ilan sayfasında "kaldırıldı" kanıtı güçlüdür (kategori sayfasına yönlendirme/404);
+   * engel ve bot sayfaları zaten ayrı sınıflanır. Bu yüzden oran aranmaz, partide en az bu kadar CANLI ilan çıkması
+   * (tarayıcı ve sınıflandırıcı çalışıyor demektir) yeter. En eski ilanlar çoğunlukla ölü olduğundan oran şartı
+   * 27 ilanı arşive almadan günlerce kuyrukta döndürüyordu.
+   */
+  arabamBreakerMinAlive: 3,
   /** Tam envanter taraması aktif ilanların en az bu oranını bulmalı; yoksa tarama şüphelidir. */
   minCrawlCoverage: 0.5,
   /** Envanterde görünmeyen ilan oranı bunu aşarsa arşivleme yapılmaz. */
@@ -71,6 +78,12 @@ export function breakerTripped(checked: number, gone: number, alive = 0): boolea
   return !controlsOk;
 }
 
+/** Arabam tek tek ilan doğrulamasında güvenlik freni (bkz. LIFECYCLE.arabamBreakerMinAlive). */
+export function arabamBreakerTripped(checked: number, gone: number, alive: number): boolean {
+  if (checked < LIFECYCLE.breakerMinSample || gone / checked <= LIFECYCLE.breakerRatio) return false;
+  return alive < LIFECYCLE.arabamBreakerMinAlive;
+}
+
 /**
  * Tam envanter taramasının sonucuna güvenilebilir mi? Tarama çok az ilan
  * bulduysa ya da aktif ilanların yarısından fazlası "yok" görünüyorsa site
@@ -100,17 +113,24 @@ export async function markSeenAlive(ids: Id[], now = new Date()) {
     { _id: { $in: ids } },
     {
       $set: { lastVerifiedAt: now, lastVerifyAttemptAt: now },
-      $unset: { missingSince: 1, missingChecks: 1 },
+      $unset: { missingSince: 1, missingChecks: 1, lastVerifyStatus: 1 },
     },
     { timestamps: false }
   );
 }
 
 /** Doğrulama denemesini kaydeder (sonuç belirsiz olsa bile kuyruk ilerlesin diye). */
-export async function markVerifyAttempt(ids: Id[], now = new Date()) {
+export async function markVerifyAttempt(ids: Id[], now = new Date(), status?: VerifyAttemptStatus) {
   if (ids.length === 0) return;
-  await Car.updateMany({ _id: { $in: ids } }, { $set: { lastVerifyAttemptAt: now } }, { timestamps: false });
+  await Car.updateMany(
+    { _id: { $in: ids } },
+    { $set: { lastVerifyAttemptAt: now, ...(status ? { lastVerifyStatus: status } : {}) } },
+    { timestamps: false }
+  );
 }
+
+/** Son doğrulama denemesinin sonucu (yönetim listesinde "neden doğrulanamadı" göstermek için). */
+export type VerifyAttemptStatus = "blocked" | "error" | "gone-held";
 
 /**
  * İlanları piyasa arşivine taşır. Silmez: fiyat, km, hasar ve fiyat geçmişi

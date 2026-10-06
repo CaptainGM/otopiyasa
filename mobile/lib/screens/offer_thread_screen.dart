@@ -122,8 +122,11 @@ class _OfferThreadScreenState extends State<OfferThreadScreen> {
               border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
             ),
             child: const Text(
-              '🛡️ Güvenliğin için: görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı '
-              'önerme ya da kabul etme. Aracı görmeden/denemeden asla kapora ya da ön ödeme gönderme.',
+              '🛡️ Güvenliğin için (alıcı ve satıcı): görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı '
+              'önerme ya da kabul etme. Aracı görmeden/denemeden asla kapora ya da ön ödeme gönderme. '
+              'IBAN/hesap numarası isteyen ya da gönderen, harici bir siteye veya "güvenli ödeme" bağlantısına '
+              'yönlendiren kişiye güvenme; ödemeyi ve devri aracı görüp yüz yüze, noterde yap. '
+              'OtoPiyasa ödeme almaz ve aracılık etmez.',
               style: TextStyle(fontSize: 11.5, height: 1.4),
             ),
           ),

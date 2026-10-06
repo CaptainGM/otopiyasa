@@ -20,7 +20,7 @@ export interface MarketInsightData {
   bodyTypeStats: Array<{ bodyType: string; count: number; avgPrice: number; sharePct: number }>;
   topBrands: Array<{ brand: string; count: number; avgPrice: number }>;
   /** Vites/yakıt/kasa dağılımlarının hesaplandığı güvenilir (ilan sayfasından doğrulanmış) ilan sayısı ve toplam aktif ilan. */
-  featureBase?: { trusted: number; total: number };
+  featureBase?: { trusted: number; total: number; minCoveragePct?: number; gated?: boolean };
   generatedAt?: string;
 }
 
@@ -42,9 +42,17 @@ const FUEL_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#06b6d4", "#a855f7"];
 const BODY_COLORS = ["#f97316", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899", "#64748b"];
 
 /** Dağılımın kaç ilana dayandığı: doğrulanmamış (tahmini) ilanlar hesaba katılmaz. */
-function FeatureBaseNote({ base }: { base?: { trusted: number; total: number } }) {
+function FeatureBaseNote({ base }: { base?: { trusted: number; total: number; minCoveragePct?: number; gated?: boolean } }) {
   if (!base || base.total <= 0) return null;
   const pct = Math.round((base.trusted / base.total) * 100);
+  if (base.gated) {
+    return (
+      <p className="mt-1 text-[11px] text-amber-300/80">
+        Doğrulama sürüyor: aktif ilanların %{pct}'inin bilgisi ilan sayfasından doğrulandı. Güvenilir dağılım için %{base.minCoveragePct ?? 25}'e
+        ulaşması bekleniyor; o zamana kadar yanıltıcı olmaması için gösterilmiyor.
+      </p>
+    );
+  }
   return (
     <p className="mt-1 text-[11px] text-amber-300/80">
       {formatNumber(base.trusted)} ilan üzerinden (ilan sayfasından doğrulanmış, aktif ilanların %{pct}'i). Doğrulama sürdükçe kapsam büyür.
@@ -195,7 +203,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Pazar payı ve ortalama satış fiyatları
             </p>
-            <FeatureBaseNote base={data.featureBase} />
+            <p className="mt-1 text-[11px] text-slate-500">Bazı ilanlarda yakıt tipi ilan başlığından tahmin edilir.</p>
           </div>
 
           <div className="mt-4 space-y-3">

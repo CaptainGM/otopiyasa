@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { LIFECYCLE, breakerTripped, inventoryLooksTrustworthy, shouldArchiveMissing } from "./listing-lifecycle";
+import { LIFECYCLE, arabamBreakerTripped, breakerTripped, inventoryLooksTrustworthy, shouldArchiveMissing } from "./listing-lifecycle";
 
 const HOUR = 60 * 60 * 1000;
 const now = new Date("2026-09-30T12:00:00Z");
@@ -64,5 +64,23 @@ describe("inventoryLooksTrustworthy", () => {
   });
   it("çok az aktif ilan varken oran kontrolü uygulanmaz", () => {
     expect(inventoryLooksTrustworthy(5, 3, 3).ok).toBe(true);
+  });
+});
+
+describe("arabamBreakerTripped", () => {
+  it("en eski ilanlar ölü ağırlıklı olsa da partide 3+ canlı ilan çıktıysa arşivlemeyi durdurmaz", () => {
+    // Gerçek vaka: 20 ilanın 16'sı kaldırılmış, 4'ü canlı (eski kural oran şartıyla 27 ilanı günlerce arşivlemedi).
+    expect(arabamBreakerTripped(20, 16, 4)).toBe(false);
+    expect(arabamBreakerTripped(15, 11, 4)).toBe(false);
+  });
+
+  it("hiç/çok az canlı ilan yoksa (site değişmiş olabilir) fren tutar", () => {
+    expect(arabamBreakerTripped(20, 20, 0)).toBe(true);
+    expect(arabamBreakerTripped(20, 18, 2)).toBe(true);
+  });
+
+  it("küçük partide ya da ölü oranı düşükken fren devreye girmez", () => {
+    expect(arabamBreakerTripped(4, 4, 0)).toBe(false);
+    expect(arabamBreakerTripped(20, 5, 15)).toBe(false);
   });
 });

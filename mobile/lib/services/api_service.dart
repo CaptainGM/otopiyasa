@@ -18,49 +18,89 @@ class NeedsVerificationException implements Exception {
   String toString() => message;
 }
 
-/// Tüm API istekleri için ortak zaman aşımı: yavaş/kopuk bağlantıda ekran sonsuza dek dönmesin.
-/// Yapay zekâ ve manuel tarama gibi uzun işler için [timeout] ile süre uzatılır.
+/// Tüm API istekleri için ortak istemci:
+///  - zaman aşımı: yavaş/kopuk bağlantıda ekran sonsuza dek dönmesin (uzun işler için [timeout] uzatılır),
+///  - tek paylaşılan bağlantı: her istekte yeniden TLS el sıkışması yapılmaz (daha hızlı),
+///  - yönlendirme: Dart yalnızca GET'teki yönlendirmeyi kendisi izler; sunucu adresi `otopiyasa.app` →
+///    `www.otopiyasa.app` gibi yönlendirilirse POST/PATCH/DELETE (giriş, teklif, favori...) 308 ile sessizce
+///    başarısız olurdu. Burada yalnızca kendi alan adımıza (otopiyasa.app) yönlendirmeler elle izlenir.
 class _Http {
   const _Http();
 
   static const _defaultTimeout = Duration(seconds: 30);
+  static final http.Client _client = http.Client();
 
   Future<http.Response> get(
     Uri url, {
     Map<String, String>? headers,
     Duration timeout = _defaultTimeout,
-  }) => _guard(http.get(url, headers: headers), timeout);
+  }) => _send('GET', url, headers: headers, timeout: timeout);
 
   Future<http.Response> post(
     Uri url, {
     Map<String, String>? headers,
     Object? body,
     Duration timeout = _defaultTimeout,
-  }) => _guard(http.post(url, headers: headers, body: body), timeout);
+  }) => _send('POST', url, headers: headers, body: body, timeout: timeout);
 
   Future<http.Response> patch(
     Uri url, {
     Map<String, String>? headers,
     Object? body,
     Duration timeout = _defaultTimeout,
-  }) => _guard(http.patch(url, headers: headers, body: body), timeout);
+  }) => _send('PATCH', url, headers: headers, body: body, timeout: timeout);
 
   Future<http.Response> delete(
     Uri url, {
     Map<String, String>? headers,
     Object? body,
     Duration timeout = _defaultTimeout,
-  }) => _guard(http.delete(url, headers: headers, body: body), timeout);
+  }) => _send('DELETE', url, headers: headers, body: body, timeout: timeout);
 
-  Future<http.Response> _guard(
-    Future<http.Response> request,
-    Duration timeout,
-  ) => request.timeout(
-    timeout,
-    onTimeout: () => throw Exception(
-      'Sunucu yanıt vermedi, bağlantını kontrol edip tekrar dene.',
-    ),
-  );
+  static bool _isRedirect(int code) =>
+      code == 301 || code == 302 || code == 307 || code == 308;
+
+  Future<http.Response> _send(
+    String method,
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    required Duration timeout,
+  }) async {
+    Future<http.Response> run() async {
+      var target = url;
+      for (var hop = 0; hop < 4; hop++) {
+        final request = http.Request(method, target)..followRedirects = false;
+        if (headers != null) request.headers.addAll(headers);
+        if (body is String) {
+          request.body = body;
+        } else if (body is Map<String, String>) {
+          request.bodyFields = body;
+        }
+        final response = await http.Response.fromStream(
+          await _client.send(request),
+        );
+        final location = response.headers['location'];
+        if (!_isRedirect(response.statusCode) || location == null) {
+          return response;
+        }
+        final next = target.resolve(location);
+        // Kimlik bilgisi taşıyan isteği yalnızca kendi alan adımıza yönlendirmeyi izle.
+        if (next.scheme != 'https' || !next.host.endsWith('otopiyasa.app')) {
+          return response;
+        }
+        target = next;
+      }
+      throw Exception('Sunucu adresi çok fazla yönlendiriyor.');
+    }
+
+    return run().timeout(
+      timeout,
+      onTimeout: () => throw Exception(
+        'Sunucu yanıt vermedi, bağlantını kontrol edip tekrar dene.',
+      ),
+    );
+  }
 }
 
 const _http = _Http();
@@ -430,7 +470,7 @@ class ApiService {
     await _clearSession();
   }
 
-  Future<List<CarListing>> fetchFavorites() async {
+  Future<FavoritesResult> fetchFavorites() async {
     final response = await _http.get(_uri('/api/favorites'), headers: _headers);
     if (response.statusCode == 401) {
       throw Exception('Favoriler için giriş yapmalısınız');
@@ -439,10 +479,16 @@ class ApiService {
       throw Exception('Favoriler yüklenemedi');
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['favorites'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(CarListing.fromJson)
-        .toList();
+    return FavoritesResult(
+      available: (body['favorites'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(CarListing.fromJson)
+          .toList(),
+      unavailable: (body['unavailable'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(UnavailableFavorite.fromJson)
+          .toList(),
+    );
   }
 
   Future<void> addFavorite(String carId) async {

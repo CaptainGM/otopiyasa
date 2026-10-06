@@ -135,6 +135,10 @@ async function main() {
   const { PACING, planNextStep } = await import("@/lib/scraper/arabam-pacing");
   const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
   const { isSitemapSyncDue, syncArabamSitemap } = await import("@/lib/scraper/arabam-sitemap");
+  const { SleepMeter } = await import("@/lib/scraper/sleep-meter");
+  // Bilgisayar uykuya girdiğinde geçen süre "çalışma süresi"ne yazılmasın (bkz. sleep-meter.ts).
+  const sleepMeter = new SleepMeter();
+  sleepMeter.start();
 
   const baseGap = Number.isFinite(configuredGap) && configuredGap >= 3 ? configuredGap : PACING.baseGapSeconds;
   const maxDiscoveryCreditMs = PACING.maxGapSeconds * 2_000;
@@ -165,6 +169,7 @@ async function main() {
       setArabamPageGap(state.gapSeconds * 750, state.gapSeconds * 500);
       await setBeat("running", `Doğrulanıyor (${batchSize} ilanlık parti, ilanlar arası ~${Math.round(state.gapSeconds)} sn)`, state.gapSeconds);
       const batchStarted = Date.now();
+      const sleptBefore = sleepMeter.total();
       const res = await sweepAndCleanDeadListings({
         source: "arabam",
         limit: batchSize,
@@ -172,6 +177,9 @@ async function main() {
         maxDurationMs: 10 * 60 * 1000,
       });
       rounds++;
+      const sleptMs = sleepMeter.total() - sleptBefore;
+      const batchActiveMs = Math.max(0, Date.now() - batchStarted - sleptMs);
+      if (sleptMs > 60_000) log(`  bilgisayar bu partide ~${Math.round(sleptMs / 60_000)} dk uykuda kaldı; süre çalışma süresine katılmadı.`);
       todayChecked += res.checked;
       todayArchived += res.archived;
 
@@ -211,9 +219,9 @@ async function main() {
             blocked,
             uncertain: Math.max(0, res.errors - blocked),
             pauseMinutes: plan.reason === "blocked-pause" ? plan.sleepMinutes : 0,
-            activeSeconds: (Date.now() - batchStarted) / 1000,
+            activeSeconds: batchActiveMs / 1000,
           },
-          new Date((batchStarted + Date.now()) / 2)
+          new Date()
         );
       }
       if (singleRound) break;
@@ -223,7 +231,7 @@ async function main() {
       if (res.checked > 0) {
         discoveryCreditMs = Math.min(
           maxDiscoveryCreditMs,
-          discoveryCreditMs + ((Date.now() - batchStarted) * 0.1) / 0.9
+          discoveryCreditMs + (batchActiveMs * 0.1) / 0.9
         );
       }
       const safeToDiscover = blocked === 0 && res.errors === 0 && (plan.sleepMinutes === 0 || plan.reason === "idle");

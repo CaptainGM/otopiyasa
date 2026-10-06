@@ -1,4 +1,5 @@
 import mongoose, { Schema } from "mongoose";
+import { splitSecondsByHour } from "@/lib/home-watcher-status";
 
 /**
  * Evdeki bilgisayarda arka planda çalışan Arabam bekçisinin (scripts/arabam-bekci.ts) yönetim ekranı için
@@ -111,10 +112,15 @@ export interface WatcherBatchResult {
   activeSeconds?: number;
 }
 
-/** Bir partinin sonucunu içinde bulunulan saate ekler. */
-export async function recordWatcherBatch(result: WatcherBatchResult, now = new Date()): Promise<void> {
+/**
+ * Bir partinin sonucunu kaydeder. `end` partinin bittiği andır; `result.activeSeconds` uyku düşüldükten sonraki
+ * gerçek çalışma süresidir. Sayılar partinin ortasındaki saate, süre ise geçtiği saatlere paylaştırılarak yazılır.
+ */
+export async function recordWatcherBatch(result: WatcherBatchResult, end = new Date()): Promise<void> {
   try {
-    const { timestamp, dateStr, hour } = turkeyHourOf(now);
+    const activeMs = Math.max(0, (result.activeSeconds || 0) * 1000);
+    const start = new Date(end.getTime() - activeMs);
+    const { timestamp, dateStr, hour } = turkeyHourOf(new Date((start.getTime() + end.getTime()) / 2));
     await HomeWatcherHour.findOneAndUpdate(
       { watcherId: HOME_WATCHER_ID, timestamp },
       {
@@ -128,11 +134,18 @@ export async function recordWatcherBatch(result: WatcherBatchResult, now = new D
           batches: 1,
           pauses: result.pauseMinutes ? 1 : 0,
           pausedMinutes: result.pauseMinutes || 0,
-          activeSeconds: Math.max(0, Math.round(result.activeSeconds || 0)),
         },
       },
       { upsert: true }
     );
+    for (const part of splitSecondsByHour(start, end)) {
+      const slot = turkeyHourOf(part.at);
+      await HomeWatcherHour.findOneAndUpdate(
+        { watcherId: HOME_WATCHER_ID, timestamp: slot.timestamp },
+        { $setOnInsert: { dateStr: slot.dateStr, hour: slot.hour }, $inc: { activeSeconds: Math.round(part.seconds) } },
+        { upsert: true }
+      );
+    }
   } catch (err) {
     console.error("[HomeWatcher] saatlik kayıt hatası:", err);
   }

@@ -132,6 +132,22 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
     );
   }
 
+  /// Bekçinin henüz hiç kontrol etmediği ilanların sayfalı listesi.
+  void _openUnverifiedSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.8,
+        maxChildSize: 0.95,
+        builder: (_, controller) =>
+            _UnverifiedList(api: _api, scrollController: controller),
+      ),
+    );
+  }
+
   /// Saat satırına dokununca o saatte arşive giden ve eklenen ilanların listesi.
   void _openHourSheet(String date, int hour, int archived, int inserted) {
     final label = '$date ${hour.toString().padLeft(2, '0')}:00';
@@ -516,9 +532,31 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                         ],
                       ),
                       const SizedBox(height: 10),
-                      Text(
-                        'Hiç doğrulanmamış: ${_n(queue['neverVerified'])} / ${_n(queue['active'])} aktif ilan · son 24 saatte doğrulanan: ${_n(queue['verifiedLast24h'])}',
-                        style: const TextStyle(fontSize: 12.5),
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: _openUnverifiedSheet,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Hiç doğrulanmamış: ${_n(queue['neverVerified'])} / ${_n(queue['active'])} aktif ilan · son 24 saatte doğrulanan: ${_n(queue['verifiedLast24h'])}',
+                                  style: const TextStyle(fontSize: 12.5),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right,
+                                size: 18,
+                                color: _amber,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Text(
+                        'Dokun → kontrol edilmemiş ilanların listesi',
+                        style: TextStyle(fontSize: 11, color: Colors.white38),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -649,6 +687,141 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                   ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Bekçinin henüz hiç doğrulamadığı Arabam ilanları: sayfa sayfa yüklenir, ilana dokununca kaynağı açılır.
+class _UnverifiedList extends StatefulWidget {
+  const _UnverifiedList({required this.api, required this.scrollController});
+
+  final ApiService api;
+  final ScrollController scrollController;
+
+  @override
+  State<_UnverifiedList> createState() => _UnverifiedListState();
+}
+
+class _UnverifiedListState extends State<_UnverifiedList> {
+  final _nf = NumberFormat.decimalPattern('tr_TR');
+  final List<Map<String, dynamic>> _items = [];
+  int _total = 0;
+  int _page = 0;
+  int _totalPages = 1;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMore();
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _page >= _totalPages) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final body = await widget.api.fetchUnverifiedListings(_page + 1);
+      final items = (body['items'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>();
+      if (!mounted) return;
+      setState(() {
+        _items.addAll(items);
+        _page = (body['page'] as num?)?.toInt() ?? _page + 1;
+        _totalPages = (body['totalPages'] as num?)?.toInt() ?? 1;
+        _total = (body['total'] as num?)?.toInt() ?? _items.length;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
+  }
+
+  String _lastTry(Object? value) {
+    final at = DateTime.tryParse(value?.toString() ?? '');
+    return at == null ? 'hiç denenmedi' : 'denendi ${relativeTimeTr(at)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        Text(
+          'Kontrol edilmemiş ilanlar (${_nf.format(_total)})',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 2),
+        const Text(
+          'Bekçi sırayla kontrol ettikçe buradan düşer.',
+          style: TextStyle(fontSize: 12, color: Colors.white54),
+        ),
+        const SizedBox(height: 8),
+        for (final it in _items)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              '${it['brand'] ?? ''} ${it['model'] ?? ''} ${it['year'] ?? ''} — ${it['title'] ?? ''}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12.5),
+            ),
+            subtitle: Text(
+              '${_nf.format((it['price'] as num?) ?? 0)} TL · ${it['city'] ?? ''} · ${_lastTry(it['lastVerifyAttemptAt'])}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: Colors.white54),
+            ),
+            trailing: (it['listingUrl']?.toString() ?? '').isEmpty
+                ? null
+                : const Icon(
+                    Icons.open_in_new,
+                    size: 16,
+                    color: Colors.white54,
+                  ),
+            onTap: () {
+              final url = Uri.tryParse(it['listingUrl']?.toString() ?? '');
+              if (url != null) {
+                launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            },
+          ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              _error!,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            ),
+          ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          )
+        else if (_page < _totalPages)
+          TextButton(
+            onPressed: _loadMore,
+            child: const Text('Daha fazla göster'),
+          )
+        else if (_items.isEmpty && _error == null)
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text(
+              'Kontrol bekleyen ilan kalmadı.',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ),
       ],
     );
   }

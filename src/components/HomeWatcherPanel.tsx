@@ -163,7 +163,11 @@ export function HomeWatcherPanel() {
 
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-slate-300">
             <p>
-              Hiç doğrulanmamış: <strong>{nf(data.queue.neverVerified)}</strong> / {nf(data.queue.active)} aktif Arabam ilanı · son 24 saatte doğrulanan:{" "}
+              Hiç doğrulanmamış:{" "}
+              <a href="/admin/unverified" className="font-bold text-amber-300 underline decoration-dotted hover:text-amber-200">
+                {nf(data.queue.neverVerified)} (listeyi gör)
+              </a>{" "}
+              / {nf(data.queue.active)} aktif Arabam ilanı · son 24 saatte doğrulanan:{" "}
               <strong>{nf(data.queue.verifiedLast24h)}</strong>
             </p>
             {data.queue.estimate ? (

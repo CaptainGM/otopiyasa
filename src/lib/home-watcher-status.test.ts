@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeWatcher, estimateRemaining, fillDayHours, formatActiveTime, summarizeDays, WATCHER_STALE_MS } from "./home-watcher-status";
+import { describeWatcher, estimateRemaining, fillDayHours, formatActiveTime, splitSecondsByHour, summarizeDays, WATCHER_STALE_MS } from "./home-watcher-status";
 import { turkeyHourOf } from "@/models/HomeWatcher";
 
 const now = new Date("2026-10-03T12:00:00Z").getTime();
@@ -119,5 +119,35 @@ describe("estimateRemaining", () => {
   it("5 dakikadan az veriyle tahmin vermez", () => {
     const days = summarizeDays([row("03.10.2026", 14, 20, { activeSeconds: 195 })]);
     expect(estimateRemaining(23000, days)).toBeNull();
+  });
+});
+
+describe("splitSecondsByHour", () => {
+  it("saat içinde kalan partiyi tek parça verir", () => {
+    const parts = splitSecondsByHour(new Date("2026-10-05T10:10:00Z"), new Date("2026-10-05T10:13:20Z"));
+    expect(parts).toHaveLength(1);
+    expect(parts[0].seconds).toBe(200);
+  });
+
+  it("saat sınırını aşan partiyi iki saate paylaştırır", () => {
+    const parts = splitSecondsByHour(new Date("2026-10-05T10:58:20Z"), new Date("2026-10-05T11:01:40Z"));
+    expect(parts.map((p) => p.seconds)).toEqual([100, 100]);
+    expect(parts[1].at.toISOString()).toBe("2026-10-05T11:00:00.000Z");
+  });
+
+  it("süresi sıfır olan partiden parça çıkmaz", () => {
+    const at = new Date("2026-10-05T10:00:00Z");
+    expect(splitSecondsByHour(at, at)).toEqual([]);
+  });
+});
+
+describe("saatlik çalışma süresi tavanı", () => {
+  it("uykudan kalma taşan eski kaydı 60 dakikaya keser", () => {
+    const rows = [
+      { dateStr: "05.10.2026", hour: 20, checked: 16, alive: 14, archived: 2, blocked: 0, uncertain: 0, activeSeconds: 10_964 },
+      { dateStr: "05.10.2026", hour: 21, checked: 340, alive: 300, archived: 40, blocked: 0, uncertain: 0, activeSeconds: 3_400 },
+    ];
+    expect(fillDayHours("05.10.2026", rows)[20].activeSeconds).toBe(3600);
+    expect(summarizeDays(rows)[0].activeSeconds).toBe(3600 + 3400);
   });
 });

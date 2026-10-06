@@ -5,6 +5,7 @@ import { Car } from "@/models/Car";
 import { HOME_WATCHER_ID, HomeWatcherHour, HomeWatcherState } from "@/models/HomeWatcher";
 import { describeWatcher, estimateRemaining, fillDayHours, summarizeDays, type HourRow } from "@/lib/home-watcher-status";
 import { getTurkeyDateStr } from "@/lib/utils";
+import { UNVERIFIED_ARABAM_FILTER } from "@/lib/unverified-listings";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ async function queueCounts() {
   const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
   const [active, neverVerified, verifiedLast24h] = await Promise.all([
     Car.countDocuments({ sourceSite: "arabam", status: "active" }),
-    Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $exists: false } }),
+    Car.countDocuments(UNVERIFIED_ARABAM_FILTER),
     Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $gte: dayAgo } }),
   ]);
   cachedQueue = { active, neverVerified, verifiedLast24h, ts: now };

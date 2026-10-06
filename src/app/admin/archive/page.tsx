@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
-import { formatPrice } from "@/lib/utils";
+import { escapeRegExp, formatPrice } from "@/lib/utils";
 import { SourceBadge } from "@/components/SourceBadge";
 import { ListingSource } from "@/types";
 
@@ -43,25 +43,30 @@ export default async function AdminArchivePage({ searchParams }: ArchivePageProp
 
   if (q) {
     filter.$or = [
-      { title: { $regex: q, $options: "i" } },
-      { brand: { $regex: q, $options: "i" } },
-      { model: { $regex: q, $options: "i" } },
+      { title: { $regex: escapeRegExp(q), $options: "i" } },
+      { brand: { $regex: escapeRegExp(q), $options: "i" } },
+      { model: { $regex: escapeRegExp(q), $options: "i" } },
     ];
   }
   if (brand) {
-    filter.brand = { $regex: `^${brand}$`, $options: "i" };
+    filter.brand = { $regex: `^${escapeRegExp(brand)}$`, $options: "i" };
   }
   if (city) {
-    filter.city = { $regex: `^${city}$`, $options: "i" };
+    filter.city = { $regex: `^${escapeRegExp(city)}$`, $options: "i" };
   }
   if (damage === "yes") {
     filter.damageFlag = true;
   } else if (damage === "no") {
     filter.damageFlag = false;
   } else if (damage === "painted") {
-    filter.$or = [
-      { paintChange: { $regex: "boya", $options: "i" } },
-      { "damageParts.state": { $in: ["boyali", "lokal-boyali", "painted", "boyalı", "lokal"] } },
+    // $or'a değil $and'e eklenir: anahtar kelime aramasının $or'unu ezmesin.
+    filter.$and = [
+      {
+        $or: [
+          { paintChange: { $regex: "boya", $options: "i" } },
+          { "damageParts.state": { $in: ["boyali", "lokal-boyali", "painted", "boyalı", "lokal"] } },
+        ],
+      },
     ];
   }
 

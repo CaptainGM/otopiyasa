@@ -123,22 +123,13 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
       if (res.ok) {
         const data = await res.json();
 
-        // Eğer kullanıcı son 6 saniye içinde manuel butonla durdurduysa/başlattıysa,
-        // eski sunucu gecikmesinin arayüzü eskiye çevirmesine (flicker) izin verme!
+        // Son 6 saniyedeki buton komutu henüz okunmamış olabilir; yalnızca KOMUT gösterilir. Çevrimiçi/kapalı
+        // durumu her zaman motorun kendi sinyalinden gelir (eskiden "Başlat"a basınca sunucu kapalıyken de
+        // sahte kalp atışıyla "çevrimiçi" görünüyordu).
         const timeSinceAction = Date.now() - lastActionTimeRef.current;
         if (timeSinceAction < 6000 && pendingActionRef.current) {
           const isStop = pendingActionRef.current === "stop";
-          if (data.daemon) {
-            data.daemon = {
-              ...data.daemon,
-              isOnline: !isStop,
-              status: isStop ? "stopped" : "online",
-              command: isStop ? "stop" : "run",
-              currentPhase: isStop
-                ? "🛑 Durduruldu (Panelden 'Motoru Başlat' ile çalıştırılabilir)"
-                : data.daemon.currentPhase,
-            };
-          }
+          if (data.daemon) data.daemon = { ...data.daemon, command: isStop ? "stop" : "run" };
         } else {
           pendingActionRef.current = null;
         }
@@ -183,35 +174,21 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
     pendingActionRef.current = action;
     setControlling(true);
 
-    if (action === "start" || action === "restart") {
-      setDaemon((prev) =>
-        prev
-          ? {
-              ...prev,
-              isOnline: true,
-              status: "online",
-              command: "run",
-              currentPhase:
-                action === "restart"
-                  ? "🔄 Yeniden Başlatılıyor (GitHub'dan Taze Kod Çekiliyor)..."
-                  : "🚀 Otonom Motor Başlatılıyor & Canlı Taramalar Devrede...",
-              lastHeartbeat: new Date().toISOString(),
-            }
-          : null
-      );
-    } else {
-      setDaemon((prev) =>
-        prev
-          ? {
-              ...prev,
-              isOnline: false,
-              status: "stopped",
-              command: "stop",
-              currentPhase: "🛑 Durduruldu (Panelden 'Motoru Başlat' ile çalıştırılabilir)",
-            }
-          : null
-      );
-    }
+    // Komut gönderildi bilgisi gösterilir; motorun çalışıp çalışmadığı bir sonraki sinyalde netleşir.
+    setDaemon((prev) =>
+      prev
+        ? {
+            ...prev,
+            command: action === "stop" ? "stop" : "run",
+            currentPhase:
+              action === "stop"
+                ? "🛑 Durdurma komutu gönderildi, motorun onayı bekleniyor..."
+                : action === "restart"
+                  ? "🔄 Yeniden başlatma komutu gönderildi, motorun onayı bekleniyor..."
+                  : "🚀 Başlatma komutu gönderildi, motorun onayı bekleniyor...",
+          }
+        : null
+    );
 
     try {
       const res = await fetch(`/api/admin/daemon/control?_t=${Date.now()}`, {
@@ -224,21 +201,9 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
       });
       if (res.ok) {
         const data = await res.json();
-        const isStop = data.command === "stop";
-        setDaemon((prev) =>
-          prev
-            ? {
-                ...prev,
-                command: data.command,
-                status: isStop ? "stopped" : prev.status === "stopped" || prev.status === "offline" ? "online" : prev.status,
-                isOnline: !isStop,
-                mode: data.mode || prev.mode,
-                currentPhase: isStop
-                  ? "🛑 Durduruldu (Panelden 'Motoru Başlat' ile çalıştırılabilir)"
-                  : prev.currentPhase,
-              }
-            : null
-        );
+        setDaemon((prev) => (prev ? { ...prev, command: data.command, mode: data.mode || prev.mode } : null));
+        // Motor komutu en geç bir sonraki döngüde okur; gerçek durum birkaç saniye sonra yeniden çekilir.
+        setTimeout(() => void fetchStats(), 7000);
       }
     } catch (err) {
       console.error("Daemon control hatası:", err);

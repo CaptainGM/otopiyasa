@@ -38,6 +38,19 @@ export function transmissionMatch(label: string): string | { $regex: string; $op
   return label;
 }
 
+export type VerifiableFeature = "transmission" | "fuelType" | "bodyType" | "color";
+
+/**
+ * Bu özelliği güvenilir olan ilanlar: Arabam dışındaki kaynaklar (bilgiyi doğrudan veriyor), ilan sayfasından
+ * doğrulanan Arabam ilanları ve özelliği liste sayfası verisinden tek tek doğrulananlar (`verifiedFeatures`).
+ * Arabam toplu çekiminin başlıktan tahmin ettiği değerler ("otomatik" yazmıyorsa "Manuel") dahil değildir.
+ */
+export function trustedFeatureFilter(feature: VerifiableFeature) {
+  return {
+    $or: [{ sourceSite: { $ne: "arabam" } }, { featuresVerifiedAt: { $exists: true } }, { verifiedFeatures: feature }],
+  };
+}
+
 export type BodyTypeLabel =
   | "SUV"
   | "Sedan"

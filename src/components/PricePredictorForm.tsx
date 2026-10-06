@@ -127,7 +127,7 @@ export function PricePredictorForm() {
     setLiveLoading(true);
 
      
-    fetch(`/api/market-average?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`)
+    fetch(`/api/market-average?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}&year=${encodeURIComponent(String(year))}`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((json) => setLiveMarket(json))
       .catch(() => setLiveMarket(null))
@@ -375,25 +375,25 @@ export function PricePredictorForm() {
 
           <div className="card space-y-2 p-5">
             <p className="text-sm uppercase tracking-widest text-amber-300">
-              Canlı Arabam ortalaması
+              Piyasa ortalaması
             </p>
             {liveLoading && !liveMarket ? (
               <p className="flex items-center gap-2 py-2 text-sm text-slate-400">
                 <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-300/40 border-t-amber-300" />
-                Arabam&apos;dan canlı fiyatlar çekiliyor...
+                Yayındaki ilanlar hesaplanıyor...
               </p>
             ) : liveMarket ? (
               <>
                 <p className="text-3xl font-black">{formatPrice(liveMarket.avg)}</p>
                 <p className="text-sm text-slate-400">
-                  {liveMarket.count} canlı ilan · {formatPrice(liveMarket.min)} – {formatPrice(liveMarket.max)}
+                  {liveMarket.count} ilan · {formatPrice(liveMarket.min)} – {formatPrice(liveMarket.max)}
                   <br />
                   Kaynak: {liveMarket.source}
                 </p>
               </>
             ) : (
               <p className="py-2 text-sm text-slate-500">
-                Bu model için canlı piyasa verisi bulunamadı.
+                Bu model ve yıl için yeterli ilan yok.
               </p>
             )}
           </div>

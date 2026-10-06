@@ -558,6 +558,15 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                         'Dokun → kontrol edilmemiş ilanların listesi',
                         style: TextStyle(fontSize: 11, color: Colors.white38),
                       ),
+                      // Model liste sayfalarından gelen gerçek vites/yakıt (analiz kartlarının kapsamı).
+                      if (queue['gearVerified'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            'Vitesi doğrulanmış: ${_n(queue['gearVerified'])} / ${_n(queue['active'])} · bugün listeden ${_n(today['listMatched'])} ilan (${_n(today['listPages'])} sayfa, ${_n(today['listCorrected'])} vites düzeltildi)',
+                            style: const TextStyle(fontSize: 12, color: Colors.white60),
+                          ),
+                        ),
                       const SizedBox(height: 2),
                       Text(
                         estimate != null

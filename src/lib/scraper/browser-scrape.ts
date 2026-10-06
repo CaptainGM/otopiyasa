@@ -640,10 +640,29 @@ export function isListingGone(html: string, finalUrl = ""): boolean {
   );
 }
 
+/** İlan sayfasının gezinme yolundaki kategori adresleri ("otomobil", "motosiklet/yamaha", "karavan-motokaravan"...). */
+export function arabamCategoriesFromHtml(html: string): string[] {
+  const start = html.indexOf('"BreadcrumbList"');
+  if (start < 0) return [];
+  const crumb = html.slice(start, start + 4000);
+  return [...crumb.matchAll(/"@id"\s*:\s*"https:\/\/www\.arabam\.com\/ikinci-el\/([a-z0-9/-]+)"/g)].map((m) => m[1]);
+}
+
+/**
+ * Otomobil platformunda yeri olmayan ilan mı? Sitemap'teki ilan adresleri kategori taşımıyor; keşif motosiklet,
+ * ATV, karavan ve "taksi hat & plaka" ilanlarını da otomobil sanıp ekliyordu (bkz. 2026-10-06 ölçümü).
+ */
+export function isNonCarArabamPage(html: string): boolean {
+  return arabamCategoriesFromHtml(html).some((path) =>
+    /(^|[/-])(motosiklet|atv|utv|karavan|deniz|traktor|is-makina|yedek-parca|bisiklet|tarim|hat-plaka)/.test(path)
+  );
+}
+
 export function parseArabamDetailHtml(
   html: string,
   listingUrl: string
 ): ScrapedListing | null {
+  if (isNonCarArabamPage(html)) return null;
   const $ = cheerio.load(html);
 
   interface ArabamCarLd {

@@ -14,6 +14,7 @@ import { fetchPageHtml } from "../src/lib/scraper/browser-scrape";
 import { normalizeBrandModel } from "../src/lib/normalize-brand";
 import { normalizeFuelType } from "../src/lib/normalize-fuel";
 import { normalizeCity } from "../src/lib/normalize-city";
+import { parseArabamListPage } from "../src/lib/scraper/arabam-list";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,10 +74,14 @@ interface ParsedCar {
     bodyType: string;
     color: string;
   };
+  /** Sayfanın gömülü verisinden okunan (tahmin olmayan) özellikler. */
+  verifiedKeys: string[];
 }
 
 function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): ParsedCar[] {
   const $ = cheerio.load(html);
+  // Tablo vites/yakıt göstermez; sayfaya gömülü veride her ilanın gerçek vitesi, yakıtı ve rengi yazar.
+  const embedded = new Map(parseArabamListPage(html).docs.map((d) => [d.id, d]));
   const rows = $("tr.listing-list-item");
   const listings: ParsedCar[] = [];
 
@@ -144,6 +149,8 @@ function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): Pars
     );
 
     const checkText = (modelFull + " " + title).toLowerCase();
+    const real = embedded.get(extId);
+    const verifiedKeys: string[] = [];
     let fuelType = "Benzin";
     if (/elektrik|electric|\bev\b|taycan|eqs|eqe|eqc|ioniq 5|t10x/.test(checkText)) fuelType = "Elektrik";
     else if (/hibrit|hybrid|phev|mhev|e-power/.test(checkText)) fuelType = "Hibrit";
@@ -155,6 +162,16 @@ function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): Pars
       transmission = "Otomatik";
     } else if (/yarı otomatik|dualtronic|easytronic|mmt/.test(checkText)) {
       transmission = "Yarı Otomatik";
+    }
+
+    // Gömülü veri varsa tahminin yerine gerçek değer.
+    if (real?.transmission) {
+      transmission = real.transmission;
+      verifiedKeys.push("transmission");
+    }
+    if (real?.fuelType) {
+      fuelType = real.fuelType;
+      verifiedKeys.push("fuelType");
     }
 
     let bodyType = "Sedan";
@@ -189,8 +206,9 @@ function parseArabamSearchPage(html: string, defaultCategory = "otomobil"): Pars
         fuelType: normalizeFuelType(fuelType),
         transmission,
         bodyType,
-        color,
+        color: real?.color || color,
       },
+      verifiedKeys: real?.color ? [...verifiedKeys, "color"] : verifiedKeys,
     });
   });
 
@@ -435,18 +453,13 @@ async function main() {
 
   const queue: TaskQueueItem[] = [];
 
-  // 1. Kategori bazlı en yeniler ve model yılları
+  // robots.txt `?sort=` desenini yasaklıyor; sıralama parametresi kullanılmaz, yalnızca `?page=`.
+  // 1. Kategori sayfaları
   for (const cat of CATEGORIES) {
     queue.push({
-      urlPattern: `https://www.arabam.com/ikinci-el/${cat.slug}?sort=date_desc&page=`,
+      urlPattern: `https://www.arabam.com/ikinci-el/${cat.slug}?page=`,
       maxPages: 50,
-      label: `[Genel En Yeniler] ${cat.label}`,
-      category: cat.slug,
-    });
-    queue.push({
-      urlPattern: `https://www.arabam.com/ikinci-el/${cat.slug}?sort=year_desc&page=`,
-      maxPages: 30,
-      label: `[Taze Model Yılı] ${cat.label}`,
+      label: `[Kategori] ${cat.label}`,
       category: cat.slug,
     });
   }
@@ -454,32 +467,18 @@ async function main() {
   // 2. Marka bazlı taramalar (Geniş Türkiye Filosu)
   for (const brand of ALL_BRANDS) {
     queue.push({
-      urlPattern: `https://www.arabam.com/ikinci-el/otomobil/${brand}?sort=date_desc&page=`,
+      urlPattern: `https://www.arabam.com/ikinci-el/otomobil/${brand}?page=`,
       maxPages: 25,
       label: `[Marka] ${brand.toUpperCase()} Otomobil`,
       category: "otomobil",
     });
     queue.push({
-      urlPattern: `https://www.arabam.com/ikinci-el/arazi-suv-pick-up/${brand}?sort=date_desc&page=`,
+      urlPattern: `https://www.arabam.com/ikinci-el/arazi-suv-pick-up/${brand}?page=`,
       maxPages: 20,
       label: `[SUV Marka] ${brand.toUpperCase()} SUV`,
       category: "arazi-suv-pick-up",
     });
   }
-
-  // 3. Fiyat segmentleri (Uygun fiyatlı & Lüks vitrin çeşitliliği)
-  queue.push({
-    urlPattern: `https://www.arabam.com/ikinci-el/otomobil?sort=price_asc&page=`,
-    maxPages: 30,
-    label: `[Ekonomik Araçlar] Fiyata Göre Artan`,
-    category: "otomobil",
-  });
-  queue.push({
-    urlPattern: `https://www.arabam.com/ikinci-el/otomobil?sort=price_desc&page=`,
-    maxPages: 30,
-    label: `[Lüks & Üst Segment] Fiyata Göre Azalan`,
-    category: "otomobil",
-  });
 
   console.log(`  📋 Toplam ${queue.length} Arama Rotası Hazırlandı (Dengeli Marka/Model Dağılımı).\n`);
 
@@ -523,8 +522,15 @@ async function main() {
 
         // Hangi araçların yeni olduğunu tespit et
         const extIds = cars.map((c) => c.externalId);
-        const existingDocs = await Car.find({ externalId: { $in: extIds } }, { externalId: 1 }).lean();
+        const existingDocs = await Car.find({ externalId: { $in: extIds } }, { externalId: 1, status: 1, removedReason: 1 }).lean();
         const existingSet = new Set((existingDocs as any[]).map((d) => d.externalId));
+        // Yalnızca otomatik doğrulamayla arşive düşen ilan yeniden açılabilir; yöneticinin kaldırdığı
+        // ("manuel: ...") ya da moderasyondaki ilana dokunulmaz (eskiden her görülen ilan "active" yapılıyordu).
+        const lockedSet = new Set(
+          (existingDocs as any[])
+            .filter((d) => (d.status === "removed" && !/^arabam/i.test(d.removedReason || "")) || (d.status && d.status !== "active" && d.status !== "removed"))
+            .map((d) => d.externalId)
+        );
         const newCars = cars.filter((c) => !existingSet.has(c.externalId));
 
         // Yeni araçları 4'lü paralel havuzla tüm galerisi ve satıcı açıklamasıyla zenginleştir
@@ -550,7 +556,7 @@ async function main() {
         }
 
         // MongoDB Toplu İşlem (BulkWrite) - Hiçbir alan çakışması olmadan güvenli upsert
-        const ops = cars.map((car) => {
+        const ops = cars.filter((car) => !lockedSet.has(car.externalId)).map((car) => {
           const setFields: Record<string, any> = {
             price: car.price,
             mileage: car.mileage,
@@ -559,6 +565,8 @@ async function main() {
             status: "active",
             lastVerifiedAt: new Date(),
           };
+          // Gerçek değerler mevcut ilanlarda da düzeltilir (tahmin edilen "Manuel" yerine).
+          for (const key of car.verifiedKeys) setFields[`features.${key}`] = (car.features as Record<string, string>)[key];
 
           if (car.images && car.images.length > 0) {
             setFields.images = car.images;
@@ -571,12 +579,14 @@ async function main() {
             setFields.damageParts = (car as any).damageParts;
           }
 
+          const guessed = Object.fromEntries(
+            Object.entries(car.features).filter(([key]) => !car.verifiedKeys.includes(key))
+          );
           const setOnInsertFields: Record<string, any> = {
             title: car.title,
             brand: car.brand,
             model: car.model,
             year: car.year,
-            features: car.features,
             source: "arabam",
             sourceSite: "arabam",
             listingUrl: car.listingUrl,
@@ -603,8 +613,10 @@ async function main() {
             updateOne: {
               filter: { externalId: car.externalId },
               update: {
-                $setOnInsert: setOnInsertFields,
+                // Tahmini alanlar yalnızca yeni ilanda yazılır; doğrulananlar $set ile (aynı alan iki işlemde olamaz).
+                $setOnInsert: { ...setOnInsertFields, ...Object.fromEntries(Object.entries(guessed).map(([k, v]) => [`features.${k}`, v])) },
                 $set: setFields,
+                ...(car.verifiedKeys.length ? { $addToSet: { verifiedFeatures: { $each: car.verifiedKeys } } } : {}),
                 $push: {
                   priceHistory: {
                     $each: [{ price: car.price, recordedAt: new Date() }],

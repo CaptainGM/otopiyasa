@@ -121,3 +121,29 @@ describe("parseArabamDetailHtml etiket yazımı", () => {
     expect(listing?.confirmedFeatures).not.toContain("fuelType");
   });
 });
+
+describe("isNonCarArabamPage", () => {
+  const crumb = (...paths: string[]) =>
+    `<script type="application/ld+json">{"@type": "BreadcrumbList", "itemListElement": [` +
+    `{"@type":"ListItem","position":1,"item":{"@id":"https://www.arabam.com/","name":"Anasayfa"}},` +
+    `{"@type":"ListItem","position":2,"item":{"@id":"https://www.arabam.com/ikinci-el","name":"İkinci El"}}` +
+    paths.map((p, i) => `,{"@type":"ListItem","position":${i + 3},"item":{"@id":"https://www.arabam.com/ikinci-el/${p}","name":"x"}}`).join("") +
+    `]}</script>`;
+
+  it("motosiklet, karavan ve hat-plaka ilanlarını ayırır", async () => {
+    const { isNonCarArabamPage, parseArabamDetailHtml } = await import("./browser-scrape");
+    expect(isNonCarArabamPage(crumb("motosiklet", "motosiklet/yamaha"))).toBe(true);
+    expect(isNonCarArabamPage(crumb("karavan", "karavan-motokaravan"))).toBe(true);
+    expect(isNonCarArabamPage(crumb("ticari-araclar", "ticari-araclar-hat-plaka"))).toBe(true);
+    const car = '<script type="application/ld+json">' + JSON.stringify({ "@type": "Car", brand: "Yamaha", name: "X-Max", offers: { price: 195000 } }) + "</script>";
+    expect(parseArabamDetailHtml(crumb("motosiklet") + car, "https://www.arabam.com/ilan/x/44612422")).toBeNull();
+  });
+
+  it("otomobil, SUV ve ticari kategorileri araç sayar", async () => {
+    const { isNonCarArabamPage } = await import("./browser-scrape");
+    expect(isNonCarArabamPage(crumb("otomobil", "otomobil/renault"))).toBe(false);
+    expect(isNonCarArabamPage(crumb("arazi-suv-pick-up", "arazi-suv-pick-up/dacia-duster"))).toBe(false);
+    expect(isNonCarArabamPage(crumb("minivan-panelvan", "minivan-panelvan/fiat-doblo"))).toBe(false);
+    expect(isNonCarArabamPage("<html></html>")).toBe(false);
+  });
+});

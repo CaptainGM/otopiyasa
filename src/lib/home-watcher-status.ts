@@ -84,6 +84,10 @@ export interface HourRow {
   activeSeconds?: number;
   /** Keşifle eklenen yeni ilan. */
   inserted?: number;
+  /** Model liste sayfası taraması: sayfa, sayfalarda bulunan ilanımız, vitesi düzeltilen. */
+  listPages?: number;
+  listMatched?: number;
+  listCorrected?: number;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -120,6 +124,9 @@ export interface DaySummary {
   pausedMinutes: number;
   /** Keşifle eklenen yeni ilan. */
   inserted: number;
+  listPages: number;
+  listMatched: number;
+  listCorrected: number;
 }
 
 /** Saatlik kayıtları Türkiye gününe göre toplar; en yeni gün başta. */
@@ -128,7 +135,7 @@ export function summarizeDays(rows: HourRow[]): DaySummary[] {
   for (const r of rows) {
     const day =
       byDay.get(r.dateStr) ||
-      { dateStr: r.dateStr, checked: 0, alive: 0, archived: 0, blocked: 0, uncertain: 0, activeSeconds: 0, pausedMinutes: 0, inserted: 0 };
+      { dateStr: r.dateStr, checked: 0, alive: 0, archived: 0, blocked: 0, uncertain: 0, activeSeconds: 0, pausedMinutes: 0, inserted: 0, listPages: 0, listMatched: 0, listCorrected: 0 };
     day.checked += r.checked;
     day.alive += r.alive;
     day.archived += r.archived;
@@ -137,6 +144,9 @@ export function summarizeDays(rows: HourRow[]): DaySummary[] {
     day.pausedMinutes += r.pausedMinutes || 0;
     day.activeSeconds += Math.min(r.activeSeconds || 0, MAX_HOUR_ACTIVE_SECONDS);
     day.inserted += r.inserted || 0;
+    day.listPages += r.listPages || 0;
+    day.listMatched += r.listMatched || 0;
+    day.listCorrected += r.listCorrected || 0;
     byDay.set(r.dateStr, day);
   }
   const key = (d: string) => d.split(".").reverse().join("");
@@ -166,6 +176,9 @@ export function fillDayHours(dateStr: string, rows: HourRow[]): HourSlot[] {
       pausedMinutes: r?.pausedMinutes || 0,
       activeSeconds: Math.min(r?.activeSeconds || 0, MAX_HOUR_ACTIVE_SECONDS),
       inserted: r?.inserted || 0,
+      listPages: r?.listPages || 0,
+      listMatched: r?.listMatched || 0,
+      listCorrected: r?.listCorrected || 0,
     };
   });
 }

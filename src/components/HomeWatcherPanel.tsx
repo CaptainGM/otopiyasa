@@ -25,6 +25,8 @@ interface WatcherData {
     active: number;
     neverVerified: number;
     verifiedLast24h: number;
+    /** Vitesi kaynaktan doğrulanmış aktif ilan (eski API yanıtında yok). */
+    gearVerified?: number;
     estimate: { perActiveHour: number; activeHoursNeeded: number } | null;
   };
 }
@@ -152,11 +154,12 @@ export function HomeWatcherPanel() {
             {!w.lastHeartbeat && <p className="mt-1 text-slate-500">Bekçiyi kurmak için proje klasöründe arabam-bekci-kur.bat dosyasına çift tıkla.</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             <Tile label="Bugün kontrol" value={nf(data.today.checked)} />
             <Tile label="Canlı çıkan" value={nf(data.today.alive)} tone="text-emerald-300" />
             <Tile label="Arşive taşınan" value={nf(data.today.archived)} tone="text-rose-300" />
             <Tile label="Yeni eklenen" value={nf(data.today.inserted ?? 0)} tone="text-sky-300" />
+            <Tile label="Listeden doğrulanan" value={nf(data.today.listMatched ?? 0)} tone="text-violet-300" />
             <Tile label="Engel / belirsiz" value={`${nf(data.today.blocked)} / ${nf(data.today.uncertain)}`} tone="text-amber-300" />
             <Tile label="Bugün çalışma süresi" value={formatActiveTime(data.today.activeSeconds)} />
           </div>
@@ -170,6 +173,13 @@ export function HomeWatcherPanel() {
               / {nf(data.queue.active)} aktif Arabam ilanı · son 24 saatte doğrulanan:{" "}
               <strong>{nf(data.queue.verifiedLast24h)}</strong>
             </p>
+            {data.queue.gearVerified !== undefined && (
+              <p className="mt-1 text-slate-400">
+                Vitesi kaynaktan doğrulanmış: <strong className="text-violet-300">{nf(data.queue.gearVerified)}</strong> / {nf(data.queue.active)} (
+                %{data.queue.active ? Math.round((data.queue.gearVerified / data.queue.active) * 100) : 0}) · bugün model liste sayfalarından{" "}
+                {nf(data.today.listPages ?? 0)} sayfa, {nf(data.today.listMatched ?? 0)} ilan, {nf(data.today.listCorrected ?? 0)} vites düzeltmesi
+              </p>
+            )}
             {data.queue.estimate ? (
               <p className="mt-1 text-slate-400">
                 Son günlerin hızıyla (saatte ~{nf(data.queue.estimate.perActiveHour)} ilan) hiç doğrulanmamışların bitmesi için yaklaşık{" "}
@@ -186,7 +196,7 @@ export function HomeWatcherPanel() {
               <p className="text-sm text-slate-500">Henüz kayıt yok.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[560px] border-collapse text-sm">
+                <table className="w-full min-w-[640px] border-collapse text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-widest text-slate-500">
                       <th className="p-2">Gün</th>
@@ -195,6 +205,7 @@ export function HomeWatcherPanel() {
                       <th className="p-2 text-right">Canlı</th>
                       <th className="p-2 text-right">Arşive</th>
                       <th className="p-2 text-right">Yeni</th>
+                      <th className="p-2 text-right" title="Model liste sayfalarında bulunup doğrulanan ilan">Listeden</th>
                       <th className="p-2 text-right">Engel</th>
                       <th className="p-2 text-right">Belirsiz</th>
                     </tr>
@@ -212,6 +223,7 @@ export function HomeWatcherPanel() {
                         <td className="p-2 text-right text-emerald-300">{nf(d.alive)}</td>
                         <td className="p-2 text-right text-rose-300">{nf(d.archived)}</td>
                         <td className="p-2 text-right text-sky-300">{nf(d.inserted ?? 0)}</td>
+                        <td className="p-2 text-right text-violet-300">{nf(d.listMatched ?? 0)}</td>
                         <td className="p-2 text-right text-amber-300">{nf(d.blocked)}</td>
                         <td className="p-2 text-right text-slate-400">{nf(d.uncertain)}</td>
                       </tr>

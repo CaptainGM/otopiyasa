@@ -96,8 +96,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const lastChecked = car.lastVerifiedAt || car.createdAt;
   // Derlenen ilanların çoğunda kayıtlı koordinat yok; harita ve "yakınımdaki" ekranlarıyla aynı
   // yaklaşık konum (ilçe, yoksa il merkezi) şehir/adres/açıklamadan hesaplanır.
-  const mapPoint = car.location?.lat
-    ? { lat: car.location.lat, lng: car.location.lng }
+  const mapPoint: { lat: number; lng: number; level: "exact" | "district" | "province" } | null = car.location?.lat
+    ? { lat: car.location.lat, lng: car.location.lng, level: "exact" }
     : resolvePlacement(car.city || "", car.address, 0, car.description);
 
   /**
@@ -418,7 +418,18 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           {mapPoint && (
             <div className="mt-5">
               <h3 className="mb-2 text-sm text-slate-500">Konum</h3>
-              <MiniMap lat={mapPoint.lat} lng={mapPoint.lng} />
+              <MiniMap
+                lat={mapPoint.lat}
+                lng={mapPoint.lng}
+                zoom={mapPoint.level === "province" ? 9 : mapPoint.level === "district" ? 12 : 14}
+                note={
+                  mapPoint.level === "exact"
+                    ? undefined
+                    : mapPoint.level === "district"
+                      ? "Yaklaşık konum: ilçe merkezi"
+                      : "Yaklaşık konum: il merkezi"
+                }
+              />
             </div>
           )}
         </div>

@@ -13,6 +13,7 @@ import { getSimilarCars } from "@/lib/recommendations";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 import { enrichArabamCarIfNeeded } from "@/lib/scraper/enrich-arabam";
 import { cached, CACHE_TTL } from "@/lib/cache";
+import { resolvePlacement } from "@/lib/district-coords";
 
 /** Fiyat dağılımı için segment fiyatları: önce marka+model, az ise yalnız marka (web detay sayfasıyla aynı mantık). */
 async function loadSegmentPrices(brand: string, model: string): Promise<{ label: string; prices: number[] }> {
@@ -92,9 +93,15 @@ export async function GET(
       ? serializeCar(carDoc, market)
       : serializeCarPublic(carDoc, market);
 
+    // Haritadaki konum: kayıtlı koordinat, yoksa web ilan sayfasıyla aynı ilçe/il merkezi hesabı.
+    const mapPlacement = car.location?.lat
+      ? { lat: car.location.lat, lng: car.location.lng, level: "exact" as const }
+      : resolvePlacement(car.city || "", car.address, 0, car.description);
+
     return NextResponse.json(
       {
         ...car,
+      mapPoint: mapPlacement ? { lat: mapPlacement.lat, lng: mapPlacement.lng, level: mapPlacement.level } : null,
       favoriteCount,
       priceBins: buildPriceBins(segment.prices, car.price),
       segmentLabel: segment.label,

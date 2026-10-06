@@ -1,5 +1,30 @@
 import 'package:otopiyasa/utils/relative_time.dart';
 
+/// İlanın harita konumu: kayıtlı koordinat (exact) ya da ilçe/il merkezi (district/province).
+class MapPoint {
+  const MapPoint({required this.lat, required this.lng, required this.level});
+
+  final double lat;
+  final double lng;
+
+  /// exact | district | province
+  final String level;
+
+  double get zoom => level == 'province' ? 9 : (level == 'district' ? 12 : 14);
+
+  String get note => level == 'district'
+      ? 'Yaklaşık konum: ilçe merkezi'
+      : (level == 'province' ? 'Yaklaşık konum: il merkezi' : '');
+
+  static MapPoint? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    final lat = (json['lat'] as num?)?.toDouble();
+    final lng = (json['lng'] as num?)?.toDouble();
+    if (lat == null || lng == null) return null;
+    return MapPoint(lat: lat, lng: lng, level: json['level']?.toString() ?? 'district');
+  }
+}
+
 class PricePoint {
   PricePoint({required this.price, required this.recordedAt});
 
@@ -105,6 +130,7 @@ class CarListing {
     this.damageFlag = false,
     this.damageParts = const [],
     this.similarCars = const [],
+    this.mapPoint,
   });
 
   final String id;
@@ -161,6 +187,9 @@ class CarListing {
   final bool damageFlag;
   final List<DamagePart> damageParts;
   final List<CarListing> similarCars;
+
+  /// Haritada gösterilecek konum (yalnızca ilan detay yanıtında gelir).
+  final MapPoint? mapPoint;
 
   bool get isActive => status == 'active';
 
@@ -245,6 +274,7 @@ class CarListing {
           .whereType<Map<String, dynamic>>()
           .map(CarListing.fromJson)
           .toList(),
+      mapPoint: MapPoint.fromJson(json['mapPoint']),
     );
   }
 }

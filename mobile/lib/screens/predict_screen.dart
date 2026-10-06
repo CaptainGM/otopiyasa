@@ -220,7 +220,7 @@ class _PredictScreenState extends State<PredictScreen> {
                 children: [
                   const Row(
                     children: [
-                      Text('📸', style: TextStyle(fontSize: 18)),
+                      Icon(Icons.photo_camera_outlined, size: 18),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -259,7 +259,7 @@ class _PredictScreenState extends State<PredictScreen> {
                   ],
                   if (_photoNote != null && _photoNote!.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    Text('🤖 $_photoNote', style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
+                    Text('$_photoNote', style: const TextStyle(fontSize: 12, color: Colors.amberAccent)),
                   ],
                   if (_photoError != null) ...[
                     const SizedBox(height: 8),
@@ -330,7 +330,7 @@ class _PredictScreenState extends State<PredictScreen> {
                         matchedModel.isNotEmpty &&
                         matchedModel.toLowerCase() != _model.text.trim().toLowerCase()) ...[
                       const SizedBox(height: 6),
-                      Text('🔎 "${_model.text.trim()}" yerine "$matchedModel" eşleştirildi',
+                      Text('"${_model.text.trim()}" yerine "$matchedModel" eşleştirildi',
                           style: const TextStyle(fontSize: 12, color: Colors.white54)),
                     ],
 
@@ -403,14 +403,14 @@ class _PredictScreenState extends State<PredictScreen> {
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Text('📊 $sampleSize Emsal İlan', style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
+                                  Text('$sampleSize Emsal İlan', style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
                                   if (r2 != null) ...[
                                     const SizedBox(width: 10),
-                                    Text('📐 R² ≈ ${r2.toStringAsFixed(2)}', style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
+                                    Text('R² ≈ ${r2.toStringAsFixed(2)}', style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
                                   ],
                                   if (outliersRemoved != null && outliersRemoved > 0) ...[
                                     const SizedBox(width: 10),
-                                    Text('🧹 $outliersRemoved Aykırı Filtrelendi', style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
+                                    Text('$outliersRemoved Aykırı Filtrelendi', style: const TextStyle(fontSize: 10.5, color: Colors.white38)),
                                   ],
                                 ],
                               ),
@@ -1034,7 +1034,7 @@ class _PredictScreenState extends State<PredictScreen> {
                                           ],
                                           const SizedBox(height: 6),
                                           Text(
-                                            '📊 $confidenceTitle ($sampleSize Emsal İlan)',
+                                            '$confidenceTitle ($sampleSize Emsal İlan)',
                                             style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
                                           ),
                                         ],
@@ -1091,7 +1091,7 @@ class _PredictScreenState extends State<PredictScreen> {
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      '⚠️ Yasal Bilgilendirme: Bu belge fiziki araç muayenesi veya TSE onaylı ekspertiz raporu yerine geçmez. Kullanıcının beyan ettiği verilere dayanarak, 12 farklı araç platformundaki büyük veriler ve regresyon modelleri üzerinden üretilmiş algoritmik bir piyasa fiyat rehberidir.\nDoğrulama: https://otopiyasa.app/predict?ref=$reportId',
+                                      'Yasal Bilgilendirme: Bu belge fiziki araç muayenesi veya TSE onaylı ekspertiz raporu yerine geçmez. Kullanıcının beyan ettiği verilere dayanarak, 12 farklı araç platformundaki büyük veriler ve regresyon modelleri üzerinden üretilmiş algoritmik bir piyasa fiyat rehberidir.\nDoğrulama: https://otopiyasa.app/predict?ref=$reportId',
                                       style: const TextStyle(fontSize: 8.5, color: Colors.white38, height: 1.3),
                                     ),
                                   ),
@@ -1215,7 +1215,6 @@ class _PredictScreenState extends State<PredictScreen> {
                                   children: [
                                     Row(
                                       children: [
-                                        const Text('💡 ', style: TextStyle(fontSize: 14)),
                                         Expanded(
                                           child: Text(
                                             'Satın Alım Tavsiyesi (${advisory.title})',
@@ -1231,7 +1230,7 @@ class _PredictScreenState extends State<PredictScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '🔍 Öncelikli Kontrol: ${advisory.checkItem}',
+                                      'Öncelikli Kontrol: ${advisory.checkItem}',
                                       style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                                     ),
                                   ],

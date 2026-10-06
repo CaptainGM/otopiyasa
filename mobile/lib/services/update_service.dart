@@ -47,7 +47,7 @@ class UpdateService {
       final remoteVersion = data['version']?.toString() ?? 'Yeni Sürüm';
       final apkUrl = data['apkUrl']?.toString() ?? '';
       final changelog = data['changelog']?.toString() ?? '';
-      final title = data['title']?.toString() ?? 'OtoPiyasa Güncellemesi Hazır! 🚀';
+      final title = data['title']?.toString() ?? 'OtoPiyasa Güncellemesi Hazır!';
       final forceUpdate = data['forceUpdate'] == true;
 
       if (remoteCode > currentVersionCode) {

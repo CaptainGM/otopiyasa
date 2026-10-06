@@ -4,19 +4,26 @@ import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
+import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/utils/car_headline.dart';
+import 'package:otopiyasa/utils/tr_text.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
 
 final _money = NumberFormat.currency(locale: 'tr_TR', symbol: '₺', decimalDigits: 0);
 
-Widget _miniCard(BuildContext context, CarListing car, {String? badge, Color? badgeColor}) {
+/// Şerit kartı — web'deki MiniCarCard ile aynı düzen: fotoğraf + etiket, yıl / şehir, marka model, fiyat.
+Widget _miniCard(BuildContext context, CarListing car, {String? badge, bool cheap = false}) {
+  final c = AppColors.of(context);
+  final onSurface = Theme.of(context).colorScheme.onSurface;
   return GestureDetector(
     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailScreen(carId: car.id, initialCar: car))),
     child: Container(
-      width: 160,
+      width: 168,
       margin: const EdgeInsets.only(right: 10),
       decoration: BoxDecoration(
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: c.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -36,27 +43,34 @@ Widget _miniCard(BuildContext context, CarListing car, {String? badge, Color? ba
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                     decoration: BoxDecoration(
-                      color: (badgeColor ?? Colors.green).withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(999),
+                      color: cheap ? const Color(0xFF0F9D63) : Colors.black.withValues(alpha: 0.66),
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text(badge, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)),
+                    child: Text(badge, style: AppText.num(size: 9.5, weight: FontWeight.w600, color: Colors.white)),
                   ),
                 ),
             ],
           ),
           Padding(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  car.title,
+                  trUpper('${car.year}  /  ${car.city}'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                  style: AppText.eyebrow(context, size: 9),
                 ),
-                const SizedBox(height: 2),
-                Text(_money.format(car.price), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 3),
+                Text(
+                  carHeadline(title: car.title, brand: car.brand, model: car.model),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.display(size: 13.5),
+                ),
+                const SizedBox(height: 4),
+                Text(_money.format(car.price), style: AppText.num(size: 15, weight: FontWeight.w600, color: onSurface)),
               ],
             ),
           ),
@@ -66,20 +80,30 @@ Widget _miniCard(BuildContext context, CarListing car, {String? badge, Color? ba
   );
 }
 
-Widget _stripShell({required String title, required List<Widget> children}) {
+Widget _stripShell(BuildContext context, {required String eyebrow, required String title, required List<Widget> children}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-      const SizedBox(height: 8),
+      Text(trUpper(eyebrow), style: AppText.eyebrow(context)),
+      const SizedBox(height: 2),
+      Text(title, style: AppText.display(size: 18)),
+      const SizedBox(height: 10),
       SizedBox(
-        // Kart yüksekliği yazı tipi ölçeğine göre değişir; sabit 152 px bazı cihazlarda taşıyordu.
-        height: 172,
+        // Kart yüksekliği yazı tipi ölçeğine göre değişir; sabit yükseklik bazı cihazlarda taşıyordu.
+        height: 190,
         child: ListView(scrollDirection: Axis.horizontal, children: children),
       ),
-      const SizedBox(height: 20),
+      const SizedBox(height: 22),
     ],
   );
+}
+
+/// Fırsat etiketi: piyasa ortalaması biliniyorsa "%14 ucuz", değilse "Fırsat".
+String _dealBadge(CarListing car) {
+  final avg = car.marketAvgPrice;
+  if (avg == null || avg <= 0) return 'Fırsat';
+  final pct = (((avg - car.price) / avg) * 100).round();
+  return pct > 0 ? '%$pct ucuz' : 'Fırsat';
 }
 
 /// "Haftanın fırsatları" — web'deki DealsStrip'in mobil karşılığı (en çok 30 fırsat).
@@ -120,8 +144,10 @@ class _DealsStripState extends State<DealsStrip> {
         final items = snapshot.data ?? [];
         if (items.isEmpty) return const SizedBox.shrink();
         return _stripShell(
+          context,
+          eyebrow: 'Piyasanın altında · ${items.length} ilan',
           title: 'Haftanın fırsatları',
-          children: items.map((car) => _miniCard(context, car, badge: 'Fırsat')).toList(),
+          children: items.map((car) => _miniCard(context, car, badge: _dealBadge(car), cheap: true)).toList(),
         );
       },
     );
@@ -166,13 +192,14 @@ class _TrendingStripState extends State<TrendingStrip> {
         final items = snapshot.data ?? [];
         if (items.isEmpty) return const SizedBox.shrink();
         return _stripShell(
-          title: 'En çok görüntülenenler',
+          context,
+          eyebrow: 'Ziyaretçilerin ilgisi',
+          title: 'En çok bakılanlar',
           children: items
               .map((car) => _miniCard(
                     context,
                     car,
-                    badge: car.viewCount > 0 ? '👁 ${car.viewCount}' : 'Popüler',
-                    badgeColor: const Color(0xFFEAB308),
+                    badge: car.viewCount > 0 ? '${NumberFormat.decimalPattern('tr_TR').format(car.viewCount)} görüntülenme' : null,
                   ))
               .toList(),
         );
@@ -211,6 +238,8 @@ class _RecentlyViewedStripState extends State<RecentlyViewedStrip> {
         final items = snapshot.data ?? [];
         if (items.isEmpty) return const SizedBox.shrink();
         return _stripShell(
+          context,
+          eyebrow: 'Geçmiş',
           title: 'Son baktıkların',
           children: items.map((car) => _miniCard(context, car)).toList(),
         );

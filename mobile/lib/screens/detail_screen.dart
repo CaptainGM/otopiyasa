@@ -21,6 +21,11 @@ import 'package:otopiyasa/widgets/report_dialog.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
+import 'package:otopiyasa/utils/car_headline.dart';
+import 'package:otopiyasa/utils/tr_text.dart';
+import 'package:otopiyasa/widgets/car_card.dart' show SourcePill, PhotoBadge;
+import 'package:otopiyasa/widgets/market_gauge.dart';
+import 'package:otopiyasa/widgets/market_tempo_card.dart';
 
 class DetailScreen extends StatefulWidget {
   const DetailScreen({super.key, required this.carId, this.initialCar});
@@ -347,42 +352,53 @@ class _DetailScreenState extends State<DetailScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
                 children: [
-                  Text(
-                    car.sourceSite.toUpperCase(),
-                    style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold),
-                  ),
-                  if (!car.isActive) ...[
-                    const SizedBox(width: 8),
-                    Chip(
-                      label: Text(car.statusLabel, style: const TextStyle(fontSize: 11)),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ],
+                  SourcePill(source: car.sourceSite),
+                  if (car.damageFlag) const PhotoBadge(text: 'Hasar kaydı', color: Color(0xFFC8281F)),
+                  if (!car.isActive) PhotoBadge(text: car.statusLabel, color: Colors.black87),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                car.title,
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${car.city} • ${NumberFormat.decimalPattern('tr_TR').format(car.mileage)} km • ${car.year}',
-                style: const TextStyle(color: Colors.white54),
+              const SizedBox(height: 12),
+              Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: '${car.year}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
+                  TextSpan(text: '  /  ', style: TextStyle(color: AppColors.of(context).faint)),
+                  TextSpan(text: trUpper(car.city)),
+                ]),
+                style: AppText.eyebrow(context, size: 11),
               ),
               const SizedBox(height: 4),
+              Builder(builder: (context) {
+                final name = carHeadline(title: car.title, brand: car.brand, model: car.model);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: AppText.display(size: 26, weight: FontWeight.w700)),
+                    if (name != car.title) ...[
+                      const SizedBox(height: 4),
+                      Text(car.title, style: TextStyle(color: AppColors.of(context).muted, fontSize: 13.5, height: 1.35)),
+                    ],
+                  ],
+                );
+              }),
+              const SizedBox(height: 10),
               Text(
-                '👁 ${car.viewCount} görüntülenme  •  ♥ ${car.favoriteCount} favori',
-                style: const TextStyle(color: Colors.white38, fontSize: 12),
+                '${NumberFormat.decimalPattern('tr_TR').format(car.mileage)} km  ·  ${car.viewCount} görüntülenme  ·  ${car.favoriteCount} favori',
+                style: AppText.num(size: 12, color: AppColors.of(context).muted),
               ),
               if (car.verifiedLabel.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '✓ ${car.verifiedLabel}',
-                  style: TextStyle(color: Colors.greenAccent.withValues(alpha: 0.7), fontSize: 12),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.check, size: 15, color: AppColors.of(context).cheap),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(car.verifiedLabel, style: TextStyle(color: AppColors.of(context).cheap, fontSize: 12)),
+                    ),
+                  ],
                 ),
               ],
               if (!car.isActive && car.status == 'sold') ...[
@@ -402,12 +418,29 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              Text(
-                _formatPrice(car.price),
-                style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border.symmetric(horizontal: BorderSide(color: AppColors.of(context).border)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _formatPrice(car.price),
+                      style: AppText.num(size: 32, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
+                    ),
+                    const SizedBox(height: 12),
+                    MarketGauge(price: car.price, avg: car.marketAvgPrice, count: car.marketListingCount, large: true),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               MarketBadge(car: car),
+              if (car.isActive && car.sourceSite != 'user') ...[
+                const SizedBox(height: 12),
+                MarketTempoCard(carId: car.id),
+              ],
               const SizedBox(height: 16),
               Wrap(
                 spacing: 8,
@@ -445,6 +478,17 @@ class _DetailScreenState extends State<DetailScreen> {
                 ListingMap(point: car.mapPoint!),
               ],
               const SizedBox(height: 20),
+              if (car.listingUrl.isNotEmpty) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _openListing(car.listingUrl),
+                    icon: const Icon(Icons.open_in_new, size: 19),
+                    label: const Text('Orijinal ilana git'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               OutlinedButton.icon(
                 onPressed: () async {
                   // context'i async boşluktan ÖNCE yakala; sonrasında State'in
@@ -478,14 +522,6 @@ class _DetailScreenState extends State<DetailScreen> {
                 icon: const Icon(Icons.ios_share),
                 label: const Text('Paylaş'),
               ),
-              if (car.listingUrl.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => _openListing(car.listingUrl),
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Orijinal ilana git'),
-                ),
-              ],
               const SizedBox(height: 12),
               TextButton.icon(
                 onPressed: () => showReportDialog(
@@ -495,7 +531,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
                 icon: const Icon(Icons.flag_outlined, size: 16),
                 label: const Text('İlanı bildir', style: TextStyle(fontSize: 12)),
-                style: TextButton.styleFrom(foregroundColor: Colors.white54),
+                style: TextButton.styleFrom(foregroundColor: AppColors.of(context).muted),
               ),
               // Teklif + soru-cevap (yalnızca üye ilanlarında ve aktif ilanlarda görünür).
               ListingInteraction(

@@ -2,35 +2,33 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:otopiyasa/utils/tr_text.dart';
 import 'package:otopiyasa/models/car.dart';
-import 'package:otopiyasa/screens/favorites_screen.dart';
-import 'package:otopiyasa/screens/offers_screen.dart';
-import 'package:otopiyasa/screens/my_listings_screen.dart';
 import 'package:otopiyasa/screens/notifications_screen.dart';
-import 'package:otopiyasa/screens/profile_screen.dart';
-import 'package:otopiyasa/screens/predict_screen.dart';
 import 'package:otopiyasa/screens/assistant_screen.dart';
-import 'package:otopiyasa/screens/sell_screen.dart';
-import 'package:otopiyasa/screens/map_screen.dart';
-import 'package:otopiyasa/screens/compare_screen.dart';
-import 'package:otopiyasa/screens/analytics_screen.dart';
-import 'package:otopiyasa/screens/admin_screen.dart';
-import 'package:otopiyasa/screens/nearby_screen.dart';
 import 'package:otopiyasa/widgets/home_strips.dart';
 import 'package:otopiyasa/services/api_service.dart';
-import 'package:otopiyasa/services/data_saver.dart';
-import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/widgets/app_logo.dart';
 import 'package:otopiyasa/widgets/car_card.dart';
-import 'package:otopiyasa/widgets/data_saver_dialog.dart';
 
 // Sunucudan gerçek marka listesi gelene kadar gösterilen dar yedek liste.
 const _fallbackBrands = [
   '',
   'Toyota', 'Volkswagen', 'Renault', 'Fiat', 'Ford', 'Opel', 'Hyundai',
   'Honda', 'BMW', 'Mercedes-Benz', 'Audi', 'Peugeot', 'Skoda', 'Kia',
+];
+
+/// Araç tipleri (bkz. src/lib/vehicle-scope.ts VEHICLE_CLASSES).
+const _vehicleClasses = [
+  ('otomobil', 'Otomobil'),
+  ('suv-pickup', 'Arazi, SUV & Pickup'),
+  ('minivan-panelvan', 'Minivan & Panelvan'),
+  ('ticari', 'Ticari'),
+  ('motosiklet', 'Motosiklet'),
+  ('karavan', 'Karavan'),
 ];
 
 const _fuelTypes = ['', 'Benzin', 'Dizel', 'LPG', 'Hibrit', 'Elektrik'];
@@ -98,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _fuelType = '';
   String _transmission = '';
   String _sort = 'mixed';
+  String _vehicleClass = '';
   bool _discountOnly = false;
 
   List<String> _brands = _fallbackBrands;
@@ -189,6 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
         fuelType: _fuelType,
         transmission: _transmission,
         sort: _sort,
+        vehicleClass: _vehicleClass,
         discountOnly: _discountOnly,
         page: nextPage,
         slot: _isFeed ? _feedSlot : null,
@@ -240,205 +240,249 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openAccountMenu() async {
-    if (!_api.isLoggedIn) {
-      await Navigator.of(context).pushNamed('/login');
-      if (mounted) setState(() {});
-      return;
-    }
+  /// Seçili filtre sayısı (arama kutusu hariç): filtre düğmesindeki rozet.
+  int get _filterCount =>
+      [_brand, _model, _fuelType, _transmission].where((v) => v.isNotEmpty).length +
+      (_discountOnly ? 1 : 0) +
+      (_sort != 'mixed' ? 1 : 0);
 
-    Widget sectionLabel(String text) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.1,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
-            ),
-          ),
-        );
-
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.75,
-          maxChildSize: 0.9,
-          expand: false,
-          builder: (context, scrollController) => ListView(
-            controller: scrollController,
-            children: [
-              // Hesap bilgisi doğrudan Profil'e götürür — arayıp bulmak yerine tek dokunuş.
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppTheme.accent.withValues(alpha: 0.2),
-                  child: Text(
-                    ((_api.currentUser?['name'] as String?)?.trim().isNotEmpty ?? false)
-                        ? (_api.currentUser!['name'] as String).trim()[0].toUpperCase()
-                        : '?',
-                    style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                title: Text(_api.currentUser?['name'] as String? ?? 'Hesabım'),
-                subtitle: Text(_api.currentUser?['email'] as String? ?? ''),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).pop('profile'),
-              ),
-              const Divider(height: 1),
-              sectionLabel('İLANLAR'),
-              ListTile(
-                leading: const Icon(Icons.favorite_outline),
-                title: const Text('Favorilerim'),
-                onTap: () => Navigator.of(context).pop('favorites'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.local_offer_outlined),
-                title: const Text('Tekliflerim'),
-                onTap: () => Navigator.of(context).pop('offers'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.list_alt),
-                title: const Text('İlanlarım'),
-                onTap: () => Navigator.of(context).pop('listings'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.add_box_outlined),
-                title: const Text('İlan Ver'),
-                onTap: () => Navigator.of(context).pop('sell'),
-              ),
-              sectionLabel('ARAÇLAR'),
-              ListTile(
-                leading: const Icon(Icons.map_outlined),
-                title: const Text('Harita'),
-                onTap: () => Navigator.of(context).pop('map'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.near_me_outlined),
-                title: const Text('Yakınımdaki ilanlar'),
-                onTap: () => Navigator.of(context).pop('nearby'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.compare_arrows),
-                title: const Text('Karşılaştır'),
-                onTap: () => Navigator.of(context).pop('compare'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.insights_outlined),
-                title: const Text('Analiz'),
-                onTap: () => Navigator.of(context).pop('analytics'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.calculate_outlined),
-                title: const Text('Fiyat Tahmini'),
-                onTap: () => Navigator.of(context).pop('predict'),
-              ),
-              if (_api.isAdmin) ...[
-                sectionLabel('YÖNETİM & SİSTEM'),
-                ListTile(
-                  leading: const Icon(Icons.admin_panel_settings, color: AppTheme.accent),
-                  title: const Text('Yönetim & 7/24 Bot Takibi', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.accent)),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Text('CANLI', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accent)),
-                  ),
-                  onTap: () => Navigator.of(context).pop('admin'),
-                ),
-              ],
-              sectionLabel('HESAP'),
-              ListTile(
-                leading: const Icon(Icons.person_outline),
-                title: const Text('Profil'),
-                onTap: () => Navigator.of(context).pop('profile'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.notifications_outlined),
-                title: const Text('Bildirimler'),
-                onTap: () => Navigator.of(context).pop('notifications'),
-              ),
-              ValueListenableBuilder<DataSaverMode>(
-                valueListenable: DataSaver.instance.mode,
-                builder: (context, mode, _) => ListTile(
-                  leading: const Icon(Icons.data_saver_on_outlined),
-                  title: const Text('Veri tasarrufu'),
-                  subtitle: Text(dataSaverLabel(mode), style: const TextStyle(fontSize: 12)),
-                  onTap: () => Navigator.of(context).pop('dataSaver'),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.redAccent),
-                title: const Text('Çıkış yap', style: TextStyle(color: Colors.redAccent)),
-                onTap: () => Navigator.of(context).pop('logout'),
-              ),
-              const SizedBox(height: 12),
+  Widget _filterButton() {
+    final c = AppColors.of(context);
+    final count = _filterCount;
+    return SizedBox(
+      height: 50,
+      child: OutlinedButton(
+        onPressed: _openFilters,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          side: BorderSide(color: count > 0 ? AppTheme.accent : c.border),
+          backgroundColor: Theme.of(context).inputDecorationTheme.fillColor,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.tune, size: 20, color: count > 0 ? AppTheme.accent : null),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Text('$count', style: AppText.num(size: 13, weight: FontWeight.w600, color: AppTheme.accent)),
             ],
-          ),
+          ],
         ),
       ),
     );
-
-    if (!mounted) return;
-    if (action == 'favorites') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const FavoritesScreen()),
-      );
-    } else if (action == 'offers') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const OffersScreen()),
-      );
-    } else if (action == 'listings') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const MyListingsScreen()),
-      );
-    } else if (action == 'sell') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SellScreen()),
-      );
-    } else if (action == 'notifications') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-      );
-    } else if (action == 'map') {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MapScreen()));
-    } else if (action == 'nearby') {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen()));
-    } else if (action == 'compare') {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CompareScreen()));
-    } else if (action == 'analytics') {
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AnalyticsScreen()));
-    } else if (action == 'predict') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const PredictScreen()),
-      );
-    } else if (action == 'admin') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const AdminScreen()),
-      );
-    } else if (action == 'profile') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ProfileScreen()),
-      );
-    } else if (action == 'dataSaver') {
-      await showDataSaverDialog(context);
-    } else if (action == 'logout') {
-      await _api.logout();
-      NotificationService.instance.stop();
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Çıkış yapıldı')),
-        );
-      }
-    }
   }
 
-  
+  /// Araç tipi şeridi (web'deki ana sayfa çipleriyle aynı). Seçilince liste o tiple süzülür.
+  Widget _vehicleClassChips() {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (final entry in [('', 'Tümü'), ..._vehicleClasses]) ...[
+            ChoiceChip(
+              label: Text(entry.$2),
+              selected: _vehicleClass == entry.$1,
+              labelStyle: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _vehicleClass == entry.$1 ? Theme.of(context).scaffoldBackgroundColor : AppColors.of(context).muted,
+              ),
+              selectedColor: onSurface,
+              side: BorderSide(color: _vehicleClass == entry.$1 ? onSurface : AppColors.of(context).border),
+              onSelected: (_) {
+                if (_vehicleClass == entry.$1) return;
+                HapticFeedback.selectionClick();
+                setState(() => _vehicleClass = entry.$1);
+                _loadCars(reset: true);
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Marka, model, yakıt, vites, sıralama ve "fiyatı düşenler": eskiden ana sayfanın üstünde sürekli açık duran
+  /// form duvarıydı; artık tek düğmeyle açılan alt sayfa. Seçimler anında uygulanır (liste arkada yenilenir).
+  Future<void> _openFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheet) {
+          void refresh(VoidCallback change) {
+            change();
+            setSheet(() {});
+            setState(() {});
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('FİLTRELER', style: AppText.eyebrow(context)),
+                  const SizedBox(height: 2),
+                  Text('Aradığın aracı daralt', style: AppText.display(size: 19)),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _searchablePickerButton(
+                          label: 'Marka',
+                          value: _brand,
+                          options: _brands,
+                          isBrand: true,
+                          onChanged: (value) => refresh(() {
+                            _brand = value;
+                            _model = '';
+                          }),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _searchablePickerButton(
+                          label: 'Model',
+                          value: _model,
+                          options: ['', ..._models],
+                          enabled: _models.isNotEmpty,
+                          emptyLabel: _brand.isEmpty ? 'Önce marka seçin' : 'Tümü',
+                          onChanged: (value) => refresh(() => _model = value),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _filterDropdown(
+                          key: ValueKey('fuel-$_fuelType'),
+                          label: 'Yakıt',
+                          value: _fuelType,
+                          options: _fuelTypes,
+                          onChanged: (value) => refresh(() => _fuelType = value),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _filterDropdown(
+                          key: ValueKey('gear-$_transmission'),
+                          label: 'Vites',
+                          value: _transmission,
+                          options: _transmissions,
+                          onChanged: (value) => refresh(() => _transmission = value),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('sort-$_sort'),
+                    initialValue: _sort,
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Sıralama'),
+                    items: _sorts.entries
+                        .map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value, style: const TextStyle(fontSize: 14))))
+                        .toList(),
+                    onChanged: (selected) {
+                      if (selected == null) return;
+                      refresh(() => _sort = selected);
+                      _loadCars(reset: true);
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _discountOnly,
+                    activeThumbColor: AppTheme.accent,
+                    title: const Text('Yalnızca fiyatı düşenler', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      'Yayındayken fiyatı indirilmiş ilanlar',
+                      style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
+                    ),
+                    onChanged: (value) {
+                      refresh(() => _discountOnly = value);
+                      _loadCars(reset: true);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _filterCount == 0
+                              ? null
+                              : () {
+                                  refresh(() {
+                                    _brand = '';
+                                    _model = '';
+                                    _fuelType = '';
+                                    _transmission = '';
+                                    _sort = 'mixed';
+                                    _discountOnly = false;
+                                  });
+                                  _loadCars(reset: true);
+                                },
+                          child: const Text('Temizle'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: () => Navigator.of(sheetContext).pop(),
+                          child: Text(_loading ? 'Yükleniyor…' : '${NumberFormat.decimalPattern('tr_TR').format(_total)} ilanı göster'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _resultsHeader() {
+    final c = AppColors.of(context);
+    final label = _vehicleClasses.where((e) => e.$1 == _vehicleClass).map((e) => e.$2).firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          trUpper(_isFeed && !_hasActiveFilters ? 'Keşfet · karışık sıra' : 'Sonuçlar'),
+          style: AppText.eyebrow(context),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Flexible(
+              child: Text(
+                label ?? (_hasActiveFilters ? 'Eşleşen ilanlar' : 'Tüm ilanlar'),
+                style: AppText.display(size: 21),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _loading ? '…' : NumberFormat.decimalPattern('tr_TR').format(_total),
+              style: AppText.num(size: 15, color: c.muted),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _searchablePickerButton({
     required String label,
     required String value,
@@ -502,6 +546,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _filterDropdown({
+    Key? key,
     required String label,
     required String value,
     required List<String> options,
@@ -513,6 +558,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // (ör. marka değişip henüz eski model listesinden çıkmamışken).
     final safeOptions = options.contains(value) ? options : [value, ...options];
     return DropdownButtonFormField<String>(
+      key: key,
       initialValue: value,
       isDense: true,
       decoration: InputDecoration(
@@ -540,76 +586,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 10,
+        titleSpacing: 14,
         title: const AppLogo(),
         actions: [
-          ValueListenableBuilder<ThemeMode>(
-            valueListenable: themeController,
-            builder: (context, mode, _) => IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(4),
-              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-              onPressed: themeController.toggle,
-              icon: Icon(mode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined, size: 21),
-              tooltip: mode == ThemeMode.dark ? 'Aydınlık tema' : 'Karanlık tema',
-            ),
-          ),
           ValueListenableBuilder<int>(
             valueListenable: _api.authRevision,
-            builder: (context, _, _) => Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_api.isLoggedIn) ...[
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const FavoritesScreen()),
-                    ),
-                    icon: const Icon(Icons.favorite_outline, size: 21),
-                    tooltip: 'Favorilerim',
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+            builder: (context, _, _) => _api.isLoggedIn
+                ? IconButton(
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const NotificationsScreen()),
                     ),
-                    icon: const Icon(Icons.notifications_outlined, size: 21),
+                    icon: const Icon(Icons.notifications_outlined, size: 22),
                     tooltip: 'Bildirimler',
-                  ),
-                ],
-              ],
-            ),
+                  )
+                : const SizedBox.shrink(),
           ),
           IconButton(
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.all(4),
-            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const AssistantScreen()),
             ),
-            icon: const Icon(Icons.chat_bubble_outline, size: 21),
-            tooltip: 'Asistan',
+            icon: const Icon(Icons.auto_awesome_outlined, size: 22, color: AppTheme.accent),
+            tooltip: 'Asistana sor',
           ),
-          ValueListenableBuilder<int>(
-            valueListenable: _api.authRevision,
-            builder: (context, _, _) => IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.all(4),
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              onPressed: _openAccountMenu,
-              icon: Icon(
-                _api.isLoggedIn ? Icons.person : Icons.person_outline,
-                color: _api.isLoggedIn ? AppTheme.accent : null,
-                size: 24,
-              ),
-              tooltip: _api.isLoggedIn ? 'Hesabım' : 'Giriş yap',
-            ),
-          ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 6),
         ],
       ),
       body: RefreshIndicator(
@@ -630,140 +629,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: TextField(
                     controller: _searchController,
-                    decoration: const InputDecoration(
-                      hintText: 'Toyota, Civic, İstanbul...',
-                      prefixIcon: Icon(Icons.search),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Marka, model, şehir ara…',
+                      prefixIcon: const Icon(Icons.search, size: 21),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: () {
+                                _searchController.clear();
+                                _loadCars(reset: true);
+                              },
+                            ),
                     ),
+                    onChanged: (_) => setState(() {}),
                     onSubmitted: (_) => _loadCars(reset: true),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () => _loadCars(reset: true),
-                  child: const Text('Ara'),
-                ),
+                _filterButton(),
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _searchablePickerButton(
-                    label: 'Marka',
-                    value: _brand,
-                    options: _brands,
-                    isBrand: true,
-                    onChanged: (value) {
-                      _brand = value;
-                      _model = '';
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _searchablePickerButton(
-                    label: 'Model',
-                    value: _model,
-                    options: ['', ..._models],
-                    enabled: _models.isNotEmpty,
-                    emptyLabel: _brand.isEmpty ? 'Önce marka seçin' : 'Tümü',
-                    onChanged: (value) => _model = value,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _filterDropdown(
-                    label: 'Yakıt',
-                    value: _fuelType,
-                    options: _fuelTypes,
-                    onChanged: (value) => _fuelType = value,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _filterDropdown(
-                    label: 'Vites',
-                    value: _transmission,
-                    options: _transmissions,
-                    onChanged: (value) => _transmission = value,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _sort,
-                    isDense: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Sıralama',
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                    items: _sorts.entries
-                        .map((entry) => DropdownMenuItem(
-                              value: entry.key,
-                              child: Text(entry.value,
-                                  style: const TextStyle(fontSize: 13)),
-                            ))
-                        .toList(),
-                    onChanged: (selected) {
-                      if (selected == null) return;
-                      _sort = selected;
-                      _loadCars(reset: true);
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                FilterChip(
-                  avatar: const Text('🔥', style: TextStyle(fontSize: 13)),
-                  label: const Text(
-                    'Fiyatı Düşenler',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                  selected: _discountOnly,
-                  selectedColor: const Color(0xFFF59E0B).withValues(alpha: 0.25),
-                  checkmarkColor: const Color(0xFFF59E0B),
-                  side: BorderSide(
-                    color: _discountOnly ? const Color(0xFFF59E0B) : Colors.white12,
-                  ),
-                  onSelected: (val) {
-                    setState(() => _discountOnly = val);
-                    _loadCars(reset: true);
-                  },
-                ),
-                if (_hasActiveFilters) ...[
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    icon: const Icon(Icons.clear, size: 14),
-                    label: const Text('Temizle', style: TextStyle(fontSize: 12)),
-                    onPressed: () {
-                      setState(() {
-                        _searchController.clear();
-                        _brand = '';
-                        _model = '';
-                        _fuelType = '';
-                        _transmission = '';
-                        _discountOnly = false;
-                      });
-                      _loadCars(reset: true);
-                    },
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (!_hasActiveFilters) ...[
+            _vehicleClassChips(),
+            const SizedBox(height: 18),
+            if (!_hasActiveFilters && _vehicleClass.isEmpty) ...[
               const RecentlyViewedStrip(),
               DealsStrip(refreshSignal: _refreshSignal),
               TrendingStrip(refreshSignal: _refreshSignal),
@@ -796,10 +687,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               )
             else ...[
-              Text(
-                _loading ? 'İlanlar güncelleniyor…' : '$_total ilan bulundu',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
+              _resultsHeader(),
               if (_loading) ...[
                 const SizedBox(height: 8),
                 const LinearProgressIndicator(minHeight: 2),

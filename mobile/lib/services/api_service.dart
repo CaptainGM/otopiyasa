@@ -210,6 +210,8 @@ class ApiService {
     String? fuelType,
     String? transmission,
     String? sort,
+    // Araç tipi: otomobil | suv-pickup | minivan-panelvan | ticari | motosiklet | karavan (bkz. src/lib/vehicle-scope.ts)
+    String? vehicleClass,
     bool discountOnly = false,
     int page = 1,
     int limit = 24,
@@ -228,6 +230,7 @@ class ApiService {
         if (transmission != null && transmission.isNotEmpty)
           'transmission': transmission,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (vehicleClass != null && vehicleClass.isNotEmpty) 'vehicleClass': vehicleClass,
         if (discountOnly) 'discountOnly': 'true',
         'page': '$page',
         'limit': '$limit',
@@ -280,6 +283,19 @@ class ApiService {
       throw Exception('Marka/model listesi yüklenemedi');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Piyasa temposu (benzer ilanların yayında kalma süresi, pazarlık payı); veri yetersizse null.
+  /// Sunucu sonucu 6 saat CDN'de tutar (bkz. src/app/api/cars/[id]/tempo).
+  Future<Map<String, dynamic>?> fetchTempo(String id) async {
+    try {
+      final response = await _http.get(_uri('/api/cars/$id/tempo'), headers: _headers);
+      if (response.statusCode != 200) return null;
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return body['tempo'] as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// İlanın km başına yakıt maliyeti; hesaplanamıyorsa (elektrikli, tüketim bilinmiyor) null.

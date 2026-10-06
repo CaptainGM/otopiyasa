@@ -86,6 +86,26 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Web ile aynı yazı ailesi (bkz. src/app/layout.tsx): başlıklar geniş Archivo, rakamlar eş aralıklı IBM Plex Mono.
+  # Değişken Archivo yerine %112 genişlikte iki sabit ağırlık (658 KB yerine 2 × 120 KB). Lisanslar: OFL (assets/fonts).
+  fonts:
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/Archivo-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Archivo-Bold.ttf
+          weight: 700
+    - family: PlexMono
+      fonts:
+        - asset: assets/fonts/IBMPlexMono-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/IBMPlexMono-SemiBold.ttf
+          weight: 600
+
+  assets:
+    - assets/fonts/OFL-Archivo.txt
+    - assets/fonts/OFL-IBMPlexMono.txt
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

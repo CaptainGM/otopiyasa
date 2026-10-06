@@ -10,6 +10,19 @@ export function formatNumber(value: number) {
   return new Intl.NumberFormat("tr-TR").format(value);
 }
 
+/**
+ * Yüzdeye Türkçe iyelik eki: "%81'i", "%40'ı", "%17'si", "%6'sı". Ek, sayının okunuşunun son sesine göre
+ * değişir; sabit "'i" yazınca "%17'i" gibi hatalı metin çıkıyordu.
+ */
+export function trPercent(value: number): string {
+  const n = Math.round(Math.abs(value));
+  const ones = ["ı", "i", "si", "ü", "ü", "i", "sı", "si", "i", "u"]; // sıfır, bir, iki, üç, dört, beş, altı, yedi, sekiz, dokuz
+  const tens = ["", "u", "si", "u", "ı", "si", "ı", "i", "i", "ı"]; // on, yirmi, otuz, kırk, elli, altmış, yetmiş, seksen, doksan
+  const suffix =
+    n === 0 ? "ı" : n % 10 !== 0 ? ones[n % 10] : n % 100 !== 0 ? tens[(n / 10) % 10] : n % 1000 !== 0 ? "ü" : "i";
+  return `%${Math.round(value)}'${suffix}`;
+}
+
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }

@@ -7,50 +7,45 @@ import {
   PriceCharts,
 } from "@/components/LazyCharts";
 import type { MarketInsightData } from "@/components/MarketInsightsCharts";
-import { buildBrandSummaries, BrandSummary } from "@/lib/brand-summaries";
+import { buildBrandSummariesFromGroups, BrandSummary } from "@/lib/brand-summaries";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
-import { formatNumber, formatPrice } from "@/lib/utils";
+import { formatNumber, formatPrice, trPercent } from "@/lib/utils";
 import { StatsResponse } from "@/types";
 import { CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { mergeCategoryStats, normalizeBodyType, normalizeTransmission } from "@/lib/vehicle-attrs";
+import { mergeCategoryStats, normalizeBodyType, normalizeTransmission, trustedFeatureFilter } from "@/lib/vehicle-attrs";
 
 // ISR: 2 dakikada bir arka planda tazeler — anlık yükleme + güncel veri
 // Analiz verisi en fazla 5 dakika gecikmeli: yeni ilan eklenince/arşive gidince sayfa kendiliğinden yenilenir.
 export const revalidate = 300;
 
 /**
- * Vites, yakıt ve kasa tipi Arabam liste sayfalarında ilan BAŞLIĞINDAN tahmin ediliyordu (örn. başlıkta "otomatik"
- * yoksa "Manuel"). Gerçek ilan sayfasından doğrulanmamış Arabam ilanları bu dağılımlara katılmaz; diğer kaynaklar
- * (galeri siteleri) bilgiyi doğrudan verdiği için dahildir. Bekçi ilanları gezdikçe örnek büyür.
- */
-/**
- * Doğrulanmış ilan oranı bunun altındayken vites/kasa dağılımı gösterilmez: o zaman örnek çoğunlukla galeri
- * sitelerinden gelir ve piyasayı temsil etmez (otomatik oranı olduğundan çok yüksek çıkar).
+ * Vites, yakıt ve kasa tipi Arabam toplu çekiminde ilan BAŞLIĞINDAN tahmin ediliyordu (örn. başlıkta "otomatik"
+ * yoksa "Manuel"). Her dağılım yalnızca o özelliği doğrulanmış ilanlarla hesaplanır (bkz. trustedFeatureFilter);
+ * bekçi ilan ve liste sayfalarını gezdikçe örnek büyür.
+ *
+ * Doğrulanmış ilan oranı bunun altındayken dağılım gösterilmez: o zaman örnek çoğunlukla galeri sitelerinden
+ * gelir ve piyasayı temsil etmez (otomatik oranı olduğundan çok yüksek çıkar).
  */
 const MIN_TRUSTED_COVERAGE = 0.25;
-
-const TRUSTED_FEATURES: { $or: Record<string, unknown>[] } = {
-  $or: [{ sourceSite: { $ne: "arabam" } }, { featuresVerifiedAt: { $exists: true } }],
-};
 
 const getAnalyticsData = unstable_cache(
   async () => {
     await connectDB();
-    // 1. Marka özetleri için güncel araçlar
-    const sampleCars = (await Car.find(
-      PUBLIC_LISTING_FILTER,
-      { brand: 1, model: 1, year: 1, price: 1, listingDate: 1, createdAt: 1 }
-    )
-      .sort({ createdAt: -1 })
-      .limit(1200)
-      .lean()) as any[];
+    // 1. Marka özetleri: TÜM aktif ilanlardan (aynı fiyat süzgeciyle). Eskiden yalnızca en yeni 1.200 ilandan
+    // hesaplanıyordu; grafik "veritabanındaki markaların tamamı" derken Volkswagen'i 1.240 yerine 197 ilan gösteriyordu.
+    const brandGroups = await Car.aggregate<{ _id: { b: string; m: string }; count: number; priceSum: number }>([
+      { $match: { ...PUBLIC_LISTING_FILTER, price: { $gte: 50_000, $lte: 40_000_000 } } },
+      { $group: { _id: { b: "$brand", m: "$model" }, count: { $sum: 1 }, priceSum: { $sum: "$price" } } },
+    ]);
 
     // 2. Çoklu analitik agregasyonlar
     const [
-      trustedTotal,
+      trustedFuel,
+      trustedTrans,
+      trustedBody,
       byYearRaw,
       activeTotal,
       fuelRaw,
@@ -59,14 +54,17 @@ const getAnalyticsData = unstable_cache(
       bodyRaw,
       topBrandsRaw,
     ] = await Promise.all([
-      Car.countDocuments({ ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES }),
-      // Temizlenmiş Yıl Eğrisi (1995-2026 arası, aşırı trol/hatalı fiyatlar elenmiş)
+      Car.countDocuments({ $and: [PUBLIC_LISTING_FILTER, trustedFeatureFilter("fuelType")] }),
+      Car.countDocuments({ $and: [PUBLIC_LISTING_FILTER, trustedFeatureFilter("transmission")] }),
+      Car.countDocuments({ $and: [PUBLIC_LISTING_FILTER, trustedFeatureFilter("bodyType")] }),
+      // Temizlenmiş Yıl Eğrisi (1995'ten gelecek model yılına, aşırı trol/hatalı fiyatlar elenmiş)
       Car.aggregate([
         {
           $match: {
             ...PUBLIC_LISTING_FILTER,
             price: { $gte: 50_000, $lte: 40_000_000 },
-            year: { $gte: 1995, $lte: 2026 },
+            // Yeni model yılı ilanları yıl bitmeden gelir (Ekim'de 2027 model): üst sınır gelecek yıl.
+            year: { $gte: 1995, $lte: new Date().getFullYear() + 1 },
           },
         },
         {
@@ -86,7 +84,7 @@ const getAnalyticsData = unstable_cache(
 
       // Yakıt Türü Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, "features.fuelType": { $exists: true, $ne: "" } } },
+        { $match: { $and: [PUBLIC_LISTING_FILTER, trustedFeatureFilter("fuelType"), { "features.fuelType": { $exists: true, $nin: ["", "Bilinmiyor"] } }] } },
         { $group: { _id: "$features.fuelType", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
@@ -94,7 +92,7 @@ const getAnalyticsData = unstable_cache(
 
       // Vites Türü Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.transmission": { $exists: true, $ne: "" } } },
+        { $match: { $and: [PUBLIC_LISTING_FILTER, trustedFeatureFilter("transmission"), { "features.transmission": { $exists: true, $ne: "" } }] } },
         { $group: { _id: "$features.transmission", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
       ]),
 
@@ -113,7 +111,7 @@ const getAnalyticsData = unstable_cache(
 
       // Kasa Tipi Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.bodyType": { $exists: true, $ne: "" } } },
+        { $match: { $and: [PUBLIC_LISTING_FILTER, trustedFeatureFilter("bodyType"), { "features.bodyType": { $exists: true, $ne: "" } }] } },
         { $group: { _id: "$features.bodyType", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
       ]),
 
@@ -146,25 +144,32 @@ const getAnalyticsData = unstable_cache(
       sharePct: Math.round(((b.count || 0) / totalBracketCount) * 100),
     }));
 
+    // Kaynakların farklı yazdığı değerler birleştirilir (Tiptronik → Otomatik, Suv/Arazi aracı → SUV...) ve
+    // yüzdeler tüm bilinen ilanlara göre hesaplanır (bkz. lib/vehicle-attrs.ts).
+    const base = (trusted: number) => ({
+      trusted,
+      total: activeTotal,
+      minCoveragePct: Math.round(MIN_TRUSTED_COVERAGE * 100),
+      gated: !(activeTotal > 0 && trusted / activeTotal >= MIN_TRUSTED_COVERAGE),
+    });
+    const featureBases = { fuelType: base(trustedFuel), transmission: base(trustedTrans), bodyType: base(trustedBody) };
+
     const totalFuelCount = fuelRaw.reduce((acc, f) => acc + (f.count || 0), 0) || 1;
-    const fuelStats = fuelRaw.map((f) => ({
+    const fuelStats = (featureBases.fuelType.gated ? [] : fuelRaw).map((f) => ({
       fuel: f._id,
       count: f.count,
       avgPrice: Math.round(f.avgPrice || 0),
       sharePct: Math.round(((f.count || 0) / totalFuelCount) * 100),
     }));
 
-    // Kaynakların farklı yazdığı değerler birleştirilir (Tiptronik → Otomatik, Suv/Arazi aracı → SUV...) ve
-    // yüzdeler tüm bilinen ilanlara göre hesaplanır (bkz. lib/vehicle-attrs.ts).
-    const featureCoverageOk = activeTotal > 0 && trustedTotal / activeTotal >= MIN_TRUSTED_COVERAGE;
-    const transmissionStats = (featureCoverageOk ? mergeCategoryStats(transRaw, normalizeTransmission, 3) : []).map((t) => ({
+    const transmissionStats = (!featureBases.transmission.gated ? mergeCategoryStats(transRaw, normalizeTransmission, 3) : []).map((t) => ({
       transmission: t.label,
       count: t.count,
       avgPrice: t.avgPrice,
       sharePct: t.sharePct,
     }));
 
-    const bodyTypeStats = (featureCoverageOk ? mergeCategoryStats(bodyRaw, normalizeBodyType, 5) : []).map((b) => ({
+    const bodyTypeStats = (!featureBases.bodyType.gated ? mergeCategoryStats(bodyRaw, normalizeBodyType, 5) : []).map((b) => ({
       bodyType: b.label,
       count: b.count,
       avgPrice: b.avgPrice,
@@ -178,7 +183,9 @@ const getAnalyticsData = unstable_cache(
     }));
 
     return {
-      brandSummaries: buildBrandSummaries(sampleCars),
+      brandSummaries: buildBrandSummariesFromGroups(
+        brandGroups.map((g) => ({ brand: g._id.b, model: g._id.m, count: g.count, priceSum: g.priceSum }))
+      ),
       byYear: byYearRaw,
       totalCars: activeTotal,
       overallAvgPrice,
@@ -188,17 +195,12 @@ const getAnalyticsData = unstable_cache(
         transmissionStats,
         bodyTypeStats,
         topBrands,
-        featureBase: {
-          trusted: trustedTotal,
-          total: activeTotal,
-          minCoveragePct: Math.round(MIN_TRUSTED_COVERAGE * 100),
-          gated: !featureCoverageOk,
-        },
+        featureBases,
         generatedAt: new Date().toISOString(),
       },
     };
   },
-  ["analytics:all:v5"],
+  ["analytics:all:v7"],
   { revalidate: CACHE_TTL.medium / 1000 }
 );
 
@@ -318,7 +320,7 @@ async function AnalyticsContent() {
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
                 {insightsData.bodyTypeStats[0]
-                  ? `Kasa tipi bilinen ilanların %${insightsData.bodyTypeStats[0].sharePct}'ini oluşturuyor`
+                  ? `Kasa tipi bilinen ilanlardaki payı %${insightsData.bodyTypeStats[0].sharePct}`
                   : "Yeterli veri yok"}
               </p>
             </div>
@@ -327,7 +329,7 @@ async function AnalyticsContent() {
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">En Yoğun Bütçe</p>
               <p className="mt-2 text-3xl font-black text-indigo-400">{busiestBracket?.label || "—"}</p>
               <p className="mt-1 text-[11px] text-slate-400">
-                {busiestBracket ? `İlanların %${busiestBracket.sharePct}'i bu segmentte` : "Yeterli veri yok"}
+                {busiestBracket ? `İlanların ${trPercent(busiestBracket.sharePct)} bu segmentte` : "Yeterli veri yok"}
               </p>
             </div>
           </div>

@@ -131,7 +131,8 @@ export async function GET(request: Request) {
           imageUrl: car.imageUrl,
           sourceSite: car.sourceSite || "arabam",
           fuelType: car.features?.fuelType || "Bilinmiyor",
-          transmission: car.features?.transmission || "Manuel",
+          // Bilinmeyen vites "Manuel" diye uydurulmaz (yakıttaki gibi).
+          transmission: car.features?.transmission || "Bilinmiyor",
           hasDropped,
           dropAmount,
         };

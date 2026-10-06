@@ -15,7 +15,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "ids query param required (comma separated)" }, { status: 400 });
     }
 
-    const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
+    // Geçersiz kimlik Mongo CastError (500) yerine yok sayılır; en fazla 6 ilan karşılaştırılır.
+    const ids = idsParam
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => Types.ObjectId.isValid(s))
+      .slice(0, 6);
     if (ids.length < 2) {
       return NextResponse.json({ error: "At least two ids required to compare" }, { status: 400 });
     }

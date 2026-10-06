@@ -51,8 +51,15 @@ export async function POST(request: Request) {
       );
     }
 
-    if (user.emailChangeAttempts >= MAX_CODE_ATTEMPTS) {
+    // Deneme hakkı denemeden ÖNCE ve tek atomik işlemle harcanır (bkz. verify-current).
+    const reserved = await User.findOneAndUpdate(
+      { _id: user._id, emailChangeAttempts: { $lt: MAX_CODE_ATTEMPTS } },
+      { $inc: { emailChangeAttempts: 1 } },
+      { new: true }
+    ).select("emailChangeAttempts");
+    if (!reserved) {
       clearPending();
+      user.markModified("emailChangeAttempts");
       await user.save();
       return NextResponse.json(
         { error: "Çok fazla hatalı deneme. E-posta değiştirmeyi yeniden başlat." },
@@ -61,9 +68,7 @@ export async function POST(request: Request) {
     }
 
     if (!codeMatches(code, user.emailChangeNewCodeHash)) {
-      user.emailChangeAttempts += 1;
-      await user.save();
-      const remaining = MAX_CODE_ATTEMPTS - user.emailChangeAttempts;
+      const remaining = MAX_CODE_ATTEMPTS - (reserved.emailChangeAttempts || 0);
       return NextResponse.json(
         { error: `Kod hatalı. ${remaining > 0 ? `${remaining} deneme hakkın kaldı.` : ""}`.trim() },
         { status: 400 }

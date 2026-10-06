@@ -54,12 +54,20 @@ export async function POST(request: Request) {
       );
     }
 
-    if (user.emailChangeAttempts >= MAX_CODE_ATTEMPTS) {
+    // Deneme hakkı denemeden ÖNCE ve tek atomik işlemle harcanır: aynı anda gelen istekler okuyup sonra
+    // sayacı artırırsa 5 hakkın çok üstünde tahmin yapılabilirdi.
+    const reserved = await User.findOneAndUpdate(
+      { _id: user._id, emailChangeAttempts: { $lt: MAX_CODE_ATTEMPTS } },
+      { $inc: { emailChangeAttempts: 1 } },
+      { new: true }
+    ).select("emailChangeAttempts");
+    if (!reserved) {
       user.emailChangePendingEmail = null;
       user.emailChangeCurrentCodeHash = null;
       user.emailChangeNewCodeHash = null;
       user.emailChangeCodeExpires = null;
       user.emailChangeAttempts = 0;
+      user.markModified("emailChangeAttempts");
       await user.save();
       return NextResponse.json(
         { error: "Çok fazla hatalı deneme. E-posta değiştirmeyi yeniden başlat." },
@@ -68,9 +76,7 @@ export async function POST(request: Request) {
     }
 
     if (!codeMatches(code, user.emailChangeCurrentCodeHash)) {
-      user.emailChangeAttempts += 1;
-      await user.save();
-      const remaining = MAX_CODE_ATTEMPTS - user.emailChangeAttempts;
+      const remaining = MAX_CODE_ATTEMPTS - (reserved.emailChangeAttempts || 0);
       return NextResponse.json(
         { error: `Kod hatalı. ${remaining > 0 ? `${remaining} deneme hakkın kaldı.` : ""}`.trim() },
         { status: 400 }
@@ -82,6 +88,7 @@ export async function POST(request: Request) {
     user.emailChangeNewCodeHash = hashCode(newCode);
     user.emailChangeCodeExpires = codeExpiry();
     user.emailChangeAttempts = 0;
+    user.markModified("emailChangeAttempts"); // sayaç yukarıda veritabanında artırıldı; bellekteki değer aynı kalıyor
     await user.save();
 
     try {

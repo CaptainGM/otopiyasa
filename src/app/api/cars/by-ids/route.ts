@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { isLeanCarDoc, serializeCarPublic, LIST_IMAGE_LIMIT } from "@/lib/serialize-car";
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ items: [] });
     }
 
-    const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20);
+    const ids = idsParam.split(",").map((s) => s.trim()).filter((s) => Types.ObjectId.isValid(s)).slice(0, 20);
     if (ids.length === 0) {
       return NextResponse.json({ items: [] });
     }

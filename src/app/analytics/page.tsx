@@ -15,9 +15,20 @@ import { StatsResponse } from "@/types";
 import { CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { mergeCategoryStats, normalizeBodyType, normalizeTransmission } from "@/lib/vehicle-attrs";
 
 // ISR: 2 dakikada bir arka planda tazeler — anlık yükleme + güncel veri
-export const revalidate = 120;
+// Analiz verisi en fazla 5 dakika gecikmeli: yeni ilan eklenince/arşive gidince sayfa kendiliğinden yenilenir.
+export const revalidate = 300;
+
+/**
+ * Vites, yakıt ve kasa tipi Arabam liste sayfalarında ilan BAŞLIĞINDAN tahmin ediliyordu (örn. başlıkta "otomatik"
+ * yoksa "Manuel"). Gerçek ilan sayfasından doğrulanmamış Arabam ilanları bu dağılımlara katılmaz; diğer kaynaklar
+ * (galeri siteleri) bilgiyi doğrudan verdiği için dahildir. Bekçi ilanları gezdikçe örnek büyür.
+ */
+const TRUSTED_FEATURES: { $or: Record<string, unknown>[] } = {
+  $or: [{ sourceSite: { $ne: "arabam" } }, { featuresVerifiedAt: { $exists: true } }],
+};
 
 const getAnalyticsData = unstable_cache(
   async () => {
@@ -33,6 +44,7 @@ const getAnalyticsData = unstable_cache(
 
     // 2. Çoklu analitik agregasyonlar
     const [
+      trustedTotal,
       byYearRaw,
       activeTotal,
       fuelRaw,
@@ -41,6 +53,7 @@ const getAnalyticsData = unstable_cache(
       bodyRaw,
       topBrandsRaw,
     ] = await Promise.all([
+      Car.countDocuments({ ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES }),
       // Temizlenmiş Yıl Eğrisi (1995-2026 arası, aşırı trol/hatalı fiyatlar elenmiş)
       Car.aggregate([
         {
@@ -67,7 +80,7 @@ const getAnalyticsData = unstable_cache(
 
       // Yakıt Türü Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, "features.fuelType": { $exists: true, $ne: "" } } },
+        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.fuelType": { $exists: true, $ne: "" } } },
         { $group: { _id: "$features.fuelType", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
@@ -75,10 +88,8 @@ const getAnalyticsData = unstable_cache(
 
       // Vites Türü Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, "features.transmission": { $exists: true, $ne: "" } } },
+        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.transmission": { $exists: true, $ne: "" } } },
         { $group: { _id: "$features.transmission", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
-        { $sort: { count: -1 } },
-        { $limit: 3 },
       ]),
 
       // Bütçe Segmentleri
@@ -96,10 +107,8 @@ const getAnalyticsData = unstable_cache(
 
       // Kasa Tipi Dağılımı
       Car.aggregate([
-        { $match: { ...PUBLIC_LISTING_FILTER, "features.bodyType": { $exists: true, $ne: "" } } },
+        { $match: { ...PUBLIC_LISTING_FILTER, ...TRUSTED_FEATURES, "features.bodyType": { $exists: true, $ne: "" } } },
         { $group: { _id: "$features.bodyType", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
-        { $sort: { count: -1 } },
-        { $limit: 5 },
       ]),
 
       // En Popüler 10 Marka
@@ -139,20 +148,20 @@ const getAnalyticsData = unstable_cache(
       sharePct: Math.round(((f.count || 0) / totalFuelCount) * 100),
     }));
 
-    const totalTransCount = transRaw.reduce((acc, t) => acc + (t.count || 0), 0) || 1;
-    const transmissionStats = transRaw.map((t) => ({
-      transmission: t._id,
+    // Kaynakların farklı yazdığı değerler birleştirilir (Tiptronik → Otomatik, Suv/Arazi aracı → SUV...) ve
+    // yüzdeler tüm bilinen ilanlara göre hesaplanır (bkz. lib/vehicle-attrs.ts).
+    const transmissionStats = mergeCategoryStats(transRaw, normalizeTransmission, 3).map((t) => ({
+      transmission: t.label,
       count: t.count,
-      avgPrice: Math.round(t.avgPrice || 0),
-      sharePct: Math.round(((t.count || 0) / totalTransCount) * 100),
+      avgPrice: t.avgPrice,
+      sharePct: t.sharePct,
     }));
 
-    const totalBodyCount = bodyRaw.reduce((acc, b) => acc + (b.count || 0), 0) || 1;
-    const bodyTypeStats = bodyRaw.map((b) => ({
-      bodyType: b._id,
+    const bodyTypeStats = mergeCategoryStats(bodyRaw, normalizeBodyType, 5).map((b) => ({
+      bodyType: b.label,
       count: b.count,
-      avgPrice: Math.round(b.avgPrice || 0),
-      sharePct: Math.round(((b.count || 0) / totalBodyCount) * 100),
+      avgPrice: b.avgPrice,
+      sharePct: b.sharePct,
     }));
 
     const topBrands = topBrandsRaw.map((b) => ({
@@ -172,11 +181,13 @@ const getAnalyticsData = unstable_cache(
         transmissionStats,
         bodyTypeStats,
         topBrands,
+        featureBase: { trusted: trustedTotal, total: activeTotal },
+        generatedAt: new Date().toISOString(),
       },
     };
   },
-  ["analytics:all:v3"],
-  { revalidate: CACHE_TTL.long / 1000 }
+  ["analytics:all:v5"],
+  { revalidate: CACHE_TTL.medium / 1000 }
 );
 
 function AnalyticsLoading() {
@@ -246,12 +257,21 @@ async function AnalyticsContent() {
     dbError = true;
   }
 
+  // En çok ilanın bulunduğu bütçe aralığı ("Diğer" kovası sayılmaz).
+  const busiestBracket = [...insightsData.priceBrackets]
+    .filter((bracket) => bracket.label !== "Diğer")
+    .sort((a, b) => b.count - a.count)[0];
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-extrabold text-white">İkinci El Araç Piyasası Analizi</h1>
         <p className="mt-1 text-sm text-slate-400">
           Türkiye pazarındaki güncel aktif ilan verileriyle bütçe segmentleri, yakıt, vites, kasa tipleri ve fiyat trendleri.
+          Arşivdeki (kaldırılmış) ilanlar bu analize katılmaz; veriler en fazla 5 dakika gecikmeyle otomatik yenilenir.
+          {insightsData.generatedAt && (
+            <> Son hesaplama: {new Date(insightsData.generatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })}.</>
+          )}
         </p>
       </div>
 
@@ -282,17 +302,21 @@ async function AnalyticsContent() {
             <div className="card p-5 border-l-4 border-amber-500">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Lider Kasa Tipi</p>
               <p className="mt-2 text-3xl font-black text-amber-400">
-                {insightsData.bodyTypeStats[0]?.bodyType || "SUV"}
+                {insightsData.bodyTypeStats[0]?.bodyType || "—"}
               </p>
               <p className="mt-1 text-[11px] text-slate-400">
-                Pazarın %{insightsData.bodyTypeStats[0]?.sharePct || 36}&apos;sını oluşturuyor
+                {insightsData.bodyTypeStats[0]
+                  ? `Kasa tipi bilinen ilanların %${insightsData.bodyTypeStats[0].sharePct}'ini oluşturuyor`
+                  : "Yeterli veri yok"}
               </p>
             </div>
 
             <div className="card p-5 border-l-4 border-indigo-500">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">En Yoğun Bütçe</p>
-              <p className="mt-2 text-3xl font-black text-indigo-400">1M - 2M ₺</p>
-              <p className="mt-1 text-[11px] text-slate-400">İlanların %38&apos;i bu segmentte</p>
+              <p className="mt-2 text-3xl font-black text-indigo-400">{busiestBracket?.label || "—"}</p>
+              <p className="mt-1 text-[11px] text-slate-400">
+                {busiestBracket ? `İlanların %${busiestBracket.sharePct}'i bu segmentte` : "Yeterli veri yok"}
+              </p>
             </div>
           </div>
 

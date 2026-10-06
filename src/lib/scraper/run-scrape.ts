@@ -124,8 +124,19 @@ export async function saveListing(
     // Kaynak adres formatını değiştirdiğinde (ör. VavaCars → tr.vava.cars) kayıt kendini onarsın.
     const urlChanged = Boolean(listing.listingUrl && listing.listingUrl !== existing.listingUrl);
 
+    // İlan sayfasından AÇIKÇA okunan özellikler (vites/yakıt/kasa/renk): liste sayfasından gelen tahminin yerine yazılır
+    // ve ilan "özellikleri doğrulandı" işaretlenir. Okunamayan alanlara dokunulmaz.
+    const confirmedKeys = listing.confirmedFeatures || [];
+    const sameText = (a?: string, b?: string) => (a || "").toLocaleLowerCase("tr-TR") === (b || "").toLocaleLowerCase("tr-TR");
+    const storedFeatures = ((existing as any).features || {}) as Record<string, string | undefined>;
+    const featuresChanged = confirmedKeys.some(
+      (key) => listing.features?.[key] && !sameText(storedFeatures[key], listing.features[key])
+    );
+    const needsVerifyFlag = confirmedKeys.length > 0 && !(existing as any).featuresVerifiedAt;
+
     const hasAnyChange =
-      priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged;
+      priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged ||
+      featuresChanged || needsVerifyFlag;
 
     // GERÇEKTE HİÇBİR ŞEY DEĞİŞMEDİYSE içerik yazılmaz (updatedAt oynamaz);
     // yalnızca "canlı görüldü" bilgisi seyrek olarak işlenir.
@@ -163,7 +174,16 @@ export async function saveListing(
     }
     if (listing.location) existing.location = listing.location;
     if (listing.features) {
-      if (detailKept) {
+      if (Array.isArray(listing.confirmedFeatures)) {
+        // Yalnızca sayfada yazan alanlar güncellenir; diğerleri (ör. daha önce bilinen kasa tipi) korunur.
+        for (const key of confirmedKeys) {
+          if (listing.features[key]) existing.set(`features.${key}`, listing.features[key]);
+        }
+        for (const key of ["engineSize", "horsepower", "drivetrain", "avgFuelConsumption"] as const) {
+          const value = listing.features[key];
+          if (value !== undefined && value !== null && value !== "") existing.set(`features.${key}`, value);
+        }
+      } else if (detailKept) {
         // Yalnızca listeden güvenilir gelenleri güncelle; detaydan gelen renk/kasa/motor kalsın.
         if (!isUnknownValue(listing.features.fuelType)) existing.set("features.fuelType", listing.features.fuelType);
         if (!isUnknownValue(listing.features.transmission)) existing.set("features.transmission", listing.features.transmission);
@@ -173,6 +193,7 @@ export async function saveListing(
     }
     existing.listingUrl = listing.listingUrl || existing.listingUrl;
     existing.source = listing.sourceSite;
+    if (confirmedKeys.length > 0) (existing as any).featuresVerifiedAt = now;
 
     if (priceChanged) {
       existing.priceHistory.push({
@@ -255,6 +276,7 @@ export async function saveListing(
     lastVerifiedAt: now,
     lastVerifyAttemptAt: now,
     detailCheckedAt,
+    featuresVerifiedAt: (listing.confirmedFeatures?.length ?? 0) > 0 ? now : undefined,
   });
   return "inserted";
 }

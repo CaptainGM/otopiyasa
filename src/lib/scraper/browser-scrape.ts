@@ -676,7 +676,10 @@ export function parseArabamDetailHtml(
   const props: Record<string, string> = {};
   $(".property-item").each((_, el) => {
     const text = $(el).text().replace(/\s+/g, " ").trim();
-    const label = ARABAM_PROPERTY_LABELS.find((candidate) => text.startsWith(candidate));
+    // Arabam etiket yazımını değiştirdi ("Vites Tipi" → "Vites tipi"); eşleşme büyük/küçük harf duyarsız olmalı,
+    // yoksa kasa tipi hiç okunmuyor, yakıt ise sayfadaki rastgele kelimelerden tahmin ediliyordu.
+    const lower = text.toLocaleLowerCase("tr-TR");
+    const label = ARABAM_PROPERTY_LABELS.find((candidate) => lower.startsWith(candidate.toLocaleLowerCase("tr-TR")));
     if (label) props[label] = text.slice(label.length).trim();
   });
 
@@ -717,6 +720,12 @@ export function parseArabamDetailHtml(
   
   if (isNonCarBrand(brand)) return null;
 
+  const confirmedFeatures: NonNullable<ScrapedListing["confirmedFeatures"]> = [];
+  if (carData.vehicleTransmission || props["Vites Tipi"]) confirmedFeatures.push("transmission");
+  if (props["Yakıt Tipi"]) confirmedFeatures.push("fuelType");
+  if (props["Kasa Tipi"]) confirmedFeatures.push("bodyType");
+  if (carData.color || props["Renk"]) confirmedFeatures.push("color");
+
   const domPriceText = $("[class*='price']").first().text();
   const domPrice = parsePrice(domPriceText);
   const price = Number(carData.offers?.price) || domPrice || 0;
@@ -742,6 +751,7 @@ export function parseArabamDetailHtml(
     paintChange: props["Boya-değişen"] || undefined,
     
     damageParts: extractArabamDamageParts(html),
+    confirmedFeatures,
     features: {
       fuelType: props["Yakıt Tipi"] || extractFromKeywords(html, FUEL_TYPES),
       transmission,

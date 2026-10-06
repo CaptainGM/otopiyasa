@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatNumber, formatPrice } from "@/lib/utils";
+import { automaticPremiumPct } from "@/lib/vehicle-attrs";
 
 export interface MarketInsightData {
   priceBrackets: Array<{ label: string; count: number; avgPrice: number; sharePct: number }>;
@@ -18,6 +19,9 @@ export interface MarketInsightData {
   transmissionStats: Array<{ transmission: string; count: number; avgPrice: number; sharePct: number }>;
   bodyTypeStats: Array<{ bodyType: string; count: number; avgPrice: number; sharePct: number }>;
   topBrands: Array<{ brand: string; count: number; avgPrice: number }>;
+  /** Vites/yakıt/kasa dağılımlarının hesaplandığı güvenilir (ilan sayfasından doğrulanmış) ilan sayısı ve toplam aktif ilan. */
+  featureBase?: { trusted: number; total: number };
+  generatedAt?: string;
 }
 
 interface MarketInsightsChartsProps {
@@ -37,7 +41,19 @@ const BRACKET_COLORS = ["#38bdf8", "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899"];
 const FUEL_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#06b6d4", "#a855f7"];
 const BODY_COLORS = ["#f97316", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899", "#64748b"];
 
+/** Dağılımın kaç ilana dayandığı: doğrulanmamış (tahmini) ilanlar hesaba katılmaz. */
+function FeatureBaseNote({ base }: { base?: { trusted: number; total: number } }) {
+  if (!base || base.total <= 0) return null;
+  const pct = Math.round((base.trusted / base.total) * 100);
+  return (
+    <p className="mt-1 text-[11px] text-amber-300/80">
+      {formatNumber(base.trusted)} ilan üzerinden (ilan sayfasından doğrulanmış, aktif ilanların %{pct}'i). Doğrulama sürdükçe kapsam büyür.
+    </p>
+  );
+}
+
 export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
+  const autoPremium = automaticPremiumPct(data.transmissionStats.map((t) => ({ label: t.transmission, avgPrice: t.avgPrice })));
   return (
     <div className="space-y-8">
       {/* 1. BÜTÇE SEGMENTLERİ & EN ÇOK İLANLI 10 MARKA */}
@@ -179,6 +195,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Pazar payı ve ortalama satış fiyatları
             </p>
+            <FeatureBaseNote base={data.featureBase} />
           </div>
 
           <div className="mt-4 space-y-3">
@@ -222,6 +239,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Otomatik vs Manuel pazar oranı ve fiyat farkı
             </p>
+            <FeatureBaseNote base={data.featureBase} />
           </div>
 
           <div className="mt-4 space-y-4">
@@ -251,7 +269,17 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
           </div>
 
           <div className="mt-4 text-[11px] text-slate-400 bg-blue-500/5 border border-blue-500/10 p-2.5 rounded-lg text-center">
-            💡 Otomatik vites araçlar ortalamada manuel araçlara kıyasla yaklaşık <strong className="text-blue-300">%45 daha yüksek</strong> fiyattan işlem görüyor.
+            {autoPremium !== null ? (
+              <>
+                💡 Otomatik vitesli ilanların ortalama fiyatı manuel olanlardan{" "}
+                <strong className="text-blue-300">
+                  %{Math.abs(autoPremium)} {autoPremium >= 0 ? "daha yüksek" : "daha düşük"}
+                </strong>{" "}
+                (otomatik araçlar daha yeni ve üst segment olma eğiliminde).
+              </>
+            ) : (
+              <>💡 Karşılaştırma için yeterli otomatik/manuel ilan verisi yok.</>
+            )}
           </div>
         </div>
 
@@ -264,6 +292,7 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
             <p className="mt-1 text-xs text-slate-400">
               Piyasadaki gövde tipleri ve ortalamaları
             </p>
+            <FeatureBaseNote base={data.featureBase} />
           </div>
 
           <div className="mt-4 space-y-3">
@@ -298,7 +327,9 @@ export function MarketInsightsCharts({ data }: MarketInsightsChartsProps) {
           </div>
 
           <div className="mt-4 text-[11px] text-slate-400 border-t border-white/5 pt-3">
-            SUV gövde tipi, Sedan&apos;ı yakalayarak Türkiye&apos;nin en çok tercih edilen kasa tipi haline geldi.
+            {data.bodyTypeStats.length >= 2
+              ? `${data.bodyTypeStats[0].bodyType} (%${data.bodyTypeStats[0].sharePct}) ve ${data.bodyTypeStats[1].bodyType} (%${data.bodyTypeStats[1].sharePct}) aktif ilanlarda en yaygın kasa tipleri. Kasa tipi belirtilmeyen ilanlar dahil değildir.`
+              : "Kasa tipi dağılımı için yeterli veri yok."}
           </div>
         </div>
       </div>

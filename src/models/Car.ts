@@ -122,6 +122,8 @@ const CarSchema = new Schema(
     // İlan sayfasından galeri/açıklama/teknik bilgi en son ne zaman tamamlanmaya çalışıldı
     // (Otokoç, Otoplus; bkz. scraper/enrich-detail.ts).
     detailCheckedAt: { type: Date, default: undefined },
+    /** Vites/yakıt/kasa gibi özelliklerin ilan sayfasından doğrulandığı an (liste sayfası verisi tahmindir). */
+    featuresVerifiedAt: { type: Date, default: undefined },
   },
   { timestamps: true }
 );

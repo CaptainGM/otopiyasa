@@ -23,6 +23,11 @@ export interface ScrapedListing {
   paintChange?: string;
  
   damageParts?: { name: string; state: string }[];
+  /**
+   * İlan sayfasında AÇIKÇA yazan (tahmin olmayan) özellikler. Doluysa kayıt güncellenirken yalnızca bunlar
+   * yazılır ve ilan "özellikleri doğrulandı" sayılır; liste sayfasından gelen tahminler bunları ezmez.
+   */
+  confirmedFeatures?: Array<"transmission" | "fuelType" | "bodyType" | "color">;
   features: {
     fuelType: string;
     transmission: string;

@@ -66,3 +66,58 @@ describe("normalizeArabamGallery", () => {
     expect(normalizeArabamGallery([photo("a", "800x600", "1")], "42188516")).toEqual([photo("a", "1920x1080", "1")]);
   });
 });
+
+describe("parseArabamDetailHtml etiket yazımı", () => {
+  const page = (labels: { vites: string; yakit: string; kasa: string }) => `<html><body>
+    <script type="application/ld+json">${JSON.stringify({
+      "@type": "Car",
+      brand: "Seat",
+      model: "1.6 TDI Ecomotive Xcellence",
+      name: "Seat Ateca 1.6 TDI Xcellence | Arabam",
+      vehicleTransmission: "Otomatik",
+      color: "Beyaz",
+      productionDate: 2020,
+      mileageFromOdometer: { value: 101000 },
+      offers: { price: 1325000 },
+    })}</script>
+    <div class="property-item">${labels.vites}</div>
+    <div class="property-item">${labels.yakit}</div>
+    <div class="property-item">${labels.kasa}</div>
+    <div class="property-item">Renk Beyaz</div>
+    <div class="property-item">Çekiş Önden Çekiş</div>
+  </body></html>`;
+
+  it("sitenin güncel küçük harfli etiketlerini (Vites tipi / Kasa tipi) okur", async () => {
+    const { parseArabamDetailHtml } = await import("./browser-scrape");
+    const listing = parseArabamDetailHtml(
+      page({ vites: "Vites tipi Otomatik", yakit: "Yakıt tipi Dizel", kasa: "Kasa tipi SUV" }),
+      "https://www.arabam.com/ilan/seat-ateca/41921782"
+    );
+    expect(listing?.features.transmission).toBe("Otomatik");
+    expect(listing?.features.fuelType).toBe("Dizel");
+    expect(listing?.features.bodyType).toBe("SUV");
+    expect(listing?.confirmedFeatures).toEqual(expect.arrayContaining(["transmission", "fuelType", "bodyType", "color"]));
+  });
+
+  it("eski büyük harfli etiketleri de okur", async () => {
+    const { parseArabamDetailHtml } = await import("./browser-scrape");
+    const listing = parseArabamDetailHtml(
+      page({ vites: "Vites Tipi Otomatik", yakit: "Yakıt Tipi Dizel", kasa: "Kasa Tipi Sedan" }),
+      "https://www.arabam.com/ilan/seat-ateca/41921782"
+    );
+    expect(listing?.features.bodyType).toBe("Sedan");
+    expect(listing?.confirmedFeatures).toContain("bodyType");
+  });
+
+  it("sayfada yazmayan yakıt/kasa tahmin sayılır, doğrulanmış işaretlenmez", async () => {
+    const { parseArabamDetailHtml } = await import("./browser-scrape");
+    const listing = parseArabamDetailHtml(
+      "<html><body><script type=\"application/ld+json\">" +
+        JSON.stringify({ "@type": "Car", brand: "Seat", model: "Ateca", name: "Seat Ateca", offers: { price: 1000000 } }) +
+        "</script></body></html>",
+      "https://www.arabam.com/ilan/seat-ateca/41921782"
+    );
+    expect(listing?.confirmedFeatures).not.toContain("bodyType");
+    expect(listing?.confirmedFeatures).not.toContain("fuelType");
+  });
+});

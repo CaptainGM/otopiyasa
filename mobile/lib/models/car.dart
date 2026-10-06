@@ -25,6 +25,49 @@ class MapPoint {
   }
 }
 
+/// Favorilenmiş ama artık yayında olmayan (satılmış/kaldırılmış) ilanın en az görünümü: yalnızca başlık ve
+/// küçük fotoğraf. Fiyat/açıklama/bağlantı yoktur; ilan sayfası açılmaz.
+class UnavailableFavorite {
+  const UnavailableFavorite({
+    required this.id,
+    required this.title,
+    required this.brand,
+    required this.model,
+    required this.year,
+    required this.imageUrl,
+    required this.status,
+  });
+
+  final String id;
+  final String title;
+  final String brand;
+  final String model;
+  final int year;
+  final String imageUrl;
+
+  /// removed | sold
+  final String status;
+
+  String get statusLabel => status == 'sold' ? 'Satıldı' : 'İlan kaldırıldı';
+
+  factory UnavailableFavorite.fromJson(Map<String, dynamic> json) => UnavailableFavorite(
+        id: json['_id']?.toString() ?? '',
+        title: json['title']?.toString() ?? '',
+        brand: json['brand']?.toString() ?? '',
+        model: json['model']?.toString() ?? '',
+        year: (json['year'] as num?)?.toInt() ?? 0,
+        imageUrl: json['imageUrl']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'removed',
+      );
+}
+
+class FavoritesResult {
+  const FavoritesResult({required this.available, required this.unavailable});
+
+  final List<CarListing> available;
+  final List<UnavailableFavorite> unavailable;
+}
+
 class PricePoint {
   PricePoint({required this.price, required this.recordedAt});
 

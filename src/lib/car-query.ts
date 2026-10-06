@@ -19,6 +19,7 @@ import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
 import { modelFamilyRegex } from "@/lib/model-family";
 import { normalizeColor } from "@/lib/normalize-color";
+import { transmissionMatch } from "@/lib/vehicle-attrs";
 
 export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   
@@ -55,7 +56,7 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   }
   // Mobil "LPG" gönderiyor, kayıtlar "LPG & Benzin"; ikisi de aynı yazıma çevrilir.
   if (filters.fuelType) query["features.fuelType"] = normalizeFuelType(filters.fuelType);
-  if (filters.transmission) query["features.transmission"] = filters.transmission;
+  if (filters.transmission) query["features.transmission"] = transmissionMatch(filters.transmission);
 
   if (filters.yearMin || filters.yearMax) {
     query.year = {};

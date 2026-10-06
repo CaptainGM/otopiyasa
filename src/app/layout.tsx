@@ -59,8 +59,10 @@ export const metadata: Metadata = {
    */
   icons: {
     icon: [
+      // Google favicon için 48 pikselin katı kare PNG/ICO ister (eski 64 px dosya bu yüzden kullanılmıyordu).
+      { url: "/icon.png", type: "image/png", sizes: "192x192" },
       { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.ico", sizes: "48x48" },
     ],
     shortcut: "/favicon.ico",
     apple: "/apple-icon.png",

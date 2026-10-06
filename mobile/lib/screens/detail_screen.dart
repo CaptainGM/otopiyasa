@@ -8,6 +8,7 @@ import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/widgets/fuel_cost_card.dart';
 import 'package:otopiyasa/widgets/listing_description.dart';
+import 'package:otopiyasa/widgets/listing_map.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/widgets/listing_interaction.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
@@ -435,6 +436,10 @@ class _DetailScreenState extends State<DetailScreen> {
               const SizedBox(height: 16),
               ListingDescription(value: car.description),
               DamageDiagram(paintChange: car.paintChange, damageFlag: car.damageFlag, damageParts: car.damageParts),
+              if (car.mapPoint != null) ...[
+                const SizedBox(height: 20),
+                ListingMap(point: car.mapPoint!),
+              ],
               const SizedBox(height: 20),
               OutlinedButton.icon(
                 onPressed: () async {

@@ -69,6 +69,9 @@ export interface Car {
   businessName?: string; 
   marketAvgPrice?: number;
   marketListingCount?: number;
+  /** "family": donanımda emsal yetmediği için aynı yılın tüm donanımları birlikte sayıldı. */
+  marketScope?: "model" | "family";
+  marketFamilyLabel?: string;
   priceVsMarket?: number;
   priceHistory: PricePoint[];
   createdAt: string;
@@ -119,8 +122,11 @@ export interface CarFilters {
   transmission?: string;
   sort?: "mixed" | "price_asc" | "price_desc" | "year_desc" | "newest" | "views";
   discountOnly?: boolean;
-  /** "Keşfet" akışı tohumu: istemci her yenilemede yeni bir sayı gönderir, sayfalar aynı tohumu kullanır. */
+  /** "Keşfet" akışının kişiye/yenilemeye özel rastgele başlangıç tohumu; sonraki sayfalar aynı tohumu kullanır. */
   seed?: number;
+  /** Keşfet dilimi (0..23) ve dönemi: herkes için aynı, CDN'de saklanır; sıra istemcide karıştırılır. */
+  slot?: number;
+  bucket?: number;
   page?: number;
   limit?: number;
 }

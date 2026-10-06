@@ -367,6 +367,7 @@ class _CompareScreenState extends State<CompareScreen> {
                   c.marketAvgPrice! > 0 &&
                   (c.marketListingCount ?? 0) >= 3
               ? '${_money.format(c.marketAvgPrice)} · ${c.marketListingCount} ilan'
+                  '${c.marketFamilyLabel != null ? ' (${c.marketFamilyLabel}, tüm donanımlar)' : ''}'
               : 'Yeterli veri yok (${c.marketListingCount ?? 0}/3)',
       ]),
       _CompareRow('Yıl', [for (final c in _cars) c.year.toString()],

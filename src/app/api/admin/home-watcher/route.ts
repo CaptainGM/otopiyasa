@@ -5,6 +5,7 @@ import { Car } from "@/models/Car";
 import { HOME_WATCHER_ID, HomeWatcherHour, HomeWatcherState } from "@/models/HomeWatcher";
 import { describeWatcher, estimateRemaining, fillDayHours, summarizeDays, type HourRow } from "@/lib/home-watcher-status";
 import { getTurkeyDateStr } from "@/lib/utils";
+import { UNVERIFIED_ARABAM_FILTER } from "@/lib/unverified-listings";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ async function queueCounts() {
   const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
   const [active, neverVerified, verifiedLast24h] = await Promise.all([
     Car.countDocuments({ sourceSite: "arabam", status: "active" }),
-    Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $exists: false } }),
+    Car.countDocuments(UNVERIFIED_ARABAM_FILTER),
     Car.countDocuments({ sourceSite: "arabam", status: "active", lastVerifiedAt: { $gte: dayAgo } }),
   ]);
   cachedQueue = { active, neverVerified, verifiedLast24h, ts: now };
@@ -37,7 +38,52 @@ export async function GET(request: Request) {
     }
     await connectDB();
 
-    const dateParam = new URL(request.url).searchParams.get("date");
+    const url = new URL(request.url);
+    const dateParam = url.searchParams.get("date");
+    const hourParam = url.searchParams.get("hour");
+    const kindParam = url.searchParams.get("kind");
+
+    // Saat satırına tıklayınca o saatte arşive giden / yeni eklenen ilanların kendisi (başlık, bağlantı).
+    if (dateParam && hourParam && kindParam) {
+      if (!/^\d{2}\.\d{2}\.\d{4}$/.test(dateParam) || !/^\d{1,2}$/.test(hourParam)) {
+        return NextResponse.json({ error: "Tarih/saat geçersiz." }, { status: 400 });
+      }
+      if (kindParam !== "archived" && kindParam !== "inserted") {
+        return NextResponse.json({ error: "Geçersiz liste türü." }, { status: 400 });
+      }
+      const hourRow = await HomeWatcherHour.findOne({
+        watcherId: HOME_WATCHER_ID,
+        dateStr: dateParam,
+        hour: Number(hourParam),
+      })
+        .select("timestamp")
+        .lean<{ timestamp: Date } | null>();
+      if (!hourRow) {
+        return NextResponse.json({ items: [] }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const from = new Date(hourRow.timestamp);
+      const to = new Date(from.getTime() + 60 * 60 * 1000);
+      const LIMIT = 200;
+      if (kindParam === "archived") {
+        const items = await Car.find(
+          { sourceSite: "arabam", status: "removed", removedAt: { $gte: from, $lt: to } },
+          { title: 1, brand: 1, model: 1, year: 1, price: 1, listingUrl: 1, removedAt: 1, removedReason: 1 }
+        )
+          .sort({ removedAt: 1 })
+          .limit(LIMIT)
+          .lean();
+        return NextResponse.json({ items }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const items = await Car.find(
+        { sourceSite: "arabam", createdAt: { $gte: from, $lt: to } },
+        { title: 1, brand: 1, model: 1, year: 1, price: 1, listingUrl: 1, createdAt: 1 }
+      )
+        .sort({ createdAt: 1 })
+        .limit(LIMIT)
+        .lean();
+      return NextResponse.json({ items }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     if (dateParam) {
       if (!/^\d{2}\.\d{2}\.\d{4}$/.test(dateParam)) {
         return NextResponse.json({ error: "Tarih GG.AA.YYYY biçiminde olmalı." }, { status: 400 });
@@ -64,6 +110,7 @@ export async function GET(request: Request) {
       uncertain: 0,
       activeSeconds: 0,
       pausedMinutes: 0,
+      inserted: 0,
     };
 
     return NextResponse.json(

@@ -18,6 +18,53 @@ class NeedsVerificationException implements Exception {
   String toString() => message;
 }
 
+/// Tüm API istekleri için ortak zaman aşımı: yavaş/kopuk bağlantıda ekran sonsuza dek dönmesin.
+/// Yapay zekâ ve manuel tarama gibi uzun işler için [timeout] ile süre uzatılır.
+class _Http {
+  const _Http();
+
+  static const _defaultTimeout = Duration(seconds: 30);
+
+  Future<http.Response> get(
+    Uri url, {
+    Map<String, String>? headers,
+    Duration timeout = _defaultTimeout,
+  }) => _guard(http.get(url, headers: headers), timeout);
+
+  Future<http.Response> post(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    Duration timeout = _defaultTimeout,
+  }) => _guard(http.post(url, headers: headers, body: body), timeout);
+
+  Future<http.Response> patch(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    Duration timeout = _defaultTimeout,
+  }) => _guard(http.patch(url, headers: headers, body: body), timeout);
+
+  Future<http.Response> delete(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    Duration timeout = _defaultTimeout,
+  }) => _guard(http.delete(url, headers: headers, body: body), timeout);
+
+  Future<http.Response> _guard(
+    Future<http.Response> request,
+    Duration timeout,
+  ) => request.timeout(
+    timeout,
+    onTimeout: () => throw Exception(
+      'Sunucu yanıt vermedi, bağlantını kontrol edip tekrar dene.',
+    ),
+  );
+}
+
+const _http = _Http();
+
 class ApiService {
   /// Sunucu adresi.
   ///
@@ -29,11 +76,12 @@ class ApiService {
   /// Yerelde geliştirirken şu şekilde geçersiz kılınır:
   ///   flutter run --dart-define=API_BASE_URL=http://localhost:3000
   ApiService._internal({String? baseUrl})
-      : baseUrl = baseUrl ??
-            const String.fromEnvironment(
-              'API_BASE_URL',
-              defaultValue: 'https://otopiyasa.app',
-            );
+    : baseUrl =
+          baseUrl ??
+          const String.fromEnvironment(
+            'API_BASE_URL',
+            defaultValue: 'https://otopiyasa.app',
+          );
 
   /// Tüm ekranlar aynı oturumu paylaşsın diye tek örnek kullanılır.
   static final ApiService _instance = ApiService._internal();
@@ -42,34 +90,11 @@ class ApiService {
   final String baseUrl;
   static const _tokenKey = 'auth_token';
 
-  /// İlan fotoğraflarını telefon ekranına uygun, CDN üzerinden küçültülmüş
-  /// boyutta indir. Next.js kaynağı işleyemezse ListingImage ham URL'ye döner.
-  String? optimizedListingImageUrl(String source, {int width = 480, int quality = 75}) {
-    final uri = Uri.tryParse(source);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
-    final host = uri.host.toLowerCase();
-    // This source often times out behind Next Image's server-side proxy. Load
-    // its existing sized variants directly from the CDN on the device.
-    if (host.endsWith('.mncdn.com')) return null;
-    final isAllowed = host == 'images.unsplash.com' ||
-        host == 'www.sahibinden.com' || host.endsWith('.sahibinden.com') ||
-        host == 'www.arabam.com' || host == 'asset.otomerkezi.net' ||
-        host.endsWith('.mncdn.com') || host.endsWith('.otokoc.com.tr');
-    if (!isAllowed || uri.path == '/_next/image') return null;
-
-    return Uri.parse(baseUrl).resolve('/_next/image').replace(queryParameters: {
-      'url': source,
-      'w': '${width.clamp(64, 1920)}',
-      'q': '${quality.clamp(40, 90)}',
-    }).toString();
-  }
-
   /// GÜVENLİK: JWT token'ı şifrelenmiş depolama alanında tutulur.
   /// Android → Keystore, iOS → Keychain. SharedPreferences'tan daha güvenli.
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
-
 
   String? _authToken;
   Map<String, dynamic>? currentUser;
@@ -81,7 +106,9 @@ class ApiService {
   String get _androidLocalhost => 'http://10.0.2.2:3000';
 
   /// Sunucunun köküne giden adres (fotoğraf küçültme uç noktası gibi doğrudan adreslenen yollar için).
-  String get originUrl => Platform.isAndroid && baseUrl.contains('localhost') ? _androidLocalhost : baseUrl;
+  String get originUrl => Platform.isAndroid && baseUrl.contains('localhost')
+      ? _androidLocalhost
+      : baseUrl;
 
   Uri _uri(String path, [Map<String, String>? query]) {
     final host = Platform.isAndroid && baseUrl.contains('localhost')
@@ -91,9 +118,9 @@ class ApiService {
   }
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (_authToken != null) 'Cookie': '$_tokenKey=$_authToken',
-      };
+    'Content-Type': 'application/json',
+    if (_authToken != null) 'Cookie': '$_tokenKey=$_authToken',
+  };
 
   /// Uygulama açılışında kayıtlı token'ı geri yükler ve geçerliliğini doğrular.
   Future<void> restoreSession() async {
@@ -146,12 +173,14 @@ class ApiService {
     bool discountOnly = false,
     int page = 1,
     int limit = 24,
-    // "Keşfet" akışı tohumu: her yenilemede yeni bir sayı; aynı yenilemenin sayfaları aynı tohumu kullanır.
-    int? seed,
+    // "Keşfet" dilimi ve dönemi (bkz. home_screen.dart _pickFeedSlot); aynı yenilemenin sayfaları aynısını kullanır.
+    int? slot,
+    int? bucket,
   }) async {
-    final response = await http.get(
+    final response = await _http.get(
       _uri('/api/cars', {
-        if (seed != null && seed > 0) 'seed': '$seed',
+        if (slot != null && slot >= 0) 'slot': '$slot',
+        if (slot != null && bucket != null) 'b': '$bucket',
         if (q != null && q.isNotEmpty) 'q': q,
         if (brand != null && brand.isNotEmpty) 'brand': brand,
         if (model != null && model.isNotEmpty) 'model': model,
@@ -178,22 +207,35 @@ class ApiService {
 
   /// Hazır sorgu parametreleriyle arama (asistanın önerdiği "/?priceMax=…&fuelType=…" gibi
   /// bağlantılar; fiyat/yıl/şehir filtreleri ana sayfanın filtre çubuğunda yok).
-  Future<CarsResponse> fetchCarsByQuery(Map<String, String> params, {int page = 1, int limit = 24}) async {
-    final response = await http.get(
-      _uri('/api/cars', {...params, 'page': '$page', 'limit': '$limit', 'compact': '1'}),
+  Future<CarsResponse> fetchCarsByQuery(
+    Map<String, String> params, {
+    int page = 1,
+    int limit = 24,
+  }) async {
+    final response = await _http.get(
+      _uri('/api/cars', {
+        ...params,
+        'page': '$page',
+        'limit': '$limit',
+        'compact': '1',
+      }),
       headers: _headers,
     );
     if (response.statusCode != 200) {
       throw Exception('Araçlar yüklenemedi (${response.statusCode})');
     }
-    return CarsResponse.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return CarsResponse.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   /// Marka seçilince o markanın gerçek modelleriyle dolan filtre listesi —
   /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
   Future<Map<String, dynamic>> fetchBrandModels() async {
-    final response =
-        await http.get(_uri('/api/filters/brand-models', {'families': '1'}), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/filters/brand-models', {'families': '1'}),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception('Marka/model listesi yüklenemedi');
     }
@@ -203,7 +245,10 @@ class ApiService {
   /// İlanın km başına yakıt maliyeti; hesaplanamıyorsa (elektrikli, tüketim bilinmiyor) null.
   Future<Map<String, dynamic>?> fetchFuelCost(String id) async {
     try {
-      final response = await http.get(_uri('/api/cars/$id/fuel-cost'), headers: _headers);
+      final response = await _http.get(
+        _uri('/api/cars/$id/fuel-cost'),
+        headers: _headers,
+      );
       if (response.statusCode != 200) return null;
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       return body['fuelCost'] as Map<String, dynamic>?;
@@ -213,7 +258,7 @@ class ApiService {
   }
 
   Future<CarListing> fetchCar(String id) async {
-    final response = await http.get(_uri('/api/cars/$id'), headers: _headers);
+    final response = await _http.get(_uri('/api/cars/$id'), headers: _headers);
     if (response.statusCode != 200) {
       if (response.statusCode == 404) {
         throw Exception('Bu ilan yayından kaldırılmış veya bulunamadı.');
@@ -229,7 +274,7 @@ class ApiService {
   /// NOT: /api/scrape/run admin yetkisi veya scrape secret gerektirdiği için
   /// normal kullanıcı olarak çalışmıyordu. /api/seed bu kısıtı taşımaz.
   Future<void> importDemoListings() async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/seed'),
       headers: _headers,
       body: jsonEncode({}),
@@ -248,7 +293,7 @@ class ApiService {
     required String password,
     String? name,
   }) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/${register ? 'register' : 'login'}'),
       headers: _headers,
       body: jsonEncode({
@@ -265,8 +310,10 @@ class ApiService {
       } catch (_) {
         // gövde JSON değilse varsayılan mesaj
       }
-      final message = failure['error'] as String? ?? 'Kimlik doğrulama başarısız';
-      if (failure['needsVerification'] == true) throw NeedsVerificationException(message);
+      final message =
+          failure['error'] as String? ?? 'Kimlik doğrulama başarısız';
+      if (failure['needsVerification'] == true)
+        throw NeedsVerificationException(message);
       throw Exception(message);
     }
 
@@ -292,7 +339,7 @@ class ApiService {
 
   /// Giriş yapmadan şifre sıfırlama: e-postaya 6 haneli kod gider (web bağlantı gönderir).
   Future<String> requestPasswordResetCode(String email) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/forgot-password'),
       headers: _headers,
       body: jsonEncode({'email': email, 'method': 'code'}),
@@ -309,7 +356,7 @@ class ApiService {
     required String code,
     required String newPassword,
   }) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/reset-password'),
       headers: _headers,
       body: jsonEncode({
@@ -328,7 +375,7 @@ class ApiService {
 
   /// Doğrulama e-postasını yeniden gönderir (bağlantı kaybolduysa ya da süresi dolduysa).
   Future<String> resendVerification(String email) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/resend-verification'),
       headers: _headers,
       body: jsonEncode({'email': email}),
@@ -342,17 +389,22 @@ class ApiService {
 
   /// Hesabımın açık olduğu cihazlar (web'deki "Cihazlarım" ile aynı).
   Future<List<Map<String, dynamic>>> fetchSessions() async {
-    final response = await http.get(_uri('/api/sessions'), headers: _headers);
+    final response = await _http.get(_uri('/api/sessions'), headers: _headers);
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Cihazlar yüklenemedi'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['sessions'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    return (body['sessions'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
   }
 
   /// Bir cihazın oturumunu kapatır. Kapatılan bu cihazsa yerel oturum da temizlenir; true döner.
   Future<bool> revokeSession(String id) async {
-    final response = await http.delete(_uri('/api/sessions/$id'), headers: _headers);
+    final response = await _http.delete(
+      _uri('/api/sessions/$id'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Oturum kapatılamadı'));
     }
@@ -363,7 +415,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>?> me() async {
-    final response = await http.get(_uri('/api/auth/me'), headers: _headers);
+    final response = await _http.get(_uri('/api/auth/me'), headers: _headers);
     if (response.statusCode != 200) return null;
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return body['user'] as Map<String, dynamic>?;
@@ -371,7 +423,7 @@ class ApiService {
 
   Future<void> logout() async {
     try {
-      await http.post(_uri('/api/auth/logout'), headers: _headers);
+      await _http.post(_uri('/api/auth/logout'), headers: _headers);
     } catch (_) {
       // Sunucuya ulaşılamasa bile yerel oturumu temizle.
     }
@@ -379,7 +431,7 @@ class ApiService {
   }
 
   Future<List<CarListing>> fetchFavorites() async {
-    final response = await http.get(_uri('/api/favorites'), headers: _headers);
+    final response = await _http.get(_uri('/api/favorites'), headers: _headers);
     if (response.statusCode == 401) {
       throw Exception('Favoriler için giriş yapmalısınız');
     }
@@ -394,7 +446,7 @@ class ApiService {
   }
 
   Future<void> addFavorite(String carId) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/favorites'),
       headers: _headers,
       body: jsonEncode({'carId': carId}),
@@ -405,7 +457,7 @@ class ApiService {
   }
 
   Future<void> removeFavorite(String carId) async {
-    final response = await http.delete(
+    final response = await _http.delete(
       _uri('/api/favorites'),
       headers: _headers,
       body: jsonEncode({'carId': carId}),
@@ -438,7 +490,7 @@ class ApiService {
 
   /// Alıcı olarak verdiğim teklifler (web'deki "Tekliflerim" ile aynı).
   Future<List<Offer>> fetchMyOffers({String role = 'buying'}) async {
-    final response = await http.get(
+    final response = await _http.get(
       _uri('/api/offers', {'role': role}),
       headers: _headers,
     );
@@ -456,7 +508,10 @@ class ApiService {
   }
 
   Future<Offer> fetchOffer(String offerId) async {
-    final response = await http.get(_uri('/api/offers/$offerId'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/offers/$offerId'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Teklif yüklenemedi'));
     }
@@ -465,8 +520,11 @@ class ApiService {
   }
 
   /// Teklif ver. Dönen id ile kanal ekranına gidilir.
-  Future<String> createOffer({required String carId, required int amount}) async {
-    final response = await http.post(
+  Future<String> createOffer({
+    required String carId,
+    required int amount,
+  }) async {
+    final response = await _http.post(
       _uri('/api/offers'),
       headers: _headers,
       body: jsonEncode({'carId': carId, 'amount': amount}),
@@ -484,7 +542,7 @@ class ApiService {
     required String action,
     String? text,
   }) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/offers/$offerId'),
       headers: _headers,
       body: jsonEncode({'action': action, 'text': ?text}),
@@ -499,7 +557,7 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   Future<List<ListingQuestion>> fetchQuestions(String carId) async {
-    final response = await http.get(
+    final response = await _http.get(
       _uri('/api/questions', {'carId': carId}),
       headers: _headers,
     );
@@ -513,8 +571,11 @@ class ApiService {
         .toList();
   }
 
-  Future<void> askQuestion({required String carId, required String text}) async {
-    final response = await http.post(
+  Future<void> askQuestion({
+    required String carId,
+    required String text,
+  }) async {
+    final response = await _http.post(
       _uri('/api/questions'),
       headers: _headers,
       body: jsonEncode({'carId': carId, 'text': text}),
@@ -525,8 +586,11 @@ class ApiService {
   }
 
   /// Yalnızca ilan sahibi yanıtlayabilir (sunucu da doğruluyor).
-  Future<void> answerQuestion({required String questionId, required String answer}) async {
-    final response = await http.post(
+  Future<void> answerQuestion({
+    required String questionId,
+    required String answer,
+  }) async {
+    final response = await _http.post(
       _uri('/api/questions/$questionId'),
       headers: _headers,
       body: jsonEncode({'answer': answer}),
@@ -542,7 +606,7 @@ class ApiService {
 
   /// Kendi ilanlarım (moderasyon durumu dahil).
   Future<List<MyListing>> fetchMyListings() async {
-    final response = await http.get(_uri('/api/listings'), headers: _headers);
+    final response = await _http.get(_uri('/api/listings'), headers: _headers);
     if (response.statusCode == 401) {
       throw Exception('İlanların için giriş yapmalısın');
     }
@@ -597,10 +661,12 @@ class ApiService {
       'images': images,
     };
 
-    final uri = _uri(listingId == null ? '/api/listings' : '/api/listings/$listingId');
+    final uri = _uri(
+      listingId == null ? '/api/listings' : '/api/listings/$listingId',
+    );
     final response = listingId == null
-        ? await http.post(uri, headers: _headers, body: jsonEncode(payload))
-        : await http.patch(uri, headers: _headers, body: jsonEncode(payload));
+        ? await _http.post(uri, headers: _headers, body: jsonEncode(payload))
+        : await _http.patch(uri, headers: _headers, body: jsonEncode(payload));
 
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'İlan kaydedilemedi'));
@@ -609,7 +675,10 @@ class ApiService {
   }
 
   Future<void> deleteListing(String listingId) async {
-    final response = await http.delete(_uri('/api/listings/$listingId'), headers: _headers);
+    final response = await _http.delete(
+      _uri('/api/listings/$listingId'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'İlan silinemedi'));
     }
@@ -618,7 +687,7 @@ class ApiService {
   /// Kendi ilanını "satıldı" işaretle / tekrar yayına al (silmeden — bkz.
   /// web ListingStatusToggle). status: 'active' | 'sold'.
   Future<void> setListingStatus(String listingId, String status) async {
-    final response = await http.patch(
+    final response = await _http.patch(
       _uri('/api/listings/$listingId/status'),
       headers: _headers,
       body: jsonEncode({'status': status}),
@@ -633,8 +702,12 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   /// Bir ilanı bildir. reason: satildi | yanlis-bilgi | dolandiricilik | uygunsuz | diger
-  Future<void> reportListing({required String carId, required String reason, String note = ''}) async {
-    final response = await http.post(
+  Future<void> reportListing({
+    required String carId,
+    required String reason,
+    String note = '',
+  }) async {
+    final response = await _http.post(
       _uri('/api/reports'),
       headers: _headers,
       body: jsonEncode({'carId': carId, 'reason': reason, 'note': note}),
@@ -646,8 +719,12 @@ class ApiService {
 
   /// Kabul edilmiş bir teklif sohbetini bildir (küfür/hakaret, dolandırıcılık vb.).
   /// reason: kufur-hakaret | dolandiricilik | uygunsuz | diger
-  Future<void> reportChat({required String offerId, required String reason, String note = ''}) async {
-    final response = await http.post(
+  Future<void> reportChat({
+    required String offerId,
+    required String reason,
+    String note = '',
+  }) async {
+    final response = await _http.post(
       _uri('/api/reports'),
       headers: _headers,
       body: jsonEncode({'offerId': offerId, 'reason': reason, 'note': note}),
@@ -661,8 +738,12 @@ class ApiService {
   // YAKINIMDAKİ İLANLAR
   // ---------------------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> fetchNearby(double lat, double lng, {int limit = 24}) async {
-    final response = await http.get(
+  Future<List<Map<String, dynamic>>> fetchNearby(
+    double lat,
+    double lng, {
+    int limit = 24,
+  }) async {
+    final response = await _http.get(
       _uri('/api/nearby', {'lat': '$lat', 'lng': '$lng', 'limit': '$limit'}),
       headers: _headers,
     );
@@ -670,7 +751,9 @@ class ApiService {
       throw Exception(_errorOf(response, 'Yakındaki ilanlar alınamadı'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    return (body['items'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
   }
 
   // ---------------------------------------------------------------------------
@@ -678,7 +761,10 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   Future<List<AppNotification>> fetchNotifications() async {
-    final response = await http.get(_uri('/api/notifications'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/notifications'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Bildirimler yüklenemedi'));
     }
@@ -691,7 +777,11 @@ class ApiService {
 
   /// Tümünü okundu işaretler (web'deki zil ile aynı uç nokta).
   Future<void> markNotificationsRead() async {
-    await http.post(_uri('/api/notifications'), headers: _headers, body: jsonEncode({}));
+    await _http.post(
+      _uri('/api/notifications'),
+      headers: _headers,
+      body: jsonEncode({}),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -699,12 +789,17 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   Future<List<SavedSearch>> fetchSubscriptions() async {
-    final response = await http.get(_uri('/api/subscriptions'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/subscriptions'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Kayıtlı aramalar yüklenemedi'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['subscriptions'] as List<dynamic>? ?? body['items'] as List<dynamic>? ?? [])
+    return (body['subscriptions'] as List<dynamic>? ??
+            body['items'] as List<dynamic>? ??
+            [])
         .whereType<Map<String, dynamic>>()
         .map(SavedSearch.fromJson)
         .toList();
@@ -717,7 +812,7 @@ class ApiService {
     int? maxPrice,
     int? targetAvgPrice,
   }) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/subscriptions'),
       headers: _headers,
       body: jsonEncode({
@@ -734,7 +829,7 @@ class ApiService {
   }
 
   Future<void> deleteSubscription(String id) async {
-    final response = await http.delete(
+    final response = await _http.delete(
       _uri('/api/subscriptions'),
       headers: _headers,
       body: jsonEncode({'id': id}),
@@ -755,8 +850,9 @@ class ApiService {
     required int mileage,
     String condition = 'clean',
   }) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/predict-price'),
+      timeout: const Duration(seconds: 60),
       headers: _headers,
       body: jsonEncode({
         'brand': brand,
@@ -773,7 +869,7 @@ class ApiService {
   }
 
   Future<List<CarListing>> compareCars(List<String> ids) async {
-    final response = await http.get(
+    final response = await _http.get(
       _uri('/api/compare', {'ids': ids.join(',')}),
       headers: _headers,
     );
@@ -781,7 +877,9 @@ class ApiService {
       throw Exception(_errorOf(response, 'Karşılaştırma yüklenemedi'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['cars'] as List<dynamic>? ?? body['items'] as List<dynamic>? ?? [])
+    return (body['cars'] as List<dynamic>? ??
+            body['items'] as List<dynamic>? ??
+            [])
         .whereType<Map<String, dynamic>>()
         .map(CarListing.fromJson)
         .toList();
@@ -789,8 +887,9 @@ class ApiService {
 
   /// AI (Gemini) karşılaştırma özeti — 2-4 araç arasında kısa bir öneri metni.
   Future<String?> compareSummary(List<String> ids) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/compare/summary'),
+      timeout: const Duration(seconds: 60),
       headers: _headers,
       body: jsonEncode({'ids': ids}),
     );
@@ -801,9 +900,12 @@ class ApiService {
 
   /// Fotoğraftan otomatik doldurma — Gemini Vision marka/model/yıl/hasar
   /// durumunu tanır. `images`: [{image: base64, mimeType: 'image/jpeg'}].
-  Future<Map<String, dynamic>?> analyzeCarPhoto(List<Map<String, String>> images) async {
-    final response = await http.post(
+  Future<Map<String, dynamic>?> analyzeCarPhoto(
+    List<Map<String, String>> images,
+  ) async {
+    final response = await _http.post(
       _uri('/api/predict-price/analyze-photo'),
+      timeout: const Duration(seconds: 90),
       headers: _headers,
       body: jsonEncode({'images': images}),
     );
@@ -815,9 +917,13 @@ class ApiService {
   }
 
   /// Sohbet asistanı — web'deki widget ile aynı uç nokta.
-  Future<Map<String, dynamic>> chat(String message, {List<Map<String, String>>? history}) async {
-    final response = await http.post(
+  Future<Map<String, dynamic>> chat(
+    String message, {
+    List<Map<String, String>>? history,
+  }) async {
+    final response = await _http.post(
       _uri('/api/chatbot'),
+      timeout: const Duration(seconds: 60),
       headers: _headers,
       body: jsonEncode({'message': message, 'history': history ?? []}),
     );
@@ -835,7 +941,7 @@ class ApiService {
     required String currentPassword,
     required String newPassword,
   }) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/change-password'),
       headers: _headers,
       body: jsonEncode({
@@ -853,7 +959,7 @@ class ApiService {
   /// kaydeder. Sunucuda FCM yapılandırılmamışsa (bkz. src/lib/fcm.ts) uç nokta
   /// yine 200 döner, yalnızca token'ı saklar — zararsız.
   Future<void> registerFcmToken(String token) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/push/register-fcm-token'),
       headers: _headers,
       body: jsonEncode({'token': token}),
@@ -867,11 +973,17 @@ class ApiService {
   // İŞLETME HESABI
   // ---------------------------------------------------------------------------
 
-  Future<void> requestBusiness({required String businessName, required String businessPhone}) async {
-    final response = await http.post(
+  Future<void> requestBusiness({
+    required String businessName,
+    required String businessPhone,
+  }) async {
+    final response = await _http.post(
       _uri('/api/business/request'),
       headers: _headers,
-      body: jsonEncode({'businessName': businessName, 'businessPhone': businessPhone}),
+      body: jsonEncode({
+        'businessName': businessName,
+        'businessPhone': businessPhone,
+      }),
     );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Başvuru gönderilemedi'));
@@ -886,7 +998,7 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   Future<Map<String, dynamic>> startEmailChange(String newEmail) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/email-change/start'),
       headers: _headers,
       body: jsonEncode({'newEmail': newEmail}),
@@ -899,7 +1011,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> verifyCurrentEmailCode(String code) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/email-change/verify-current'),
       headers: _headers,
       body: jsonEncode({'code': code}),
@@ -912,7 +1024,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> verifyNewEmailCode(String code) async {
-    final response = await http.post(
+    final response = await _http.post(
       _uri('/api/auth/email-change/verify-new'),
       headers: _headers,
       body: jsonEncode({'code': code}),
@@ -926,15 +1038,18 @@ class ApiService {
   }
 
   Future<void> cancelEmailChange() async {
-    await http.post(_uri('/api/auth/email-change/cancel'), headers: _headers);
+    await _http.post(_uri('/api/auth/email-change/cancel'), headers: _headers);
   }
 
   // ---------------------------------------------------------------------------
   // CANLI PİYASA ORTALAMASI + HAFTANIN FIRSATLARI
   // ---------------------------------------------------------------------------
 
-  Future<Map<String, dynamic>?> fetchMarketAverage(String brand, String model) async {
-    final response = await http.get(
+  Future<Map<String, dynamic>?> fetchMarketAverage(
+    String brand,
+    String model,
+  ) async {
+    final response = await _http.get(
       _uri('/api/market-average', {'brand': brand, 'model': model}),
       headers: _headers,
     );
@@ -946,7 +1061,10 @@ class ApiService {
   /// bakılanlar şeridi için).
   Future<List<CarListing>> fetchCarsByIds(List<String> ids) async {
     if (ids.isEmpty) return [];
-    final response = await http.get(_uri('/api/cars/by-ids', {'ids': ids.join(',')}), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/cars/by-ids', {'ids': ids.join(',')}),
+      headers: _headers,
+    );
     if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (body['items'] as List<dynamic>? ?? [])
@@ -956,7 +1074,7 @@ class ApiService {
   }
 
   Future<List<CarListing>> fetchDeals() async {
-    final response = await http.get(_uri('/api/deals'), headers: _headers);
+    final response = await _http.get(_uri('/api/deals'), headers: _headers);
     if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (body['items'] as List<dynamic>? ?? [])
@@ -967,7 +1085,7 @@ class ApiService {
 
   /// "En çok görüntülenenler" — web'deki TrendingStrip ile aynı veri kaynağı.
   Future<List<CarListing>> fetchTrending() async {
-    final response = await http.get(_uri('/api/trending'), headers: _headers);
+    final response = await _http.get(_uri('/api/trending'), headers: _headers);
     if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (body['items'] as List<dynamic>? ?? [])
@@ -978,7 +1096,7 @@ class ApiService {
 
   /// Analiz verileri: markaya ve model yılına göre ortalama fiyat.
   Future<Map<String, dynamic>> fetchStats() async {
-    final response = await http.get(_uri('/api/stats'), headers: _headers);
+    final response = await _http.get(_uri('/api/stats'), headers: _headers);
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'İstatistikler yüklenemedi'));
     }
@@ -996,7 +1114,7 @@ class ApiService {
     int? maxPrice,
     bool discountOnly = false,
   }) async {
-    final response = await http.get(
+    final response = await _http.get(
       _uri('/api/map', {
         if (brand != null && brand.isNotEmpty) 'brand': brand,
         if (model != null && model.isNotEmpty) 'model': model,
@@ -1021,7 +1139,7 @@ class ApiService {
     bool wholeCity = false,
     Map<String, String> filters = const {},
   }) async {
-    final response = await http.get(
+    final response = await _http.get(
       _uri('/api/map/cars', {
         ...filters,
         'key': key,
@@ -1034,7 +1152,9 @@ class ApiService {
       throw Exception(_errorOf(response, 'Bölgedeki araçlar alınamadı'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    return (body['items'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
   }
 
   // ---------------------------------------------------------------------------
@@ -1043,7 +1163,10 @@ class ApiService {
 
   /// 7/24 Daemon bot durumu, kalp atışı, bellek ve sayaç istatistikleri.
   Future<Map<String, dynamic>> fetchDaemonStats() async {
-    final response = await http.get(_uri('/api/admin/daemon-stats'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/admin/daemon-stats'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Daemon istatistikleri alınamadı'));
     }
@@ -1052,7 +1175,10 @@ class ApiService {
 
   /// Evdeki bilgisayarda çalışan Arabam bekçisinin durumu, günlük özeti ve doğrulama kuyruğu (yalnızca yönetici).
   Future<Map<String, dynamic>> fetchHomeWatcher() async {
-    final response = await http.get(_uri('/api/admin/home-watcher'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/admin/home-watcher'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Bekçi durumu alınamadı'));
     }
@@ -1061,25 +1187,70 @@ class ApiService {
 
   /// Bekçinin bir günü (GG.AA.YYYY) saat saat: 24 satır, çalışmadığı saatler sıfır.
   Future<List<Map<String, dynamic>>> fetchHomeWatcherHours(String date) async {
-    final response = await http.get(_uri('/api/admin/home-watcher', {'date': date}), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/admin/home-watcher', {'date': date}),
+      headers: _headers,
+    );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Saatlik döküm alınamadı'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['hours'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    return (body['hours'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  /// Bekçinin bir saatte arşive taşıdığı (kind: archived) ya da eklediği (kind: inserted) ilanlar.
+  Future<List<Map<String, dynamic>>> fetchHomeWatcherItems(
+    String date,
+    int hour,
+    String kind,
+  ) async {
+    final response = await _http.get(
+      _uri('/api/admin/home-watcher', {
+        'date': date,
+        'hour': '$hour',
+        'kind': kind,
+      }),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'İlan listesi alınamadı'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['items'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+  }
+
+  /// Bekçinin henüz hiç kontrol etmediği Arabam ilanları (sayfa başına 20; yalnızca yönetici).
+  Future<Map<String, dynamic>> fetchUnverifiedListings(int page) async {
+    final response = await _http.get(
+      _uri('/api/admin/unverified', {'page': '$page'}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Liste alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   /// Yönetici şikayet listesi (açık raporlar).
   Future<List<Map<String, dynamic>>> fetchAdminReports() async {
-    final response = await http.get(_uri('/api/admin/reports'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/admin/reports'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    return (body['items'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
   }
 
   /// Şikayeti incele/kapat.
   Future<void> resolveReport(String id, String status) async {
-    final response = await http.patch(
+    final response = await _http.patch(
       _uri('/api/admin/reports/$id'),
       headers: _headers,
       body: jsonEncode({'status': status}),
@@ -1091,18 +1262,31 @@ class ApiService {
 
   /// Bekleyen işletme başvuruları.
   Future<List<Map<String, dynamic>>> fetchPendingBusiness() async {
-    final response = await http.get(_uri('/api/admin/business'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/admin/business'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    return (body['items'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
   }
 
   /// İşletme başvurusunu onayla veya reddet.
-  Future<void> reviewBusiness(String userId, {required bool approve, String? reason}) async {
-    final response = await http.post(
+  Future<void> reviewBusiness(
+    String userId, {
+    required bool approve,
+    String? reason,
+  }) async {
+    final response = await _http.post(
       _uri('/api/admin/business'),
       headers: _headers,
-      body: jsonEncode({'userId': userId, 'approve': approve, 'reason': reason ?? ''}),
+      body: jsonEncode({
+        'userId': userId,
+        'approve': approve,
+        'reason': reason ?? '',
+      }),
     );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'İşletme işlemi başarısız'));
@@ -1110,9 +1294,15 @@ class ApiService {
   }
 
   /// Manuel Scraper Fazı Tetikleme.
-  Future<Map<String, dynamic>> triggerScrape({String? source, int? limit, String? mode, bool dryRun = false}) async {
-    final response = await http.post(
+  Future<Map<String, dynamic>> triggerScrape({
+    String? source,
+    int? limit,
+    String? mode,
+    bool dryRun = false,
+  }) async {
+    final response = await _http.post(
       _uri('/api/scrape/run'),
+      timeout: const Duration(minutes: 10),
       headers: _headers,
       body: jsonEncode({
         if (source != null && source.isNotEmpty) 'source': source,
@@ -1129,10 +1319,15 @@ class ApiService {
 
   /// Manuel Tarama Geçmişi ve Denetim Kayıtları
   Future<List<Map<String, dynamic>>> fetchManualScrapes() async {
-    final response = await http.get(_uri('/api/admin/manual-scrapes'), headers: _headers);
+    final response = await _http.get(
+      _uri('/api/admin/manual-scrapes'),
+      headers: _headers,
+    );
     if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['logs'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+    return (body['logs'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
   }
 
   /// Uygulama surum kontrolu (OTA Guncelleme)

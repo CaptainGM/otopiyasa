@@ -29,6 +29,7 @@ import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality
 import { ListingSource } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
+import { modelFamilyKey } from "@/lib/model-family";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
   if (source === "sahibinden") return [sahibindenAdapter];
@@ -535,29 +536,29 @@ export async function runSparseMarketSegmentScrape(
   if (sparseSegments.length === 0) {
     return {
       success: true,
-      message: "Aykırı değer temizliğinden sonra üçten az emsali kalan marka/model/yıl segmenti bulunamadı.",
+      message: "Aykırı değer temizliğinden sonra tüm donanımlarıyla bile üçten az emsali kalan marka/model ailesi/yıl segmenti bulunamadı.",
       inserted: 0,
       updated: 0,
       sources: [{ source: "arabam", fetched: 0, saved: 0 }],
     };
   }
 
-  const modelTargets = new Map<string, { brand: string; model: string; years: Set<number> }>();
+  // Arama model AİLESİ sayfasında yapılır ("toyota-corolla" + yıl filtresi). Eskiden donanım adıyla
+  // ("toyota-corolla-1-6-vision") arandığı için sayfa çözülmüyor ve çoğu segment için hiç ilan gelmiyordu.
+  const familyTargets = new Map<string, { brand: string; model: string; years: Set<number> }>();
   const allowedSegmentKeys = new Set<string>();
   const segmentsForInvalidation: Array<{ brand: string; model: string; year: number }> = [];
   for (const segment of sparseSegments) {
-    const normalized = normalizeBrandModel(segment.brand, segment.model);
-    const modelKey = `${segment.brand}::${segment.model}`;
-    const existing = modelTargets.get(modelKey) || {
+    const targetKey = `${segment.brand}::${segment.familyKey}`;
+    const existing = familyTargets.get(targetKey) || {
       brand: segment.brand,
       model: segment.model,
       years: new Set<number>(),
     };
     existing.years.add(segment.year);
-    modelTargets.set(modelKey, existing);
-    allowedSegmentKeys.add(`${segment.brand}::${segment.model}::${segment.year}`);
-    allowedSegmentKeys.add(`${normalized.brand}::${normalized.model}::${segment.year}`);
-    segmentsForInvalidation.push(segment, { ...normalized, year: segment.year });
+    familyTargets.set(targetKey, existing);
+    allowedSegmentKeys.add(`${segment.brand}::${segment.familyKey}::${segment.year}`);
+    segmentsForInvalidation.push(segment);
   }
 
   const counter = createSaveCounter();
@@ -565,7 +566,8 @@ export async function runSparseMarketSegmentScrape(
   const sampleVehicles: NonNullable<ScrapeJobResult["sampleVehicles"]> = [];
   const onListing = async (listing: ScrapedListing) => {
     const normalized = normalizeBrandModel(listing.brand, listing.model);
-    if (!allowedSegmentKeys.has(`${normalized.brand}::${normalized.model}::${listing.year}`)) return;
+    const familyKey = modelFamilyKey(normalized.model, normalized.brand);
+    if (!allowedSegmentKeys.has(`${normalized.brand}::${familyKey}::${listing.year}`)) return;
     const result = await saveListing(listing);
     counter.add(result);
     if (result !== "skipped" && sampleVehicles.length < 20) {
@@ -585,7 +587,7 @@ export async function runSparseMarketSegmentScrape(
   const errors: string[] = [];
   try {
     fetched = await scrapeArabamForMarketYears(
-      [...modelTargets.values()].map((target) => ({ ...target, years: [...target.years] })),
+      [...familyTargets.values()].map((target) => ({ ...target, years: [...target.years] })),
       pagesPerYear,
       onListing,
       maxListings
@@ -606,7 +608,7 @@ export async function runSparseMarketSegmentScrape(
   return {
     success: true,
     message:
-      `Seyrek fiyat taraması: aykırı değer temizliğinden sonra üçten az emsali kalan ${sparseSegments.length} marka/model/yıl segmenti, ${modelTargets.size} model tarandı` +
+      `Seyrek fiyat taraması: üçten az emsali kalan ${sparseSegments.length} marka/model ailesi/yıl segmenti, ${familyTargets.size} model ailesi tarandı` +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
     inserted: counts.inserted,
     updated: counts.updated,

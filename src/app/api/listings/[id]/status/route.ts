@@ -1,3 +1,4 @@
+import { revalidateListing } from "@/lib/revalidate-listing";
 import { NextResponse } from "next/server";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
@@ -43,6 +44,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     car.status = status;
     await car.save();
+    revalidateListing(car._id);
 
     const { invalidateCache } = await import("@/lib/cache");
     invalidateCache("home:deals");

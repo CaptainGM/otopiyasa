@@ -88,6 +88,7 @@ function ComparePageInner() {
             <span>{formatPrice(c.marketAvgPrice)}</span>
             <small className="text-[10px] font-normal text-slate-500">
               {c.marketListingCount} diğer aktif ilan
+              {c.marketScope === "family" && c.marketFamilyLabel ? ` · ${c.marketFamilyLabel} (tüm donanımlar)` : ""}
             </small>
           </span>
         ) : (

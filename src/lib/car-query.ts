@@ -3,7 +3,15 @@ import { CarFilters } from "@/types";
 import { turkishSearchRegex } from "@/lib/utils";
 import { Car } from "@/models/Car";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
-import { feedOrderForSeed, isMixedSort, resolveFeedSeed } from "@/lib/car-mix";
+import {
+  feedOrderForSeed,
+  feedOrderForSlot,
+  isMixedSort,
+  isValidFeedSlot,
+  MAX_FEED_SEED,
+  resolveFeedBucket,
+  resolveFeedSeed,
+} from "@/lib/car-mix";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { LIST_IMAGE_LIMIT } from "@/lib/serialize-car";
 import { cached, CACHE_TTL } from "@/lib/cache";
@@ -93,6 +101,12 @@ export function buildCarSort(sort?: CarFilters["sort"]): Record<string, SortOrde
 }
 
 
+/** Filtreye uyan toplam ilan sayısı (Keşfet başlığı için; kısa süre önbellekte). */
+export async function countCars(filters: CarFilters): Promise<number> {
+  const query = buildCarQuery(filters);
+  return cached(`count:${JSON.stringify(query)}`, CACHE_TTL.short, () => Car.countDocuments(query));
+}
+
 export async function findCarsPage(
   filters: CarFilters
 ): Promise<{ docs: unknown[]; total: number; page: number; limit: number }> {
@@ -131,20 +145,50 @@ async function findCarsPageUncached(
   const limit = filters.limit || 12;
   const skip = (page - 1) * limit;
 
-  // Her tohum, indeksli ve bağımsız tam liste sıralamalarından birini seçer.
-  // Aynı tohum tüm sayfalarda kaldığı için kayıt atlanmaz veya yinelenmez.
+  // Keşfet, rastgele rank indeksinde tohuma ait pivot noktasından döngüsel ilerler.
+  // Aynı tohum tüm sayfalarda kaldığı için sayfalama kayıt atlamaz veya yinelemez.
   // Arama metni varsa alaka sırası korunur (aşağıdaki arama yolu).
   if (isMixedSort(filters.sort) && !filters.q?.trim()) {
-    const { field, direction } = feedOrderForSeed(resolveFeedSeed(filters.seed));
-    const [docs, total] = await Promise.all([
-      Car.find(query)
-        .sort({ [field]: direction })
-        .skip(skip)
+    const { field, direction, pivot } = isValidFeedSlot(filters.slot)
+      ? feedOrderForSlot(filters.slot, resolveFeedBucket(filters.bucket))
+      : feedOrderForSeed(resolveFeedSeed(filters.seed));
+    const tailCondition = direction === 1 ? { $gte: pivot } : { $lte: pivot };
+    const headCondition = direction === 1 ? { $lt: pivot } : { $gt: pivot };
+    const tailQuery: FilterQuery<unknown> = { $and: [query, { [field]: tailCondition }] };
+    const headQuery: FilterQuery<unknown> = { $and: [query, { [field]: headCondition }] };
+    const sort = { [field]: direction };
+    // Toplam sayı tohumdan bağımsız: aynı filtre için kısa süre önbellekte (her sayfada 27 bin kaydı saymasın).
+    const countPromise = cached(`count:${JSON.stringify(query)}`, CACHE_TTL.short, () => Car.countDocuments(query));
+    const tailCountPromise = page > 1 ? Car.countDocuments(tailQuery) : Promise.resolve(0);
+    const [total, tailCount] = await Promise.all([countPromise, tailCountPromise]);
+    const offset = skip;
+
+    let docs: unknown[];
+    if (page === 1 || offset < tailCount) {
+      const tailSkip = page === 1 ? 0 : offset;
+      const tailDocs = await Car.find(tailQuery)
+        .sort(sort)
+        .skip(tailSkip)
         .limit(limit)
         .slice("images", LIST_IMAGE_LIMIT)
-        .lean(),
-      Car.countDocuments(query),
-    ]);
+        .lean();
+      docs = tailDocs as unknown[];
+      if (docs.length < limit) {
+        const headDocs = await Car.find(headQuery)
+          .sort(sort)
+          .limit(limit - docs.length)
+          .slice("images", LIST_IMAGE_LIMIT)
+          .lean();
+        docs.push(...(headDocs as unknown[]));
+      }
+    } else {
+      docs = (await Car.find(headQuery)
+        .sort(sort)
+        .skip(offset - tailCount)
+        .limit(limit)
+        .slice("images", LIST_IMAGE_LIMIT)
+        .lean()) as unknown[];
+    }
     return { docs: docs as unknown[], total, page, limit };
   }
 
@@ -240,7 +284,9 @@ export function parseCarFilters(searchParams: URLSearchParams): CarFilters {
     discountOnly: searchParams.get("discountOnly") === "true",
     
     sort: (searchParams.get("sort") as CarFilters["sort"]) || "mixed",
-    seed: clampInt(num("seed"), 2_147_483_647, 0) || undefined,
+    seed: clampInt(num("seed"), MAX_FEED_SEED, 0) || undefined,
+    slot: searchParams.has("slot") && Number.isInteger(num("slot")) ? num("slot") : undefined,
+    bucket: searchParams.has("b") && Number.isInteger(num("b")) ? num("b") : undefined,
     page: clampInt(num("page"), 100_000, 1),
     limit: clampInt(num("limit"), MAX_PAGE_SIZE, MAX_PAGE_SIZE),
   };

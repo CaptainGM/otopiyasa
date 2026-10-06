@@ -4,6 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import { formatRelativeTr, getTurkeyDateStr, getTurkeyYesterdayStr } from "@/lib/utils";
 import { formatActiveTime, type DaySummary, type HourSlot, type WatcherStatus } from "@/lib/home-watcher-status";
 
+interface WatcherItem {
+  _id: string;
+  title: string;
+  brand: string;
+  model: string;
+  year: number;
+  price: number;
+  listingUrl?: string;
+  removedAt?: string;
+  removedReason?: string;
+  createdAt?: string;
+}
+
 interface WatcherData {
   watcher: WatcherStatus;
   today: DaySummary;
@@ -49,6 +62,8 @@ export function HomeWatcherPanel() {
   const [openDate, setOpenDate] = useState<string | null>(null);
   const [hours, setHours] = useState<HourSlot[] | null>(null);
   const [showLog, setShowLog] = useState(false);
+  const [detailKey, setDetailKey] = useState<string | null>(null);
+  const [detailItems, setDetailItems] = useState<WatcherItem[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -71,6 +86,7 @@ export function HomeWatcherPanel() {
     if (!openDate) return;
     let active = true;
     setHours(null);
+    setDetailKey(null);
     fetch(`/api/admin/home-watcher?date=${encodeURIComponent(openDate)}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => active && setHours(d.hours))
@@ -79,6 +95,25 @@ export function HomeWatcherPanel() {
       active = false;
     };
   }, [openDate]);
+
+  useEffect(() => {
+    if (!detailKey) return;
+    const [date, hourStr, kind] = detailKey.split("|");
+    let active = true;
+    setDetailItems(null);
+    fetch(`/api/admin/home-watcher?date=${encodeURIComponent(date)}&hour=${hourStr}&kind=${kind}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => active && setDetailItems(d.items))
+      .catch(() => active && setDetailItems([]));
+    return () => {
+      active = false;
+    };
+  }, [detailKey]);
+
+  const toggleDetail = (date: string, hour: number, kind: "archived" | "inserted") => {
+    const key = `${date}|${hour}|${kind}`;
+    setDetailKey((cur) => (cur === key ? null : key));
+  };
 
   const w = data?.watcher;
   // Bugün için içinde bulunulan saatten sonrası "çalışmadı" değil "henüz gelmedi".
@@ -117,17 +152,22 @@ export function HomeWatcherPanel() {
             {!w.lastHeartbeat && <p className="mt-1 text-slate-500">Bekçiyi kurmak için proje klasöründe arabam-bekci-kur.bat dosyasına çift tıkla.</p>}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
             <Tile label="Bugün kontrol" value={nf(data.today.checked)} />
             <Tile label="Canlı çıkan" value={nf(data.today.alive)} tone="text-emerald-300" />
             <Tile label="Arşive taşınan" value={nf(data.today.archived)} tone="text-rose-300" />
+            <Tile label="Yeni eklenen" value={nf(data.today.inserted ?? 0)} tone="text-sky-300" />
             <Tile label="Engel / belirsiz" value={`${nf(data.today.blocked)} / ${nf(data.today.uncertain)}`} tone="text-amber-300" />
             <Tile label="Bugün çalışma süresi" value={formatActiveTime(data.today.activeSeconds)} />
           </div>
 
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-slate-300">
             <p>
-              Hiç doğrulanmamış: <strong>{nf(data.queue.neverVerified)}</strong> / {nf(data.queue.active)} aktif Arabam ilanı · son 24 saatte doğrulanan:{" "}
+              Hiç doğrulanmamış:{" "}
+              <a href="/admin/unverified" className="font-bold text-amber-300 underline decoration-dotted hover:text-amber-200">
+                {nf(data.queue.neverVerified)} (listeyi gör)
+              </a>{" "}
+              / {nf(data.queue.active)} aktif Arabam ilanı · son 24 saatte doğrulanan:{" "}
               <strong>{nf(data.queue.verifiedLast24h)}</strong>
             </p>
             {data.queue.estimate ? (
@@ -154,6 +194,7 @@ export function HomeWatcherPanel() {
                       <th className="p-2 text-right">Kontrol</th>
                       <th className="p-2 text-right">Canlı</th>
                       <th className="p-2 text-right">Arşive</th>
+                      <th className="p-2 text-right">Yeni</th>
                       <th className="p-2 text-right">Engel</th>
                       <th className="p-2 text-right">Belirsiz</th>
                     </tr>
@@ -170,6 +211,7 @@ export function HomeWatcherPanel() {
                         <td className="p-2 text-right font-semibold">{nf(d.checked)}</td>
                         <td className="p-2 text-right text-emerald-300">{nf(d.alive)}</td>
                         <td className="p-2 text-right text-rose-300">{nf(d.archived)}</td>
+                        <td className="p-2 text-right text-sky-300">{nf(d.inserted ?? 0)}</td>
                         <td className="p-2 text-right text-amber-300">{nf(d.blocked)}</td>
                         <td className="p-2 text-right text-slate-400">{nf(d.uncertain)}</td>
                       </tr>
@@ -190,23 +232,81 @@ export function HomeWatcherPanel() {
                   {hours.map((h) => {
                     const idle = h.checked === 0 && !(h.batches && h.batches > 0);
                     const future = openDate === getTurkeyDateStr() && h.hour > nowHourTr;
+                    const archivedKey = `${openDate}|${h.hour}|archived`;
+                    const insertedKey = `${openDate}|${h.hour}|inserted`;
                     return (
-                      <div key={h.hour} className="flex items-center gap-3 text-xs">
-                        <span className="w-24 shrink-0 text-slate-500">{h.hourRange}</span>
-                        <div className="h-3 flex-1 overflow-hidden rounded bg-white/5">
-                          <div className="h-full rounded bg-emerald-400/70" style={{ width: `${(h.checked / maxHour) * 100}%` }} />
+                      <div key={h.hour}>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="w-24 shrink-0 text-slate-500">{h.hourRange}</span>
+                          <div className="h-3 flex-1 overflow-hidden rounded bg-white/5">
+                            <div className="h-full rounded bg-emerald-400/70" style={{ width: `${(h.checked / maxHour) * 100}%` }} />
+                          </div>
+                          {future ? (
+                            <span className="w-64 shrink-0 text-slate-700">henüz gelmedi</span>
+                          ) : idle ? (
+                            <span className="w-64 shrink-0 text-slate-600">çalışmadı (bilgisayar kapalı olabilir)</span>
+                          ) : (
+                            <span className="w-64 shrink-0 text-slate-300">
+                              <strong>{nf(h.checked)}</strong> kontrol · <span className="text-emerald-300">{nf(h.alive)} canlı</span> ·{" "}
+                              {h.archived > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDetail(openDate!, h.hour, "archived")}
+                                  className={`underline decoration-dotted ${detailKey === archivedKey ? "text-rose-200" : "text-rose-300"}`}
+                                >
+                                  {nf(h.archived)} arşiv
+                                </button>
+                              ) : (
+                                <span className="text-rose-300">{nf(h.archived)} arşiv</span>
+                              )}
+                              {h.inserted ? (
+                                <>
+                                  {" · "}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleDetail(openDate!, h.hour, "inserted")}
+                                    className={`underline decoration-dotted ${detailKey === insertedKey ? "text-sky-200" : "text-sky-300"}`}
+                                  >
+                                    {nf(h.inserted)} yeni
+                                  </button>
+                                </>
+                              ) : null}
+                              {h.blocked > 0 && <span className="text-amber-300"> · {nf(h.blocked)} engel</span>}
+                              {h.pausedMinutes ? <span className="text-amber-300"> · {nf(h.pausedMinutes)} dk mola</span> : null}
+                            </span>
+                          )}
                         </div>
-                        {future ? (
-                          <span className="w-64 shrink-0 text-slate-700">henüz gelmedi</span>
-                        ) : idle ? (
-                          <span className="w-64 shrink-0 text-slate-600">çalışmadı (bilgisayar kapalı olabilir)</span>
-                        ) : (
-                          <span className="w-64 shrink-0 text-slate-300">
-                            <strong>{nf(h.checked)}</strong> kontrol · <span className="text-emerald-300">{nf(h.alive)} canlı</span> ·{" "}
-                            <span className="text-rose-300">{nf(h.archived)} arşiv</span>
-                            {h.blocked > 0 && <span className="text-amber-300"> · {nf(h.blocked)} engel</span>}
-                            {h.pausedMinutes ? <span className="text-amber-300"> · {nf(h.pausedMinutes)} dk mola</span> : null}
-                          </span>
+                        {(detailKey === archivedKey || detailKey === insertedKey) && (
+                          <div className="ml-[108px] mt-1 mb-2 max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-2">
+                            {!detailItems ? (
+                              <p className="text-xs text-slate-500">Yükleniyor…</p>
+                            ) : detailItems.length === 0 ? (
+                              <p className="text-xs text-slate-500">Kayıt bulunamadı.</p>
+                            ) : (
+                              <ul className="space-y-1">
+                                {detailItems.map((it) => (
+                                  <li key={it._id} className="flex items-center justify-between gap-3 text-xs">
+                                    <span className="truncate text-slate-300">
+                                      {it.brand} {it.model} {it.year} — {it.title}
+                                    </span>
+                                    <span className="flex shrink-0 items-center gap-2">
+                                      <span className="text-slate-500">{nf(it.price)} TL</span>
+                                      {it.listingUrl && (
+                                        <a
+                                          href={it.listingUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-amber-300 hover:underline"
+                                        >
+                                          aç ↗
+                                        </a>
+                                      )}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
                         )}
                       </div>
                     );

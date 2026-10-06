@@ -82,6 +82,29 @@ export interface HourRow {
   pauses?: number;
   pausedMinutes?: number;
   activeSeconds?: number;
+  /** Keşifle eklenen yeni ilan. */
+  inserted?: number;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Bir saatte en fazla 3600 sn çalışılabilir; eski kayıtlardaki taşmalar (uyku, saat sınırı) gösterimde kesilir. */
+export const MAX_HOUR_ACTIVE_SECONDS = 3600;
+
+/**
+ * [start, end) aralığını Türkiye saatlerine göre saat saat böler (saat sınırları UTC ile aynı hizada).
+ * Saat sınırını aşan bir parti süresini iki saate paylaştırır; böylece hiçbir saat 60 dakikayı aşmaz.
+ */
+export function splitSecondsByHour(start: Date, end: Date): Array<{ at: Date; seconds: number }> {
+  const parts: Array<{ at: Date; seconds: number }> = [];
+  let cursor = start.getTime();
+  const endMs = end.getTime();
+  while (cursor < endMs) {
+    const next = Math.min(endMs, (Math.floor(cursor / HOUR_MS) + 1) * HOUR_MS);
+    parts.push({ at: new Date(cursor), seconds: (next - cursor) / 1000 });
+    cursor = next;
+  }
+  return parts;
 }
 
 export interface DaySummary {
@@ -95,6 +118,8 @@ export interface DaySummary {
   /** Bekçinin o gün ilan kontrol ederek geçirdiği süre (sn); molalar ve bekleme hariç. */
   activeSeconds: number;
   pausedMinutes: number;
+  /** Keşifle eklenen yeni ilan. */
+  inserted: number;
 }
 
 /** Saatlik kayıtları Türkiye gününe göre toplar; en yeni gün başta. */
@@ -103,14 +128,15 @@ export function summarizeDays(rows: HourRow[]): DaySummary[] {
   for (const r of rows) {
     const day =
       byDay.get(r.dateStr) ||
-      { dateStr: r.dateStr, checked: 0, alive: 0, archived: 0, blocked: 0, uncertain: 0, activeSeconds: 0, pausedMinutes: 0 };
+      { dateStr: r.dateStr, checked: 0, alive: 0, archived: 0, blocked: 0, uncertain: 0, activeSeconds: 0, pausedMinutes: 0, inserted: 0 };
     day.checked += r.checked;
     day.alive += r.alive;
     day.archived += r.archived;
     day.blocked += r.blocked;
     day.uncertain += r.uncertain;
     day.pausedMinutes += r.pausedMinutes || 0;
-    day.activeSeconds += r.activeSeconds || 0;
+    day.activeSeconds += Math.min(r.activeSeconds || 0, MAX_HOUR_ACTIVE_SECONDS);
+    day.inserted += r.inserted || 0;
     byDay.set(r.dateStr, day);
   }
   const key = (d: string) => d.split(".").reverse().join("");
@@ -138,7 +164,8 @@ export function fillDayHours(dateStr: string, rows: HourRow[]): HourSlot[] {
       batches: r?.batches || 0,
       pauses: r?.pauses || 0,
       pausedMinutes: r?.pausedMinutes || 0,
-      activeSeconds: r?.activeSeconds || 0,
+      activeSeconds: Math.min(r?.activeSeconds || 0, MAX_HOUR_ACTIVE_SECONDS),
+      inserted: r?.inserted || 0,
     };
   });
 }

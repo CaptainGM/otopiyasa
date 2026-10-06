@@ -95,6 +95,8 @@ export function serializeCar(
     businessName: doc.businessName || "",
     marketAvgPrice,
     marketListingCount,
+    marketScope: market?.scope,
+    marketFamilyLabel: market?.familyLabel,
     priceVsMarket,
     createdAt: doc.createdAt?.toISOString?.() || "",
     updatedAt: doc.updatedAt?.toISOString?.() || "",

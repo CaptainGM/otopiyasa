@@ -8,6 +8,7 @@ import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
 import { DaemonStatsPanel } from "@/components/DaemonStatsPanel";
 import { HomeWatcherPanel } from "@/components/HomeWatcherPanel";
+import { UNVERIFIED_ARABAM_FILTER } from "@/lib/unverified-listings";
 import { ScrapePanel } from "@/components/ScrapePanel";
 import { SourceBadge } from "@/components/SourceBadge";
 import { OldestListingsPanel } from "@/components/OldestListingsPanel";
@@ -98,6 +99,7 @@ export default async function AdminPage() {
   let userCount = 0;
   let subCount = 0;
   let commentCount = 0;
+  let unverifiedCount = 0;
   let pendingBusiness: any[] = [];
   let users: AdminUserRow[] = [];
   let cars: AdminCarRow[] = [];
@@ -209,6 +211,8 @@ export default async function AdminPage() {
     heartbeatDoc = results[10] as any;
     hourlyDocs = results[11] as any[];
     manualScrapeDocs = results[12] as any[];
+    // Arabam bekçisinin henüz hiç doğrulamadığı ilanlar (bekçi kartındaki sayıyla aynı süzgeç).
+    unverifiedCount = await cached("admin:unverifiedCount", CACHE_TTL.short, () => Car.countDocuments(UNVERIFIED_ARABAM_FILTER)).catch(() => 0);
   } catch (err) {
     console.error("AdminPage veri yükleme hatası:", err);
   }
@@ -319,6 +323,7 @@ export default async function AdminPage() {
     { label: "Kullanıcı", value: userCount },
     { label: "Abonelik", value: subCount },
     { label: "Yorum", value: commentCount, href: "#admin-comments" },
+    { label: "Kontrol Edilmemiş", value: unverifiedCount, href: "/admin/unverified" },
   ];
 
   return (
@@ -341,7 +346,7 @@ export default async function AdminPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
         {stats.map((stat) => (
           stat.href ? (
             <a

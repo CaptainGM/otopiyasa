@@ -11,17 +11,16 @@ import { NearbyListings } from "@/components/NearbyListings";
 import { RecentlyViewedStrip } from "@/components/RecentlyViewedStrip";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
-import { findCarsPage, parseCarFilters } from "@/lib/car-query";
+import { countCars, findCarsPage, parseCarFilters } from "@/lib/car-query";
 import { attachMarketToCars, isLeanCarDoc } from "@/lib/serialize-car";
 import { Car as CarType } from "@/types";
 import { getColorOptions, type ColorOption } from "@/lib/color-counts";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { FEED_SEED_COOKIE, FEED_SEED_POOL, randomFeedSeed } from "@/lib/car-mix";
+import { isMixedSort } from "@/lib/car-mix";
 import { normalizeCity } from "@/lib/normalize-city";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
-import { cookies } from "next/headers";
 
 interface HomeProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -49,23 +48,19 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const filters = parseCarFilters(urlParams);
   // "Keşfet" akışı: her sayfa yüklemesinde (tarayıcı yenileme dahil) yeni tohum; aynı tohum
   // sonsuz kaydırmadaki sonraki sayfalara da gider, böylece sayfalar arasında tekrar/atlama olmaz.
-  const feedCookie = (await cookies()).get(FEED_SEED_COOKIE)?.value;
-  const previousFeedSeed = Number(feedCookie);
-  const validPreviousFeedSeed =
-    Number.isInteger(previousFeedSeed) && previousFeedSeed >= 1 && previousFeedSeed <= FEED_SEED_POOL
-      ? previousFeedSeed
-      : undefined;
-  const feedSeed = filters.seed ?? randomFeedSeed(validPreviousFeedSeed);
-  filters.seed = feedSeed;
+  // Karışık sıralı Keşfet: ilanlar tarayıcıda rastgele dilimden yüklenip karıştırılır (InfiniteCarList feed).
+  // Sayfa HTML'i bu yüzden herkes için aynıdır ve CDN'de saklanabilir; kişiye özel tohum/çerez yok.
+  const isFeed = isMixedSort(filters.sort) && !filters.q?.trim();
+  filters.seed = undefined;
   // İlk HTML'de 12 kart: 48 kartlık sayfa 670 KB'tı ve her ziyaret sunucudan o kadar veri çekiyordu.
   // Kalanı sonsuz kaydırma yükler (aynı limit ve tohumla).
   // (parseCarFilters limit verilmediğinde 48'e düşürür; açıkça istenmediyse 12 kullan.)
-  const pageSize = urlParams.has("limit") ? filters.limit || 12 : 12;
+  const pageSize = isFeed ? 24 : urlParams.has("limit") ? filters.limit || 12 : 12;
   filters.limit = pageSize;
   const listParams = new URLSearchParams(urlParams);
   listParams.delete("page");
   listParams.set("limit", String(pageSize));
-  listParams.set("seed", String(feedSeed));
+  listParams.delete("seed");
   let items: CarType[] = [];
   let total = 0;
   let totalPages = 1;
@@ -95,12 +90,16 @@ export default async function HomePage({ searchParams }: HomeProps) {
     // Filtrede model aileleri: "Juke" seçilince tüm Juke donanımları gelir.
     brandModelOptions = brandModelData.brandFamilies;
 
-    const { docs: cars, total: count, limit } = await findCarsPage(filters);
-    const docs = cars.filter(isLeanCarDoc);
-    items = attachMarketToCars(docs, new Map());
-
-    total = count;
-    totalPages = Math.ceil(total / limit) || 1;
+    if (isFeed) {
+      total = await countCars(filters);
+      totalPages = Math.ceil(total / pageSize) || 1;
+    } else {
+      const { docs: cars, total: count, limit } = await findCarsPage(filters);
+      const docs = cars.filter(isLeanCarDoc);
+      items = attachMarketToCars(docs, new Map());
+      total = count;
+      totalPages = Math.ceil(total / limit) || 1;
+    }
   } catch (error) {
     console.error("HomePage veri yükleme hatası:", error);
     dbError = true;
@@ -239,7 +238,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
           </div>
         </div>
 
-        {items.length === 0 ? (
+        {!isFeed && items.length === 0 ? (
           <div className="card flex flex-col items-center gap-3 p-14 text-center text-slate-400">
             <span className="stat-tile-icon h-12 w-12 rounded-2xl">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -259,6 +258,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
               total={total}
               pageSize={pageSize}
               query={listParams.toString()}
+              feed={isFeed}
             />
           </>
         )}

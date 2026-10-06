@@ -21,6 +21,7 @@ import { Car } from "@/models/Car";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
 import { detectPriceAnomaly } from "@/lib/anomaly";
 import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
+import { featureChips } from "@/lib/feature-chips";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
 import { FuelCostCard } from "@/components/FuelCostCard";
@@ -38,6 +39,13 @@ import {
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { enrichArabamCarIfNeeded } from "@/lib/scraper/enrich-arabam";
+import { LIFECYCLE } from "@/lib/scraper/listing-lifecycle";
+
+/** Kaynaktaki son kontrol, açılınca öncelik verilecek kadar eski mi (bkz. requestPriorityVerify). */
+function isStaleCheck(lastChecked?: string | Date | null): boolean {
+  if (!lastChecked) return true;
+  return Date.now() - new Date(lastChecked).getTime() > LIFECYCLE.priorityStaleMs;
+}
 
 /** Fiyat dağılımı için segment fiyatları: önce marka+model, az ise yalnız marka. */
 async function loadSegmentPrices(
@@ -256,6 +264,12 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
                 ✓ Kaynakta son kontrol: {formatRelativeTr(lastChecked)}
               </p>
             )}
+            {car.status === "active" && car.sourceSite === "arabam" && isStaleCheck(lastChecked) && (
+              <p className="mt-0.5 text-xs text-slate-400">
+                Bu ilan açıldığı için kaynağında yeniden kontrol sırasına alındı; fiyat ya da durum değiştiyse kısa süre içinde
+                güncellenir.
+              </p>
+            )}
           </div>
 
           <p className="text-4xl font-black text-[var(--text)]">{formatPrice(car.price)}</p>
@@ -279,10 +293,11 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
 
           <div className="flex flex-wrap gap-2">
-            <span className="badge">{car.features.fuelType}</span>
-            <span className="badge">{car.features.transmission}</span>
-            <span className="badge">{car.features.bodyType}</span>
-            <span className="badge">{car.features.color}</span>
+            {featureChips([car.features.fuelType, car.features.transmission, car.features.bodyType, car.features.color]).map((c) => (
+              <span key={c.label} className={c.pending ? "badge border-dashed text-slate-500" : "badge"}>
+                {c.label}
+              </span>
+            ))}
           </div>
 
           {fuelCost && <FuelCostCard cost={fuelCost} />}

@@ -191,6 +191,20 @@ async function main() {
 
   setInterval(() => void sendHeartbeat(), 15_000);
 
+  // Saatlik sağlık denetimi: bekçi, kaynaklar, ilan akışı bozulursa yöneticiye haber verir (bkz. lib/health-check.ts).
+  // Motorun kendisi durursa bunu Vercel'deki günlük zamanlayıcı yakalar.
+  const runHealth = async () => {
+    try {
+      const { runHealthCheck } = await import("@/lib/health-check");
+      const res = await runHealthCheck({ notify: true });
+      if (res.notified.length) log(`🩺 [SAĞLIK] Bildirim gönderildi: ${res.notified.join(", ")}`);
+    } catch (err: any) {
+      console.warn(`[SAĞLIK] ${err?.message || err}`);
+    }
+  };
+  setTimeout(() => void runHealth(), 2 * 60 * 1000);
+  setInterval(() => void runHealth(), 60 * 60 * 1000);
+
   setProgressHook((stage, current, total) => {
     touch();
     const pct = total > 0 ? Math.round((current / total) * 100) : 0;

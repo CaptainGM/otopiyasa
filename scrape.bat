@@ -15,7 +15,8 @@ echo ====================================================================
 echo  [★] EN HIZLI SERI CEKIM (30.000 - 40.000 Canli Ilan Hedefi)
 echo   ------------------------------------------------------------------
 echo    T  - TURBO SERI CEKIM   (Dakikada ~1.000 ilan! Sayfa basina 20 arac direkt iceri!)
-echo    2  - TURBO Arabam Cekim (Kategoriler + 40 Marka + Tum Siralamalar)
+echo    2  - TURBO Arabam Cekim (Tum vasita kategorileri + 40 marka)
+echo    K  - KATEGORI CEKIMI    (Motosiklet, Ticari, SUV/Pickup, Minivan, Karavan: secilen kategorinin tamami)
 echo.
 echo  [A] COKLU KAYNAK TARAMALARI (8 Kurumsal Platform)
 echo   ------------------------------------------------------------------
@@ -55,11 +56,12 @@ echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve t
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, G, D, N, S, E, 1-20 veya P, varsayilan T): "
+set /p secim="Secimin (T, K, G, D, N, S, E, 1-20 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo
 if "%secim%"=="2" goto :turbo
+if /i "%secim%"=="K" goto :kategori
 if /i "%secim%"=="G" goto :galeri
 if /i "%secim%"=="D" goto :eksikdetay
 if "%secim%"=="11" goto :mod11
@@ -134,6 +136,39 @@ echo.
 echo [BASLATILIYOR] %hedef% taze ilan icin Turbo Motor devreye giriyor...
 echo.
 npx tsx scripts\turbo-arabam.ts %hedef%
+echo.
+pause
+goto :eof
+
+:kategori
+echo.
+echo ====================================================================
+echo   KATEGORI CEKIMI (az ilanli kategorilerin tamami)
+echo   1 - Motosiklet
+echo   2 - Ticari Araclar (kamyon, kamyonet, minibus, otobus)
+echo   3 - Arazi, SUV ve Pickup
+echo   4 - Minivan ve Panelvan
+echo   5 - Karavan
+echo   6 - Hepsi (otomobil haric)
+echo   Not: Bekci ayni anda calisiyorsa ikisi ayni ev internetini paylasir;
+echo   Cloudflare engel verirse ikisi de kendiliginden yavaslar.
+echo ====================================================================
+echo.
+set /p kat="Kategori (1-6, varsayilan 6): "
+if "%kat%"=="" set kat=6
+set katlist=motosiklet,ticari-araclar,arazi-suv-pick-up,minivan-panelvan,karavan
+if "%kat%"=="1" set katlist=motosiklet
+if "%kat%"=="2" set katlist=ticari-araclar
+if "%kat%"=="3" set katlist=arazi-suv-pick-up
+if "%kat%"=="4" set katlist=minivan-panelvan
+if "%kat%"=="5" set katlist=karavan
+set /p khedef="Hedef yeni ilan adedi (varsayilan 5000): "
+if "%khedef%"=="" set khedef=5000
+set /p kdetay="Yeni ilanlarin kendi sayfasi da acilsin mi? Galeri ve kasa tipi gelir ama yavaslar (E/H, varsayilan E): "
+set kflag=
+if /i "%kdetay%"=="H" set kflag=--detaysiz
+echo.
+npx tsx scripts\turbo-arabam.ts %khedef% %katlist% %kflag%
 echo.
 pause
 goto :eof

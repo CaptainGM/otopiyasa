@@ -88,9 +88,10 @@ describe("median", () => {
 });
 
 describe("validateListingFields kapsam", () => {
-  it("pickup ve motosiklet ilanını reddeder, hafif ticariyi kabul eder", () => {
-    expect(validateListingFields({ ...validListing, brand: "Toyota", model: "Hilux" }).valid).toBe(false);
-    expect(validateListingFields({ ...validListing, brand: "Yamaha", model: "X-Max 250" }).valid).toBe(false);
+  it("ATV ilanını reddeder; pickup, motosiklet ve hafif ticariyi kabul eder", () => {
+    expect(validateListingFields({ ...validListing, brand: "Polaris", model: "Sportsman 570" }).valid).toBe(false);
+    expect(validateListingFields({ ...validListing, brand: "Toyota", model: "Hilux" }).valid).toBe(true);
+    expect(validateListingFields({ ...validListing, brand: "Yamaha", model: "X-Max 250" }).valid).toBe(true);
     expect(validateListingFields({ ...validListing, brand: "Fiat", model: "Doblo", bodyType: "Panelvan" }).valid).toBe(true);
   });
 });

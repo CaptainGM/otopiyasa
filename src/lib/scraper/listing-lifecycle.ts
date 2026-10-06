@@ -50,6 +50,8 @@ export const LIFECYCLE = {
   archivedImageLimit: 6,
   /** Doğrulaması engellenen ilan bu süre boyunca kuyrukta atlanır. */
   attemptCooldownMs: 6 * 60 * 60 * 1000,
+  /** Açılan ilanın kaynaktaki son kontrolü bundan eskiyse bekçi sırasında öne alınır. */
+  priorityStaleMs: 12 * 60 * 60 * 1000,
 } as const;
 
 /** Kaynaktan derlenen (kullanıcı ilanı olmayan) kayıtlar. */
@@ -106,6 +108,26 @@ export function inventoryLooksTrustworthy(activeCount: number, seenCount: number
 
 type Id = Types.ObjectId | string;
 
+/**
+ * Kullanıcı ilanı açtığında: kaynakta son kontrolü eski (ya da hiç yok) bir Arabam ilanı bekçinin sırasında öne alınır.
+ * Kullanıcı eski fiyatı görmüş olabilir; bekçi kısa süre içinde ilan sayfasını açıp fiyat/km/durumu günceller.
+ */
+export async function requestPriorityVerify(id: Id, now = new Date()): Promise<boolean> {
+  const staleBefore = new Date(now.getTime() - LIFECYCLE.priorityStaleMs);
+  const res = await Car.updateOne(
+    {
+      _id: id,
+      sourceSite: "arabam",
+      status: "active",
+      verifyPriorityAt: { $exists: false },
+      $or: [{ lastVerifiedAt: { $exists: false } }, { lastVerifiedAt: { $lt: staleBefore } }],
+    },
+    { $set: { verifyPriorityAt: now } },
+    { timestamps: false }
+  );
+  return (res.modifiedCount || 0) > 0;
+}
+
 /** Kaynakta görülen ilanları "canlı teyit edildi" olarak işaretler (updatedAt'e dokunmadan). */
 export async function markSeenAlive(ids: Id[], now = new Date()) {
   if (ids.length === 0) return;
@@ -113,7 +135,7 @@ export async function markSeenAlive(ids: Id[], now = new Date()) {
     { _id: { $in: ids } },
     {
       $set: { lastVerifiedAt: now, lastVerifyAttemptAt: now },
-      $unset: { missingSince: 1, missingChecks: 1, lastVerifyStatus: 1 },
+      $unset: { missingSince: 1, missingChecks: 1, lastVerifyStatus: 1, verifyPriorityAt: 1 },
     },
     { timestamps: false }
   );
@@ -124,7 +146,7 @@ export async function markVerifyAttempt(ids: Id[], now = new Date(), status?: Ve
   if (ids.length === 0) return;
   await Car.updateMany(
     { _id: { $in: ids } },
-    { $set: { lastVerifyAttemptAt: now, ...(status ? { lastVerifyStatus: status } : {}) } },
+    { $set: { lastVerifyAttemptAt: now, ...(status ? { lastVerifyStatus: status } : {}) }, $unset: { verifyPriorityAt: 1 } },
     { timestamps: false }
   );
 }
@@ -142,7 +164,7 @@ export async function archiveListings(ids: Id[], reason: string, now = new Date(
     { _id: { $in: ids }, status: { $ne: "removed" }, ...SCRAPED_SOURCE_FILTER },
     {
       $set: { status: "removed", removedAt: now, removedReason: reason.slice(0, 200), lastVerifyAttemptAt: now },
-      $unset: { missingSince: 1, missingChecks: 1, needsRecheck: 1 },
+      $unset: { missingSince: 1, missingChecks: 1, needsRecheck: 1, verifyPriorityAt: 1 },
       $push: { images: { $each: [], $slice: LIFECYCLE.archivedImageLimit } },
     }
   );

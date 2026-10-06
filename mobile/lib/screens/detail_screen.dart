@@ -55,6 +55,8 @@ class _DetailScreenState extends State<DetailScreen> {
       _loading = widget.initialCar == null;
     }
     _load();
+    // Görüntülenme + bekçi önceliği (kaynakta son kontrolü eski ilan sıranın başına alınır).
+    _api.reportView(widget.carId);
     _api.fetchFuelCost(widget.carId).then((cost) {
       if (mounted && cost != null) setState(() => _fuelCost = cost);
     });
@@ -410,10 +412,12 @@ class _DetailScreenState extends State<DetailScreen> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
+                // Bilinmeyen değer gösterilmez; kaynaktan henüz okunmamışlar tek etikette toplanır.
                 children: [
-                  _chip(car.fuelType),
-                  _chip(car.transmission),
-                  _chip(car.bodyType),
+                  for (final v in [car.fuelType, car.transmission, car.bodyType])
+                    if (!_unknownFeature(v) && v != 'Doğrulanıyor') _chip(v),
+                  if ([car.fuelType, car.transmission, car.bodyType].contains('Doğrulanıyor'))
+                    _chip('Özellikler doğrulanıyor'),
                 ],
               ),
               if (_fuelCost != null) ...[
@@ -547,6 +551,9 @@ class _DetailScreenState extends State<DetailScreen> {
       ],
     );
   }
+
+  static const _unknownFeatureValues = {'', '-', 'bilinmiyor', 'belirtilmemiş', 'belirtilmemis', 'otomobil'};
+  bool _unknownFeature(String v) => _unknownFeatureValues.contains(v.trim().toLowerCase());
 
   Widget _chip(String label) {
     return Container(

@@ -20,6 +20,7 @@ import { cityStorageAliases } from "@/lib/normalize-city";
 import { modelFamilyRegex } from "@/lib/model-family";
 import { normalizeColor } from "@/lib/normalize-color";
 import { transmissionMatch } from "@/lib/vehicle-attrs";
+import { isVehicleClass } from "@/lib/vehicle-scope";
 
 export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   
@@ -57,6 +58,10 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   // Mobil "LPG" gönderiyor, kayıtlar "LPG & Benzin"; ikisi de aynı yazıma çevrilir.
   if (filters.fuelType) query["features.fuelType"] = normalizeFuelType(filters.fuelType);
   if (filters.transmission) query["features.transmission"] = transmissionMatch(filters.transmission);
+  // Araç tipi: tipi henüz yazılmamış eski kayıtlar otomobil sayılır.
+  if (filters.vehicleClass) {
+    query.vehicleClass = filters.vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : filters.vehicleClass;
+  }
 
   if (filters.yearMin || filters.yearMax) {
     query.year = {};
@@ -282,6 +287,7 @@ export function parseCarFilters(searchParams: URLSearchParams): CarFilters {
     priceMax: num("priceMax"),
     fuelType: searchParams.get("fuelType") || undefined,
     transmission: searchParams.get("transmission") || undefined,
+    vehicleClass: isVehicleClass(searchParams.get("vehicleClass")) ? (searchParams.get("vehicleClass") as string) : undefined,
     discountOnly: searchParams.get("discountOnly") === "true",
     
     sort: (searchParams.get("sort") as CarFilters["sort"]) || "mixed",

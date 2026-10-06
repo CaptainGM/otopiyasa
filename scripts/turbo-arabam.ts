@@ -9,12 +9,11 @@
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import * as cheerio from "cheerio";
-import { fetchPageHtml } from "../src/lib/scraper/browser-scrape";
+import { fetchPageHtml, isNonCarArabamPage, parseArabamDetailHtml } from "../src/lib/scraper/browser-scrape";
+import type { ScrapedListing } from "../src/lib/scraper/types";
 import { normalizeBrandModel } from "../src/lib/normalize-brand";
 import { normalizeCity } from "../src/lib/normalize-city";
 import { parseArabamListPage } from "../src/lib/scraper/arabam-list";
-import { isPermanentRemoval } from "../src/lib/scraper/feature-merge";
 import { outOfScopeReason } from "../src/lib/vehicle-scope";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,11 +39,23 @@ for (const envName of [".env", ".env.local"]) {
 
 const targetCount = parseInt(process.argv[2] || "30000", 10);
 
-const CATEGORIES = [
-  { slug: "otomobil", label: "Otomobil (Sedan, HB, vb.)" },
-  { slug: "arazi-suv-pick-up", label: "Arazi, SUV & Pick-up" },
+/** Kaynağın vasıta kategorileri (yol tabanlı, robots.txt'e uygun). ATV/UTV, deniz/hava ve kiralık kapsam dışı. */
+const ALL_CATEGORIES = [
+  { slug: "otomobil", label: "Otomobil" },
+  { slug: "arazi-suv-pick-up", label: "Arazi, SUV & Pickup" },
   { slug: "minivan-panelvan", label: "Minivan & Panelvan" },
+  { slug: "ticari-araclar", label: "Ticari Araçlar" },
+  { slug: "motosiklet", label: "Motosiklet" },
+  { slug: "karavan", label: "Karavan" },
 ];
+
+// İkinci argüman: virgülle kategori listesi ("motosiklet,ticari-araclar"); verilmezse hepsi.
+const categoryArg = (process.argv[3] || "").split(",").map((v) => v.trim()).filter(Boolean);
+const CATEGORIES = categoryArg.length ? ALL_CATEGORIES.filter((c) => categoryArg.includes(c.slug)) : ALL_CATEGORIES;
+// Yalnızca belirli kategoriler istendiyse o kategoriler derin taranır (az ilanlı kategorilerin tamamı).
+const CATEGORY_ONLY = categoryArg.length > 0;
+// "--detaysiz": yeni ilanların ilan sayfası açılmaz (çok daha hızlı; galeri ve özellikler bekçiyle tamamlanır).
+const SKIP_DETAIL = process.argv.includes("--detaysiz");
 
 const ALL_BRANDS = [
   "renault", "fiat", "volkswagen", "ford", "toyota", "opel", "hyundai", "peugeot",
@@ -77,197 +88,94 @@ interface ParsedCar {
   };
   /** Sayfanın gömülü verisinden okunan (tahmin olmayan) özellikler. */
   verifiedKeys: string[];
-}
-
-function parseArabamSearchPage(html: string): ParsedCar[] {
-  const $ = cheerio.load(html);
-  // Tablo vites/yakıt göstermez; sayfaya gömülü veride her ilanın gerçek vitesi, yakıtı ve rengi yazar.
-  const embedded = new Map(parseArabamListPage(html).docs.map((d) => [d.id, d]));
-  const rows = $("tr.listing-list-item");
-  const listings: ParsedCar[] = [];
-
-  rows.each((_, el) => {
-    const $row = $(el);
-    const href = $row.find('a[href*="/ilan/"]').attr("href") || "";
-    const extId = href.match(/(\d+)\/?$/)?.[1];
-    if (!extId) return;
-
-    let img =
-      $row.find("img.listing-image").attr("data-src") ||
-      $row.find("img.listing-image").attr("src") ||
-      $row.find("img").attr("data-src") ||
-      $row.find("img").attr("data-original") ||
-      $row.find("img").attr("src") ||
-      "";
-    if (!img || img.toLowerCase().includes("noimage")) {
-      const noscriptHtml = $row.find("noscript").html() || "";
-      const noscriptMatch = noscriptHtml.match(/src="([^"]+)"/);
-      if (noscriptMatch && !noscriptMatch[1].toLowerCase().includes("noimage")) {
-        img = noscriptMatch[1];
-      } else {
-        img = "";
-      }
-    }
-    const hdImg = (img && !img.toLowerCase().includes("noimage"))
-      ? img.replace("_240x180", "_800x600").replace("_160x120", "_800x600")
-      : "";
-    const modelFull = $row.find(".listing-modelname").text().replace(/\s+/g, " ").trim();
-    const title = $row.find("td.horizontal-half-padder-minus").text().replace(/\s+/g, " ").trim() || modelFull;
-
-    const textCells: string[] = [];
-    $row.find("td").each((_, td) => {
-      textCells.push($(td).text().replace(/\s+/g, " ").trim());
-    });
-
-    const year = parseInt(textCells[3]?.replace(/\D/g, "") || "0", 10);
-    const km = parseInt(textCells[4]?.replace(/\D/g, "") || "0", 10);
-    const color = textCells[5] || "Belirtilmemiş";
-    
-    // Güvenli Fiyat Ayrıştırma (Eski + Yeni fiyat bitişik yazılmışsa sonuncusunu al)
-    const rawPriceCell = textCells[6] || "";
-    const priceCandidates = rawPriceCell.match(/\b\d{1,3}(?:\.\d{3})+\b/g) || rawPriceCell.match(/\d+/g);
-    let price = 0;
-    if (priceCandidates && priceCandidates.length > 0) {
-      const lastStr = priceCandidates[priceCandidates.length - 1].replace(/\D/g, "");
-      price = parseInt(lastStr, 10);
-    }
-    if (price > 150_000_000) {
-      const rawDigits = rawPriceCell.replace(/\D/g, "");
-      if (rawDigits.length >= 12) {
-        price = parseInt(rawDigits.slice(Math.floor(rawDigits.length / 2)), 10);
-      }
-    }
-
-    const locRaw = textCells[8]?.split("Karşılaştır")[0]?.trim() || "";
-    const locParts = locRaw.split(/\s+/);
-    const city = locParts[0] || "Türkiye";
-    const district = locParts.slice(1).join(" ") || "";
-
-    // "Mercedes - Benz G 400 d", "Land Rover Range Rover Velar": iki kelimelik markalar düzeltilir.
-    const { brand: firstWord, model: rest } = normalizeBrandModel(
-      modelFull.split(" ")[0] || "Bilinmiyor",
-      modelFull.split(" ").slice(1).join(" ") || modelFull
-    );
-
-    // Vites/yakıt yalnızca sayfanın gömülü verisinden (gerçek değer); bulunamazsa "Bilinmiyor". Kasa tipi liste
-    // verisinde yok: "Belirtilmemiş" yazılır, bekçi model sayımından ya da ilan sayfasından doldurur. Eskiden
-    // başlıktan tahmin ediliyordu ("otomatik" yazmıyorsa Manuel, anahtar kelime yoksa Sedan).
-    const real = embedded.get(extId);
-    const verifiedKeys: string[] = [];
-    const transmission = real?.transmission || "Bilinmiyor";
-    if (real?.transmission) verifiedKeys.push("transmission");
-    const fuelType = real?.fuelType || "Bilinmiyor";
-    if (real?.fuelType) verifiedKeys.push("fuelType");
-    const bodyType = "Belirtilmemiş";
-
-    listings.push({
-      externalId: `arabam-${extId}`,
-      sourceSite: "arabam",
-      listingUrl: `https://www.arabam.com${href}`,
-      title,
-      brand: firstWord,
-      model: rest,
-      year,
-      price,
-      mileage: km,
-      city: normalizeCity(city),
-      address: district ? `${normalizeCity(city)}, ${district}` : normalizeCity(city),
-      description: title,
-      imageUrl: hdImg,
-      images: [hdImg].filter(Boolean),
-      features: {
-        fuelType,
-        transmission,
-        bodyType,
-        color: real?.color || color,
-      },
-      verifiedKeys: real?.color ? [...verifiedKeys, "color"] : verifiedKeys,
-    });
-  });
-
-  return listings;
+  /** Kaynağın kategori yolu: araç tipi buradan çıkar. */
+  sourceCategory?: string;
 }
 
 /**
- * Yeni ilanlar için tüm galeri fotoğraflarını (10-25 HD fotoğraf),
- * satıcının gerçek detaylı açıklamasını ve hasar matrisini çeker.
+ * Liste sayfası: tablo yerine sayfanın gömülü verisi okunur (bkz. arabam-list.ts). Tablonun sütun sırası
+ * kategoriye göre değişiyor (motosiklet, ticari); gömülü veri her kategoride aynı ve vites/yakıt/renk gerçek.
  */
-async function enrichCarDetails(listingUrl: string): Promise<{
-  images: string[];
-  description?: string;
-  damageParts?: Record<string, string>;
-}> {
-  try {
-    const pageResult: any = await Promise.race([
-      fetchPageHtml(listingUrl),
-      new Promise((resolve) => setTimeout(() => resolve(null), 4500)),
-    ]);
-    if (!pageResult || !pageResult.ok || !pageResult.html) return { images: [] };
-    const html = pageResult.html;
-    const $ = cheerio.load(html);
-
-    const allImages: string[] = [];
-    $("img").each((_, el) => {
-      const src = $(el).attr("src") || $(el).attr("data-src") || "";
-      if (src.includes("ilanfotograflari")) allImages.push(src);
-    });
-    $("a[href*='ilanfotograflari']").each((_, el) => {
-      const href = $(el).attr("href") || "";
-      if (href) allImages.push(href);
-    });
-    $("script").each((_, el) => {
-      const txt = $(el).text();
-      const matches = txt.match(/https?:\/\/[^"'\s]+ilanfotograflari[^"'\s]+/g);
-      if (matches) allImages.push(...matches);
-    });
-
-    const uniqueImages = Array.from(
-      new Set(
-        allImages
-          .map((u) => u.replace(/_\d+x\d+\./, "_800x600.").split("?")[0])
-          .filter((u) => u.startsWith("http"))
-      )
+function parseArabamSearchPage(html: string): ParsedCar[] {
+  const out: ParsedCar[] = [];
+  for (const d of parseArabamListPage(html).docs) {
+    // Fiyatı TL olmayan ya da okunamayan ilan alınmaz.
+    if (!d.price) continue;
+    const modelFull = d.modelName || d.title || "";
+    // "Mercedes - Benz G 400 d", "Land Rover Range Rover Velar": iki kelimelik markalar düzeltilir.
+    const { brand, model } = normalizeBrandModel(
+      modelFull.split(" ")[0] || "Bilinmiyor",
+      modelFull.split(" ").slice(1).join(" ") || modelFull
     );
-
-    let description = $("#tab-description")
-      .text()
-      .replace(/^Açıklama\s*/i, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (!description || description.length < 10) {
-      $('script[type="application/ld+json"]').each((_, el) => {
-        if (description) return;
-        try {
-          const parsed = JSON.parse($(el).text());
-          const list = Array.isArray(parsed) ? parsed : [parsed];
-          for (const item of list) {
-            if (item["@type"] === "Vehicle" || item["@type"] === "Car") {
-              if (item.description && typeof item.description === "string") {
-                description = item.description.trim();
-                break;
-              }
-            }
-          }
-        } catch {}
-      });
-    }
-
-    const damageParts: Record<string, string> = {};
-    $("path[uib-tooltip], [data-part-name]").each((_, el) => {
-      const partName = $(el).find("title").text().trim() || $(el).attr("data-part-name") || "";
-      const status = $(el).attr("uib-tooltip") || $(el).attr("data-status") || "";
-      if (partName && status) damageParts[partName] = status;
+    const city = normalizeCity(d.city || "Türkiye");
+    const verifiedKeys: string[] = [];
+    if (d.transmission) verifiedKeys.push("transmission");
+    if (d.fuelType) verifiedKeys.push("fuelType");
+    if (d.color) verifiedKeys.push("color");
+    out.push({
+      externalId: `arabam-${d.id}`,
+      sourceSite: "arabam",
+      listingUrl: d.url,
+      title: d.title || modelFull,
+      brand,
+      model,
+      year: d.year || 0,
+      price: d.price,
+      mileage: d.mileage || 0,
+      city,
+      address: d.town ? `${city}, ${d.town}` : city,
+      description: d.title || modelFull,
+      imageUrl: d.photo || "",
+      images: d.photo ? [d.photo] : [],
+      // Vites/yakıt/renk yalnızca gömülü veriden; kasa tipi liste verisinde yok (bekçi ya da ilan sayfası doldurur).
+      features: {
+        fuelType: d.fuelType || "Bilinmiyor",
+        transmission: d.transmission || "Bilinmiyor",
+        bodyType: "Belirtilmemiş",
+        color: d.color || "Belirtilmemiş",
+      },
+      verifiedKeys,
+      sourceCategory: d.modelPath || d.categoryPath || undefined,
     });
-
-    return {
-      images: uniqueImages,
-      description: description || undefined,
-      damageParts: Object.keys(damageParts).length > 0 ? damageParts : undefined,
-    };
-  } catch {
-    return { images: [] };
   }
+  return out;
+}
+
+/** Yeni ilanın kendi sayfası: tüm fotoğraflar, satıcı açıklaması, hasar, kasa tipi ve kesin kategori. */
+async function fetchDetailListing(listingUrl: string): Promise<ScrapedListing | "excluded" | null> {
+  try {
+    const page: any = await Promise.race([
+      fetchPageHtml(listingUrl),
+      new Promise((resolve) => setTimeout(() => resolve(null), 20000)),
+    ]);
+    if (!page || !page.ok || !page.html) return null;
+    if (isNonCarArabamPage(page.html)) return "excluded";
+    return parseArabamDetailHtml(page.html, page.finalUrl || listingUrl);
+  } catch {
+    return null;
+  }
+}
+
+function toScrapedListing(car: ParsedCar): ScrapedListing {
+  return {
+    externalId: car.externalId,
+    sourceSite: "arabam",
+    listingUrl: car.listingUrl,
+    title: car.title,
+    brand: car.brand,
+    model: car.model,
+    year: car.year,
+    price: car.price,
+    mileage: car.mileage,
+    city: car.city,
+    address: car.address,
+    description: car.description,
+    imageUrl: car.imageUrl,
+    images: car.images,
+    features: car.features,
+    confirmedFeatures: car.verifiedKeys as ScrapedListing["confirmedFeatures"],
+    sourceCategory: car.sourceCategory,
+  };
 }
 
 async function fetchPageWithRetry(url: string, maxRetries = 6): Promise<string> {
@@ -311,12 +219,14 @@ async function main() {
   console.log("          OTOPIYASA - TURBO ARABAM SERİ VERİ ÇEKİM MOTORU");
   console.log("====================================================================");
   console.log(`  🎯 Hedef Yeni İlan Sayısı: ${targetCount.toLocaleString("tr-TR")}`);
-  console.log(`  ⚡ Yöntem: Toplu Arama Tablosu Ayrıştırma (Sayfa Başına 20 Araç)`);
-  console.log(`  📁 Kapsam: 3 Ana Kategori (Otomobil, SUV, Ticari) + 40 Farklı Marka\n`);
+  console.log(`  ⚡ Yöntem: Liste sayfası gömülü verisi (sayfa başına 20 ilan)${SKIP_DETAIL ? "" : " + yeni ilanlarda ilan sayfası"}`);
+  console.log(`  📁 Kategoriler: ${CATEGORIES.map((c) => c.label).join(", ")}${CATEGORY_ONLY ? "" : " + 40 marka"}\n`);
 
   const { connectDB } = await import("../src/lib/mongodb.js").catch(async () => await import("../src/lib/mongodb"));
   await connectDB();
   const { Car } = await import("../src/models/Car.js").catch(async () => await import("../src/models/Car"));
+  // Ortam değişkenleri (MONGODB_URI) yüklendikten sonra içe aktarılmalı; statik içe aktarma betiği başlarken çökertir.
+  const { saveListing } = await import("../src/lib/scraper/run-scrape");
   const { ManualScrapeLog } = await import("../src/models/ManualScrapeLog.js").catch(async () => await import("../src/models/ManualScrapeLog"));
 
   const initialActive = await Car.countDocuments({ status: "active" });
@@ -427,30 +337,36 @@ async function main() {
   const queue: TaskQueueItem[] = [];
 
   // robots.txt `?sort=` desenini yasaklıyor; sıralama parametresi kullanılmaz, yalnızca `?page=`.
-  // 1. Kategori sayfaları
+  // 1. Kategori sayfaları (yalnızca kategori istendiyse derin: az ilanlı kategorilerin tamamı gezilir)
   for (const cat of CATEGORIES) {
     queue.push({
       urlPattern: `https://www.arabam.com/ikinci-el/${cat.slug}?page=`,
-      maxPages: 50,
+      maxPages: CATEGORY_ONLY ? 500 : 50,
       label: `[Kategori] ${cat.label}`,
       category: cat.slug,
     });
   }
 
-  // 2. Marka bazlı taramalar (Geniş Türkiye Filosu)
-  for (const brand of ALL_BRANDS) {
-    queue.push({
-      urlPattern: `https://www.arabam.com/ikinci-el/otomobil/${brand}?page=`,
-      maxPages: 25,
-      label: `[Marka] ${brand.toUpperCase()} Otomobil`,
-      category: "otomobil",
-    });
-    queue.push({
-      urlPattern: `https://www.arabam.com/ikinci-el/arazi-suv-pick-up/${brand}?page=`,
-      maxPages: 20,
-      label: `[SUV Marka] ${brand.toUpperCase()} SUV`,
-      category: "arazi-suv-pick-up",
-    });
+  // 2. Marka bazlı taramalar (otomobil ve arazi/SUV kategorileri seçiliyse)
+  const wantsCar = CATEGORIES.some((c) => c.slug === "otomobil");
+  const wantsSuv = CATEGORIES.some((c) => c.slug === "arazi-suv-pick-up");
+  for (const brand of wantsCar || wantsSuv ? ALL_BRANDS : []) {
+    if (wantsCar) {
+      queue.push({
+        urlPattern: `https://www.arabam.com/ikinci-el/otomobil/${brand}?page=`,
+        maxPages: 25,
+        label: `[Marka] ${brand.toUpperCase()} Otomobil`,
+        category: "otomobil",
+      });
+    }
+    if (wantsSuv) {
+      queue.push({
+        urlPattern: `https://www.arabam.com/ikinci-el/arazi-suv-pick-up/${brand}?page=`,
+        maxPages: 20,
+        label: `[SUV Marka] ${brand.toUpperCase()} SUV`,
+        category: "arazi-suv-pick-up",
+      });
+    }
   }
 
   console.log(`  📋 Toplam ${queue.length} Arama Rotası Hazırlandı (Dengeli Marka/Model Dağılımı).\n`);
@@ -485,130 +401,57 @@ async function main() {
           continue;
         }
 
-        // Kapsam dışı araçlar (pickup, kamyon, motosiklet...) hiç eklenmez (bkz. vehicle-scope.ts).
+        // Kapsam dışı ilanlar (ATV/UTV vb.) hiç eklenmez (bkz. vehicle-scope.ts).
         const parsed = parseArabamSearchPage(html);
-        const cars = parsed.filter(
-          (c) => !outOfScopeReason({ brand: c.brand, model: c.model, title: c.title, bodyType: c.features.bodyType })
-        );
         if (parsed.length === 0) {
           activeTasks.delete(qIdx);
           continue;
         }
-
+        const cars = parsed.filter(
+          (c) =>
+            !outOfScopeReason({
+              brand: c.brand,
+              model: c.model,
+              title: c.title,
+              bodyType: c.features.bodyType,
+              sourceCategory: c.sourceCategory || task.category,
+            })
+        );
         totalScanned += cars.length;
 
-        // Hangi araçların yeni olduğunu tespit et
-        const extIds = cars.map((c) => c.externalId);
-        const existingDocs = await Car.find({ externalId: { $in: extIds } }, { externalId: 1, status: 1, removedReason: 1 }).lean();
-        const existingSet = new Set((existingDocs as any[]).map((d) => d.externalId));
-        // Yalnızca otomatik doğrulamayla arşive düşen ilan yeniden açılabilir; yöneticinin kaldırdığı
-        // ("manuel: ...") ya da moderasyondaki ilana dokunulmaz (eskiden her görülen ilan "active" yapılıyordu).
-        const lockedSet = new Set(
-          (existingDocs as any[])
-            .filter((d) => (d.status === "removed" && (!/^arabam/i.test(d.removedReason || "") || isPermanentRemoval(d.removedReason))) || (d.status && d.status !== "active" && d.status !== "removed"))
-            .map((d) => d.externalId)
+        const existingIds = new Set(
+          ((await Car.find({ sourceSite: "arabam", externalId: { $in: cars.map((c) => c.externalId) } }, { externalId: 1 }).lean()) as any[]).map(
+            (d) => d.externalId
+          )
         );
-        const newCars = cars.filter((c) => !existingSet.has(c.externalId));
 
-        // Yeni araçları 4'lü paralel havuzla tüm galerisi ve satıcı açıklamasıyla zenginleştir
-        if (newCars.length > 0) {
-          for (let i = 0; i < newCars.length; i += 4) {
-            const batch = newCars.slice(i, i + 4);
-            await Promise.all(
-              batch.map(async (car) => {
-                const enriched = await enrichCarDetails(car.listingUrl);
-                if (enriched.images.length > 0) {
-                  car.images = enriched.images;
-                  car.imageUrl = enriched.images[0];
-                }
-                if (enriched.description) {
-                  car.description = enriched.description;
-                }
-                if (enriched.damageParts) {
-                  (car as any).damageParts = enriched.damageParts;
-                }
-              })
-            );
-          }
+        // Tüm kayıtlar ortak akıştan geçer (saveListing): fiyat geçmişi yalnızca fiyat değişince yazılır, favori
+        // bildirimi gider, gerçek özellik tahminle ezilmez, yöneticinin kaldırdığı ilan geri açılmaz.
+        let newInThisPage = 0;
+        let updatedInThisPage = 0;
+        const count = (r: string) => {
+          if (r === "inserted") newInThisPage++;
+          else if (r === "updated" || r === "reactivated") updatedInThisPage++;
+        };
+        for (const car of cars.filter((c) => existingIds.has(c.externalId))) {
+          // Liste verisinde açıklama yok (başlık var): kayıtlı satıcı açıklaması ezilmesin.
+          count(await saveListing({ ...toScrapedListing(car), description: "" }));
         }
-
-        // MongoDB Toplu İşlem (BulkWrite) - Hiçbir alan çakışması olmadan güvenli upsert
-        const ops = cars.filter((car) => !lockedSet.has(car.externalId)).map((car) => {
-          const setFields: Record<string, any> = {
-            price: car.price,
-            mileage: car.mileage,
-            city: car.city,
-            address: car.address,
-            status: "active",
-            lastVerifiedAt: new Date(),
-          };
-          // Gerçek değerler mevcut ilanlarda da düzeltilir (tahmin edilen "Manuel" yerine).
-          for (const key of car.verifiedKeys) setFields[`features.${key}`] = (car.features as Record<string, string>)[key];
-
-          if (car.images && car.images.length > 0) {
-            setFields.images = car.images;
-            setFields.imageUrl = car.imageUrl || car.images[0];
-          }
-          if (car.description && car.description.trim().length > 0 && car.description !== car.title) {
-            setFields.description = car.description;
-          }
-          if ((car as any).damageParts && Object.keys((car as any).damageParts).length > 0) {
-            setFields.damageParts = (car as any).damageParts;
-          }
-
-          const guessed = Object.fromEntries(
-            Object.entries(car.features).filter(([key]) => !car.verifiedKeys.includes(key))
+        const newCars = cars.filter((c) => !existingIds.has(c.externalId));
+        for (let i = 0; i < newCars.length; i += 2) {
+          if (isShuttingDown) break;
+          const batch = newCars.slice(i, i + 2);
+          await Promise.all(
+            batch.map(async (car) => {
+              const detail = SKIP_DETAIL ? null : await fetchDetailListing(car.listingUrl);
+              if (detail === "excluded") return;
+              const listing = detail
+                ? { ...detail, sourceCategory: detail.sourceCategory || car.sourceCategory || task.category }
+                : { ...toScrapedListing(car), sourceCategory: car.sourceCategory || task.category };
+              count(await saveListing(listing));
+            })
           );
-          const setOnInsertFields: Record<string, any> = {
-            title: car.title,
-            brand: car.brand,
-            model: car.model,
-            year: car.year,
-            source: "arabam",
-            sourceSite: "arabam",
-            listingUrl: car.listingUrl,
-            externalId: car.externalId,
-            createdAt: new Date(),
-            rand: Math.random(),
-            rand2: Math.random(),
-            rand3: Math.random(),
-            rand4: Math.random(),
-          };
-
-          if (!setFields.images) {
-            setOnInsertFields.images = car.images;
-            setOnInsertFields.imageUrl = car.imageUrl;
-          }
-          if (!setFields.description) {
-            setOnInsertFields.description = car.description || car.title;
-          }
-          if (!setFields.damageParts && (car as any).damageParts) {
-            setOnInsertFields.damageParts = (car as any).damageParts;
-          }
-
-          return {
-            updateOne: {
-              filter: { externalId: car.externalId },
-              update: {
-                // Tahmini alanlar yalnızca yeni ilanda yazılır; doğrulananlar $set ile (aynı alan iki işlemde olamaz).
-                $setOnInsert: { ...setOnInsertFields, ...Object.fromEntries(Object.entries(guessed).map(([k, v]) => [`features.${k}`, v])) },
-                $set: setFields,
-                ...(car.verifiedKeys.length ? { $addToSet: { verifiedFeatures: { $each: car.verifiedKeys } } } : {}),
-                $push: {
-                  priceHistory: {
-                    $each: [{ price: car.price, recordedAt: new Date() }],
-                    $slice: -20,
-                  },
-                },
-              },
-              upsert: true,
-            },
-          };
-        });
-
-        const bulkRes = await Car.bulkWrite(ops as any, { ordered: false });
-        const newInThisPage = bulkRes.upsertedCount || 0;
-        const updatedInThisPage = bulkRes.modifiedCount || 0;
+        }
 
         totalInserted += newInThisPage;
         totalUpdated += updatedInThisPage;

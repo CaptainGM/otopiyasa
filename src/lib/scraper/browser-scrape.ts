@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { isNonCarBrand, normalizeBrand } from "@/lib/normalize-brand";
+import { classFromSourceCategory } from "@/lib/vehicle-scope";
 import { ScrapedListing } from "@/lib/scraper/types";
 import { waitForSlot, withRetry } from "@/lib/scraper/rate-limit";
 
@@ -649,15 +650,12 @@ export function arabamCategoriesFromHtml(html: string): string[] {
 }
 
 /**
- * Otomobil platformunda yeri olmayan ilan mı? Sitemap'teki ilan adresleri kategori taşımıyor; keşif motosiklet,
- * ATV, karavan ve "taksi hat & plaka" ilanlarını da otomobil sanıp ekliyordu (bkz. 2026-10-06 ölçümü). "Ticari
- * araçlar" kategorisi kamyon, kamyonet, otobüs ve minibüstür; hafif ticari arabalar (Doblo, Berlingo) "minivan-panelvan"
- * kategorisindedir ve kapsamda kalır.
+ * Platform kapsamı dışında bir ilan mı (ATV/UTV, deniz/hava aracı, kiralık, "taksi hat & plaka"...)? Sitemap'teki
+ * ilan adresleri kategori taşımıyor; kategori ilan sayfasının gezinme yolundan okunur. Motosiklet, ticari araç ve
+ * karavan kapsamdadır (bkz. vehicle-scope.ts).
  */
 export function isNonCarArabamPage(html: string): boolean {
-  return arabamCategoriesFromHtml(html).some((path) =>
-    /(^|[/-])(motosiklet|atv|utv|karavan|deniz|traktor|is-makina|yedek-parca|bisiklet|tarim|hat-plaka|ticari-araclar)/.test(path)
-  );
+  return arabamCategoriesFromHtml(html).some((path) => classFromSourceCategory(path) === "excluded");
 }
 
 export function parseArabamDetailHtml(
@@ -773,6 +771,7 @@ export function parseArabamDetailHtml(
     
     damageParts: extractArabamDamageParts(html),
     confirmedFeatures,
+    sourceCategory: arabamCategoriesFromHtml(html)[0],
     features: {
       // Sayfada yazmayan yakıt/renk tahmin edilmez: eskiden sayfanın tamamında (menüler, öneri kartları) geçen ilk
       // yakıt/renk kelimesi alınıyordu.

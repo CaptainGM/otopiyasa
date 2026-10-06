@@ -1,0 +1,41 @@
+# Paket güncellemeleri: haftada bir, küçük ve ara sürümler tek istekte toplanır. CI (tip, lint, test, Flutter
+# analiz/test) geçerse .github/workflows/dependabot-auto-merge.yml isteği kendiliğinden birleştirir. Büyük (major)
+# sürümler kod değişikliği isteyebileceği için önerilmez.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      npm-kucuk-guncellemeler:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: pub
+    directory: "/mobile"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Istanbul
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      flutter-kucuk-guncellemeler:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

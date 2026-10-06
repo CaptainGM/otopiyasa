@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CarListItem } from "@/types";
 import { formatNumber, formatPrice } from "@/lib/utils";
+import { featureChips } from "@/lib/feature-chips";
 import { SourceBadge } from "@/components/SourceBadge";
 import { CompareButton } from "@/components/CompareButton";
 import { CardGallery } from "@/components/CardGallery";
@@ -65,8 +66,11 @@ export function CarCard({
               {car.city} • {formatNumber(car.mileage)} km
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1 text-[11px] text-slate-300">
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">{car.features.fuelType}</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">{car.features.transmission}</span>
+              {featureChips([car.features.fuelType, car.features.transmission]).map((c) => (
+                <span key={c.label} className={`rounded-full border px-2 py-0.5 ${c.pending ? "border-dashed border-white/15 text-slate-500" : "border-white/10 bg-white/5"}`}>
+                  {c.label}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -121,8 +125,11 @@ export function CarCard({
             </div>
             <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300 sm:mt-6">
               <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">{car.year}</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">{car.features.fuelType}</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">{car.features.transmission}</span>
+              {featureChips([car.features.fuelType, car.features.transmission]).map((c) => (
+                <span key={c.label} className={`rounded-full border px-2.5 py-1 ${c.pending ? "border-dashed border-white/15 text-slate-500" : "border-white/10 bg-white/5"}`}>
+                  {c.label}
+                </span>
+              ))}
               {car.sourceSite && <span className="sm:hidden"><SourceBadge source={car.sourceSite} /></span>}
               {car.damageFlag && <span className="badge badge-danger">Hasar</span>}
               {priceDrop !== null && <span className="badge border-emerald-400/30 bg-emerald-500/15 text-emerald-300">↓ %{priceDrop}</span>}

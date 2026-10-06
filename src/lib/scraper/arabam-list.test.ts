@@ -108,3 +108,35 @@ describe("dominantBodyType", () => {
     expect(dominantBodyType([{ value: "SUV", count: 3 }], normalizeBodyType)).toBeNull();
   });
 });
+
+describe("parseArabamListPage ilan alanları", () => {
+  it("başlık, model adı, kapak fotoğrafı ve kategori yolunu verir", () => {
+    const html = `<script>var model = ${JSON.stringify({
+      Total: 1,
+      TotalPages: 1,
+      Documents: [
+        {
+          Id: 44179894,
+          Url: "/ilan/x/y/44179894",
+          Title: "  MÜFTÜOĞLUNDAN   SATILIK  ",
+          ModelName: "Chevrolet Captiva 2.0 D LT High",
+          PhotoPath: "https://arbstorage.mncdn.com/ilanfotograflari/a/44179894_{0}.jpg",
+          Town: "Yenişehir",
+          Categories: [
+            { AbsolutePath: "arazi-suv-pick-up" },
+            { AbsolutePath: "arazi-suv-pick-up/chevrolet" },
+            { AbsolutePath: "arazi-suv-pick-up/chevrolet-captiva" },
+          ],
+        },
+      ],
+    })};</script>`;
+    const [doc] = parseArabamListPage(html).docs;
+    expect(doc).toMatchObject({
+      title: "MÜFTÜOĞLUNDAN SATILIK",
+      modelName: "Chevrolet Captiva 2.0 D LT High",
+      photo: "https://arbstorage.mncdn.com/ilanfotograflari/a/44179894_800x600.jpg",
+      town: "Yenişehir",
+      categoryPath: "arazi-suv-pick-up",
+    });
+  });
+});

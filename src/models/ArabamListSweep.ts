@@ -14,6 +14,8 @@ export interface ArabamListSweepDoc {
   /** Ailedeki tüm aktif ilanlarımız, plan anında. */
   ours: number;
   suvLikely?: boolean;
+  /** Ailedeki ilanlarımızın çoğunluk araç tipi (liste sayfası kategorisi buna göre seçilir). */
+  vehicleClass?: string;
   /** Kaynaktaki model sayfası yolu, ör. "arazi-suv-pick-up/chevrolet-captiva". */
   path?: string | null;
   total?: number | null;
@@ -36,6 +38,7 @@ const ArabamListSweepSchema = new Schema<ArabamListSweepDoc>(
     unverified: { type: Number, default: 0 },
     ours: { type: Number, default: 0 },
     suvLikely: Boolean,
+    vehicleClass: { type: String, default: "otomobil" },
     path: { type: String, default: null },
     total: { type: Number, default: null },
     totalPages: { type: Number, default: null },

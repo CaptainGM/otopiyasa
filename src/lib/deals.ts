@@ -12,7 +12,14 @@ export interface Deal {
 export const DEAL_MIN_YEAR = 2010;
 export const DEAL_MAX_MILEAGE = 150_000;
 
-export const DEAL_MAX_DISCOUNT = 0.45;
+/**
+ * Piyasanın bu oranın üstünde altında olan ilan "fırsat" sayılmaz: bu kadar ucuz fiyat çoğu zaman hatalı girilmiş ya da
+ * kapora/dolandırıcılık amaçlı ilandır (ör. 2023 C5 Aircross %41 ucuz "haftanın fırsatı" olarak öne çıkıyordu).
+ * İlan sayfasında "Dikkat" uyarısı gösterilir (bkz. PricePredictionBadge, mobil market_badge).
+ */
+export const SUSPICIOUS_DISCOUNT = 0.3;
+
+export const DEAL_MAX_DISCOUNT = SUSPICIOUS_DISCOUNT;
 
 export const DEAL_MIN_DISCOUNT = 0.12;
 const DEAL_MIN_COMPARABLES = 3;

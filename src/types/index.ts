@@ -120,6 +120,8 @@ export interface CarFilters {
   priceMax?: number;
   fuelType?: string;
   transmission?: string;
+  /** Araç tipi (bkz. lib/vehicle-scope.ts VEHICLE_CLASSES). */
+  vehicleClass?: string;
   sort?: "mixed" | "price_asc" | "price_desc" | "year_desc" | "newest" | "views";
   discountOnly?: boolean;
   /** "Keşfet" akışının kişiye/yenilemeye özel rastgele başlangıç tohumu; sonraki sayfalar aynı tohumu kullanır. */

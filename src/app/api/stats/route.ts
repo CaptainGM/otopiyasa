@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
-import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { MARKET_LISTING_FILTER as PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { cached, CACHE_TTL } from "@/lib/cache";
 
 export async function GET() {
   try {
     await connectDB();
 
-    const data = await cached("api:stats:v2", CACHE_TTL.long, async () => {
+    const data = await cached("api:stats:v3", CACHE_TTL.long, async () => {
       // Ortalamalar web analiz sayfasıyla aynı süzgeçle: hatalı/trol fiyatlar (1 TL, 999 milyon) ortalamayı bozmasın.
       // Eskiden mobil süzgeçsiz ortalama gösterdiği için web ile mobil farklı "piyasa ortalaması" yazıyordu.
       const publicMatch = { $match: { ...PUBLIC_LISTING_FILTER, price: { $gte: 50_000, $lte: 40_000_000 } } };

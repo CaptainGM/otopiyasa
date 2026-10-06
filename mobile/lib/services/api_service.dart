@@ -310,6 +310,14 @@ class ApiService {
     );
   }
 
+  /// İlan açıldı bildirimi: görüntülenme sayacı artar ve kaynakta uzun süredir kontrol edilmeyen ilan
+  /// bekçinin sırasında öne alınır (web'deki ViewCounter ile aynı). Hata önemsizdir.
+  Future<void> reportView(String id) async {
+    try {
+      await _http.post(_uri('/api/cars/$id/view'), headers: _headers);
+    } catch (_) {}
+  }
+
   /// Demo veri yükleme — /api/seed endpoint'ini kullanır.
   /// NOT: /api/scrape/run admin yetkisi veya scrape secret gerektirdiği için
   /// normal kullanıcı olarak çalışmıyordu. /api/seed bu kısıtı taşımaz.

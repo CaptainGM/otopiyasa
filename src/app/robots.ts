@@ -30,7 +30,9 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin/", "/api/", "/favorites", "/my-listings", "/login", "/*?"],
+        // İlan sayfaları kapalı: kaynak sitelerdeki ilanların kopyası (arama sonucunda değer taşımaz) ve her bot
+        // ziyareti Vercel'de sayfa çizimi demek. Kalıcı sayfalar (ana sayfa, analiz, fiyat tahmini, harita) taranır.
+        disallow: ["/admin/", "/api/", "/cars/", "/favorites", "/my-listings", "/login", "/*?"],
       },
       { userAgent: NOISY_BOTS, disallow: "/" },
     ],

@@ -7,6 +7,7 @@ import { COLORS } from "@/lib/derive-specs";
 import type { ColorOption } from "@/lib/color-counts";
 import { FormattedNumberInput } from "@/components/FormattedNumberInput";
 import { VEHICLE_CLASSES } from "@/lib/vehicle-scope";
+import { Icon } from "@/components/Icon";
 
 
 export function CarFilters({
@@ -28,6 +29,10 @@ export function CarFilters({
   const [brand, setBrand] = useState(searchParams.get("brand") || "");
   const [model, setModel] = useState(searchParams.get("model") || "");
   const models = (brand && brandModels?.[brand]) || [];
+  // Gelişmiş filtrelerden biri seçiliyse katlanmış bölüm açık gelsin (seçili değer görünür kalsın).
+  const hasAdvanced = ["sort", "yearMin", "yearMax", "priceMin", "priceMax", "fuelType", "vehicleClass", "transmission", "color"].some(
+    (key) => !!searchParams.get(key)
+  );
 
   const colors =
     availableColors && availableColors.length > 0
@@ -67,30 +72,19 @@ export function CarFilters({
     <form onSubmit={handleSubmit} className="card space-y-4 p-3 sm:p-5 md:p-6">
       {discountOnly && <input type="hidden" name="discountOnly" value="true" />}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="stat-tile-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M4 6h16M7 12h10M10.5 18h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">Arama ve filtreler</h2>
-            <p className="text-sm text-slate-500">Marka, model, şehir, yıl ve fiyat kriterlerine göre filtrele.</p>
-          </div>
+        <div>
+          <p className="eyebrow">Filtreler</p>
+          <h2 className="font-display text-lg font-semibold">Aradığın aracı daralt</h2>
         </div>
 
         <button
           type="button"
           onClick={toggleDiscount}
-          className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
-            discountOnly
-              ? "border border-amber-400/60 bg-amber-400/20 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.3)]"
-              : "border border-white/10 bg-white/5 text-slate-400 hover:border-amber-400/40 hover:text-amber-200"
-          }`}
+          aria-pressed={discountOnly}
+          className={`chip ${discountOnly ? "chip-active" : ""}`}
         >
-          <span>🔥</span>
-          <span>Fiyatı Düşenler</span>
-          {discountOnly && <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />}
+          <Icon name="trendDown" size={15} />
+          Fiyatı düşenler
         </button>
       </div>
 
@@ -170,7 +164,15 @@ export function CarFilters({
             ))}
           </select>
         </div>
+      </div>
 
+      <details className="filter-more" open={hasAdvanced}>
+        <summary className="btn btn-ghost -ml-2 cursor-pointer select-none text-sm">
+          <Icon name="plus" size={15} className="filter-more-icon" />
+          Daha fazla filtre
+          <span className="text-xs font-normal text-[var(--faint)]">sıralama, yıl, fiyat, yakıt, vites, renk, araç tipi</span>
+        </summary>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <div>
           <label className="label" htmlFor="sort">
             Sıralama
@@ -319,13 +321,11 @@ export function CarFilters({
           </select>
         </div>
       </div>
+      </details>
 
-      <div className="flex flex-wrap gap-3 border-t border-white/5 pt-4">
+      <div className="flex flex-wrap gap-3 border-t border-[var(--border)] pt-4">
         <button type="submit" className="btn btn-primary flex-1 justify-center sm:flex-none">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-            <path d="m20 20-3.8-3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
+          <Icon name="search" size={16} strokeWidth={1.8} />
           Ara
         </button>
         <button

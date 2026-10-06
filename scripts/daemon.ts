@@ -205,6 +205,24 @@ async function main() {
   setTimeout(() => void runHealth(), 2 * 60 * 1000);
   setInterval(() => void runHealth(), 60 * 60 * 1000);
 
+  // Saatlik piyasa anlık görüntüsü: ilan kartlarındaki ucuz/adil/pahalı göstergesi (bkz. lib/market-snapshot.ts).
+  let marketRunning = false;
+  const runMarketSnapshot = async () => {
+    if (marketRunning) return;
+    marketRunning = true;
+    try {
+      const { refreshMarketSnapshot } = await import("@/lib/market-snapshot");
+      const res = await refreshMarketSnapshot();
+      log(`📊 [PİYASA] ${res.segments} segment, ${res.scanned} ilan; ${res.updated} güncellendi, ${res.cleared} temizlendi.`);
+    } catch (err: any) {
+      console.warn(`[PİYASA] ${err?.message || err}`);
+    } finally {
+      marketRunning = false;
+    }
+  };
+  setTimeout(() => void runMarketSnapshot(), 5 * 60 * 1000);
+  setInterval(() => void runMarketSnapshot(), 60 * 60 * 1000);
+
   setProgressHook((stage, current, total) => {
     touch();
     const pct = total > 0 ? Math.round((current / total) * 100) : 0;

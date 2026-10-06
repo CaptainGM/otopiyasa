@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useVisibleInterval } from "@/components/useVisibleInterval";
 
 interface Notif {
   _id: string;
@@ -34,10 +35,9 @@ export function NotificationBell() {
 
   useEffect(() => {
     load();
-    
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
   }, []);
+  // Sekme arka plandayken sorulmaz (bkz. useVisibleInterval).
+  useVisibleInterval(load, 60000);
 
 
   useEffect(() => {

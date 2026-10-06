@@ -24,7 +24,7 @@ export function PasswordRequirements({ password }: { password: string }) {
       ))}
       {valid && (
         <li className="pt-0.5 text-xs font-semibold text-emerald-300">
-          Şifren güçlü 👍
+          Şifren güçlü
         </li>
       )}
     </ul>

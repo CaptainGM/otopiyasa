@@ -157,10 +157,9 @@ export function InfiniteCarList({
   }, [loadNextPage, page, totalPages]);
 
   return (
-    <div className="space-y-3">
-      <p className="text-right text-xs text-slate-500" aria-live="polite">{items.length} / {total} ilan yüklendi</p>
-      <div className="space-y-2" aria-live="polite">
-        {items.map((car, i) => <CarCard key={car._id} car={car} priority={i < 3} />)}
+    <div className="space-y-4">
+      <div className="listing-grid" aria-live="polite">
+        {items.map((car, i) => <CarCard key={car._id} car={car} priority={i < 4} />)}
       </div>
       {page === 0 || page < totalPages ? (
         <div ref={sentinelRef} className="flex min-h-16 flex-col items-center justify-center gap-2 py-3">

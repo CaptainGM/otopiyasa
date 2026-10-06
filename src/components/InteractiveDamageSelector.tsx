@@ -138,8 +138,7 @@ export function InteractiveDamageSelector({
               : "bg-slate-900/60 border-white/10 text-slate-400 hover:border-white/20"
           }`}
         >
-          <span className="text-lg mb-1">✨</span>
-          <span className="text-xs">Hatasız / Orijinal</span>
+                    <span className="text-xs">Hatasız / Orijinal</span>
           <span className="text-[10px] opacity-60 mt-0.5">Boya / Değişen Yok</span>
         </button>
 
@@ -152,8 +151,7 @@ export function InteractiveDamageSelector({
               : "bg-slate-900/60 border-white/10 text-slate-400 hover:border-white/20"
           }`}
         >
-          <span className="text-lg mb-1">🎨</span>
-          <span className="text-xs">Boyalı</span>
+                    <span className="text-xs">Boyalı</span>
           <span className="text-[10px] opacity-60 mt-0.5">Çizik / Lokal Boya</span>
         </button>
 
@@ -166,8 +164,7 @@ export function InteractiveDamageSelector({
               : "bg-slate-900/60 border-white/10 text-slate-400 hover:border-white/20"
           }`}
         >
-          <span className="text-lg mb-1">⚠️</span>
-          <span className="text-xs">Değişen / Hasarlı</span>
+                    <span className="text-xs">Değişen / Hasarlı</span>
           <span className="text-[10px] opacity-60 mt-0.5">Parça Değişimi Var</span>
         </button>
       </div>
@@ -178,8 +175,7 @@ export function InteractiveDamageSelector({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
             <div>
               <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                <span>🚗</span>
-                <span>İnteraktif Araç Parça Seçici</span>
+                                <span>İnteraktif Araç Parça Seçici</span>
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
                 Parçaya her tıkladığında durumu değişir:{" "}
@@ -233,7 +229,7 @@ export function InteractiveDamageSelector({
               }}
               className="text-[11px] text-slate-400 hover:text-white transition"
             >
-              🔄 Tüm Parçaları Orijinal Yap
+              Tüm Parçaları Orijinal Yap
             </button>
           </div>
         </div>

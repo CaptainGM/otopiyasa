@@ -430,7 +430,7 @@ class _MapScreenState extends State<MapScreen> {
                 ),
                 if (_discountOnly) ...[
                   const SizedBox(width: 8),
-                  const Text('• 🔥 İndirimli', style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B))),
+                  const Text('• İndirimli', style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B))),
                 ],
               ],
             ),
@@ -521,7 +521,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('🔥 Fiyatı Düşenler', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    title: const Text('Fiyatı Düşenler', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                     subtitle: const Text('Sadece indirimli fırsat araçları göster',
                         style: TextStyle(fontSize: 12, color: Colors.white54)),
                     value: discountOnly,

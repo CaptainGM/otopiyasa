@@ -129,7 +129,7 @@ export function ValuationReportModal({
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-2 rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-transparent px-4 py-2.5 text-sm font-bold text-amber-300 shadow-md shadow-amber-500/10 hover:border-amber-400 hover:bg-amber-500/25 transition active:scale-[0.98]"
+        className="btn btn-secondary"
         title="Bu aracın resmi piyasa ve fiyat değerlendirme raporunu görüntüle/yazdır"
       >
         <svg
@@ -148,7 +148,7 @@ export function ValuationReportModal({
           <line x1="16" y1="17" x2="8" y2="17" />
           <polyline points="10 9 9 9 8 9" />
         </svg>
-        <span>📄 AI Piyasa Değerlendirme Raporu</span>
+        <span>Değerleme raporu</span>
       </button>
 
       {isOpen && (
@@ -513,7 +513,7 @@ export function ValuationReportModal({
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-base">💡</span>
+                        
                         <h3 className="text-xs font-bold uppercase tracking-wider text-amber-300">
                           Satın Alma Öncesi Uzman Kontrol Önerisi ({modelAdvisory.title})
                         </h3>
@@ -522,7 +522,7 @@ export function ValuationReportModal({
                         {modelAdvisory.advice}
                       </p>
                       <div className="text-[11px] font-semibold text-amber-200/90 pt-1 border-t border-amber-500/20">
-                        🔍 <strong>Öncelikli Kontrol:</strong> {modelAdvisory.checkItem}
+                        <strong>Öncelikli Kontrol:</strong> {modelAdvisory.checkItem}
                       </div>
                     </div>
                   )}
@@ -600,7 +600,7 @@ export function ValuationReportModal({
               <div className="border-t border-slate-800 pt-5 space-y-3">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="text-[10px] text-slate-400 leading-relaxed max-w-xl">
-                    <strong className="text-slate-300">⚠️ Yasal Bilgilendirme ve Sorumluluk Reddi:</strong>
+                    <strong className="text-slate-300">Yasal Bilgilendirme ve Sorumluluk Reddi:</strong>
                     <br />
                     Bu belge fiziki araç muayenesi, mekanik ekspertiz veya TSE belgeli ekspertiz raporu yerine geçmez. Kullanıcının ve ilan sitelerinin beyan ettiği verilere dayanarak, 12 farklı araç platformundaki büyük veriler ve regresyon algoritmaları üzerinden üretilmiş algoritmik bir piyasa fiyat rehberidir. Karar destek amaçlıdır.
                   </div>

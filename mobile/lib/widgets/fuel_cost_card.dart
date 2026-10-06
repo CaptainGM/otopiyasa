@@ -46,7 +46,7 @@ class FuelCostCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('⛽ Yakıt maliyeti', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          const Text('Yakıt maliyeti', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           const SizedBox(height: 2),
           Text(
             electric != null ? 'Tahmini elektrik tarifesi' : '${cost['place'] ?? ''} pompa fiyatı · ${cost['priceSource'] ?? ''} · $dateText',
@@ -83,13 +83,13 @@ class FuelCostCard extends StatelessWidget {
           if (ratingText != null && ratingText.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              '${rating == 'low' ? '✅' : '⚠️'} $ratingText',
+              ratingText,
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: accent),
             ),
           ],
           if (note != null && note.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('ℹ️ $note', style: const TextStyle(fontSize: 11, color: Colors.white54)),
+            Text(note, style: const TextStyle(fontSize: 11, color: Colors.white54)),
           ],
           ],
         ],
@@ -119,7 +119,7 @@ class FuelCostCard extends StatelessWidget {
       ),
       if (note != null && note.isNotEmpty) ...[
         const SizedBox(height: 6),
-        Text('ℹ️ $note', style: const TextStyle(fontSize: 11, color: Colors.white54)),
+        Text(note, style: const TextStyle(fontSize: 11, color: Colors.white54)),
       ],
     ];
   }
@@ -155,7 +155,7 @@ class FuelCostCard extends StatelessWidget {
       if (note != null && note.isNotEmpty) ...[
         const SizedBox(height: 6),
         Text(
-          'ℹ️ $note Elektrik fiyatları tahminidir (${plug['electricityReviewed'] ?? ''} itibarıyla), pompa fiyatı gibi günlük güncellenmez.',
+          '$note Elektrik fiyatları tahminidir (${plug['electricityReviewed'] ?? ''} itibarıyla), pompa fiyatı gibi günlük güncellenmez.',
           style: const TextStyle(fontSize: 11, color: Colors.white54),
         ),
       ],

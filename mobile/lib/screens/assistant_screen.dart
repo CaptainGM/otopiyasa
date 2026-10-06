@@ -37,7 +37,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   final List<_ChatMessage> _messages = [
     const _ChatMessage(
-      text: 'Merhaba! 👋 Araç ararken yardımcı olabilirim. '
+      text: 'Merhaba! Araç ararken yardımcı olabilirim. '
           '"1 milyon altı dizel araba öner" ya da "nasıl ilan veririm" diye sorabilirsin.',
       mine: false,
     ),

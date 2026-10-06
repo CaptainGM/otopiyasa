@@ -14,6 +14,10 @@ import { getSimilarCars } from "@/lib/recommendations";
 import { CarCard } from "@/components/CarCard";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 import { SourceBadge } from "@/components/SourceBadge";
+import { Icon } from "@/components/Icon";
+import { MarketGauge } from "@/components/MarketGauge";
+import { MarketTempoCard } from "@/components/MarketTempoCard";
+import { carHeadline } from "@/lib/car-headline";
 import { ShareButton } from "@/components/ShareButton";
 import { ValuationReportModal } from "@/components/ValuationReportModal";
 import { connectDB } from "@/lib/mongodb";
@@ -183,14 +187,11 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
       <RecentlyViewedTracker carId={car._id} />
       <ViewCounter carId={car._id} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <Link href="/" className="text-sm text-amber-300 hover:underline">
-          ← Keşfet sayfasına dön
+        <Link href="/" className="btn btn-ghost -ml-2 text-sm">
+          <Icon name="arrowLeft" size={16} />
+          Keşfet
         </Link>
-        {isInactive && (
-          <span className="text-xs text-rose-400 font-semibold bg-rose-500/10 px-2.5 py-1 rounded-lg border border-rose-500/20">
-            🚫 Piyasa Arşivi Modu
-          </span>
-        )}
+        {isInactive && <span className="badge badge-danger">Arşiv kaydı</span>}
       </div>
 
       {/* Arşivdeki / Satılan İlan Uyarısı & Orijinal Link Doğrulama */}
@@ -198,7 +199,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         <div className="rounded-2xl border border-rose-500/30 bg-gradient-to-r from-rose-950/40 via-slate-900/80 to-rose-950/40 p-4 sm:p-5 shadow-xl backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3.5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
-              <span className="text-xl">📁</span>
+              <Icon name="clock" size={20} />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -228,8 +229,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
               className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 px-4 py-2.5 text-xs font-bold transition shadow-sm"
               title="İlanın orijinal sitede gerçekten kapandığını doğrulamak için aç"
             >
-              <span>🔗 Orijinal Kaynakta Doğrula</span>
-              <span className="text-[10px]">↗</span>
+              <Icon name="external" size={14} />
+              Orijinal kaynakta doğrula
             </a>
           )}
         </div>
@@ -244,24 +245,36 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         <div className="space-y-5">
           <div className="flex flex-wrap gap-2">
             <SourceBadge source={car.sourceSite} />
-            <span className="badge badge-accent">{car.year}</span>
-            {car.damageFlag && <span className="badge badge-danger">Hasar İlanı</span>}
-            {car.status === "sold" && <span className="badge border-white/20 bg-white/10 text-slate-300">Satıldı</span>}
-            {car.status === "removed" && <span className="badge border-rose-500/30 bg-rose-500/20 text-rose-300 font-bold">🚫 Yayından Kaldırıldı / Arşiv</span>}
+            {car.damageFlag && <span className="badge badge-danger">Hasar kaydı</span>}
+            {car.status === "sold" && <span className="badge">Satıldı</span>}
+            {car.status === "removed" && <span className="badge badge-danger">Yayından kaldırıldı</span>}
           </div>
 
           <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-amber-300">{car.brand}</p>
-            <h1 className="text-3xl font-black leading-tight md:text-4xl">{car.title}</h1>
-            <p className="mt-2 text-slate-400">
-              {car.city} • {formatNumber(car.mileage)} km
+            <p className="eyebrow">
+              <span className="text-[var(--text)]">{car.year}</span>
+              <span className="mx-2 text-[var(--faint)]">/</span>
+              {car.city}
+            </p>
+            <h1 className="font-display mt-1.5 text-3xl font-bold leading-[1.08] md:text-[2.5rem]">{carHeadline(car)}</h1>
+            {carHeadline(car) !== car.title && <p className="mt-2 text-sm text-[var(--muted)]">{car.title}</p>}
+            <p className="num mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
+              <span className="inline-flex items-center gap-1.5">
+                <Icon name="road" size={15} className="text-[var(--faint)]" />
+                {formatNumber(car.mileage)} km
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Icon name="pin" size={15} className="text-[var(--faint)]" />
+                {car.city}
+              </span>
             </p>
             {car.status === "active" && car.sourceSite !== "user" && lastChecked && (
               <p
-                className="mt-1 text-xs text-emerald-300/80"
+                className="mt-2 inline-flex items-center gap-1.5 text-xs text-[var(--cheap)]"
                 title={new Date(lastChecked).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
               >
-                ✓ Kaynakta son kontrol: {formatRelativeTr(lastChecked)}
+                <Icon name="check" size={14} strokeWidth={2} />
+                Kaynakta son kontrol: {formatRelativeTr(lastChecked)}
               </p>
             )}
             {car.status === "active" && car.sourceSite === "arabam" && isStaleCheck(lastChecked) && (
@@ -272,7 +285,10 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
             )}
           </div>
 
-          <p className="text-4xl font-black text-[var(--text)]">{formatPrice(car.price)}</p>
+          <div className="space-y-3 border-y border-[var(--border)] py-4">
+            <p className="num text-[2.4rem] font-semibold leading-none tracking-tight">{formatPrice(car.price)}</p>
+            <MarketGauge price={car.price} avg={car.marketAvgPrice} count={car.marketListingCount} size="md" />
+          </div>
 
           {car.status === "sold" && (
             <div className="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm text-slate-300">
@@ -299,6 +315,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
               </span>
             ))}
           </div>
+
+          {car.status === "active" && car.sourceSite !== "user" && <MarketTempoCard carId={car._id} />}
 
           {fuelCost && <FuelCostCard cost={fuelCost} />}
 
@@ -337,7 +355,13 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
             <ViewerOfferBox carId={car._id} listingPrice={car.price} minOffer={car.minOffer || 0} />
           )}
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2.5">
+            {car.listingUrl && (
+              <a href={car.listingUrl} target="_blank" rel="noreferrer" className="btn btn-primary">
+                Orijinal ilana git
+                <Icon name="external" size={16} />
+              </a>
+            )}
             <FavoriteOrLogin carId={car._id} />
             <CompareButton carId={car._id} variant="full" />
             <ShareButton title={car.title} />
@@ -371,16 +395,6 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
                 price: c.price,
               }))}
             />
-            {car.listingUrl && (
-              <a
-                href={car.listingUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-secondary"
-              >
-                Orijinal ilana git
-              </a>
-            )}
           </div>
 
           <ViewerReportButton carId={car._id} />
@@ -389,21 +403,21 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card p-5">
-          <h2 className="mb-5 text-xl font-semibold">Teknik özellikler</h2>
+          <h2 className="font-display mb-5 text-xl font-semibold">Teknik özellikler</h2>
           <div className="space-y-5">
             {specGroups.map((group) => (
               <div key={group.title}>
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-amber-300/80">
+                <p className="eyebrow mb-2">
                   {group.title}
                 </p>
                 <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
                   {group.rows.map((row) => (
                     <div
                       key={row.label}
-                      className="flex items-center justify-between gap-3 border-b border-white/5 pb-2"
+                      className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-2"
                     >
-                      <dt className="text-sm text-slate-500">{row.label}</dt>
-                      <dd className="text-right text-sm font-medium text-slate-100">{row.value}</dd>
+                      <dt className="text-sm text-[var(--muted)]">{row.label}</dt>
+                      <dd className="text-right text-sm font-medium">{row.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -412,7 +426,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
             {f.safetyFeatures && f.safetyFeatures.length > 0 && (
               <div>
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-amber-300/80">
+                <p className="eyebrow mb-2">
                   Güvenlik & donanım
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -451,7 +465,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
         <div className="card space-y-6 p-5">
           <div>
-            <h2 className="mb-4 text-xl font-semibold">Fiyat geçmişi</h2>
+            <h2 className="font-display mb-4 text-xl font-semibold">Fiyat geçmişi</h2>
             <CarPriceHistoryChart data={chartData} />
           </div>
           <PriceHistogram
@@ -485,10 +499,10 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
       {similarCars.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Benzer ilanlar</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <h2 className="font-display text-xl font-semibold">Benzer ilanlar</h2>
+          <div className="listing-grid">
             {similarCars.map((similar) => (
-              <CarCard key={similar._id} car={serializeCarListItem(similar)} layout="vertical" />
+              <CarCard key={similar._id} car={serializeCarListItem(similar)} />
             ))}
           </div>
         </div>

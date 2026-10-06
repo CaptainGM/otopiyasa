@@ -122,7 +122,7 @@ class _OfferThreadScreenState extends State<OfferThreadScreen> {
               border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
             ),
             child: const Text(
-              '🛡️ Güvenliğin için (alıcı ve satıcı): görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı '
+              'Güvenliğin için (alıcı ve satıcı): görüşmeyi WhatsApp/Instagram gibi platformlara taşımayı '
               'önerme ya da kabul etme. Aracı görmeden/denemeden asla kapora ya da ön ödeme gönderme. '
               'IBAN/hesap numarası isteyen ya da gönderen, harici bir siteye veya "güvenli ödeme" bağlantısına '
               'yönlendiren kişiye güvenme; ödemeyi ve devri aracı görüp yüz yüze, noterde yap. '
@@ -175,7 +175,7 @@ class _OfferThreadScreenState extends State<OfferThreadScreen> {
           if (offer.sellerPhone.isNotEmpty) ...[
             const SizedBox(height: 8),
             SelectableText(
-              '📞 Satıcı: ${offer.sellerPhone}',
+              'Satıcı: ${offer.sellerPhone}',
               style: theme.textTheme.titleSmall,
             ),
           ],
@@ -233,7 +233,7 @@ class _OfferThreadScreenState extends State<OfferThreadScreen> {
                   children: event.riskFlags
                       .map(
                         (flag) => Text(
-                          '⚠️ ${riskFlagLabels[flag] ?? flag}',
+                          riskFlagLabels[flag] ?? flag,
                           style: const TextStyle(fontSize: 10, color: Colors.redAccent),
                         ),
                       )

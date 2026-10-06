@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatRelativeTr, getTurkeyDateStr, getTurkeyYesterdayStr } from "@/lib/utils";
 import { formatActiveTime, type DaySummary, type HourSlot, type WatcherStatus } from "@/lib/home-watcher-status";
+import { useVisibleInterval } from "@/components/useVisibleInterval";
 
 interface WatcherItem {
   _id: string;
@@ -80,9 +81,8 @@ export function HomeWatcherPanel() {
 
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 30_000);
-    return () => clearInterval(timer);
   }, [load]);
+  useVisibleInterval(load, 30_000);
 
   useEffect(() => {
     if (!openDate) return;

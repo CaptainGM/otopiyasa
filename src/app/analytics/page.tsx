@@ -1,6 +1,5 @@
 // Grafikler sayfa boyandıktan SONRA yüklenir (recharts ağır) — bkz. LazyCharts.
 import { Suspense } from "react";
-import { unstable_cache } from "next/cache";
 import {
   InteractiveModelAnalytics,
   MarketInsightsCharts,
@@ -12,14 +11,15 @@ import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { formatNumber, formatPrice, trPercent } from "@/lib/utils";
 import { StatsResponse } from "@/types";
-import { CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
 import { MARKET_LISTING_FILTER as PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { mergeCategoryStats, normalizeBodyType, normalizeTransmission, trustedFeatureFilter } from "@/lib/vehicle-attrs";
 
 // ISR: 2 dakikada bir arka planda tazeler — anlık yükleme + güncel veri
-// Analiz verisi en fazla 5 dakika gecikmeli: yeni ilan eklenince/arşive gidince sayfa kendiliğinden yenilenir.
-export const revalidate = 300;
+// Analiz sayfası 6 saatte bir yeniden çizilir (ISR). Eskiden 5 dakikaydı ve ayrıca veri önbelleği (unstable_cache)
+// vardı: her yenileme ~38 yazma birimi, günde ~15 bin; Vercel ücretsiz planın aylık 200 bin ISR yazma limitini tek
+// başına aşıyordu. Piyasa göstergeleri saatler içinde anlamlı değişmediği için 6 saat yeterli.
+export const revalidate = 21600;
 
 /**
  * Vites, yakıt ve kasa tipi Arabam toplu çekiminde ilan BAŞLIĞINDAN tahmin ediliyordu (örn. başlıkta "otomatik"
@@ -31,8 +31,7 @@ export const revalidate = 300;
  */
 const MIN_TRUSTED_COVERAGE = 0.25;
 
-const getAnalyticsData = unstable_cache(
-  async () => {
+const getAnalyticsData = async () => {
     await connectDB();
     // 1. Marka özetleri: TÜM aktif ilanlardan (aynı fiyat süzgeciyle). Eskiden yalnızca en yeni 1.200 ilandan
     // hesaplanıyordu; grafik "veritabanındaki markaların tamamı" derken Volkswagen'i 1.240 yerine 197 ilan gösteriyordu.
@@ -199,10 +198,7 @@ const getAnalyticsData = unstable_cache(
         generatedAt: new Date().toISOString(),
       },
     };
-  },
-  ["analytics:all:v8"],
-  { revalidate: CACHE_TTL.medium / 1000 }
-);
+};
 
 function AnalyticsLoading() {
   return (
@@ -282,7 +278,7 @@ async function AnalyticsContent() {
         <h1 className="text-3xl font-extrabold text-white">İkinci El Araç Piyasası Analizi</h1>
         <p className="mt-1 text-sm text-slate-400">
           Türkiye pazarındaki güncel otomobil, SUV ve hafif ticari ilanlarıyla bütçe segmentleri, yakıt, vites, kasa tipleri ve fiyat trendleri (motosiklet, kamyon ve karavan bu göstergelere katılmaz).
-          Arşivdeki (kaldırılmış) ilanlar bu analize katılmaz; veriler en fazla 5 dakika gecikmeyle otomatik yenilenir.
+          Arşivdeki (kaldırılmış) ilanlar bu analize katılmaz; veriler 6 saatte bir kendiliğinden yenilenir.
           {insightsData.generatedAt && (
             <> Son hesaplama: {new Date(insightsData.generatedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })}.</>
           )}

@@ -15,7 +15,7 @@ import 'package:otopiyasa/screens/map_screen.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
 import 'package:otopiyasa/screens/analytics_screen.dart';
 import 'package:otopiyasa/screens/nearby_screen.dart';
-import 'package:otopiyasa/screens/home_screen.dart';
+import 'package:otopiyasa/screens/main_shell.dart';
 import 'package:otopiyasa/screens/login_screen.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
@@ -44,23 +44,30 @@ Future<void> main() async {
 Future<void> _initializeSessionAndNotifications() async {
   try {
     await ApiService().restoreSession();
-    if (!ApiService().isLoggedIn) return;
-
-    try {
-      await NotificationService.instance.init();
-      NotificationService.instance.startPolling();
-    } catch (error) {
-      debugPrint('Bildirimler başlatılamadı: $error');
-    }
-
-    try {
-      await PushService.instance.init();
-    } catch (error) {
-      debugPrint('Push bildirimleri başlatılamadı: $error');
-    }
   } catch (error) {
     // Secure storage or network failure must not keep the app from opening.
     debugPrint('Oturum geri yüklenemedi: $error');
+  }
+  // Bildirimler oturum açıkken başlar: uygulama açılışında ya da sonradan giriş yapılınca. Eskiden yalnızca açılışta
+  // bakılıyordu; çıkışlı açılıp sonra giriş yapan telefon, uygulama yeniden başlatılana kadar push jetonu kaydetmiyordu.
+  ApiService().authRevision.addListener(() {
+    if (ApiService().isLoggedIn) unawaited(_startNotifications());
+  });
+  if (ApiService().isLoggedIn) await _startNotifications();
+}
+
+Future<void> _startNotifications() async {
+  try {
+    await NotificationService.instance.init();
+    NotificationService.instance.startPolling();
+  } catch (error) {
+    debugPrint('Bildirimler başlatılamadı: $error');
+  }
+
+  try {
+    await PushService.instance.init();
+  } catch (error) {
+    debugPrint('Push bildirimleri başlatılamadı: $error');
   }
 }
 
@@ -77,7 +84,7 @@ class OtoPiyasaApp extends StatelessWidget {
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: mode,
-        home: const HomeScreen(),
+        home: const MainShell(),
                 onGenerateRoute: (settings) {
           final uri = Uri.tryParse(settings.name ?? '');
           if (uri != null) {

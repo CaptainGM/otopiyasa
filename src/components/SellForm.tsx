@@ -1,5 +1,6 @@
 "use client";
 
+import { Icon } from "@/components/Icon";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { fuelTypes, transmissions } from "@/lib/seed-data";
@@ -154,7 +155,7 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
   if (result?.status === "approved") {
     return (
       <div className="card space-y-2 p-8 text-center">
-        <p className="text-4xl">✅</p>
+        <Icon name="check" size={40} strokeWidth={2} className="mx-auto text-[var(--cheap)]" />
         <p className="font-semibold text-emerald-300">İlanın yayınlandı!</p>
         <p className="text-sm text-slate-400">Profil sayfana yönlendiriliyorsun…</p>
       </div>
@@ -165,7 +166,7 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
     <form onSubmit={handleSubmit} className="card space-y-5 p-6">
       {result?.status === "rejected" && (
         <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-200">
-          ⚠️ İlanın yayınlanamadı: {result.reason}
+          İlanın yayınlanamadı: {result.reason}
           <br />
           Bilgileri düzeltip tekrar gönderebilirsin. (Sana e-posta da gönderdik.)
         </div>
@@ -212,7 +213,7 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
                 }}
                 className="text-xs text-amber-400 hover:text-amber-300 transition underline cursor-pointer"
               >
-                {isCustomModel ? "← Listeden Seç" : "➕ Listede Yok / Kendin Yaz"}
+                {isCustomModel ? "← Listeden Seç" : "Listede Yok / Kendin Yaz"}
               </button>
             )}
           </div>
@@ -248,7 +249,7 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
               {availableModels.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
-              <option value="__custom__">➕ Diğer (Modeli Kendin Yaz...)</option>
+              <option value="__custom__">Diğer (Modeli Kendin Yaz...)</option>
             </select>
           )}
         </div>

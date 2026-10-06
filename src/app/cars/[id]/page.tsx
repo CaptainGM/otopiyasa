@@ -9,21 +9,15 @@ import { CarDetailBody } from "./CarDetailBody";
 import { RestrictedListingGate } from "@/components/ListingViewerIslands";
 
 /**
- * İlan sayfası herkes için aynı HTML'dir ve 30 dakika önbellekte kalır (ISR). Vercel'de her ziyaret ve her
- * bot taraması sayfayı ~10 sorguyla yeniden çiziyordu; CPU ve aktarım limiti en çok buradan bitiyordu.
+ * İlan sayfası her istekte çizilir (ISR yok). 30 dakikalık ISR'da her ilan her yenilemede ~37 yazma birimi
+ * (HTML + RSC ≈ 300 KB) harcıyordu; botların 26 bin ilanı gezmesiyle Vercel ücretsiz planın aylık 200 bin ISR
+ * yazma limiti bir günde %75 doldu (2026-10-06). İlan sayfaları artık arama motorlarına ve botlara kapalı (robots.ts,
+ * middleware.ts); yalnızca gerçek ziyaretçiler sayfa çizdirir ve her zaman güncel fiyatı görür.
  * Giriş yapmış kişiye/ilan sahibine göre değişen parçalar tarayıcıda yüklenir (ListingViewerIslands).
  * Herkese açık olmayan ilanlar (arşiv, satıldı, onay bekleyen) burada gösterilmez; sahibi ve yönetici
  * /cars/[id]/onizleme adresinden görür.
  */
-export const revalidate = 1800;
-
-/**
- * Boş liste: derlemede hiçbir ilan önceden çizilmez; her ilan ilk ziyarette çizilip saklanır. Bu olmadan
- * Next dinamik segmenti her istekte yeniden çiziyor (derleme çıktısında "ƒ"), revalidate işe yaramıyordu.
- */
-export function generateStaticParams() {
-  return [];
-}
+export const dynamic = "force-dynamic";
 
 interface CarDetailPageProps {
   params: Promise<{ id: string }>;

@@ -21,6 +21,9 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { isMixedSort } from "@/lib/car-mix";
 import { normalizeCity } from "@/lib/normalize-city";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
+import { getMarketBoard, type MarketBoard } from "@/lib/market-board";
+import { VEHICLE_CLASSES } from "@/lib/vehicle-scope";
+import { Icon } from "@/components/Icon";
 
 interface HomeProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -69,6 +72,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
   let cityOptions: string[] = [];
   let colorOptions: ColorOption[] = [];
   let brandModelOptions: Record<string, string[]> = {};
+  let boardData: MarketBoard | null = null;
 
   try {
     await connectDB();
@@ -87,6 +91,8 @@ export default async function HomePage({ searchParams }: HomeProps) {
       cached("home:colors", CACHE_TTL.medium, () => getColorOptions()),
     ]);
     brandOptions = brandModelData.brands;
+    // Pano yalnızca filtresiz açılışta görünür; hata verirse sayfa onsuz açılır.
+    boardData = await getMarketBoard().catch(() => null);
     // Filtrede model aileleri: "Juke" seçilince tüm Juke donanımları gelir.
     brandModelOptions = brandModelData.brandFamilies;
 
@@ -121,98 +127,136 @@ export default async function HomePage({ searchParams }: HomeProps) {
     !!filters.priceMax ||
     !!filters.fuelType ||
     !!filters.transmission;
+  // Fırsatlar, en çok bakılanlar, yakındakiler araç tipine göre süzülmüyor: tip seçilince gizlenir.
+  const showStrips = !hasAnyFilter && !filters.vehicleClass;
+
+  const board = boardData;
+  const activeClass = filters.vehicleClass;
+  const listHeading = activeClass
+    ? VEHICLE_CLASSES.find((c) => c.value === activeClass)?.label ?? "İlanlar"
+    : hasAnyFilter
+      ? "Sonuçlar"
+      : "Tüm ilanlar";
 
   return (
     <div className="space-y-8 pb-10">
       {!hasAnyFilter && (
-      <section className="hero card overflow-hidden p-6 sm:p-8 md:p-10">
-        <div className="hero-grid items-center">
-          <div className="space-y-5">
-            <p className="inline-flex items-center gap-2 rounded-full border border-amber-400/25 bg-amber-400/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-amber-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-300" aria-hidden />
-              OtoPiyasa mobil + web
-            </p>
-            <h1 className="max-w-2xl text-3xl font-black leading-[1.1] tracking-tight sm:text-4xl md:text-5xl">
-              Türkiye ilan piyasasından{" "}
-              <span className="text-amber-300">araç fiyatlarını</span>{" "}
-              takip et
-            </h1>
-            <p className="max-w-xl text-[15px] leading-relaxed text-slate-400">
-              İlan siteleri ve kurumsal galerilerden derlenen ilanları filtrele. Her araç için
-              marka / model / yıl bazında piyasa ortalamasını gör, gerçek ilana tek tıkla ulaş.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="stat-tile">
-              <span className="stat-tile-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path d="M4 17h1.5a2.5 2.5 0 0 0 5 0h3a2.5 2.5 0 0 0 5 0H20a1 1 0 0 0 1-1v-3.28a2 2 0 0 0-.4-1.2l-2.4-3.2a2 2 0 0 0-1.6-.8H15V6a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-                  <circle cx="7.5" cy="17" r="1.6" stroke="currentColor" strokeWidth="1.6" />
-                  <circle cx="16" cy="17" r="1.6" stroke="currentColor" strokeWidth="1.6" />
-                </svg>
-              </span>
-              <div>
-                <span className="text-xs uppercase tracking-widest text-slate-500">
-                  Aktif ilan
-                </span>
-                <strong>{total.toLocaleString("tr-TR")}</strong>
+        <section className="card overflow-hidden">
+          <div className="hero grid-paper grid gap-8 p-5 sm:p-8 lg:grid-cols-[1.3fr_1fr] lg:items-end lg:p-10">
+            <div className="space-y-5">
+              <p className="eyebrow flex items-center gap-2">
+                <span className="live-dot" aria-hidden />
+                Piyasa panosu · canlı
+              </p>
+              <h1 className="font-display text-[2.15rem] font-bold leading-[1.02] sm:text-5xl lg:text-[3.5rem]">
+                Fiyat iyi mi?
+                <br />
+                <span className="text-[var(--muted)]">Piyasaya sor.</span>
+              </h1>
+              <p className="max-w-xl text-[0.95rem] leading-relaxed text-[var(--muted)]">
+                {board ? `${board.sources} kaynaktan` : "Kaynak sitelerden"} toplanan her ilan kendi marka, model ve yıl
+                emsalleriyle karşılaştırılır. Kartlardaki çizgi fiyatın yerini gösterir:{" "}
+                <span className="text-[var(--cheap)]">ucuz</span>, <span className="text-[var(--fair)]">adil</span>,{" "}
+                <span className="text-[var(--pricey)]">pahalı</span>.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Link href="/predict" className="btn btn-primary">
+                  <Icon name="spark" size={17} />
+                  Aracımın değeri ne?
+                </Link>
+                <Link href="/analytics" className="btn btn-secondary">
+                  Piyasa analizi
+                </Link>
+                <Link href="/sell" className="btn btn-ghost">
+                  Ücretsiz ilan ver
+                  <Icon name="arrowRight" size={16} />
+                </Link>
               </div>
             </div>
-            <Link href="/sell" className="stat-tile sm:col-span-2 group cursor-pointer" aria-label="Ücretsiz ilan ver">
-              <span className="stat-tile-icon">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path d="M4 12h16M12 4v16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
-              </span>
-              <div>
-                <span className="text-xs uppercase tracking-widest text-slate-500">
-                  Kendi ilanın
-                </span>
-                <strong className="text-lg">Ücretsiz ilan ver</strong>
-              </div>
-              <span className="ml-auto self-center text-xl text-amber-300 transition-transform group-hover:translate-x-1" aria-hidden>
-                →
-              </span>
-            </Link>
+
+            {board && (
+              <dl className="board">
+                <div className="board-cell">
+                  <dt className="eyebrow">Aktif ilan</dt>
+                  <dd className="num board-value">{board.total.toLocaleString("tr-TR")}</dd>
+                </div>
+                <div className="board-cell">
+                  <dt className="eyebrow">Son 24 saat</dt>
+                  <dd className="num board-value">+{board.addedLastDay.toLocaleString("tr-TR")}</dd>
+                </div>
+                <div className="board-cell">
+                  <dt className="eyebrow">Piyasanın altında</dt>
+                  <dd className="num board-value text-[var(--cheap)]">{board.belowMarket.toLocaleString("tr-TR")}</dd>
+                </div>
+                <div className="board-cell">
+                  <dt className="eyebrow">Kaynak site</dt>
+                  <dd className="num board-value">{board.sources}</dd>
+                </div>
+              </dl>
+            )}
           </div>
-        </div>
-      </section>
+
+          <nav
+            aria-label="Araç tipi"
+            className="flex gap-2 overflow-x-auto border-t border-[var(--border)] px-5 py-3 [scrollbar-width:none] sm:px-8 lg:px-10"
+          >
+            <Link href="/" className={`chip ${!activeClass ? "chip-active" : ""}`} aria-current={!activeClass ? "true" : undefined}>
+              Tümü
+            </Link>
+            {VEHICLE_CLASSES.map((c) => {
+              const count = board?.classCounts[c.value] ?? 0;
+              if (count === 0) return null;
+              const active = activeClass === c.value;
+              return (
+                <Link
+                  key={c.value}
+                  href={`/?vehicleClass=${c.value}`}
+                  className={`chip ${active ? "chip-active" : ""}`}
+                  aria-current={active ? "true" : undefined}
+                >
+                  {c.label}
+                  <span className="num text-[0.72rem] opacity-60">{count.toLocaleString("tr-TR")}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </section>
       )}
 
-      {!hasAnyFilter && <RecentlyViewedStrip />}
+      {showStrips && <RecentlyViewedStrip />}
 
-      {!hasAnyFilter && <NearbyListings />}
+      {showStrips && <NearbyListings />}
 
-      {!hasAnyFilter && (
+      {showStrips && (
         <Suspense fallback={null}>
           <DealsStrip />
         </Suspense>
       )}
 
-      {!hasAnyFilter && (
+      {showStrips && (
         <Suspense fallback={null}>
           <TrendingStrip />
         </Suspense>
       )}
 
       {dbError && (
-        <div className="card border border-red-400/30 bg-red-500/10 p-5 text-red-200">
-          MongoDB bağlantısı kurulamadı. `.env` dosyasını kontrol et.
+        <div className="card border-[var(--danger)] p-5 text-[var(--danger)]">
+          İlanlar şu an yüklenemiyor. Birkaç dakika sonra yeniden deneyin.
         </div>
       )}
 
       {hasQuery ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-slate-400">
-            <span className="text-slate-200">&ldquo;{filters.q}&rdquo;</span> için arama sonuçları
+          <p className="text-[var(--muted)]">
+            <span className="text-[var(--text)]">&ldquo;{filters.q}&rdquo;</span> için arama sonuçları
           </p>
           <Link href="/" className="btn btn-secondary text-sm">
-            ← Aramayı temizle
+            <Icon name="close" size={15} />
+            Aramayı temizle
           </Link>
         </div>
       ) : (
-        <Suspense fallback={<div className="card p-5 text-slate-400">Filtreler yükleniyor...</div>}>
+        <Suspense fallback={<div className="card p-5 text-[var(--muted)]">Filtreler yükleniyor...</div>}>
           <CarFilters
             availableBrands={brandOptions}
             availableCities={cityOptions}
@@ -223,44 +267,43 @@ export default async function HomePage({ searchParams }: HomeProps) {
       )}
 
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-2xl font-bold tracking-tight">{total} ilan</h2>
-          <div className="flex items-center gap-3">
-            <div className="flex overflow-hidden rounded-full border border-white/10 text-xs font-bold">
-              <span className="bg-amber-400/15 px-3 py-1.5 text-amber-300">Liste</span>
-              <Link
-                href="/map"
-                className="px-3 py-1.5 text-slate-400 transition hover:bg-white/5 hover:text-[var(--text)]"
-              >
-                Harita
-              </Link>
-            </div>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">{isFeed ? "Keşfet · karışık sıra" : "Liste"}</p>
+            <h2 className="font-display text-2xl font-semibold">
+              {listHeading} <span className="num text-lg font-normal text-[var(--muted)]">{total.toLocaleString("tr-TR")}</span>
+            </h2>
+          </div>
+          <div className="segmented" role="group" aria-label="Görünüm">
+            <span aria-current="true">
+              <Icon name="grid" size={15} />
+              Liste
+            </span>
+            <Link href="/map">
+              <Icon name="map" size={15} />
+              Harita
+            </Link>
           </div>
         </div>
 
         {!isFeed && items.length === 0 ? (
-          <div className="card flex flex-col items-center gap-3 p-14 text-center text-slate-400">
-            <span className="stat-tile-icon h-12 w-12 rounded-2xl">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <path d="M4 17h1.5a2.5 2.5 0 0 0 5 0h3a2.5 2.5 0 0 0 5 0H20a1 1 0 0 0 1-1v-3.28a2 2 0 0 0-.4-1.2l-2.4-3.2a2 2 0 0 0-1.6-.8H15V6a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-                <circle cx="7.5" cy="17" r="1.6" stroke="currentColor" strokeWidth="1.6" />
-                <circle cx="16" cy="17" r="1.6" stroke="currentColor" strokeWidth="1.6" />
-              </svg>
-            </span>
-            <p>Henüz ilan yok. Üstten demo veya gerçek kaynaklardan veri çek.</p>
+          <div className="card flex flex-col items-center gap-3 p-14 text-center text-[var(--muted)]">
+            <Icon name="search" size={28} className="text-[var(--faint)]" />
+            <p>Bu filtrelerle eşleşen ilan bulunamadı.</p>
+            <Link href="/" className="btn btn-secondary text-sm">
+              Filtreleri temizle
+            </Link>
           </div>
         ) : (
-          <>
-            <InfiniteCarList
-              initialItems={items.map(serializeCarListItem)}
-              initialPage={filters.page || 1}
-              totalPages={totalPages}
-              total={total}
-              pageSize={pageSize}
-              query={listParams.toString()}
-              feed={isFeed}
-            />
-          </>
+          <InfiniteCarList
+            initialItems={items.map(serializeCarListItem)}
+            initialPage={filters.page || 1}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            query={listParams.toString()}
+            feed={isFeed}
+          />
         )}
       </section>
     </div>

@@ -6,6 +6,8 @@ import { SourceBadge } from "@/components/SourceBadge";
 import { CompareButton } from "@/components/CompareButton";
 import { CardGallery } from "@/components/CardGallery";
 import { ImageLightboxButton } from "@/components/ImageLightboxButton";
+import { MarketGauge } from "@/components/MarketGauge";
+import { carHeadline } from "@/lib/car-headline";
 
 function priceDropPercent(car: CarListItem): number | null {
   const history = car.priceHistory;
@@ -16,12 +18,17 @@ function priceDropPercent(car: CarListItem): number | null {
   return Math.round(((previous - current) / previous) * 100);
 }
 
+/**
+ * İlan kartı (akış, benzer ilanlar, favoriler). Düzen: fotoğraf → yıl · şehir → marka model → satıcı başlığı →
+ * km · yakıt · vites → fiyat → piyasa göstergesi (ucuz/adil/pahalı). Fiyat ve rakamlar eş aralıklı yazıyla,
+ * kartlar arasında hizalı okunur.
+ */
 export function CarCard({
   car,
-  layout = "horizontal",
   priority = false,
 }: {
   car: CarListItem;
+  /** Geriye dönük uyumluluk; tüm kartlar aynı düzeni kullanır. */
   layout?: "horizontal" | "vertical";
   /** Sayfanın ilk ekranındaki kart: ilk fotoğraf öncelikli yüklenir. */
   priority?: boolean;
@@ -29,119 +36,62 @@ export function CarCard({
   const gallery = car.images?.filter(Boolean) ?? [];
   if (gallery.length === 0 && car.imageUrl) gallery.push(car.imageUrl);
   const priceDrop = priceDropPercent(car);
+  const name = carHeadline(car);
+  // Doğrulanmamış özellik yazılmaz; yerine soluk "doğrulanıyor" etiketi çıkar (bkz. feature-chips.ts).
+  const specs = [
+    { label: `${formatNumber(car.mileage)} km`, pending: false },
+    ...featureChips([car.features.fuelType, car.features.transmission]),
+  ];
+  const href = `/cars/${car._id}`;
 
-  if (layout === "vertical") {
-    return (
-      <article className="card group flex flex-col overflow-hidden transition duration-200 hover:-translate-y-1 hover:border-amber-400/30 hover:bg-white/[0.025]">
-        {/* Resim Üstte — tam genişlik, karizmatik 16/10 oran */}
-        <div className="relative aspect-[16/10] w-full shrink-0 overflow-hidden bg-[var(--bg-soft)]">
-          <CardGallery images={gallery} alt={car.title} href={`/cars/${car._id}`} priority={priority} />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070b12]/80 via-transparent to-transparent" />
-
-          <div className="pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
-            <SourceBadge source={car.sourceSite} overlay />
-            <span className="badge badge-accent">{car.year}</span>
-            {car.damageFlag && <span className="badge badge-danger">Hasar</span>}
-            {priceDrop !== null && (
-              <span className="badge border-emerald-400/30 bg-emerald-500/15 text-emerald-300">
-                ↓ %{priceDrop}
-              </span>
-            )}
-          </div>
-
-          {gallery.length > 0 && (
-            <div className="absolute right-2.5 top-2.5">
-              <ImageLightboxButton images={gallery} title={car.title} />
-            </div>
-          )}
-        </div>
-
-        {/* Fiyat ve Açıklamalar Altta */}
-        <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 p-3.5 sm:p-4">
-          <div className="space-y-1.5">
-            <Link href={`/cars/${car._id}`} prefetch={false} className="text-inherit hover:text-amber-300">
-              <h3 className="line-clamp-2 text-sm font-bold leading-snug sm:text-base">{car.title}</h3>
-            </Link>
-            <p className="truncate text-xs text-slate-400">
-              {car.city} • {formatNumber(car.mileage)} km
-            </p>
-            <div className="flex flex-wrap gap-1.5 pt-1 text-[11px] text-slate-300">
-              {featureChips([car.features.fuelType, car.features.transmission]).map((c) => (
-                <span key={c.label} className={`rounded-full border px-2 py-0.5 ${c.pending ? "border-dashed border-white/15 text-slate-500" : "border-white/10 bg-white/5"}`}>
-                  {c.label}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-end justify-between gap-2 border-t border-white/10 pt-3">
-            <div className="min-w-0">
-              <p className="text-lg font-black tracking-tight text-amber-300 sm:text-xl">{formatPrice(car.price)}</p>
-            </div>
-            <CompareButton carId={car._id} variant="icon" />
-          </div>
-        </div>
-      </article>
-    );
-  }
-
-  // Varsayılan yatay liste görünümü (ana akış)
   return (
-    <article className="card group overflow-hidden transition duration-200 hover:border-amber-400/30 hover:bg-white/[0.025]">
-      <div className="flex min-h-36 sm:min-h-48 lg:min-h-[240px]">
-        <div className="relative w-32 shrink-0 overflow-hidden bg-[var(--bg-soft)] sm:w-60 lg:w-[36%] lg:min-w-[320px] lg:max-w-[480px]">
-          <CardGallery images={gallery} alt={car.title} href={`/cars/${car._id}`} priority={priority} />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070b12]/75 via-transparent to-transparent" />
+    <article className="card listing-card group flex flex-col overflow-hidden">
+      <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-[var(--bg-soft)]">
+        <CardGallery images={gallery} alt={car.title} href={href} priority={priority} />
 
-          <div className="pointer-events-none absolute left-3 top-3 hidden flex-wrap gap-2 sm:flex">
-            <SourceBadge source={car.sourceSite} overlay />
-            <span className="badge badge-accent">{car.year}</span>
-            {car.damageFlag && <span className="badge badge-danger">Hasar Kaydı</span>}
-            {priceDrop !== null && (
-              <span className="badge border-emerald-400/30 bg-emerald-500/15 text-emerald-300">
-                ↓ Fiyat düştü %{priceDrop}
-              </span>
-            )}
-          </div>
+        <div className="pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
+          <SourceBadge source={car.sourceSite} overlay />
+          {car.damageFlag && <span className="badge badge-photo-danger">Hasar kaydı</span>}
+          {priceDrop !== null && <span className="badge badge-photo-drop num">↓ %{priceDrop}</span>}
+        </div>
 
-          {gallery.length > 0 && (
-            <div className="absolute right-3 top-3">
-              <ImageLightboxButton images={gallery} title={car.title} />
-            </div>
+        <div className="absolute right-2.5 top-2.5 flex gap-1.5">
+          {gallery.length > 0 && <ImageLightboxButton images={gallery} title={car.title} />}
+          <CompareButton carId={car._id} variant="icon" />
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-3.5 sm:p-4">
+        <div className="min-w-0 space-y-1">
+          <p className="eyebrow truncate !text-[0.64rem]">
+            <span className="text-[var(--text)]">{car.year}</span>
+            <span className="mx-1.5 text-[var(--faint)]">/</span>
+            {car.city}
+          </p>
+          <Link href={href} prefetch={false} className="block text-inherit">
+            <h3 className="font-display line-clamp-1 text-[1.02rem] font-semibold leading-snug transition-colors group-hover:text-[var(--accent)]">
+              {name}
+            </h3>
+          </Link>
+          {name !== car.title && (
+            <p className="line-clamp-1 text-[0.78rem] text-[var(--muted)]" title={car.title}>
+              {car.title}
+            </p>
           )}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 p-3 sm:p-5 lg:p-6">
-          <div>
-            <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <Link href={`/cars/${car._id}`} prefetch={false} className="text-inherit hover:text-amber-300">
-                  <h3 className="line-clamp-2 text-sm font-bold leading-snug sm:text-lg lg:text-xl">{car.title}</h3>
-                </Link>
-                <p className="mt-1 truncate text-xs text-slate-400 sm:text-sm">
-                  {car.city} • {formatNumber(car.mileage)} km{car.listingDate ? ` • ${car.listingDate}` : ""}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-300 sm:mt-6">
-              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">{car.year}</span>
-              {featureChips([car.features.fuelType, car.features.transmission]).map((c) => (
-                <span key={c.label} className={`rounded-full border px-2.5 py-1 ${c.pending ? "border-dashed border-white/15 text-slate-500" : "border-white/10 bg-white/5"}`}>
-                  {c.label}
-                </span>
-              ))}
-              {car.sourceSite && <span className="sm:hidden"><SourceBadge source={car.sourceSite} /></span>}
-              {car.damageFlag && <span className="badge badge-danger">Hasar</span>}
-              {priceDrop !== null && <span className="badge border-emerald-400/30 bg-emerald-500/15 text-emerald-300">↓ %{priceDrop}</span>}
-            </div>
-          </div>
+        <p className="num flex flex-wrap gap-x-2 gap-y-0.5 text-[0.72rem] text-[var(--muted)]">
+          {specs.map((s, i) => (
+            <span key={s.label} className={`whitespace-nowrap ${s.pending ? "italic text-[var(--faint)]" : ""}`}>
+              {i > 0 && <span className="mr-2 not-italic text-[var(--faint)]">·</span>}
+              {s.pending ? s.label.toLocaleLowerCase("tr") : s.label}
+            </span>
+          ))}
+        </p>
 
-          <div className="flex flex-wrap items-end justify-between gap-3 border-t border-white/10 pt-3 sm:pt-4">
-            <div className="min-w-0">
-              <p className="text-lg font-black tracking-tight text-amber-300 sm:text-2xl lg:text-3xl">{formatPrice(car.price)}</p>
-            </div>
-            <CompareButton carId={car._id} variant="full" />
-          </div>
+        <div className="mt-auto space-y-2.5 border-t border-[var(--border)] pt-3">
+          <p className="num text-[1.35rem] font-semibold leading-none tracking-tight">{formatPrice(car.price)}</p>
+          <MarketGauge price={car.price} avg={car.marketAvgPrice} count={car.marketListingCount} />
         </div>
       </div>
     </article>

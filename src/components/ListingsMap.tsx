@@ -252,7 +252,7 @@ export function ListingsMap() {
                 : "border border-white/10 bg-[#0e1626]/80 text-slate-400 hover:border-amber-400/40 hover:text-amber-200"
             }`}
           >
-            <span>🔥</span>
+            
             <span>Fiyatı Düşenler</span>
             {discountOnly && <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />}
           </button>

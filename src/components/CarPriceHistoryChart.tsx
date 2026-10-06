@@ -48,7 +48,7 @@ function CustomTooltip({
             diffFromFirst < 0 ? "text-emerald-400" : "text-rose-400"
           }`}
         >
-          <span>{diffFromFirst < 0 ? "📉 İlk fiyata göre indirim:" : "📈 İlk fiyata göre artış:"}</span>
+          <span>{diffFromFirst < 0 ? "İlk fiyata göre indirim:" : "İlk fiyata göre artış:"}</span>
           <span>{diffFromFirst < 0 ? "-" : "+"}{formatPrice(Math.abs(diffFromFirst))}</span>
         </p>
       )}

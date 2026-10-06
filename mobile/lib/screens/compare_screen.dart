@@ -274,7 +274,7 @@ class _CompareScreenState extends State<CompareScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('🤖 AI Önerisi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _accent)),
+              const Text('AI Önerisi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: _accent)),
               const SizedBox(height: 8),
               if (_aiLoading)
                 const Row(

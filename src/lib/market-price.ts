@@ -233,6 +233,14 @@ async function computeMarketMap(
     },
   ]);
 
+  return marketStatsFromRows(rows, requested);
+}
+
+/** Marka + model + yıl gruplarından (fiyat listeleriyle) istenen segmentlerin piyasa ortalaması; DB'siz. */
+export function marketStatsFromRows(
+  rows: Array<{ _id: { brand: string; model: string; year: number }; prices?: number[] }>,
+  requested: Array<{ key: string; brand: string; model: string; year: number }>
+): Map<string, MarketSegmentStats> {
   const exactPrices = new Map<string, number[]>();
   const familyPrices = new Map<string, number[]>();
   for (const row of rows) {

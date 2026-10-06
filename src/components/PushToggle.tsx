@@ -98,7 +98,7 @@ export function PushToggle() {
       // 1. Tarayıcı desteği varsa anlık yerel bildirim göster
       if (typeof window !== "undefined" && "Notification" in window) {
         if (Notification.permission === "granted") {
-          new Notification("🔔 OtoPiyasa Test Bildirimi", {
+          new Notification("OtoPiyasa Test Bildirimi", {
             body: "Anlık bildirim altyapınız başarıyla çalışıyor!",
             icon: "/icon.png",
           });
@@ -115,7 +115,7 @@ export function PushToggle() {
         throw new Error(data.error || "Test bildirimi gönderilemedi.");
       }
 
-      setTestSuccess("✅ Test bildirimi gönderildi! Sayfa yenilendiğinde bildirim çanınızda da görebilirsiniz.");
+      setTestSuccess("Test bildirimi gönderildi! Sayfa yenilendiğinde bildirim çanınızda da görebilirsiniz.");
       setTimeout(() => setTestSuccess(null), 5000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Test bildirimi gönderilirken hata oluştu.");
@@ -163,7 +163,7 @@ export function PushToggle() {
             disabled={testing}
             className="btn btn-secondary text-sm border-amber-400/30 text-amber-300 hover:bg-amber-500/10"
           >
-            {testing ? "Gönderiliyor…" : "🔔 Test Bildirimi Gönder"}
+            {testing ? "Gönderiliyor…" : "Test Bildirimi Gönder"}
           </button>
           <button onClick={disable} className="btn btn-secondary text-sm">
             Kapat
@@ -187,7 +187,7 @@ export function PushToggle() {
             className="btn btn-secondary text-sm"
             title="Sistem içi bildirim kaydını test et"
           >
-            {testing ? "Gönderiliyor…" : "🔔 Test Bildirimi"}
+            {testing ? "Gönderiliyor…" : "Test Bildirimi"}
           </button>
         </div>
       )}

@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { CarThumb } from "@/components/CarThumb";
-import { DragScroller } from "@/components/DragScroller";
-import { formatPrice } from "@/lib/utils";
+import { CarStrip, MiniCarCard } from "@/components/CarStrip";
+import { Icon } from "@/components/Icon";
 
 interface NearbyCar {
   _id: string;
@@ -67,15 +65,18 @@ export function NearbyListings() {
 
   if (state === "idle" || state === "loading" || state === "error") {
     return (
-      <section className="card flex flex-wrap items-center justify-between gap-3 p-5">
-        <div>
-          <h2 className="text-lg font-bold">Yakınımdaki ilanlar</h2>
-          <p className="text-sm text-slate-400">
-            {state === "error" ? error : "Konumunu paylaş, en yakın ilanları listeleyelim."}
+      <section className="surface-2 flex flex-wrap items-center gap-3 px-4 py-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted)]">
+          <Icon name="location" size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold">Yakınımdaki ilanlar</h2>
+          <p className={`text-xs ${state === "error" ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>
+            {state === "error" ? error : "Konumunu paylaş, en yakın ilanları mesafeye göre sıralayalım. Konumun yalnızca bu sıralama için kullanılır."}
           </p>
         </div>
-        <button onClick={locate} disabled={state === "loading"} className="btn btn-primary shrink-0">
-          {state === "loading" ? "Konum alınıyor…" : "📍 Konumumu kullan"}
+        <button onClick={locate} disabled={state === "loading"} className="btn btn-secondary shrink-0 text-sm">
+          {state === "loading" ? "Konum alınıyor…" : "Konumumu kullan"}
         </button>
       </section>
     );
@@ -83,47 +84,22 @@ export function NearbyListings() {
 
   if (cars.length === 0) {
     return (
-      <section className="card p-5">
-        <h2 className="text-lg font-bold">Yakınımdaki ilanlar</h2>
-        <p className="mt-1 text-sm text-slate-400">Yakınında eşleşen ilan bulunamadı.</p>
+      <section className="surface-2 px-4 py-3">
+        <h2 className="text-sm font-semibold">Yakınımdaki ilanlar</h2>
+        <p className="mt-0.5 text-xs text-[var(--muted)]">Yakınında eşleşen ilan bulunamadı.</p>
       </section>
     );
   }
 
   return (
-    <section className="space-y-3">
-      <h2 className="text-xl font-bold tracking-tight">Yakınımdaki ilanlar</h2>
-      <DragScroller className="flex gap-4 overflow-x-auto pb-2">
-        {cars.map((car) => (
-          <Link
-            key={car._id}
-            href={`/cars/${car._id}`}
-            className="card group w-60 shrink-0 overflow-hidden transition hover:-translate-y-1"
-          >
-            <div className="relative h-32 w-full bg-[var(--bg-soft)]">
-              <CarThumb
-                src={car.imageUrl}
-                fallbacks={car.images}
-                alt={car.title}
-                className="object-cover transition duration-500 group-hover:scale-105"
-              />
-              <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-bold text-slate-200">
-                📍 {car.district ? `${car.district} · ` : ""}
-                {car.approximate ? "~" : ""}
-                {car.distanceKm.toLocaleString("tr-TR")} km
-              </span>
-            </div>
-            <div className="space-y-1 p-3">
-              <p className="line-clamp-1 text-sm font-semibold">{car.title}</p>
-              <p className="text-xs text-slate-500">
-                {car.year} • {car.city}
-                {car.mileage ? ` • ${car.mileage.toLocaleString("tr-TR")} km` : ""}
-              </p>
-              <p className="text-lg font-black text-amber-300">{formatPrice(car.price)}</p>
-            </div>
-          </Link>
-        ))}
-      </DragScroller>
-    </section>
+    <CarStrip eyebrow="Mesafeye göre" title="Yakınımdaki ilanlar">
+      {cars.map((car) => (
+        <MiniCarCard
+          key={car._id}
+          car={car}
+          tag={`${car.district ? `${car.district} · ` : ""}${car.approximate ? "~" : ""}${car.distanceKm.toLocaleString("tr-TR")} km`}
+        />
+      ))}
+    </CarStrip>
   );
 }

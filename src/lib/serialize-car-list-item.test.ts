@@ -25,7 +25,34 @@ describe("serializeCarListItem", () => {
     expect(item.priceHistory.map((point) => point.price)).toEqual([2, 3]);
     expect(item.features).toEqual({ fuelType: "Benzin", transmission: "Otomatik" });
     expect(item).not.toHaveProperty("description");
-    expect(item).not.toHaveProperty("brand");
+    expect(item).not.toHaveProperty("listingUrl");
+  });
+
+  it("kart başlığı için marka ve modeli taşır", () => {
+    const item = serializeCarListItem({
+      _id: "x",
+      title: "2016 OPEL İNSİGNİA 123.000 KM'DE",
+      brand: "Opel",
+      model: "Insignia 1.6 CDTI",
+      year: 2016,
+      price: 1,
+      mileage: 1,
+      city: "İstanbul",
+    });
+    expect(item.brand).toBe("Opel");
+    expect(item.model).toBe("Insignia 1.6 CDTI");
+  });
+
+  it("kartın piyasa göstergesi için saatlik anlık görüntüyü kullanır", () => {
+    const base = { _id: "x", title: "t", year: 2020, price: 900_000, mileage: 1, city: "İstanbul" };
+    expect(serializeCarListItem({ ...base, market: { avg: 1_000_000, count: 7 } })).toMatchObject({
+      marketAvgPrice: 1_000_000,
+      marketListingCount: 7,
+    });
+    // Anlık hesap verildiyse o kazanır.
+    expect(
+      serializeCarListItem({ ...base, marketAvgPrice: 950_000, marketListingCount: 9, market: { avg: 1_000_000, count: 7 } })
+    ).toMatchObject({ marketAvgPrice: 950_000, marketListingCount: 9 });
   });
 });
 

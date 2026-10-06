@@ -1,16 +1,32 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Archivo, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { ChatWidget } from "@/components/ChatWidget";
 import { CompareTray } from "@/components/CompareTray";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { appBaseUrl } from "@/lib/app-url";
+import { Logo } from "@/components/Logo";
 
+// Yazı ailesi (bkz. globals.css): gövde Inter, başlıklar geniş Archivo, rakamlar eş aralıklı IBM Plex Mono.
+// latin-ext: ğ, ş, ı, İ gibi Türkçe harfler yedek yazı tipine düşmesin.
 const inter = Inter({
-  subsets: ["latin"],
+  subsets: ["latin", "latin-ext"],
   display: "swap",
+  variable: "--font-inter",
+});
+const archivo = Archivo({
+  subsets: ["latin", "latin-ext"],
+  display: "swap",
+  axes: ["wdth"],
+  variable: "--font-archivo",
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-plex-mono",
 });
 
 /**
@@ -106,7 +122,7 @@ export default function RootLayout({
   // React bu attribute'u hiç render etmiyor ama yine de sunucu/istemci farkı
   // olarak görüp gereksiz konsol uyarısı basıyordu.
   return (
-    <html lang="tr" suppressHydrationWarning>
+    <html lang="tr" suppressHydrationWarning className={`${inter.variable} ${archivo.variable} ${plexMono.variable}`}>
       <head>
         {/* İlan fotoğrafları üçüncü taraf CDN'lerden geliyor: bağlantıyı önceden kur (ilk görsel gecikmesini azaltır). */}
         <link rel="preconnect" href="https://arbimg1.mncdn.com" crossOrigin="" />
@@ -121,7 +137,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className={inter.className}>
+      <body>
         {/* Tema tercihi paint'ten ÖNCE uygulanmalı, yoksa koyu→açık geçişi bir an
             için yanlış temada gösterip "flash" yapar (next/script bunun için
             yetersiz kalır çünkü hydration'ı bekler). */}
@@ -136,17 +152,25 @@ export default function RootLayout({
         <ErrorBoundary>
           <main className="container py-8">{children}</main>
         </ErrorBoundary>
-        <footer className="border-t border-white/5 py-6">
-          <p className="container text-center text-xs leading-relaxed text-slate-600">
-            OtoPiyasa bir üniversite bitirme projesidir; ticari değildir. İlan verileri
-            kaynak sitelerden yalnızca akademik amaçla derlenmiştir ve tüm hakları
-            kaynaklarına aittir — her ilan orijinal kaynağına bağlantı verir.
-          </p>
-          <p className="container mt-2 text-center text-xs text-slate-600">
-            <Link href="/gizlilik" className="hover:text-amber-300 hover:underline">
-              Gizlilik Politikası
-            </Link>
-          </p>
+        <footer className="mt-8 border-t border-[var(--border)] py-8">
+          <div className="container grid gap-6 md:grid-cols-[1.2fr_1fr] md:items-start">
+            <div className="space-y-3">
+              <Logo />
+              <p className="max-w-md text-xs leading-relaxed text-[var(--faint)]">
+                OtoPiyasa bir üniversite bitirme projesidir; ticari değildir. İlan verileri
+                kaynak sitelerden yalnızca akademik amaçla derlenmiştir ve tüm hakları
+                kaynaklarına aittir — her ilan orijinal kaynağına bağlantı verir.
+              </p>
+            </div>
+            <nav aria-label="Alt menü" className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-[var(--muted)] sm:grid-cols-3">
+              <Link href="/" className="hover:text-[var(--text)]">Keşfet</Link>
+              <Link href="/analytics" className="hover:text-[var(--text)]">Piyasa analizi</Link>
+              <Link href="/predict" className="hover:text-[var(--text)]">Fiyat tahmini</Link>
+              <Link href="/compare" className="hover:text-[var(--text)]">Karşılaştır</Link>
+              <Link href="/map" className="hover:text-[var(--text)]">Harita</Link>
+              <Link href="/gizlilik" className="hover:text-[var(--text)]">Gizlilik politikası</Link>
+            </nav>
+          </div>
         </footer>
         <CompareTray />
         <ChatWidget />

@@ -1,26 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CarCard } from "@/components/CarCard";
+import { UnavailableFavoriteCard } from "@/components/UnavailableFavoriteCard";
 import { connectDB } from "@/lib/mongodb";
-import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
-import { isLeanCarDoc, attachMarketToCars } from "@/lib/serialize-car";
+import { attachMarketToCars } from "@/lib/serialize-car";
 import { getMarketMap } from "@/lib/market-price";
-import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
+import { loadFavorites, type UnavailableFavorite } from "@/lib/favorites";
 import { Car as CarType } from "@/types";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
-
-function isUserWithFavorites(
-  value: unknown
-): value is { favorites: unknown[] } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "favorites" in value &&
-    Array.isArray((value as { favorites: unknown }).favorites)
-  );
-}
 
 export default async function FavoritesPage() {
   const authUser = await getCurrentUser();
@@ -29,28 +17,16 @@ export default async function FavoritesPage() {
   }
 
   let favorites: CarType[] = [];
+  let unavailable: UnavailableFavorite[] = [];
   try {
     await connectDB();
-    const user = await User.findById(authUser.userId)
-      .select("favorites")
-      .populate({
-        path: "favorites",
-        match: PUBLIC_LISTING_FILTER,
-      })
-      .lean();
-
-    if (isUserWithFavorites(user)) {
-      const rawDocs = (user.favorites as unknown[]).filter(isLeanCarDoc);
-      if (rawDocs.length > 0) {
-        const marketMap = await getMarketMap(
-          rawDocs.map((car) => ({
-            brand: car.brand,
-            model: car.model,
-            year: car.year,
-          }))
-        );
-        favorites = attachMarketToCars(rawDocs, marketMap);
-      }
+    const result = await loadFavorites(authUser.userId);
+    unavailable = result.unavailable;
+    if (result.available.length > 0) {
+      const marketMap = await getMarketMap(
+        result.available.map((car) => ({ brand: car.brand, model: car.model, year: car.year }))
+      );
+      favorites = attachMarketToCars(result.available, marketMap);
     }
   } catch (err) {
     console.error("Favoriler yüklenirken hata:", err);
@@ -63,7 +39,7 @@ export default async function FavoritesPage() {
         <p className="text-slate-500">Kaydettiğin araçları buradan takip edebilirsin.</p>
       </div>
 
-      {favorites.length === 0 ? (
+      {favorites.length === 0 && unavailable.length === 0 ? (
         <div className="card p-8 text-center">
           <p className="text-slate-500">Henüz favori eklemedin.</p>
           <Link href="/" className="mt-4 inline-block text-blue-700 hover:underline">
@@ -71,11 +47,29 @@ export default async function FavoritesPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {favorites.map((car) => (
-            <CarCard key={car._id} car={serializeCarListItem(car)} />
-          ))}
-        </div>
+        <>
+          {favorites.length > 0 && (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {favorites.map((car) => (
+                <CarCard key={car._id} car={serializeCarListItem(car)} />
+              ))}
+            </div>
+          )}
+
+          {unavailable.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-bold text-slate-300">Artık yayında olmayan ilanlar</h2>
+              <p className="text-sm text-slate-500">
+                Bu ilanlar satıldı ya da kaynağından kaldırıldı. Ayrıntıları gösterilmez; istersen favorilerden çıkarabilirsin.
+              </p>
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {unavailable.map((item) => (
+                  <UnavailableFavoriteCard key={item._id} item={item} />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
     </div>
   );

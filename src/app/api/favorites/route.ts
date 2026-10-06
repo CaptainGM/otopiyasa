@@ -6,7 +6,8 @@ import { Car } from "@/models/Car";
 import { getCurrentUser } from "@/lib/auth";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { getMarketMap } from "@/lib/market-price";
-import { attachMarketToCars, isLeanCarDoc, LIST_IMAGE_LIMIT } from "@/lib/serialize-car";
+import { attachMarketToCars } from "@/lib/serialize-car";
+import { loadFavorites } from "@/lib/favorites";
 
 /** Bir kullanıcı en fazla bu kadar ilanı favorileyebilir (liste ve belge şişmesin). */
 const MAX_FAVORITES = 500;
@@ -14,8 +15,8 @@ const MAX_FAVORITES = 500;
 const noStore = { "Cache-Control": "private, no-store" };
 
 /**
- * GET /api/favorites            → herkese açık favori ilanlar (arşiv, satılmış ve onaysız ilanlar GİZLİ; telefon/sahip
- *                                 gibi özel alanlar HİÇ gönderilmez).
+ * GET /api/favorites            → herkese açık favori ilanlar (telefon/sahip gibi özel alanlar HİÇ gönderilmez) ve
+ *                                 `unavailable`: satılmış/kaldırılmış favorilerin yalnızca başlık + küçük fotoğrafı.
  * GET /api/favorites?ids=1      → yalnızca favori kimlikleri (ilan sayfasındaki kalp düğmesi için hafif sorgu).
  */
 export async function GET(request: Request) {
@@ -26,27 +27,15 @@ export async function GET(request: Request) {
     }
 
     await connectDB();
-    const user = await User.findById(authUser.userId).select("favorites").lean<{ favorites?: Types.ObjectId[] } | null>();
-    if (!user) {
-      return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
-    }
-    const favoriteIds = (user.favorites || []).map((id) => id.toString());
+    const { ids, available, unavailable } = await loadFavorites(authUser.userId);
 
     if (new URL(request.url).searchParams.get("ids") === "1") {
-      return NextResponse.json({ ids: favoriteIds }, { headers: noStore });
+      return NextResponse.json({ ids }, { headers: noStore });
     }
 
-    const docs = favoriteIds.length
-      ? (((await Car.find({ _id: { $in: favoriteIds }, ...PUBLIC_LISTING_FILTER })
-          .slice("images", LIST_IMAGE_LIMIT)
-          .lean()) as unknown[]).filter(isLeanCarDoc))
-      : [];
-    // Favori ekleme sırası korunur (en son eklenen başta).
-    const rank = new Map(favoriteIds.map((id, index) => [id, index]));
-    docs.sort((a, b) => (rank.get(b._id.toString()) ?? 0) - (rank.get(a._id.toString()) ?? 0));
-
-    const marketMap = await getMarketMap(docs.map((car) => ({ brand: car.brand, model: car.model, year: car.year })));
-    return NextResponse.json({ favorites: attachMarketToCars(docs, marketMap) }, { headers: noStore });
+    const marketMap = await getMarketMap(available.map((car) => ({ brand: car.brand, model: car.model, year: car.year })));
+    // unavailable: yayından kalkmış/satılmış favoriler için yalnızca başlık+küçük fotoğraf (ayrıntı yok).
+    return NextResponse.json({ favorites: attachMarketToCars(available, marketMap), unavailable }, { headers: noStore });
   } catch (error) {
     console.error("GET /api/favorites error:", error);
     return NextResponse.json({ error: "Favoriler alınamadı." }, { status: 500 });

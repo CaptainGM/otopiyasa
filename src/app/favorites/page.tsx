@@ -6,6 +6,7 @@ import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
 import { isLeanCarDoc, attachMarketToCars } from "@/lib/serialize-car";
 import { getMarketMap } from "@/lib/market-price";
+import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { Car as CarType } from "@/types";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 
@@ -34,7 +35,7 @@ export default async function FavoritesPage() {
       .select("favorites")
       .populate({
         path: "favorites",
-        match: { status: "active" },
+        match: PUBLIC_LISTING_FILTER,
       })
       .lean();
 

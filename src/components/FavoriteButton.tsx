@@ -18,10 +18,10 @@ export function FavoriteButton({ carId }: { carId: string }) {
         return;
       }
 
-      const favResponse = await fetch("/api/favorites");
+      const favResponse = await fetch("/api/favorites?ids=1", { cache: "no-store" });
       if (favResponse.ok) {
         const favData = await favResponse.json();
-        const ids = favData.favorites.map((car: { _id: string }) => car._id);
+        const ids: string[] = favData.ids || [];
         setIsFavorite(ids.includes(carId));
       }
       setChecked(true);

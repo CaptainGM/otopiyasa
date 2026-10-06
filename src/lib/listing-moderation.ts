@@ -40,6 +40,8 @@ export async function comparableMedianPrice(
   model: string
 ): Promise<number | null> {
   const docs = await Car.find({
+    // Denetimden geçmemiş (bekleyen/reddedilen) ilanlar emsal fiyatı belirlemesin.
+    moderationStatus: { $nin: ["pending", "rejected"] },
     brand: { $regex: turkishSearchRegex(brand), $options: "i" },
     $or: [
       { model: { $regex: turkishSearchRegex(model), $options: "i" } },

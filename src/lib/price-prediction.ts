@@ -1,4 +1,5 @@
 import { Car } from "@/models/Car";
+import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { turkishSearchRegex, levenshtein, extractVehicleTokens, calculateTitleMatchScore } from "@/lib/utils";
 
 export type Condition = "clean" | "painted" | "damaged";
@@ -213,11 +214,17 @@ interface TrainingDoc {
   };
 }
 
+/**
+ * Eğitim verisi: onay bekleyen ve reddedilen (denetimden geçmemiş) üye ilanları hiçbir zaman kullanılmaz.
+ * Arşivdeki (satılmış/kaldırılmış) ilanlar yalnızca istatistik içindir ve kullanıcıya gösterilmez.
+ */
+const UNMODERATED_EXCLUDED = { moderationStatus: { $nin: ["pending", "rejected"] } } as const;
+
 async function loadTrainingRows(
   filter: Record<string, unknown>,
   limit: number
 ): Promise<TrainingRow[]> {
-  const docs = await Car.find(filter)
+  const docs = await Car.find({ ...filter, ...UNMODERATED_EXCLUDED })
     .sort({ updatedAt: -1 })
     .select("year mileage price damageFlag paintChange features")
     .limit(limit)
@@ -247,10 +254,11 @@ async function loadComparables(
   title?: string
 ): Promise<ComparableCar[]> {
   // 1. Önce indeksli doğrudan eşleşme (5ms - Atlas M0 dostu)
+  // Kullanıcıya gösterilen benzer ilanlar: yalnızca herkese açık (aktif + onaylı) olanlar.
   let docs = await Car.find({
     brand,
     model,
-    status: { $ne: "removed" },
+    ...PUBLIC_LISTING_FILTER,
   })
     .sort({ createdAt: -1 })
     .select("title brand model year mileage price")
@@ -261,7 +269,7 @@ async function loadComparables(
   if (docs.length < 5) {
     docs = await Car.find({
       brand: { $regex: turkishSearchRegex(brand), $options: "i" },
-      status: { $ne: "removed" },
+      ...PUBLIC_LISTING_FILTER,
       $or: [
         { model: { $regex: turkishSearchRegex(model), $options: "i" } },
         { title: { $regex: turkishSearchRegex(model), $options: "i" } },

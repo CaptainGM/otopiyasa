@@ -6,6 +6,7 @@ import { sendEmail } from "@/lib/mailer";
 import { shouldNotifySegmentAlert } from "@/lib/segment-alert";
 import { brandStorageAliases } from "@/lib/normalize-brand";
 import { modelFamilyRegex } from "@/lib/model-family";
+import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 
 interface SubscriptionDoc {
   _id: unknown;
@@ -20,7 +21,8 @@ interface SubscriptionDoc {
 }
 
 async function checkNewListingSubscription(sub: SubscriptionDoc) {
-  const query: Record<string, unknown> = {};
+  // Yalnızca herkese açık ilanlar: onay bekleyen/reddedilen ya da arşivdeki ilan için kullanıcıya bildirim gitmesin.
+  const query: Record<string, unknown> = { ...PUBLIC_LISTING_FILTER };
   if (sub.brand) query.brand = { $in: brandStorageAliases(sub.brand) };
   if (sub.model) query.model = modelFamilyRegex(sub.model, sub.brand);
   if (sub.yearMin || sub.yearMax) {
@@ -59,7 +61,8 @@ async function checkNewListingSubscription(sub: SubscriptionDoc) {
 
 
 async function getSegmentAverage(brand: string, model?: string | null) {
-  const match: Record<string, unknown> = { brand: { $in: brandStorageAliases(brand) } };
+  // Ortalama yalnızca güncel (aktif, onaylı) ilanlardan: arşivdeki eski fiyatlar ortalamayı bozmasın.
+  const match: Record<string, unknown> = { ...PUBLIC_LISTING_FILTER, brand: { $in: brandStorageAliases(brand) } };
   if (model) match.model = modelFamilyRegex(model, brand);
   const [row] = await Car.aggregate([
     { $match: match },

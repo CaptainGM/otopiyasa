@@ -7,6 +7,7 @@ import { formatRemaining, statusLabel } from "@/lib/offers";
 import type { OfferView } from "@/lib/serialize-offer";
 import { RISK_FLAG_LABEL } from "@/lib/chat-safety";
 import { ReportChatButton } from "@/components/ReportChatButton";
+import { useVisibleInterval } from "@/components/useVisibleInterval";
 
 function initialOf(name: string): string {
   return (name.trim()[0] || "?").toUpperCase();
@@ -34,14 +35,8 @@ export function OfferThread({ initial }: { initial: OfferView }) {
   }, [offer.id]);
 
 
-  useEffect(() => {
-    // TODO: Teklif mesajlaşması şu an 20sn polling ile çalışıyor. Gelecekte
-    // WebSocket veya Server-Sent Events (SSE) ile gerçek zamanlı iletişime
-    // geçilebilir. Next.js App Router henüz native WebSocket desteklemiyor;
-    // Ably, Pusher veya ayrı bir WS sunucusu gerekecektir.
-    const t = setInterval(reload, 20000);
-    return () => clearInterval(t);
-  }, [reload]);
+  // Teklif mesajları 20 sn yoklamayla gelir; sekme arka plandayken sorulmaz (Vercel fonksiyon çağrısı limiti).
+  useVisibleInterval(reload, 20000);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });

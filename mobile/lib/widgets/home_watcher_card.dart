@@ -35,7 +35,9 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) _load();
+    });
   }
 
   @override

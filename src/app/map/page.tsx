@@ -6,7 +6,8 @@ export const metadata = {
   description: "Satılık araç ilanlarını Türkiye haritası üzerinde keşfedin.",
 };
 
-export const revalidate = 300;
+// 6 saatte bir (ISR yazma limiti; kümeler saatler içinde anlamlı değişmez, ilan listesi açılınca canlı yüklenir).
+export const revalidate = 21600;
 
 /**
  * Harita verisi artık sunucu bileşeninden DEĞİL, `/api/map` üzerinden KÜMELENMİŞ

@@ -60,8 +60,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     _tabController = TabController(length: 4, vsync: this);
     _loadAllData();
     // 25 saniyede bir canlı otomatik yenileme
+    // Uygulama arka plandayken istek atılmaz (sunucu fonksiyon çağrısı limiti).
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 25), (_) {
-      if (mounted) _refreshStatsOnly();
+      if (mounted && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) _refreshStatsOnly();
     });
   }
 

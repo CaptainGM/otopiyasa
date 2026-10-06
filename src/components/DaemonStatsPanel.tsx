@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { HourlyDetailModal } from "@/components/HourlyDetailModal";
 import { formatRelativeTr, getTurkeyDateStr, getTurkeyYesterdayStr } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/daemon-status";
+import { useVisibleInterval } from "@/components/useVisibleInterval";
 
 type DaemonInfo = DaemonStatus;
 
@@ -162,9 +163,8 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
   useEffect(() => {
     // Kaynak senkron tablosu sunucudan gelmediği için ilk yüklemede hemen çekilir.
     fetchStats();
-    const timer = setInterval(fetchStats, 25000);
-    return () => clearInterval(timer);
   }, []);
+  useVisibleInterval(fetchStats, 25000);
 
   const [controlling, setControlling] = useState(false);
   const currentMode = daemon?.mode || "hybrid";

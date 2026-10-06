@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/widgets.dart';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:otopiyasa/services/api_service.dart';
@@ -62,6 +63,8 @@ class NotificationService {
 
   Future<void> _check() async {
     if (!_api.isLoggedIn) return;
+    // Arka planda yoklama yapılmaz (anlık bildirimleri FCM getirir); uygulamaya dönülünce zamanlayıcı devam eder.
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
     try {
       final items = await _api.fetchNotifications();
       final unread = items.where((n) => !n.read).toList();

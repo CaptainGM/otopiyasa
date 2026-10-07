@@ -1,0 +1,91 @@
+# Mobil sürüm: main'e mobil kod (mobile/) her gönderildiğinde APK derlenir ve GitHub'da yeni sürüm olarak
+# yayınlanır. Sunucudaki /api/app-version en son sürümü buradan okur; telefonlardaki uygulama açılışta (ve
+# "Güncellemeleri denetle" ile) yeni sürümü görüp indirir. Elle bir şey yapmak gerekmez.
+#
+# Sürüm numarası kendiliğinden artar: bir önceki yayının sürüm kodu + 1 (pubspec.yaml'daki koddan küçük olamaz),
+# görünen sürüm 1.0.(kod-1). APK, telefonlardaki uygulamayla aynı anahtarla imzalanır (ANDROID_DEBUG_KEYSTORE_B64
+# sırrı); farklı anahtarla imzalanan APK eski uygulamanın üstüne kurulamazdı.
+name: Mobil sürüm
+
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.7
+          cache: true
+
+      - name: İmza anahtarı
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then echo "ANDROID_DEBUG_KEYSTORE_B64 sırrı yok"; exit 1; fi
+          mkdir -p ~/.android
+          echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+
+      - name: Sürüm numarası ve notlar
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev_tag=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || true)
+          prev_code=0
+          if [ -n "$prev_tag" ]; then
+            prev_code=$(gh release view "$prev_tag" --json body -q .body | grep -oE 'versionCode:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' || echo 0)
+          fi
+          base_code=$(grep -E '^version:' mobile/pubspec.yaml | sed -E 's/.*\+([0-9]+).*/\1/')
+          code=$((prev_code + 1))
+          if [ "$code" -lt "$base_code" ]; then code=$base_code; fi
+          name="1.0.$((code - 1))"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          {
+            echo "<!-- versionCode: $code -->"
+            if [ -n "$prev_tag" ]; then
+              git log "$prev_tag"..HEAD --format='• %s' -- mobile | head -20
+            else
+              git log -10 --format='• %s' -- mobile
+            fi
+          } > notes.md
+          cat notes.md
+
+      - name: Derle
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter build apk --release --build-name=${{ steps.version.outputs.name }} --build-number=${{ steps.version.outputs.code }}
+          cp build/app/outputs/flutter-apk/app-release.apk ../otopiyasa-release.apk
+
+      - name: Yayınla
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.name }}" otopiyasa-release.apk \
+            --title "OtoPiyasa Mobil ${{ steps.version.outputs.name }}" \
+            --notes-file notes.md \
+            --latest

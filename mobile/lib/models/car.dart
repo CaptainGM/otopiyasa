@@ -145,6 +145,8 @@ class CarListing {
     required this.sourceSite,
     required this.listingUrl,
     this.marketAvgPrice,
+    this.fairPrice,
+    this.fairSample,
     this.marketListingCount,
     this.marketFamilyLabel,
     this.priceVsMarket,
@@ -190,6 +192,11 @@ class CarListing {
   final String sourceSite;
   final String listingUrl;
   final int? marketAvgPrice;
+
+  /// Adil piyasa değeri (model yılı, km, hasar, donanıma göre) ve dayandığı emsal sayısı — web ilan sayfasındaki
+  /// fiyat analiziyle aynı sayı. Gösterge ve "ucuz/pahalı" yorumu buna göre yapılır.
+  final int? fairPrice;
+  final int? fairSample;
   final int? marketListingCount;
 
   /// Doluysa piyasa ortalaması aynı yılın tüm donanımlarından hesaplandı ("Corolla").
@@ -275,6 +282,8 @@ class CarListing {
       sourceSite: json['sourceSite'] as String? ?? 'demo',
       listingUrl: json['listingUrl'] as String? ?? '',
       marketAvgPrice: (json['marketAvgPrice'] as num?)?.toInt(),
+      fairPrice: (json['fairPrice'] as num?)?.toInt(),
+      fairSample: (json['fairSample'] as num?)?.toInt(),
       marketListingCount: (json['marketListingCount'] as num?)?.toInt(),
       marketFamilyLabel: json['marketScope'] == 'family' ? json['marketFamilyLabel'] as String? : null,
       priceVsMarket: (json['priceVsMarket'] as num?)?.toInt(),
@@ -346,4 +355,12 @@ class CarsResponse {
       totalPages: (json['totalPages'] as num?)?.toInt() ?? 1,
     );
   }
+}
+
+/// "Haftanın fırsatları" şeridi: fırsat ilanlar etiketleriyle ve toplam fırsat sayısı.
+class DealsResult {
+  const DealsResult({required this.items, required this.total});
+
+  final List<({CarListing car, String label})> items;
+  final int total;
 }

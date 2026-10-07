@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:otopiyasa/utils/tr_text.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/notifications_screen.dart';
+import 'package:otopiyasa/screens/sell_screen.dart';
 import 'package:otopiyasa/screens/assistant_screen.dart';
 import 'package:otopiyasa/widgets/home_strips.dart';
 import 'package:otopiyasa/services/api_service.dart';
@@ -238,6 +239,15 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _importing = false);
     }
+  }
+
+  Future<void> _openSell() async {
+    HapticFeedback.selectionClick();
+    if (!_api.isLoggedIn) {
+      await Navigator.of(context).pushNamed('/login');
+      if (!mounted || !_api.isLoggedIn) return;
+    }
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SellScreen()));
   }
 
   /// Seçili filtre sayısı (arama kutusu hariç): filtre düğmesindeki rozet.
@@ -600,6 +610,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     tooltip: 'Bildirimler',
                   )
                 : const SizedBox.shrink(),
+          ),
+          // Web ana sayfasındaki "Ücretsiz ilan ver" karşılığı. Girişsizse önce giriş, sonra ilan formu.
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: FilledButton.icon(
+              onPressed: _openSell,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                visualDensity: VisualDensity.compact,
+                textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('İlan ver'),
+            ),
           ),
           IconButton(
             onPressed: () => Navigator.of(context).push(

@@ -4,6 +4,7 @@ import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/screens/nearby_screen.dart';
+import 'package:otopiyasa/screens/search_results_screen.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/car_headline.dart';
@@ -81,13 +82,32 @@ Widget _miniCard(BuildContext context, CarListing car, {String? badge, bool chea
   );
 }
 
-Widget _stripShell(BuildContext context, {required String eyebrow, required String title, required List<Widget> children}) {
+Widget _stripShell(
+  BuildContext context, {
+  required String eyebrow,
+  required String title,
+  required List<Widget> children,
+  Widget? action,
+}) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(trUpper(eyebrow), style: AppText.eyebrow(context)),
-      const SizedBox(height: 2),
-      Text(title, style: AppText.display(size: 18)),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(trUpper(eyebrow), style: AppText.eyebrow(context)),
+                const SizedBox(height: 2),
+                Text(title, style: AppText.display(size: 18)),
+              ],
+            ),
+          ),
+          ?action,
+        ],
+      ),
       const SizedBox(height: 10),
       SizedBox(
         // Kart yüksekliği yazı tipi ölçeğine göre değişir; sabit yükseklik bazı cihazlarda taşıyordu.
@@ -99,15 +119,8 @@ Widget _stripShell(BuildContext context, {required String eyebrow, required Stri
   );
 }
 
-/// Fırsat etiketi: piyasa ortalaması biliniyorsa "%14 ucuz", değilse "Fırsat".
-String _dealBadge(CarListing car) {
-  final avg = car.marketAvgPrice;
-  if (avg == null || avg <= 0) return 'Fırsat';
-  final pct = (((avg - car.price) / avg) * 100).round();
-  return pct > 0 ? '%$pct ucuz' : 'Fırsat';
-}
-
-/// "Haftanın fırsatları" — web'deki DealsStrip'in mobil karşılığı (en çok 30 fırsat).
+/// "Haftanın fırsatları" — web'deki şeritle aynı: tüm ilanlar arasından adil değerinin en çok altındaki 12 ilan,
+/// "Tümünü gör" ile hepsi (/api/cars?firsat=1, en çok piyasa altında olan önce).
 class DealsStrip extends StatefulWidget {
   final Object? refreshSignal;
   const DealsStrip({super.key, this.refreshSignal});
@@ -117,7 +130,7 @@ class DealsStrip extends StatefulWidget {
 }
 
 class _DealsStripState extends State<DealsStrip> {
-  late Future<List<CarListing>> _future;
+  late Future<DealsResult> _future;
 
   @override
   void initState() {
@@ -139,16 +152,27 @@ class _DealsStripState extends State<DealsStrip> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<CarListing>>(
+    return FutureBuilder<DealsResult>(
       future: _future,
       builder: (context, snapshot) {
-        final items = snapshot.data ?? [];
-        if (items.isEmpty) return const SizedBox.shrink();
+        final result = snapshot.data;
+        if (result == null || result.items.isEmpty) return const SizedBox.shrink();
+        final total = NumberFormat.decimalPattern('tr_TR').format(result.total);
         return _stripShell(
           context,
-          eyebrow: 'Piyasanın altında · ${items.length} ilan',
+          eyebrow: 'Piyasanın altında · $total ilan',
           title: 'Haftanın fırsatları',
-          children: items.map((car) => _miniCard(context, car, badge: _dealBadge(car), cheap: true)).toList(),
+          action: result.total > result.items.length
+              ? TextButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SearchResultsScreen(params: {'firsat': '1'}, title: 'Haftanın fırsatları'),
+                    ),
+                  ),
+                  child: Text('Tümünü gör ($total)'),
+                )
+              : null,
+          children: [for (final deal in result.items) _miniCard(context, deal.car, badge: deal.label, cheap: true)],
         );
       },
     );

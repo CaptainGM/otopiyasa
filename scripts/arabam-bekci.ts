@@ -22,6 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadEnv } from "./load-env";
+import { manualScrapeHold } from "./bekci-pause.mjs";
 
 loadEnv();
 
@@ -164,6 +165,7 @@ async function main() {
   let sessionListMatched = 0;
   let sessionListCorrected = 0;
   let listIdleLogged = false;
+  let manualLogged = false;
   let day = new Date().toDateString();
 
   log(`Arabam bekçisi başladı (parti ${batchSize} ilan, ilanlar arası ~${baseGap} sn).`);
@@ -198,6 +200,21 @@ async function main() {
 
   for (;;) {
     try {
+      // Elle tarama (scrape.bat) sürerken bekleriz: ikisi aynı ev internetinden Arabam'a gidip Cloudflare'a çift
+      // hızla istek atmasın. Tarama bitince (ya da kapanınca) kendiliğinden devam ederiz.
+      const manual = manualScrapeHold();
+      if (manual) {
+        await closeSharedBrowser().catch(() => {});
+        await setBeat("paused", `Elle tarama sürüyor (${manual}); bitince bekçi kendiliğinden devam eder`, state.gapSeconds);
+        if (!manualLogged) log(`Elle tarama başladı (${manual}); bekçi bitene kadar bekliyor.`);
+        manualLogged = true;
+        await sleep(20_000);
+        continue;
+      }
+      if (manualLogged) {
+        log("Elle tarama bitti, bekçi devam ediyor.");
+        manualLogged = false;
+      }
       await connectDB();
       if (day !== new Date().toDateString()) {
         day = new Date().toDateString();

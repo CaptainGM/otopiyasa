@@ -2,6 +2,8 @@
 import { readFileSync, writeFileSync, unlinkSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { Agent, setGlobalDispatcher } from "undici";
+import { pauseWatcher } from "./bekci-pause.mjs";
+pauseWatcher(`tarama modu ${process.argv[2] || "1"}`);
 
 
 

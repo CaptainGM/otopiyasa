@@ -6,7 +6,7 @@
 // Hız: ~25 araç / saniye (~1.500 araç / dakika)
 // ============================================================================
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchPageHtml, isNonCarArabamPage, parseArabamDetailHtml } from "../src/lib/scraper/browser-scrape";
@@ -15,6 +15,8 @@ import { normalizeBrandModel } from "../src/lib/normalize-brand";
 import { normalizeCity } from "../src/lib/normalize-city";
 import { parseArabamListPage } from "../src/lib/scraper/arabam-list";
 import { outOfScopeReason } from "../src/lib/vehicle-scope";
+import { pauseWatcher } from "./bekci-pause.mjs";
+pauseWatcher("turbo çekim");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,7 +39,7 @@ for (const envName of [".env", ".env.local"]) {
   }
 }
 
-const targetCount = parseInt(process.argv[2] || "30000", 10);
+const targetCount = parseInt(process.argv[2] || "50000", 10);
 
 /** Kaynağın vasıta kategorileri (yol tabanlı, robots.txt'e uygun). ATV/UTV, deniz/hava ve kiralık kapsam dışı. */
 const ALL_CATEGORIES = [
@@ -50,7 +52,8 @@ const ALL_CATEGORIES = [
 ];
 
 // İkinci argüman: virgülle kategori listesi ("motosiklet,ticari-araclar"); verilmezse hepsi.
-const categoryArg = (process.argv[3] || "").split(",").map((v) => v.trim()).filter(Boolean);
+// Bayraklar (--detaysiz) kategori sayılmaz: Windows boş argümanı ("") düşürürse bayrak 3. sıraya kayabilir.
+const categoryArg = (process.argv.slice(3).find((v) => !v.startsWith("--")) || "").split(",").map((v) => v.trim()).filter(Boolean);
 const CATEGORIES = categoryArg.length ? ALL_CATEGORIES.filter((c) => categoryArg.includes(c.slug)) : ALL_CATEGORIES;
 // Yalnızca belirli kategoriler istendiyse o kategoriler derin taranır (az ilanlı kategorilerin tamamı).
 const CATEGORY_ONLY = categoryArg.length > 0;
@@ -327,6 +330,24 @@ async function main() {
   process.on("SIGINT", () => handleGracefulExit("Ctrl+C"));
   process.on("SIGTERM", () => handleGracefulExit("SIGTERM"));
 
+  // Model adresleri ("otomobil/renault-clio"): Arabam'ın kendi verdiği yol; geçerli biçim dışındakiler alınmaz.
+  const MODEL_PATH = /^[a-z0-9-]+\/[a-z0-9-]+$/;
+  const modelPathFile = path.join(projectRoot, "logs", "turbo-model-paths.json");
+  const discoveredModelPaths = new Set<string>();
+  try {
+    if (existsSync(modelPathFile)) for (const p of JSON.parse(readFileSync(modelPathFile, "utf8")) as string[]) discoveredModelPaths.add(p);
+  } catch {
+    // bozuk dosya: baştan toplanır
+  }
+  function saveModelPaths() {
+    try {
+      mkdirSync(path.dirname(modelPathFile), { recursive: true });
+      writeFileSync(modelPathFile, JSON.stringify([...discoveredModelPaths].sort()));
+    } catch {
+      // yazılamazsa bir sonraki çalışmada yeniden toplanır
+    }
+  }
+
   interface TaskQueueItem {
     urlPattern: string;
     maxPages: number;
@@ -376,124 +397,159 @@ async function main() {
   // her turda tüm markaların ve kategorilerin 1'er sayfasını (Renault 20, Fiat 20, BMW 20, SUV 20...) çeker.
   // Böylece hedef 1.000 de olsa 5.000 de olsa tüm marka ve modellerden dengeli, homojen bir havuz oluşur.
 
-  const maxGlobalPages = Math.max(...queue.map((t) => t.maxPages));
-  const activeTasks = new Set(queue.map((_, i) => i));
+  /** Verilen rotaları sayfa sayfa (her turda her rotadan 1 sayfa) gezer; hedefe ulaşınca ya da Ctrl+C ile durur. */
+  async function crawl(queue: TaskQueueItem[], phaseName: string) {
+    const maxGlobalPages = Math.max(0, ...queue.map((t) => t.maxPages));
+    const activeTasks = new Set(queue.map((_, i) => i));
 
-  for (let page = 1; page <= maxGlobalPages; page++) {
-    if (isShuttingDown || totalInserted >= targetCount || activeTasks.size === 0) break;
+    for (let page = 1; page <= maxGlobalPages; page++) {
+      if (isShuttingDown || totalInserted >= targetCount || activeTasks.size === 0) break;
 
-    console.log(`\n🌀 [TUR ${page}] Tüm Marka ve Kategorilerden Sayfa ${page} Çekiliyor (Kalan Aktif Rota: ${activeTasks.size})...`);
+      console.log(`\n🌀 [${phaseName} TUR ${page}] Tüm Marka ve Kategorilerden Sayfa ${page} Çekiliyor (Kalan Aktif Rota: ${activeTasks.size})...`);
 
-    for (const qIdx of Array.from(activeTasks)) {
-      if (isShuttingDown || totalInserted >= targetCount) break;
+      for (const qIdx of Array.from(activeTasks)) {
+        if (isShuttingDown || totalInserted >= targetCount) break;
 
-      const task = queue[qIdx];
-      if (page > task.maxPages) {
-        activeTasks.delete(qIdx);
-        continue;
-      }
-
-      const pageUrl = `${task.urlPattern}${page}`;
-      try {
-        const html = await fetchPageWithRetry(pageUrl);
-        if (!html) {
+        const task = queue[qIdx];
+        if (page > task.maxPages) {
           activeTasks.delete(qIdx);
           continue;
         }
 
-        // Kapsam dışı ilanlar (ATV/UTV vb.) hiç eklenmez (bkz. vehicle-scope.ts).
-        const parsed = parseArabamSearchPage(html);
-        if (parsed.length === 0) {
-          activeTasks.delete(qIdx);
-          continue;
-        }
-        const cars = parsed.filter(
-          (c) =>
-            !outOfScopeReason({
-              brand: c.brand,
-              model: c.model,
-              title: c.title,
-              bodyType: c.features.bodyType,
-              sourceCategory: c.sourceCategory || task.category,
-            })
-        );
+        const pageUrl = `${task.urlPattern}${page}`;
+        try {
+          const html = await fetchPageWithRetry(pageUrl);
+          if (!html) {
+            activeTasks.delete(qIdx);
+            continue;
+          }
+
+          // Kapsam dışı ilanlar (ATV/UTV vb.) hiç eklenmez (bkz. vehicle-scope.ts).
+          const parsed = parseArabamSearchPage(html);
+          if (parsed.length === 0) {
+            activeTasks.delete(qIdx);
+            continue;
+          }
+          const cars = parsed.filter(
+            (c) =>
+              !outOfScopeReason({
+                brand: c.brand,
+                model: c.model,
+                title: c.title,
+                bodyType: c.features.bodyType,
+                sourceCategory: c.sourceCategory || task.category,
+              })
+          );
+          for (const c of parsed) if (c.sourceCategory && MODEL_PATH.test(c.sourceCategory)) discoveredModelPaths.add(c.sourceCategory);
         totalScanned += cars.length;
 
-        const existingIds = new Set(
-          ((await Car.find({ sourceSite: "arabam", externalId: { $in: cars.map((c) => c.externalId) } }, { externalId: 1 }).lean()) as any[]).map(
-            (d) => d.externalId
-          )
-        );
-
-        // Tüm kayıtlar ortak akıştan geçer (saveListing): fiyat geçmişi yalnızca fiyat değişince yazılır, favori
-        // bildirimi gider, gerçek özellik tahminle ezilmez, yöneticinin kaldırdığı ilan geri açılmaz.
-        let newInThisPage = 0;
-        let updatedInThisPage = 0;
-        const count = (r: string) => {
-          if (r === "inserted") newInThisPage++;
-          else if (r === "updated" || r === "reactivated") updatedInThisPage++;
-        };
-        for (const car of cars.filter((c) => existingIds.has(c.externalId))) {
-          // Liste verisinde açıklama yok (başlık var): kayıtlı satıcı açıklaması ezilmesin.
-          count(await saveListing({ ...toScrapedListing(car), description: "" }));
-        }
-        const newCars = cars.filter((c) => !existingIds.has(c.externalId));
-        for (let i = 0; i < newCars.length; i += 2) {
-          if (isShuttingDown) break;
-          const batch = newCars.slice(i, i + 2);
-          await Promise.all(
-            batch.map(async (car) => {
-              const detail = SKIP_DETAIL ? null : await fetchDetailListing(car.listingUrl);
-              if (detail === "excluded") return;
-              const listing = detail
-                ? { ...detail, sourceCategory: detail.sourceCategory || car.sourceCategory || task.category }
-                : { ...toScrapedListing(car), sourceCategory: car.sourceCategory || task.category };
-              count(await saveListing(listing));
-            })
+          const existingIds = new Set(
+            ((await Car.find({ sourceSite: "arabam", externalId: { $in: cars.map((c) => c.externalId) } }, { externalId: 1 }).lean()) as any[]).map(
+              (d) => d.externalId
+            )
           );
-        }
 
-        totalInserted += newInThisPage;
-        totalUpdated += updatedInThisPage;
-
-        for (const c of cars) {
-          if (sampleVehicles.length < 30) {
-            sampleVehicles.push({
-              brand: c.brand,
-              model: c.model,
-              year: c.year,
-              price: c.price,
-              source: "arabam",
-              title: c.title,
-              imageUrl: c.imageUrl,
-              listingUrl: c.listingUrl,
-            });
+          // Tüm kayıtlar ortak akıştan geçer (saveListing): fiyat geçmişi yalnızca fiyat değişince yazılır, favori
+          // bildirimi gider, gerçek özellik tahminle ezilmez, yöneticinin kaldırdığı ilan geri açılmaz.
+          let newInThisPage = 0;
+          let updatedInThisPage = 0;
+          const count = (r: string) => {
+            if (r === "inserted") newInThisPage++;
+            else if (r === "updated" || r === "reactivated") updatedInThisPage++;
+          };
+          for (const car of cars.filter((c) => existingIds.has(c.externalId))) {
+            // Liste verisinde açıklama yok (başlık var): kayıtlı satıcı açıklaması ezilmesin.
+            count(await saveListing({ ...toScrapedListing(car), description: "" }));
           }
+          const newCars = cars.filter((c) => !existingIds.has(c.externalId));
+          for (let i = 0; i < newCars.length; i += 2) {
+            if (isShuttingDown) break;
+            const batch = newCars.slice(i, i + 2);
+            await Promise.all(
+              batch.map(async (car) => {
+                const detail = SKIP_DETAIL ? null : await fetchDetailListing(car.listingUrl);
+                if (detail === "excluded") return;
+                const listing = detail
+                  ? { ...detail, sourceCategory: detail.sourceCategory || car.sourceCategory || task.category }
+                  : { ...toScrapedListing(car), sourceCategory: car.sourceCategory || task.category };
+                count(await saveListing(listing));
+              })
+            );
+          }
+
+          totalInserted += newInThisPage;
+          totalUpdated += updatedInThisPage;
+
+          for (const c of cars) {
+            if (sampleVehicles.length < 30) {
+              sampleVehicles.push({
+                brand: c.brand,
+                model: c.model,
+                year: c.year,
+                price: c.price,
+                source: "arabam",
+                title: c.title,
+                imageUrl: c.imageUrl,
+                listingUrl: c.listingUrl,
+              });
+            }
+          }
+
+          const elapsedSec = Math.max(1, (Date.now() - startTime) / 1000);
+          const speed = Math.round((totalScanned / elapsedSec) * 10) / 10;
+          const progressPct = Math.min(100, Math.round((totalInserted / targetCount) * 100));
+
+          process.stdout.write(
+            `\r  [${task.label.slice(0, 22)} Sf.${page}] +${newInThisPage} Yeni, ~${updatedInThisPage} Güncel | Toplam Yeni: +${totalInserted.toLocaleString("tr-TR")} / ${targetCount.toLocaleString("tr-TR")} (%${progressPct}) | Hız: ${speed} araç/sn   `
+          );
+
+          if (totalScanned % 40 === 0 || Date.now() - lastSyncTime > 8000) {
+            lastSyncTime = Date.now();
+            syncLog().catch(() => {});
+          }
+
+          // Ritim: Arabam'a nazik ve dengeli istek aralığı (0 blok)
+          const delay = 600 + Math.random() * 250;
+          await new Promise((r) => setTimeout(r, delay));
+        } catch (err: any) {
+          console.warn(`\n  ⚠️ [${task.label}] Sf.${page} hatası: ${err?.message || err}`);
+          await new Promise((r) => setTimeout(r, 1500));
         }
-
-        const elapsedSec = Math.max(1, (Date.now() - startTime) / 1000);
-        const speed = Math.round((totalScanned / elapsedSec) * 10) / 10;
-        const progressPct = Math.min(100, Math.round((totalInserted / targetCount) * 100));
-
-        process.stdout.write(
-          `\r  [${task.label.slice(0, 22)} Sf.${page}] +${newInThisPage} Yeni, ~${updatedInThisPage} Güncel | Toplam Yeni: +${totalInserted.toLocaleString("tr-TR")} / ${targetCount.toLocaleString("tr-TR")} (%${progressPct}) | Hız: ${speed} araç/sn   `
-        );
-
-        if (totalScanned % 40 === 0 || Date.now() - lastSyncTime > 8000) {
-          lastSyncTime = Date.now();
-          syncLog().catch(() => {});
-        }
-
-        // Ritim: Arabam'a nazik ve dengeli istek aralığı (0 blok)
-        const delay = 600 + Math.random() * 250;
-        await new Promise((r) => setTimeout(r, delay));
-      } catch (err: any) {
-        console.warn(`\n  ⚠️ [${task.label}] Sf.${page} hatası: ${err?.message || err}`);
-        await new Promise((r) => setTimeout(r, 1500));
       }
     }
+
   }
 
+  await crawl(queue, "MARKA");
+
+  // 3. MODEL TURU: Arabam her adres için en fazla 50 sayfa (1.000 ilan) gösterir; marka/kategori adresleriyle ~27 bin
+  // ilanda tıkanılır. Her modelin kendi adresi ayrı 1.000'lik pencere verir (bilinen ailelerin kaynaktaki toplamı 180 bin+).
+  // Adresler tur sırasında Arabam'ın verdiği model yollarından toplanır, önceki çalışmalardan ve bekçi liste
+  // taramasından gelenlerle birleşir (logs/turbo-model-paths.json).
+  if (!isShuttingDown && !CATEGORY_ONLY && totalInserted < targetCount) {
+    try {
+      const { ArabamListSweep } = await import("../src/models/ArabamListSweep");
+      for (const doc of (await ArabamListSweep.find({ path: { $ne: null } }).select("path").lean()) as Array<{ path?: string | null }>) {
+        if (doc.path) discoveredModelPaths.add(doc.path.replace(/^\/?(ikinci-el\/)?/, ""));
+      }
+    } catch {
+      // bekçi yol listesi okunamazsa kendi topladıklarımızla devam
+    }
+    const modelQueue: TaskQueueItem[] = [...discoveredModelPaths]
+      .filter((p) => MODEL_PATH.test(p))
+      .sort()
+      .map((p) => ({
+        urlPattern: `https://www.arabam.com/ikinci-el/${p}?page=`,
+        maxPages: 50,
+        label: `[Model] ${p}`,
+        category: p.split("/")[0],
+      }));
+    saveModelPaths();
+    console.log(`\n\n  🧭 Marka turu bitti. Model turu: ${modelQueue.length} model adresi (her biri en fazla 50 sayfa).\n`);
+    await crawl(modelQueue, "MODEL");
+  }
+
+  saveModelPaths();
   await syncLog(
     "success",
     `Turbo seri çekim başarıyla tamamlandı. Toplam +${totalInserted.toLocaleString("tr-TR")} yeni ilan eklendi, ~${totalUpdated.toLocaleString("tr-TR")} güncellendi.`

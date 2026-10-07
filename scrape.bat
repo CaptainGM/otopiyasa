@@ -12,9 +12,9 @@ if errorlevel 1 (
 echo ====================================================================
 echo               OTOPIYASA - GELISMIS VERI CEKME MERKEZI
 echo ====================================================================
-echo  [★] EN HIZLI SERI CEKIM (30.000 - 40.000 Canli Ilan Hedefi)
+echo  [★] EN HIZLI SERI CEKIM (50.000 Canli Ilan Hedefi: once marka, sonra model model)
 echo   ------------------------------------------------------------------
-echo    T  - TURBO SERI CEKIM   (Dakikada ~1.000 ilan! Sayfa basina 20 arac direkt iceri!)
+echo    T  - TURBO SERI CEKIM   (Sayfa basina 20 arac direkt iceri; marka turu + model turu)
 echo    2  - TURBO Arabam Cekim (Tum vasita kategorileri + 40 marka)
 echo    K  - KATEGORI CEKIMI    (Motosiklet, Ticari, SUV/Pickup, Minivan, Karavan: secilen kategorinin tamami)
 echo.
@@ -130,12 +130,16 @@ echo   Hedeflenen taze ilan sayisina ulasana kadar tum kategorileri,
 echo   40 farkli markayi ve siralama filtrelerini kesintisiz tarar.
 echo ====================================================================
 echo.
-set /p hedef="Hedef yeni ilan adedi (Varsayilan 25000, direk baslatmak icin Enter): "
-if "%hedef%"=="" set hedef=25000
+set /p hedef="Hedef yeni ilan adedi (Varsayilan 50000, direk baslatmak icin Enter): "
+if "%hedef%"=="" set hedef=50000
+echo   Not: Arabam bekcisi tarama bitene kadar bekler, sonra kendiliginden devam eder.
+set /p tdetay="Yeni ilanlarin kendi sayfasi da acilsin mi? E = galeri ve kasa tipi gelir ama cok yavas, H = hizli, galeriyi bekci tamamlar (E/H, varsayilan H): "
+set tflag=--detaysiz
+if /i "%tdetay%"=="E" set tflag=
 echo.
 echo [BASLATILIYOR] %hedef% taze ilan icin Turbo Motor devreye giriyor...
 echo.
-npx tsx scripts\turbo-arabam.ts %hedef%
+npx tsx scripts\turbo-arabam.ts %hedef% "" %tflag%
 echo.
 pause
 goto :eof
@@ -150,8 +154,8 @@ echo   3 - Arazi, SUV ve Pickup
 echo   4 - Minivan ve Panelvan
 echo   5 - Karavan
 echo   6 - Hepsi (otomobil haric)
-echo   Not: Bekci ayni anda calisiyorsa ikisi ayni ev internetini paylasir;
-echo   Cloudflare engel verirse ikisi de kendiliginden yavaslar.
+echo   Not: Arabam bekcisi bu tarama sirasinda KENDILIGINDEN BEKLER; tarama bitince
+echo   (ya da pencereyi kapatinca) kendiliginden devam eder. Elle bir sey yapma.
 echo ====================================================================
 echo.
 set /p kat="Kategori (1-6, varsayilan 6): "

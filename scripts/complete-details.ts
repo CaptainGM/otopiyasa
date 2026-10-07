@@ -5,6 +5,8 @@
 //   npx tsx scripts/complete-details.ts --rapor    → yalnızca rapor
 // Ev ağından çalıştırılmalı (Arabam yurt dışı IP'yi engelliyor). Ctrl+C ile güvenle durdurulur.
 import { loadEnv } from "./load-env";
+import { pauseWatcher } from "./bekci-pause.mjs";
+pauseWatcher("eksik detay taraması");
 
 loadEnv();
 process.env.SCRAPE_MIN_INTERVAL_MS = process.env.SCRAPE_MIN_INTERVAL_MS || "1200";

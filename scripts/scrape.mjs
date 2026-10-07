@@ -1,5 +1,7 @@
 
-import { readFileSync, writeFileSync, unlinkSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync, existsSync, appendFileSync, mkdirSync, openSync, closeSync, readSync, statSync } from "node:fs";
+import { spawn, execSync } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
 import { Agent, setGlobalDispatcher } from "undici";
 import { pauseWatcher } from "./bekci-pause.mjs";
@@ -11,7 +13,11 @@ setGlobalDispatcher(new Agent({ headersTimeout: 0, bodyTimeout: 0 }));
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const modeNum = process.argv[2] || "1";
-const progressFile = path.join(projectRoot, "logs", `scrape-progress-${modeNum}.txt`);
+// Sunucu ilerlemeyi tek dosyaya yazar (bkz. src/lib/scraper/progress.ts); eskiden burada mod numaralı bir ad okunuyordu
+// ve ilerleme terminale hiç gelmiyordu.
+const progressFile = path.join(projectRoot, "logs", "scrape-progress.txt");
+const eventsFile = path.join(projectRoot, "logs", "scrape-olaylar.jsonl");
+const serverLogFile = path.join(projectRoot, "logs", "sunucu.log");
 const logFile = path.join(projectRoot, "logs", `scrape-mod${modeNum}.log`);
 mkdirSync(path.join(projectRoot, "logs"), { recursive: true });
 
@@ -159,13 +165,85 @@ const MODES = {
 const mode = MODES[process.argv[2]] || MODES[1];
 
 
-try {
-  await fetch(appUrl, { signal: AbortSignal.timeout(8000) });
-} catch {
-  console.error("HATA: Sunucu kapali gorunuyor (" + appUrl + ").");
-  console.error("Once start.bat ile projeyi baslat, sonra scrape.bat'i tekrar calistir.");
+// SUNUCU: tarama sunucu üzerinden çalışır (/api/scrape/run). Kapalıysa burada, bu terminalin arka planında başlatılır
+// (çıktısı logs/sunucu.log'a gider; ayrı pencere açılmaz), tarama bitince ya da pencere kapanınca kapatılır. Zamanlı
+// modda molalarda da kapatılır: açık sunucu ve ortak Chrome molada bile işlemciyi ve belleği tutuyordu. Zaten açık
+// bir sunucu (start.bat ya da paralel mod) varsa ona dokunulmaz.
+let ownServer = null;
+const nextBin = path.join(projectRoot, "node_modules", "next", "dist", "bin", "next");
+
+async function serverUp() {
+  const local = /^http:\/\/localhost:(\d+)\/?$/.exec(appUrl);
+  if (local) {
+    // Geliştirme sunucusunda "/" çağrısı ana sayfayı derletir ve hemen ardından gelen API isteğinin derlemesiyle
+    // yarışıp hataya düşebiliyordu; yalnızca bağlantı kurulabiliyor mu diye bakılır.
+    return new Promise((resolve) => {
+      const socket = net.connect({ port: Number(local[1]), host: "127.0.0.1" });
+      const done = (ok) => {
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(3000, () => done(false));
+      socket.once("connect", () => done(true));
+      socket.once("error", () => done(false));
+    });
+  }
+  try {
+    await fetch(appUrl, { signal: AbortSignal.timeout(4000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function stopServer() {
+  if (!ownServer) return;
+  const pid = ownServer.pid;
+  ownServer = null;
+  try {
+    if (process.platform === "win32") execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" });
+    else process.kill(pid);
+  } catch {
+    // zaten kapanmış
+  }
+}
+
+async function ensureServer() {
+  if (await serverUp()) return;
+  const local = /^http:\/\/localhost:(\d+)\/?$/.exec(appUrl);
+  if (!local) {
+    console.error("HATA: Sunucu kapali gorunuyor (" + appUrl + ").");
+    process.exit(1);
+  }
+  mkdirSync(path.join(projectRoot, "logs"), { recursive: true });
+  const out = openSync(serverLogFile, "a");
+  ownServer = spawn(process.execPath, [nextBin, "dev", "-p", local[1]], { cwd: projectRoot, stdio: ["ignore", out, out], windowsHide: true });
+  closeSync(out);
+  ownServer.on("exit", () => {
+    ownServer = null;
+  });
+  process.stdout.write("Sunucu arka planda baslatiliyor (ayrinti: logs/sunucu.log)");
+  for (let i = 0; i < 120; i++) {
+    if (await serverUp()) {
+      process.stdout.write(" hazir.\n");
+      return;
+    }
+    process.stdout.write(".");
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  console.error("\nHATA: Sunucu 4 dakikada hazir olmadi. logs/sunucu.log dosyasina bak.");
+  stopServer();
   process.exit(1);
 }
+
+process.on("exit", stopServer);
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => {
+    stopServer();
+    process.exit(130);
+  });
+}
+await ensureServer();
 
 function log(message) {
   const line = `[${new Date().toLocaleString("tr-TR")}] ${message}`;
@@ -373,17 +451,63 @@ async function runPriceRefreshLoop(job) {
 }
 
 
+// Terminal çıktısı: tek satır (üzerine yazılan) canlı ilerleme + her model/marka bitince bir sonuç satırı:
+//   [15:46:18] #257  Ferrari F8: 17 → 18 ilan (+1)       (#257 = bu çalıştırmada eklenen toplam ilan)
 let lastProgress = "";
+try {
+  if (existsSync(progressFile)) lastProgress = readFileSync(progressFile, "utf8").trim(); // önceki çalıştırmadan kalan satır
+} catch {
+  // yok
+}
+let eventPos = existsSync(eventsFile) ? statSync(eventsFile).size : 0;
+let sessionAdded = 0;
+let unitsDone = 0;
+const clearLine = () => process.stdout.write("\r" + " ".repeat(Math.max(20, (process.stdout.columns || 120) - 1)) + "\r");
+
+function drainEvents() {
+  try {
+    if (!existsSync(eventsFile)) return;
+    const size = statSync(eventsFile).size;
+    if (size < eventPos) eventPos = 0;
+    if (size === eventPos) return;
+    const fd = openSync(eventsFile, "r");
+    const buffer = Buffer.alloc(size - eventPos);
+    readSync(fd, buffer, 0, buffer.length, eventPos);
+    closeSync(fd);
+    eventPos = size;
+    for (const line of buffer.toString("utf8").split("\n")) {
+      if (!line.trim()) continue;
+      let e;
+      try {
+        e = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      unitsDone++;
+      if (!(e.added > 0)) continue;
+      sessionAdded += e.added;
+      const time = new Date(e.t || Date.now()).toLocaleTimeString("tr-TR");
+      const counts = e.before != null ? `${e.before} → ${e.after ?? e.before + e.added} ilan (+${e.added})` : `+${e.added} yeni ilan`;
+      clearLine();
+      console.log(`[${time}] #${sessionAdded}  ${e.label}: ${counts}`);
+    }
+  } catch {
+    // okunamayan satır bir sonraki turda denenir
+  }
+}
+
 const watcher = setInterval(() => {
+  drainEvents();
   try {
     if (!existsSync(progressFile)) return;
     const line = readFileSync(progressFile, "utf8").trim();
     if (line && line !== lastProgress) {
       lastProgress = line;
-      process.stdout.write(`\r${line}                    `);
+      const width = (process.stdout.columns || 120) - 1;
+      process.stdout.write("\r" + line.slice(0, width).padEnd(width));
     }
   } catch {
-   
+    // dosya o an yazılıyorsa bir sonraki saniye okunur
   }
 }, 1000);
 
@@ -457,9 +581,12 @@ if (!timed) {
   for (let round = 1; !maxRounds || round <= maxRounds; round++) {
     const before = totalInserted;
     const startedAt = Date.now();
+    await ensureServer();
     log(`──── TUR ${round}${maxRounds ? "/" + maxRounds : ""} basliyor ────`);
     await runJobsOnce();
+    drainEvents();
     const added = totalInserted - before;
+    clearLine();
     log(`TUR ${round} bitti: +${added} yeni ilan, ${Math.round((Date.now() - startedAt) / 60000)} dk surdu (toplam +${totalInserted}).`);
     emptyRounds = added === 0 ? emptyRounds + 1 : 0;
     if (emptyRounds >= 2) {
@@ -468,7 +595,8 @@ if (!timed) {
     }
     if (maxRounds && round >= maxRounds) break;
     const until = new Date(Date.now() + breakMinutes * 60000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
-    log(`Mola: ${breakMinutes} dk (saat ${until}'e kadar). Durdurmak icin pencereyi kapat ya da Ctrl+C.`);
+    stopServer(); // molada sunucu ve Chrome kapalı: işlemci/bellek boşta
+    log(`Mola: ${breakMinutes} dk (saat ${until}'e kadar; sunucu kapatildi). Durdurmak icin pencereyi kapat ya da Ctrl+C.`);
     for (let left = breakMinutes; left > 0; left--) {
       await new Promise((r) => setTimeout(r, 60000));
       if (left % 10 === 0 && left !== breakMinutes) log(`  mola: ${left} dk kaldi`);
@@ -478,3 +606,6 @@ if (!timed) {
 
 clearInterval(watcher);
 console.log("\n=== Tarama tamamlandi. Sonuclar admin panelinde ve sitede. ===");
+// Açtığımız sunucu (varsa) kapatılır; aksi hâlde alt süreç komutun bitmesini engellerdi.
+stopServer();
+process.exit(0);

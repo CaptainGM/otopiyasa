@@ -5,6 +5,18 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   serverExternalPackages: ["playwright", "playwright-core"],
+  // Geliştirme sunucusu proje klasörünün tamamını izliyordu: tarama her ilanda logs/ içine ilerleme yazdığı için
+  // sunucu saniyede bir yeniden derleniyordu ("Compiled in 1.5s" satırları, sürekli işlemci). Kaynak kodu dışındaki
+  // klasörler izlenmez.
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: ["**/node_modules/**", "**/.git/**", "**/.next/**", "**/logs/**", "**/scratch/**", "**/mobile/**", "**/*.apk"],
+      };
+    }
+    return config;
+  },
   eslint: {
     // Run ESLint through the package script; keep production builds independent of lint startup.
     ignoreDuringBuilds: true,

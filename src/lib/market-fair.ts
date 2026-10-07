@@ -52,7 +52,9 @@ interface DealInput {
  */
 export function isDealCandidate(car: DealInput, disc: number, fairN: number): boolean {
   if (fairN < MIN_MARKET_COMPARABLES) return false;
-  if (disc < DEAL_MIN_FAIR_DISCOUNT || disc > SUSPICIOUS_DISCOUNT) return false;
+  // Göstergeyle aynı yuvarlama (bkz. market-position.ts): %29,6 göstergede "%30 → şüpheli ucuz" görünür, fırsat sayılmaz.
+  const pct = Math.round(disc * 100);
+  if (pct < Math.round(DEAL_MIN_FAIR_DISCOUNT * 100) || pct >= Math.round(SUSPICIOUS_DISCOUNT * 100)) return false;
   if (car.year < DEAL_MIN_YEAR || car.mileage > DEAL_MAX_MILEAGE || car.damageFlag || car.price <= 0) return false;
   return !HEAVY_DAMAGE.test(trFold(`${car.title ?? ""} ${car.description ?? ""} ${car.paintChange ?? ""}`));
 }

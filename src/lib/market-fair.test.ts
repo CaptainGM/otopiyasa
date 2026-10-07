@@ -51,3 +51,12 @@ describe("conditionOf", () => {
     expect(conditionOf({})).toBe("clean");
   });
 });
+
+describe("isDealCandidate sınırı", () => {
+  it("göstergede %30 (şüpheli ucuz) görünen ilan fırsat değildir", () => {
+    expect(isDealCandidate(base, 0.296, 12)).toBe(false);
+    expect(isDealCandidate(base, 0.294, 12)).toBe(true);
+    expect(isDealCandidate(base, 0.175, 12)).toBe(true);
+    expect(isDealCandidate(base, 0.174, 12)).toBe(false);
+  });
+});

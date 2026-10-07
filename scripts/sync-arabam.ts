@@ -10,6 +10,8 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./load-env";
+import { pauseWatcher } from "./bekci-pause.mjs";
+pauseWatcher("Arabam doğrulama");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

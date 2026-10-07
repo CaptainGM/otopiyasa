@@ -431,7 +431,7 @@ class _DetailScreenState extends State<DetailScreen> {
                       style: AppText.num(size: 32, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
                     ),
                     const SizedBox(height: 12),
-                    MarketGauge(price: car.price, avg: car.marketAvgPrice, count: car.marketListingCount, large: true),
+                    MarketGauge(price: car.price, avg: car.fairPrice, count: car.fairSample, large: true),
                   ],
                 ),
               ),

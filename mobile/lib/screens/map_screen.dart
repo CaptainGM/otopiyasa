@@ -260,6 +260,12 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  void _zoomBy(double delta) {
+    HapticFeedback.selectionClick();
+    final camera = _mapController.camera;
+    _mapController.move(camera.center, (camera.zoom + delta).clamp(4.5, 16.0));
+  }
+
   void _zoomInto(LatLng point, double zoom) {
     HapticFeedback.selectionClick();
     _mapController.move(point, zoom);
@@ -469,6 +475,9 @@ class _MapScreenState extends State<MapScreen> {
               initialZoom: _turkeyZoom,
               minZoom: 4.5,
               maxZoom: 16.0,
+              // İki parmakla yakınlaştırma/uzaklaştırma, sürükleme ve çift dokunma açık; döndürme kapalı (iki
+              // parmakla yakınlaştırırken harita istemeden dönüyordu).
+              interactionOptions: InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
             ),
             children: [
               // Carto'nun ücretsiz karoları artık API anahtarı istiyor ("API KEY REQUIRED" karosu
@@ -529,6 +538,31 @@ class _MapScreenState extends State<MapScreen> {
               child: _locating
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.my_location, size: 20),
+            ),
+          ),
+          // Yakınlaştırma düğmeleri (iki parmak hareketi de çalışır).
+          Positioned(
+            top: 68,
+            right: 16,
+            child: Column(
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'zoom_in',
+                  tooltip: 'Yakınlaştır',
+                  onPressed: () => _zoomBy(1),
+                  backgroundColor: const Color(0xF00E1626),
+                  foregroundColor: Colors.white,
+                  child: const Icon(Icons.add, size: 22),
+                ),
+                FloatingActionButton.small(
+                  heroTag: 'zoom_out',
+                  tooltip: 'Uzaklaştır',
+                  onPressed: () => _zoomBy(-1),
+                  backgroundColor: const Color(0xF00E1626),
+                  foregroundColor: Colors.white,
+                  child: const Icon(Icons.remove, size: 22),
+                ),
+              ],
             ),
           ),
         ],

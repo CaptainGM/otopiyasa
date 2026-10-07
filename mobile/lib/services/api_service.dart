@@ -1143,14 +1143,20 @@ class ApiService {
         .toList();
   }
 
-  Future<List<CarListing>> fetchDeals() async {
+  /// "Haftanın fırsatları": web ile aynı 12 fırsat (etiketiyle: "Piyasanın %18 altı") ve toplam fırsat sayısı.
+  /// Tamamı fetchCarsByQuery({'firsat': '1'}) ile sayfa sayfa gelir.
+  Future<DealsResult> fetchDeals() async {
     final response = await _http.get(_uri('/api/deals'), headers: _headers);
-    if (response.statusCode != 200) return [];
+    if (response.statusCode != 200) return const DealsResult(items: [], total: 0);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>? ?? [])
+    final items = (body['items'] as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
-        .map((e) => CarListing.fromJson(e['car'] as Map<String, dynamic>? ?? e))
+        .map((e) => (
+              car: CarListing.fromJson(e['car'] as Map<String, dynamic>? ?? e),
+              label: e['label']?.toString() ?? 'Fırsat',
+            ))
         .toList();
+    return DealsResult(items: items, total: (body['total'] as num?)?.toInt() ?? items.length);
   }
 
   /// "En çok görüntülenenler" — web'deki TrendingStrip ile aynı veri kaynağı.

@@ -7,7 +7,6 @@ import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/car_headline.dart';
 import 'package:otopiyasa/utils/tr_text.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
-import 'package:otopiyasa/widgets/market_gauge.dart';
 
 /// Kaynak sitenin görünen adı ve rozet noktası rengi (web'deki SourceBadge ile aynı).
 const sourceLabels = <String, String>{
@@ -140,15 +139,6 @@ class _CarCardState extends State<CarCard> {
     );
   }
 
-  int? get _priceDropPct {
-    final history = widget.car.priceHistory;
-    if (history.length < 2) return null;
-    final previous = history[history.length - 2].price;
-    final current = history.last.price;
-    if (current >= previous || previous <= 0) return null;
-    return (((previous - current) / previous) * 100).round();
-  }
-
   void _swipePhoto(DragEndDetails details, int count) {
     if (count <= 1) return;
     final velocity = details.primaryVelocity ?? 0;
@@ -166,7 +156,6 @@ class _CarCardState extends State<CarCard> {
     final images = _allImages;
     final imageWidth = (MediaQuery.sizeOf(context).width * .38).clamp(128.0, 210.0).toDouble();
     final imageCacheWidth = (imageWidth * MediaQuery.devicePixelRatioOf(context)).round();
-    final drop = _priceDropPct;
     final name = carHeadline(title: car.title, brand: car.brand, model: car.model);
 
     // Doğrulanmamış özellik yazılmaz; yerine soluk "doğrulanıyor" çıkar (web ile aynı).
@@ -183,7 +172,8 @@ class _CarCardState extends State<CarCard> {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
-        height: 162,
+        // Keşfet kartı sade: fiyat göstergesi ve indirim rozeti yalnızca ilan sayfasında.
+        height: 140,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -222,7 +212,6 @@ class _CarCardState extends State<CarCard> {
                         runSpacing: 4,
                         children: [
                           SourcePill(source: car.sourceSite, compact: true),
-                          if (drop != null) PhotoBadge(text: '↓ %$drop', color: const Color(0xFF0F9D63)),
                         ],
                       ),
                     ),
@@ -326,8 +315,6 @@ class _CarCardState extends State<CarCard> {
                         overflow: TextOverflow.ellipsis,
                         style: AppText.num(size: 18.5, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
                       ),
-                      const SizedBox(height: 7),
-                      MarketGauge(price: car.price, avg: car.marketAvgPrice, count: car.marketListingCount),
                     ],
                   ),
                 ),

@@ -6,6 +6,31 @@ import { turkishSearchRegex, levenshtein, extractVehicleTokens, calculateTitleMa
 
 export type Condition = "clean" | "painted" | "damaged";
 
+/**
+ * Toplu hesaplama belleği: market-snapshot her ilanın adil değerini aynı predictPrice ile hesaplar (kartlar, ilan
+ * sayfası ve fırsatlar tek sayıyı göstersin diye). Aynı marka/model için eğitim ve emsal sorguları ilan başına
+ * tekrar atılmasın diye withPredictionMemo içinde sonuçlar geçici olarak paylaşılır. Dizler salt okunur kullanılır.
+ */
+let queryMemo: Map<string, Promise<unknown>> | null = null;
+
+function memo<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  if (!queryMemo) return fn();
+  const hit = queryMemo.get(key);
+  if (hit) return hit as Promise<T>;
+  const pending = fn();
+  queryMemo.set(key, pending);
+  return pending;
+}
+
+export async function withPredictionMemo<T>(fn: () => Promise<T>): Promise<T> {
+  queryMemo = new Map();
+  try {
+    return await fn();
+  } finally {
+    queryMemo = null;
+  }
+}
+
 export interface ComparableCar {
   _id: string;
   title: string;
@@ -278,6 +303,14 @@ async function loadComparables(
   limit = 5,
   title?: string
 ): Promise<ComparableCar[]> {
+  const docs = await memo(`cmp:${brand}|${model}`, () => fetchComparableDocs(brand, model));
+  if (docs.length === 0) return [];
+  return rankComparables(docs, brand, model, year, mileage, limit, title);
+}
+
+type ComparableDoc = { _id: { toString(): string }; title: string; brand: string; model: string; year: number; mileage: number; price: number };
+
+async function fetchComparableDocs(brand: string, model: string): Promise<ComparableDoc[]> {
   // 1. Önce indeksli doğrudan eşleşme (5ms - Atlas M0 dostu)
   // Kullanıcıya gösterilen benzer ilanlar: yalnızca herkese açık (aktif + onaylı) olanlar.
   let docs = await Car.find({
@@ -306,8 +339,18 @@ async function loadComparables(
       .lean<{ _id: { toString(): string }; title: string; brand: string; model: string; year: number; mileage: number; price: number }[]>();
   }
 
-  if (docs.length === 0) return [];
+  return docs;
+}
 
+function rankComparables(
+  docs: ComparableDoc[],
+  brand: string,
+  model: string,
+  year: number,
+  mileage: number,
+  limit: number,
+  title?: string
+): ComparableCar[] {
   // %100 Jenerik alt-model, paket ve donanım ayrıştırması (tüm marka/modeller için evrensel)
   const targetTokens = extractVehicleTokens(title || "", brand, model);
 
@@ -369,6 +412,10 @@ const norm = (s: string) => s.toLocaleLowerCase("tr-TR").trim();
 
 
 export async function resolveModel(brand: string, model: string): Promise<string> {
+  return memo(`resolve:${brand}|${model}`, () => resolveModelUncached(brand, model));
+}
+
+async function resolveModelUncached(brand: string, model: string): Promise<string> {
   const input = model.trim();
   if (!input) return model;
 
@@ -407,27 +454,31 @@ export async function predictPrice(
   year: number,
   mileage: number,
   condition: Condition = "clean",
-  title?: string
+  title?: string,
+  /** Model adı veritabanından geliyorsa (toplu adil değer hesabı) yazım düzeltme sorgusu atlanır. */
+  options: { modelFromDb?: boolean } = {}
 ): Promise<PricePrediction> {
-  const resolvedModel = await resolveModel(brand, model);
+  const resolvedModel = options.modelFromDb ? model : await resolveModel(brand, model);
   const matchedModel = norm(resolvedModel) !== norm(model) ? resolvedModel : undefined;
 
   const { damaged, painted } = conditionFlags(condition);
   const input: FeatureInput = { year, mileage, damaged, painted };
 
   // 1. Önce doğrudan indeksli segment sorgusu (~5ms)
-  let segmentRows = await loadTrainingRows(
-    {
-      brand,
-      model: resolvedModel,
-      status: { $ne: "removed" },
-    },
-    200
+  let segmentRows = await memo(`seg:${brand}|${resolvedModel}`, () =>
+    loadTrainingRows(
+      {
+        brand,
+        model: resolvedModel,
+        status: { $ne: "removed" },
+      },
+      200
+    )
   );
 
   // Yeterli örnek yoksa geniş regex sorgusuyla destekle
   if (segmentRows.length < MIN_SAMPLE_FOR_REGRESSION) {
-    segmentRows = await loadTrainingRows(
+    segmentRows = await memo(`segrx:${brand}|${resolvedModel}`, () => loadTrainingRows(
       {
         brand: { $regex: turkishSearchRegex(brand), $options: "i" },
         $or: [
@@ -436,7 +487,7 @@ export async function predictPrice(
         ],
       },
       200
-    );
+    ));
   }
 
   const comparables = await loadComparables(brand, resolvedModel, year, mileage, 5, title);
@@ -479,9 +530,8 @@ export async function predictPrice(
   if (attempt) {
     finalPrediction = { ...attempt, ...extra };
   } else {
-    const brandRows = await loadTrainingRows(
-      { brand: { $regex: turkishSearchRegex(brand), $options: "i" } },
-      500
+    const brandRows = await memo(`brand:${brand}`, () =>
+      loadTrainingRows({ brand: { $regex: turkishSearchRegex(brand), $options: "i" } }, 500)
     );
     const brandAttempt = tryPredict(
       brandRows,
@@ -492,7 +542,7 @@ export async function predictPrice(
     if (brandAttempt) {
       finalPrediction = { ...applyModelOffset(brandAttempt, segmentRows), ...extra };
     } else {
-      const globalRows = await loadTrainingRows({}, 1000);
+      const globalRows = await memo("global", () => loadTrainingRows({}, 1000));
       const globalAttempt = tryPredict(
         globalRows,
         withSegmentSpecs(segmentRows.length > 0 ? segmentRows : globalRows),

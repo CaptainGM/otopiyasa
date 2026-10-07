@@ -96,7 +96,7 @@ class MarketBadge extends StatelessWidget {
                       _money.format(avg),
                       style: AppText.num(size: 16, weight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
                     ),
-                    Text(scope, style: TextStyle(fontSize: 10.5, color: c.faint)),
+                    Text(scope, style: TextStyle(fontSize: 12, color: c.muted)),
                   ],
                 ),
               ),
@@ -113,7 +113,7 @@ class MarketBadge extends StatelessWidget {
                     ),
                     Text(
                       '${pct > 0 ? '+' : pct < 0 ? '−' : ''}%${pct.abs()} · ${position.label.toLowerCase()}',
-                      style: TextStyle(fontSize: 10.5, color: c.faint),
+                      style: TextStyle(fontSize: 12, color: c.muted),
                     ),
                   ],
                 ),
@@ -125,13 +125,13 @@ class MarketBadge extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.warning_amber_rounded, size: 16, color: AppTheme.accent),
+                Icon(Icons.warning_amber_rounded, size: 17, color: Theme.of(context).colorScheme.error),
                 const SizedBox(width: 6),
-                Expanded(child: Text(description, style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.4))),
+                Expanded(child: Text(description, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.error, height: 1.4, fontWeight: FontWeight.w600))),
               ],
             )
           else
-            Text(description, style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.4)),
+            Text(description, style: TextStyle(fontSize: 13, color: c.muted, height: 1.4)),
         ],
       ),
     );

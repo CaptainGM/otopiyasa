@@ -67,6 +67,9 @@ export interface Car {
  
   minOffer?: number;
   businessName?: string; 
+  /** Adil piyasa değeri (km, hasar, donanıma göre; bkz. lib/market-fair.ts) ve emsal sayısı. */
+  fairPrice?: number;
+  fairSample?: number;
   marketAvgPrice?: number;
   marketListingCount?: number;
   /** "family": donanımda emsal yetmediği için aynı yılın tüm donanımları birlikte sayıldı. */
@@ -97,6 +100,9 @@ export type CarListItem = Pick<
 > & {
   /** Kart başlığı marka + model (ilan başlığı satıcının serbest metni, ikinci satırda). */
   brand?: string;
+  /** Adil piyasa değeri ve dayandığı emsal sayısı (ilan sayfasındaki fiyat analiziyle aynı; bkz. lib/market-fair.ts). */
+  fairPrice?: number;
+  fairSample?: number;
   model?: string;
   images: string[];
   features: Pick<CarFeatures, "fuelType" | "transmission">;
@@ -125,8 +131,10 @@ export interface CarFilters {
   transmission?: string;
   /** Araç tipi (bkz. lib/vehicle-scope.ts VEHICLE_CLASSES). */
   vehicleClass?: string;
-  sort?: "mixed" | "price_asc" | "price_desc" | "year_desc" | "newest" | "views";
+  sort?: "mixed" | "price_asc" | "price_desc" | "year_desc" | "newest" | "views" | "deal";
   discountOnly?: boolean;
+  /** Yalnızca "Haftanın fırsatları" ölçütündeki ilanlar (bkz. lib/market-fair.ts isDealCandidate). */
+  deals?: boolean;
   /** "Keşfet" akışının kişiye/yenilemeye özel rastgele başlangıç tohumu; sonraki sayfalar aynı tohumu kullanır. */
   seed?: number;
   /** Keşfet dilimi (0..23) ve dönemi: herkes için aynı, CDN'de saklanır; sıra istemcide karıştırılır. */

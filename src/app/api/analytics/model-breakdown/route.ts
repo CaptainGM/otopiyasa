@@ -8,6 +8,11 @@ import { escapeRegExp } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+// Başarılı yanıtlar CDN'de tutulur (marka listesi 1 saat, model analizi 6 saat): aynı model için her ziyaret
+// veritabanına ve Vercel fonksiyonuna gitmesin. Hız sınırı (429) yanıtları saklanmaz.
+const LIST_CACHE = { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" };
+const MODEL_CACHE = { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=43200" };
+
 export async function GET(request: Request) {
   const limited = await checkSharedRateLimit(request, "model-breakdown", { limit: 20, windowMs: 10 * 60 * 1000 });
   if (limited) return limited;
@@ -24,10 +29,13 @@ export async function GET(request: Request) {
   const options = await getBrandModelOptions();
 
   if (!brand || !model) {
-    return NextResponse.json({
-      brands: options.brands,
-      brandModels: options.brandModels,
-    });
+    return NextResponse.json(
+      {
+        brands: options.brands,
+        brandModels: options.brandModels,
+      },
+      { headers: LIST_CACHE }
+    );
   }
 
   const cars = await Car.find(
@@ -50,7 +58,7 @@ export async function GET(request: Request) {
       stats: null,
       brands: options.brands,
       brandModels: options.brandModels,
-    });
+    }, { headers: MODEL_CACHE });
   }
 
   // 1. Yıllara Göre Değer Kaybı (Amortisman) Eğrisi
@@ -168,5 +176,5 @@ export async function GET(request: Request) {
     },
     brands: options.brands,
     brandModels: options.brandModels,
-  });
+  }, { headers: MODEL_CACHE });
 }

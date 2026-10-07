@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
+import 'package:otopiyasa/services/device_location.dart';
 
 /// HARİTA — web'deki `/map` sayfasının mobil karşılığı.
 ///
@@ -50,6 +51,9 @@ class _MapScreenState extends State<MapScreen> {
   final _api = ApiService();
   final _money = NumberFormat.decimalPattern('tr_TR');
   final _mapController = MapController();
+  // "Konumum": cihaz konumu haritada mavi nokta olarak gösterilir, harita oraya yaklaşır.
+  LatLng? _me;
+  bool _locating = false;
 
   List<Map<String, dynamic>> _clusters = [];
   List<String> _brandOptions = [];
@@ -235,6 +239,25 @@ class _MapScreenState extends State<MapScreen> {
     }
     // Noktalar kartların altında kalsın.
     return [...dots, ...full.reversed];
+  }
+
+  Future<void> _locateMe() async {
+    if (_locating) return;
+    HapticFeedback.selectionClick();
+    setState(() => _locating = true);
+    try {
+      final position = await currentDevicePosition();
+      if (!mounted) return;
+      final me = LatLng(position.latitude, position.longitude);
+      setState(() => _me = me);
+      _mapController.move(me, 11);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   void _zoomInto(LatLng point, double zoom) {
@@ -458,6 +481,22 @@ class _MapScreenState extends State<MapScreen> {
               ),
               // Kamera değiştikçe (yakınlaştırma) çakışma ayıklaması yeniden hesaplanır.
               Builder(builder: (context) => MarkerLayer(markers: _buildMarkers(MapCamera.of(context)))),
+              if (_me != null)
+                MarkerLayer(markers: [
+                  Marker(
+                    point: _me!,
+                    width: 26,
+                    height: 26,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3B82F6),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                        boxShadow: const [BoxShadow(color: Color(0x663B82F6), blurRadius: 0, spreadRadius: 6)],
+                      ),
+                    ),
+                  ),
+                ]),
               // OSM karo kullanım koşulu: kaynak belirtilmeli.
               const SimpleAttributionWidget(
                 source: Text('OpenStreetMap katkıcıları', style: TextStyle(fontSize: 10, color: Colors.white70)),
@@ -476,6 +515,20 @@ class _MapScreenState extends State<MapScreen> {
               backgroundColor: const Color(0xF00E1626),
               foregroundColor: Colors.white,
               elevation: 4,
+            ),
+          ),
+          Positioned(
+            top: 16,
+            right: 16,
+            child: FloatingActionButton.small(
+              heroTag: 'my_location',
+              tooltip: 'Konumum',
+              onPressed: _locateMe,
+              backgroundColor: const Color(0xF00E1626),
+              foregroundColor: Colors.white,
+              child: _locating
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.my_location, size: 20),
             ),
           ),
         ],

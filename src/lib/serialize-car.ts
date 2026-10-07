@@ -42,7 +42,7 @@ export type LeanCarDoc = {
   verifiedFeatures?: string[];
   featuresVerifiedAt?: Date;
   /** Saatlik piyasa anlık görüntüsü (bkz. lib/market-snapshot.ts). */
-  market?: { avg?: number; count?: number; scope?: string } | null;
+  market?: { avg?: number; count?: number; scope?: string; fair?: number; fairN?: number } | null;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -100,6 +100,8 @@ export function serializeCar(
     contactPhone: doc.contactPhone || "",
     minOffer: doc.minOffer || 0,
     businessName: doc.businessName || "",
+    fairPrice: doc.market?.fair,
+    fairSample: doc.market?.fairN,
     marketAvgPrice,
     marketListingCount,
     marketScope: market?.scope ?? (stored?.scope === "family" ? "family" : stored ? "model" : undefined),

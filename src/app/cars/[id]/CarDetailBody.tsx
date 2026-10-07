@@ -5,11 +5,11 @@ import { maskName } from "@/lib/form-options";
 import { DamageDiagram } from "@/components/DamageDiagram";
 import { CarGallery } from "@/components/CarGallery";
 import { RecentlyViewedTracker } from "@/components/RecentlyViewedTracker";
+import { ScrollToTop } from "@/components/ScrollToTop";
 import { CompareButton } from "@/components/CompareButton";
 import { CarPriceHistoryChart } from "@/components/CarPriceHistoryChart";
 import { PriceHistogram } from "@/components/PriceHistogram";
 import { PricePredictionBadge } from "@/components/PricePredictionBadge";
-import { derivePainted, predictPrice } from "@/lib/price-prediction";
 import { getSimilarCars } from "@/lib/recommendations";
 import { CarCard } from "@/components/CarCard";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
@@ -23,9 +23,11 @@ import { ValuationReportModal } from "@/components/ValuationReportModal";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
+import { liveFairValue } from "@/lib/market-fair";
 import { detectPriceAnomaly } from "@/lib/anomaly";
 import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { featureChips } from "@/lib/feature-chips";
+import { PENDING_FEATURE_LABEL } from "@/lib/scraper/feature-merge";
 import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
 import { FuelCostCard } from "@/components/FuelCostCard";
@@ -76,19 +78,11 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const { brand, model, year, price } = carDoc;
 
 
-  const carCondition = carDoc.damageFlag
-    ? ("damaged" as const)
-    : derivePainted(carDoc.paintChange)
-    ? ("painted" as const)
-    : ("clean" as const);
-
-  const [marketMap, prediction, segment, favoriteCount, fuelCost] = await Promise.all([
+  // Tek ölçü: üstteki gösterge, fiyat analizi ve listelerdeki kart aynı adil değere bakar (bkz. lib/market-fair.ts;
+  // anlık sonuç kayıttan farklıysa ilanın üstüne yazılır).
+  const [marketMap, { prediction, fields: fair }, segment, favoriteCount, fuelCost] = await Promise.all([
     getMarketMap([{ brand, model, year }]),
-    cached(
-      `predict:${brand}|${model}|${year}|${Math.round(carDoc.mileage / 20000)}|${carCondition}|${carDoc.title.slice(0, 30)}`,
-      CACHE_TTL.medium,
-      () => predictPrice(brand, model, year, carDoc.mileage, carCondition, carDoc.title)
-    ),
+    liveFairValue(carDoc),
     cached(`segment:${brand}|${model}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model)),
     User.countDocuments({ favorites: carDoc._id }),
     // Yakıt maliyeti hesaplanamazsa (fiyat kaynağına ulaşılamadı, tüketim bilinmiyor) kart gösterilmez.
@@ -104,6 +98,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
   const market = marketMap.get(segmentKey(brand, model, year));
   const car = serializeCar(carDoc, market);
+
   // Hiç yeniden doğrulanmamış ilanda son kontrol, ilanın kaynakta ilk görüldüğü andır.
   const lastChecked = car.lastVerifiedAt || car.createdAt;
   // Derlenen ilanların çoğunda kayıtlı koordinat yok; harita ve "yakınımdaki" ekranlarıyla aynı
@@ -184,6 +179,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
   return (
     <div className="space-y-8 pb-10">
+      <ScrollToTop id={car._id} />
       <RecentlyViewedTracker carId={car._id} />
       <ViewCounter carId={car._id} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -236,13 +232,17 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         </div>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-        <CarGallery
-          images={car.images && car.images.length > 0 ? car.images : [car.imageUrl]}
-          title={car.title}
-        />
+      {/* Masaüstünde sol sütun: galeri, altında açıklama ve hasar/boya (fotoğrafın altı boş kalmasın); sağ sütun: başlık,
+          fiyat, analiz, eylemler. Telefonda sıra: galeri → bilgiler → açıklama. */}
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:grid-rows-[auto_1fr] lg:items-start">
+        <div className="lg:col-start-1 lg:row-start-1">
+          <CarGallery
+            images={car.images && car.images.length > 0 ? car.images : [car.imageUrl]}
+            title={car.title}
+          />
+        </div>
 
-        <div className="space-y-5">
+        <div className="space-y-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <div className="flex flex-wrap gap-2">
             <SourceBadge source={car.sourceSite} />
             {car.damageFlag && <span className="badge badge-danger">Hasar kaydı</span>}
@@ -287,7 +287,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
           <div className="space-y-3 border-y border-[var(--border)] py-4">
             <p className="num text-[2.4rem] font-semibold leading-none tracking-tight">{formatPrice(car.price)}</p>
-            <MarketGauge price={car.price} avg={car.marketAvgPrice} count={car.marketListingCount} size="md" />
+            <MarketGauge price={car.price} avg={fair?.["market.fair"]} count={fair?.["market.fairN"]} size="md" />
           </div>
 
           {car.status === "sold" && (
@@ -308,19 +308,49 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           />
 
 
-          <div className="flex flex-wrap gap-2">
-            {featureChips([car.features.fuelType, car.features.transmission, car.features.bodyType, car.features.color]).map((c) => (
-              <span key={c.label} className={c.pending ? "badge border-dashed text-slate-500" : "badge"}>
-                {c.label}
-              </span>
-            ))}
-          </div>
+          {(() => {
+            // Bilinen özellikler etiket; kaynaktan henüz okunmamışlar etiket gibi yan yana durmaz (renk etiketinin
+            // yanında "Özellikler doğrulanıyor" anlamsız görünüyordu), hangisinin beklendiğini söyleyen bir satır olur.
+            const known = featureChips([car.features.fuelType, car.features.transmission, car.features.bodyType, car.features.color]).filter(
+              (c) => !c.pending
+            );
+            const pending = (
+              [
+                [car.features.fuelType, "yakıt"],
+                [car.features.transmission, "vites"],
+                [car.features.bodyType, "kasa tipi"],
+                [car.features.color, "renk"],
+              ] as const
+            )
+              .filter(([value]) => value === PENDING_FEATURE_LABEL)
+              .map(([, name]) => name);
+            if (known.length === 0 && pending.length === 0) return null;
+            return (
+              <div className="space-y-2">
+                {known.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {known.map((c) => (
+                      <span key={c.label} className="badge">
+                        {c.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {pending.length > 0 && (
+                  <p className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+                    <Icon name="clock" size={13} />
+                    {pending.join(", ").replace(/, ([^,]*)$/, " ve $1").replace(/^./, (ch) => ch.toLocaleUpperCase("tr"))} bilgisi
+                    kaynaktan doğrulanıyor.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
           {car.status === "active" && car.sourceSite !== "user" && <MarketTempoCard carId={car._id} />}
 
           {fuelCost && <FuelCostCard cost={fuelCost} />}
 
-          <ListingDescription value={car.description} />
 
           {/* Üye ilanıysa iletişim + işletme rozeti */}
           {car.sourceSite === "user" && (
@@ -398,6 +428,12 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           </div>
 
           <ViewerReportButton carId={car._id} />
+        </div>
+
+        <div className="space-y-5 lg:col-start-1 lg:row-start-2">
+          <ListingDescription value={car.description} />
+          {/* Hasar/boya görsel özeti */}
+          <DamageDiagram paintChange={car.paintChange} damageFlag={car.damageFlag} damageParts={car.damageParts} />
         </div>
       </div>
 
@@ -489,12 +525,6 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         <ViewerQuestions carId={car._id} />
       )}
 
-      {/* Hasar/boya görsel özeti — teknik özelliklerin altında, dikkat çeksin. */}
-      <DamageDiagram
-        paintChange={car.paintChange}
-        damageFlag={car.damageFlag}
-        damageParts={car.damageParts}
-      />
 
 
       {similarCars.length > 0 && (

@@ -58,11 +58,13 @@ export function MiniCarCard({
           className="object-cover transition duration-500 group-hover:scale-[1.03]"
         />
         {tag && (
-          <span className={`badge num absolute left-2 top-2 ${tone === "cheap" ? "badge-photo-drop" : "badge-glass"}`}>{tag}</span>
+          <span className={`badge absolute left-2 top-2 !px-2 !py-1 !text-[0.8rem] !font-bold tabular-nums shadow-md ${tone === "cheap" ? "badge-photo-drop" : "badge-glass"}`}>
+            {tag}
+          </span>
         )}
       </div>
       <div className="space-y-1 p-3">
-        <p className="eyebrow truncate !text-[0.62rem]">
+        <p className="eyebrow truncate !text-[0.68rem]">
           <span className="text-[var(--text)]">{car.year}</span>
           <span className="mx-1.5 text-[var(--faint)]">/</span>
           {car.city}

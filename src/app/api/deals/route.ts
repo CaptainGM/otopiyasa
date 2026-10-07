@@ -1,26 +1,19 @@
 import { NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { findGlobalDeals } from "@/lib/deals";
-import { cached, CACHE_TTL } from "@/lib/cache";
+import { getDealStrip } from "@/lib/deal-strip";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-/** "Haftanın fırsatları" — 30.000+ ilanlık tüm veritabanını tarayarak en avantajlı 30 gerçek fırsatı döner. */
+/**
+ * "Haftanın fırsatları" (mobil şerit): web ana sayfasıyla aynı 12 fırsat ve toplam fırsat sayısı. Tamamı
+ * /api/cars?firsat=1 ile sayfa sayfa alınır.
+ */
 export async function GET() {
   try {
-    await connectDB();
-    const deals = await cached("home:deals:global", CACHE_TTL.long, async () => {
-      return findGlobalDeals(30);
-    });
-
+    const { items, total } = await getDealStrip();
     return NextResponse.json(
-      { items: deals },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=900, stale-while-revalidate=3600",
-        },
-      }
+      { items, total },
+      { headers: { "Cache-Control": "public, s-maxage=900, stale-while-revalidate=3600" } }
     );
   } catch (error) {
     console.error("GET /api/deals error:", error);

@@ -153,23 +153,16 @@ export default function RootLayout({
           <main className="container py-8">{children}</main>
         </ErrorBoundary>
         <footer className="mt-8 border-t border-[var(--border)] py-8">
-          <div className="container grid gap-6 md:grid-cols-[1.2fr_1fr] md:items-start">
-            <div className="space-y-3">
-              <Logo />
-              <p className="max-w-md text-xs leading-relaxed text-[var(--faint)]">
-                OtoPiyasa bir üniversite bitirme projesidir; ticari değildir. İlan verileri
-                kaynak sitelerden yalnızca akademik amaçla derlenmiştir ve tüm hakları
-                kaynaklarına aittir — her ilan orijinal kaynağına bağlantı verir.
-              </p>
-            </div>
-            <nav aria-label="Alt menü" className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-[var(--muted)] sm:grid-cols-3">
-              <Link href="/" className="hover:text-[var(--text)]">Keşfet</Link>
-              <Link href="/analytics" className="hover:text-[var(--text)]">Piyasa analizi</Link>
-              <Link href="/predict" className="hover:text-[var(--text)]">Fiyat tahmini</Link>
-              <Link href="/compare" className="hover:text-[var(--text)]">Karşılaştır</Link>
-              <Link href="/map" className="hover:text-[var(--text)]">Harita</Link>
-              <Link href="/gizlilik" className="hover:text-[var(--text)]">Gizlilik politikası</Link>
-            </nav>
+          <div className="container flex flex-col items-center gap-3 text-center">
+            <Logo />
+            <p className="max-w-xl text-xs leading-relaxed text-[var(--faint)]">
+              OtoPiyasa bir üniversite bitirme projesidir; ticari değildir. İlan verileri
+              kaynak sitelerden yalnızca akademik amaçla derlenmiştir ve tüm hakları
+              kaynaklarına aittir — her ilan orijinal kaynağına bağlantı verir.
+            </p>
+            <Link href="/gizlilik" className="text-xs text-[var(--muted)] hover:text-[var(--text)] hover:underline">
+              Gizlilik politikası
+            </Link>
           </div>
         </footer>
         <CompareTray />

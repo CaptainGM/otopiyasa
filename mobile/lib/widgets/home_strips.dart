@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/screens/nearby_screen.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/car_headline.dart';
@@ -41,12 +42,12 @@ Widget _miniCard(BuildContext context, CarListing car, {String? badge, bool chea
                   left: 6,
                   top: 6,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
                     decoration: BoxDecoration(
                       color: cheap ? const Color(0xFF0F9D63) : Colors.black.withValues(alpha: 0.66),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text(badge, style: AppText.num(size: 9.5, weight: FontWeight.w600, color: Colors.white)),
+                    child: Text(badge, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white, fontFeatures: [FontFeature.tabularFigures()])),
                   ),
                 ),
             ],
@@ -244,6 +245,57 @@ class _RecentlyViewedStripState extends State<RecentlyViewedStrip> {
           children: items.map((car) => _miniCard(context, car)).toList(),
         );
       },
+    );
+  }
+}
+
+/// "Yakınımdaki ilanlar" girişi — web ana sayfasındaki satırın karşılığı. Konum yalnızca dokununca istenir
+/// (ekran açılır açılmaz izin penceresi çıkmasın).
+class NearbyPrompt extends StatelessWidget {
+  const NearbyPrompt({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Material(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NearbyScreen())),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: c.border),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c.border)),
+                  child: const Icon(Icons.my_location, size: 19, color: Color(0xFF3B82F6)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Yakınımdaki ilanlar', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                      Text('Konumunu kullan, en yakın ilanları mesafeye göre sırala.',
+                          style: TextStyle(color: c.muted, fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: c.faint),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

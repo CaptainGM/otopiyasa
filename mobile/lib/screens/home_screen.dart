@@ -655,6 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _vehicleClassChips(),
             const SizedBox(height: 18),
             if (!_hasActiveFilters && _vehicleClass.isEmpty) ...[
+              const NearbyPrompt(),
               const RecentlyViewedStrip(),
               DealsStrip(refreshSignal: _refreshSignal),
               TrendingStrip(refreshSignal: _refreshSignal),

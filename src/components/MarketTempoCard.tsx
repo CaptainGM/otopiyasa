@@ -39,29 +39,29 @@ export function MarketTempoCard({ carId }: { carId: string }) {
           <Icon name="pulse" size={14} />
           Piyasa temposu
         </p>
-        <span className="text-[11px] text-[var(--faint)]">{tempo.scopeLabel}</span>
+        <span className="text-xs text-[var(--muted)]">{tempo.scopeLabel}</span>
       </div>
       <dl className="grid grid-cols-2 gap-3">
         {tempo.days && (
           <div>
-            <dt className="text-[11px] text-[var(--muted)]">Yayında kalma süresi</dt>
-            <dd className="num mt-0.5 text-xl font-semibold">~{tempo.days.median} gün</dd>
-            <dd className="text-[10px] text-[var(--faint)]">
+            <dt className="text-xs text-[var(--muted)]">Yayında kalma süresi</dt>
+            <dd className="num mt-0.5 text-2xl font-semibold text-[var(--accent-2)]">~{tempo.days.median} gün</dd>
+            <dd className="text-[0.75rem] text-[var(--muted)]">
               çoğu {tempo.days.p25}–{tempo.days.p75} gün · {tempo.days.sample} ilan
             </dd>
           </div>
         )}
         {tempo.drop && (
           <div>
-            <dt className="text-[11px] text-[var(--muted)]">Pazarlık payı</dt>
-            <dd className="num mt-0.5 text-xl font-semibold">%{tempo.drop.medianPct.toLocaleString("tr-TR")}</dd>
-            <dd className="text-[10px] text-[var(--faint)]">
+            <dt className="text-xs text-[var(--muted)]">Pazarlık payı</dt>
+            <dd className="num mt-0.5 text-2xl font-semibold text-[var(--accent-2)]">%{tempo.drop.medianPct.toLocaleString("tr-TR")}</dd>
+            <dd className="text-[0.75rem] text-[var(--muted)]">
               ilanların %{tempo.drop.share}&apos;inde indirim · {tempo.drop.sample} ilan
             </dd>
           </div>
         )}
       </dl>
-      <p className="text-[11px] leading-relaxed text-[var(--faint)]">
+      <p className="text-[0.8rem] leading-relaxed text-[var(--muted)]">
         Benzer ilanların kaynaktan kalkma süresi ve yayındayken yaptıkları indirimlerden hesaplanır. Yayından kalkma her
         zaman satış anlamına gelmez.
       </p>

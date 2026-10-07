@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otopiyasa/services/api_service.dart';
 
 class UpdateService {
-  /// Mevcut uygulamanın sürüm ve derleme numarası.
-  /// pubspec.yaml içerisindeki version (1.0.2+3) ile uyumludur.
-  static const String currentVersionName = '1.0.2';
-  static const int currentVersionCode = 3;
+  /// Yüklü uygulamanın gerçek sürümü (APK'nın kendisinden okunur, pubspec.yaml version: 1.0.6+7 → 1.0.6 / 7).
+  /// Eskiden burada elle yazılmış '1.0.2 / 3' duruyordu ve hiç güncellenmediği için her telefon kendini
+  /// 1.0.2 sanıyordu: güncelleme denetimi hep yanlış sonuç veriyordu.
+  static PackageInfo? _info;
+  static Future<PackageInfo> packageInfo() async => _info ??= await PackageInfo.fromPlatform();
 
   static bool _dialogShowing = false;
 
@@ -28,6 +30,9 @@ class UpdateService {
     }
 
     try {
+      final info = await packageInfo();
+      final currentVersionName = info.version;
+      final currentVersionCode = int.tryParse(info.buildNumber) ?? 0;
       final data = await ApiService().checkAppVersion();
       if (!context.mounted) return;
 
@@ -54,6 +59,7 @@ class UpdateService {
         if (_dialogShowing) return;
         _showUpdateDialog(
           context,
+          currentVersionName: currentVersionName,
           remoteVersion: remoteVersion,
           apkUrl: apkUrl,
           changelog: changelog,
@@ -93,6 +99,7 @@ class UpdateService {
 
   static void _showUpdateDialog(
     BuildContext context, {
+    required String currentVersionName,
     required String remoteVersion,
     required String apkUrl,
     required String changelog,

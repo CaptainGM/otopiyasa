@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/services/device_location.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
 
 /// "Yakınımdaki ilanlar" — web'deki NearbyListings ile aynı mantık: gerçek
@@ -33,54 +33,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _load();
   }
 
-  Future<Position> _determinePosition() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw Exception('Konum servisleri kapalı. Cihaz ayarlarından konumu aç.');
-    }
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        throw Exception('Konum izni verilmedi.');
-      }
-    }
-    if (permission == LocationPermission.deniedForever) {
-      throw Exception('Konum izni kalıcı reddedilmiş. Ayarlardan izin vermen gerekiyor.');
-    }
-    // Kapalı alanda/emülatörde taze konum gelmeyebilir; zaman sınırı yokken ekran sonsuza dek
-    // yükleniyordu. Mesafe zaten ilçe düzeyinde yaklaşık, orta doğruluk ve son bilinen konum yeter.
-    // Google "konum doğruluğu" penceresi reddedilirse (ağ konumu kapalı) Google'ın konum
-    // servisi sonuç vermiyor; ikinci denemede Android'in GPS'i doğrudan kullanılır. Eski "son
-    // bilinen konum" en son çaredir, çünkü başka bir şehirden/ülkeden kalmış olabilir.
-    final attempts = <LocationSettings>[
-      const LocationSettings(accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 8)),
-      if (Platform.isAndroid)
-        AndroidSettings(accuracy: LocationAccuracy.high, forceLocationManager: true, timeLimit: const Duration(seconds: 12))
-      else
-        const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 12)),
-    ];
-    for (final settings in attempts) {
-      try {
-        return await Geolocator.getCurrentPosition(locationSettings: settings);
-      } on TimeoutException {
-        continue;
-      } on LocationServiceDisabledException {
-        continue;
-      }
-    }
-    final last = await Geolocator.getLastKnownPosition();
-    if (last != null) return last;
-    throw Exception('Konum alınamadı. Konum servisinin açık olduğundan emin olup tekrar dene.');
-  }
-
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final position = await _determinePosition();
+      final position = await currentDevicePosition();
       final items = await _api.fetchNearby(position.latitude, position.longitude);
       if (!mounted) return;
       setState(() => _items = items);

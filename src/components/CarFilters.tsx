@@ -71,6 +71,7 @@ export function CarFilters({
   return (
     <form onSubmit={handleSubmit} className="card space-y-4 p-3 sm:p-5 md:p-6">
       {discountOnly && <input type="hidden" name="discountOnly" value="true" />}
+      {searchParams.get("firsat") === "1" && <input type="hidden" name="firsat" value="1" />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="eyebrow">Filtreler</p>
@@ -184,6 +185,7 @@ export function CarFilters({
             className="select"
           >
             <option value="mixed">Karışık (önerilen)</option>
+            <option value="deal">Piyasanın en altında</option>
             <option value="newest">En yeni</option>
             <option value="price_asc">Fiyat (artan)</option>
             <option value="price_desc">Fiyat (azalan)</option>

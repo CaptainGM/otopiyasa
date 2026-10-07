@@ -16,8 +16,10 @@ type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> 
   priceHistory?: Array<{ price: number; recordedAt: string | Date }>;
   marketAvgPrice?: number;
   marketListingCount?: number;
+  fairPrice?: number;
+  fairSample?: number;
   /** Saatlik piyasa anlık görüntüsü (bkz. lib/market-snapshot.ts); kart göstergesi için. */
-  market?: { avg?: number; count?: number } | null;
+  market?: { avg?: number; count?: number; fair?: number; fairN?: number } | null;
   verifiedFeatures?: string[];
   featuresVerifiedAt?: Date | string;
 };
@@ -52,6 +54,8 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
       price: point.price,
       recordedAt: point.recordedAt.toString(),
     })),
+    fairPrice: car.fairPrice ?? car.market?.fair,
+    fairSample: car.fairSample ?? car.market?.fairN,
     marketAvgPrice: car.marketAvgPrice ?? car.market?.avg,
     marketListingCount: car.marketListingCount ?? car.market?.count,
   };

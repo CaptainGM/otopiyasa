@@ -75,6 +75,10 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
     if (filters.priceMax) query.price.$lte = filters.priceMax;
   }
 
+  if (filters.deals) {
+    query["market.deal"] = true;
+  }
+
   if (filters.discountOnly) {
     (query.$and ||= []).push({
       $expr: {
@@ -100,6 +104,9 @@ export function buildCarSort(sort?: CarFilters["sort"]): Record<string, SortOrde
     case "views":
      
       return { viewCount: -1 as SortOrder };
+    case "deal":
+      // Adil değerin en çok altında olan önce (bkz. lib/market-fair.ts).
+      return { "market.disc": -1 as SortOrder, _id: 1 as SortOrder };
     case "newest":
     default:
       return { createdAt: -1 as SortOrder };
@@ -131,6 +138,7 @@ export async function findCarsPage(
     !filters.fuelType &&
     !filters.transmission &&
     !filters.discountOnly &&
+    !filters.deals &&
     (!filters.sort || filters.sort === "mixed");
 
   // Rastgele akış her tohumda farklıdır; önbelleğe alınırsa kayıtlar boşuna birikir ve herkes
@@ -289,8 +297,12 @@ export function parseCarFilters(searchParams: URLSearchParams): CarFilters {
     transmission: searchParams.get("transmission") || undefined,
     vehicleClass: isVehicleClass(searchParams.get("vehicleClass")) ? (searchParams.get("vehicleClass") as string) : undefined,
     discountOnly: searchParams.get("discountOnly") === "true",
-    
-    sort: (searchParams.get("sort") as CarFilters["sort"]) || "mixed",
+    deals: searchParams.get("firsat") === "1",
+    // Fırsat listesi kendi sırasıyla gelir (karışık akış değil): en çok piyasa altında olan önce.
+    sort:
+      searchParams.get("firsat") === "1" && (!searchParams.get("sort") || searchParams.get("sort") === "mixed")
+        ? "deal"
+        : (searchParams.get("sort") as CarFilters["sort"]) || "mixed",
     seed: clampInt(num("seed"), MAX_FEED_SEED, 0) || undefined,
     slot: searchParams.has("slot") && Number.isInteger(num("slot")) ? num("slot") : undefined,
     bucket: searchParams.has("b") && Number.isInteger(num("b")) ? num("b") : undefined,

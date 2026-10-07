@@ -54,10 +54,10 @@ export async function refreshMarketSnapshot(): Promise<{ segments: number; scann
       stat && stat.avgPrice > 0 ? { avg: Math.round(stat.avgPrice), count: stat.listingCount, scope: stat.scope ?? "model" } : null;
     if (!marketSnapshotChanged(car.market, next)) continue;
     if (next) {
-      ops.push({ updateOne: { filter: { _id: car._id }, update: { $set: { market: { ...next, at } } }, timestamps: false } });
+      ops.push({ updateOne: { filter: { _id: car._id }, update: { $set: { "market.avg": next.avg, "market.count": next.count, "market.scope": next.scope, "market.at": at } }, timestamps: false } });
       updated++;
     } else {
-      ops.push({ updateOne: { filter: { _id: car._id }, update: { $unset: { market: 1 } }, timestamps: false } });
+      ops.push({ updateOne: { filter: { _id: car._id }, update: { $unset: { "market.avg": 1, "market.count": 1, "market.scope": 1, "market.at": 1 } }, timestamps: false } });
       cleared++;
     }
     if (ops.length >= 1000) await flush();

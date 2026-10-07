@@ -4,7 +4,9 @@ export const MIN_CHAT_SIZE = { w: 300, h: 320 };
 
 export const MAX_CHAT_WIDTH = 680;
 
-export const DEFAULT_CHAT_SIZE = { w: 372, h: 520 };
+// Varsayılan açılış ekran yüksekliğinin çoğunu kaplar (küçük pencere kullanıcıyı elle büyütmeye zorluyordu);
+// küçük ekranlarda clampChatSize sınırlar.
+export const DEFAULT_CHAT_SIZE = { w: 420, h: 760 };
 
 
 export const CHAT_MARGIN = { w: 40, h: 104 };

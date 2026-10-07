@@ -28,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -39,13 +39,20 @@ jobs:
           flutter-version: 3.41.7
           cache: true
 
+      # Anahtar dosyası açıkça key.properties ile verilir: varsayılan ~/.android/debug.keystore yolu sunucuda
+      # kullanılmıyordu, Gradle kendi anahtarını üretip APK'yı farklı imzaladı (telefona kurulamadı).
       - name: İmza anahtarı
         env:
           KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
         run: |
           if [ -z "$KEYSTORE" ]; then echo "ANDROID_DEBUG_KEYSTORE_B64 sırrı yok"; exit 1; fi
-          mkdir -p ~/.android
-          echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/otopiyasa.keystore"
+          cat > mobile/android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/otopiyasa.keystore
+          storePassword=android
+          keyAlias=androiddebugkey
+          keyPassword=android
+          EOF
 
       - name: Sürüm numarası ve notlar
         id: version
@@ -80,6 +87,16 @@ jobs:
           flutter analyze --no-fatal-infos
           flutter build apk --release --build-name=${{ steps.version.outputs.name }} --build-number=${{ steps.version.outputs.code }}
           cp build/app/outputs/flutter-apk/app-release.apk ../otopiyasa-release.apk
+
+      # Telefonlardaki uygulamayla aynı anahtar mı? Değilse yayınlanmaz (kurulamayan güncelleme gitmesin).
+      - name: İmzayı doğrula
+        env:
+          EXPECTED_CERT_SHA256: 350e8ee5ef27f122dc62230b53e6d43cd1365c554475f1fc0cee409d851f76f4
+        run: |
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          actual=$("$apksigner" verify --print-certs otopiyasa-release.apk | grep -m1 "SHA-256 digest" | awk '{print $NF}')
+          echo "imza: $actual"
+          if [ "$actual" != "$EXPECTED_CERT_SHA256" ]; then echo "İmza telefonlardaki uygulamayla uyuşmuyor, yayınlanmadı."; exit 1; fi
 
       - name: Yayınla
         env:

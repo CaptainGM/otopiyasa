@@ -16,6 +16,7 @@ echo  [★] EN HIZLI SERI CEKIM (50.000 Canli Ilan Hedefi: once marka, sonra mod
 echo   ------------------------------------------------------------------
 echo    T  - TURBO SERI CEKIM   (Sayfa basina 20 arac direkt iceri; marka turu + model turu)
 echo    2  - TURBO Arabam Cekim (Tum vasita kategorileri + 40 marka)
+echo    Z  - ZAMANLI TEKRAR     (Az ilanli modelleri tur tur ceker: tur basina N ilan, sonra M dk mola, durdurana kadar)
 echo    K  - KATEGORI CEKIMI    (Motosiklet, Ticari, SUV/Pickup, Minivan, Karavan: secilen kategorinin tamami)
 echo.
 echo  [A] COKLU KAYNAK TARAMALARI (8 Kurumsal Platform)
@@ -56,7 +57,7 @@ echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve t
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, K, G, D, N, S, E, 1-20 veya P, varsayilan T): "
+set /p secim="Secimin (T, Z, K, G, D, N, S, E, 1-20 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo
@@ -94,6 +95,7 @@ if errorlevel 1 (
 )
 
 if /i "%secim%"=="P" goto :paralel
+if /i "%secim%"=="Z" goto :zamanli
 
 echo.
 node scripts\scrape.mjs %secim%
@@ -101,6 +103,36 @@ node scripts\scrape.mjs %secim%
 echo.
 echo Not: veri cekme bitti. Sunucu ayri pencerede acik kaldi;
 echo siteyi kullanmaya devam edebilir ya da o pencereyi kapatabilirsin.
+pause
+goto :eof
+
+:zamanli
+echo.
+echo ====================================================================
+echo   ZAMANLI TEKRAR: kisa turlar + mola (Cloudflare uzun taramada takiliyor)
+echo   Secilen tarama her turda en fazla N ilan ceker, M dakika mola verir,
+echo   sen durdurana kadar ya da istedigin tur sayisi bitene kadar tekrarlar.
+echo   Arabam bekcisi bu sure boyunca (molalar dahil) KENDILIGINDEN BEKLER;
+echo   durdurunca ya da pencereyi kapatinca bekci kendiliginden devam eder.
+echo   Durdurmak icin: Ctrl+C ya da pencereyi kapat.
+echo ====================================================================
+echo.
+echo   Hangi tarama?
+echo     6  - Nadir MODEL         (^<10 ilanli modeller)
+echo     7  - Nadir MODEL genis   (^<15 ilanli modeller, daha cok model)
+echo    20  - Seyrek piyasa emsali (3'ten az ilanli marka/model/yil)
+echo     2  - Genis Arabam taramasi (tum markalar)
+set /p zmod="Tarama numarasi (varsayilan 6): "
+if "%zmod%"=="" set zmod=6
+set /p zilan="Tur basina kac ilan? (varsayilan 1200): "
+if "%zilan%"=="" set zilan=1200
+set /p zmola="Turlar arasi kac dakika mola? (varsayilan 60): "
+if "%zmola%"=="" set zmola=60
+set /p ztur="Kac tur? (0 = ben durdurana kadar, varsayilan 0): "
+if "%ztur%"=="" set ztur=0
+echo.
+node scripts\scrape.mjs %zmod% --tur-ilan %zilan% --mola %zmola% --tur %ztur%
+echo.
 pause
 goto :eof
 

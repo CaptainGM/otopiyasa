@@ -387,37 +387,92 @@ const watcher = setInterval(() => {
   }
 }, 1000);
 
-console.log(`\n=== ${mode.name} basliyor ===\n`);
-for (const job of mode.jobs) {
-  if (job.mode === "price-refresh-loop") {
-    await runPriceRefreshLoop(job);
-    continue;
-  }
+// ZAMANLI TUR MODU (scrape.bat "Z"): taramayı tur başına N ilanla sınırlar, turlar arasında mola verir ve sen
+// durdurana (Ctrl+C) ya da istenen tur sayısı bitene kadar tekrarlar. Cloudflare uzun, kesintisiz taramada
+// takıldığı için kısa turlar + uzun mola: ör. 1200 ilan, 60 dk mola. Bekçi, bu süre boyunca (molalar dahil)
+// beklemede kalır (bkz. bekci-pause.mjs); komut bitince ya da kapanınca kendiliğinden devam eder.
+const flagValue = (name) => {
+  const i = process.argv.indexOf(name);
+  return i > 0 ? Number(process.argv[i + 1]) : NaN;
+};
+const roundListings = flagValue("--tur-ilan");
+const breakMinutes = Number.isFinite(flagValue("--mola")) ? flagValue("--mola") : 60;
+const maxRounds = Number.isFinite(flagValue("--tur")) ? flagValue("--tur") : 0; // 0 = durdurulana kadar
+const timed = Number.isFinite(roundListings) && roundListings > 0;
 
-  log(`Scrape başlıyor: ${job.label || job.source} (limit ${job.limit ?? "-"})`);
-  try {
-    const response = await fetch(`${appUrl}/api/scrape/run`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-scrape-secret": secret,
-        "x-scrape-mode": modeNum,
-        "x-actor-label": `Terminal (Mod ${modeNum})`,
-      },
-      body: JSON.stringify(job),
-      signal: AbortSignal.timeout(12 * 60 * 60 * 1000),
-    });
-    const data = await response.json().catch(() => ({}));
-    process.stdout.write("\n");
-    if (response.ok) {
-      const del = data.deleted ?? 0;
-      log(`  ✓ ${job.label || job.source} tamamlandı:  yeni=${data.inserted ?? 0}  güncellenen=${data.updated ?? 0}  kaldırılan=${del}`);
-    } else {
-      log(`HATA (${job.label || job.source}): HTTP ${response.status} — ${data.error ?? "bilinmeyen"}`);
+/** Tur başına ilan sınırı: taramanın kendi üst sınırı varsa (limit/maxListings) onunla değiştirilir. */
+function limitJob(job) {
+  if (!timed) return job;
+  const limited = { ...job };
+  if ("maxListings" in limited) limited.maxListings = roundListings;
+  if ("limit" in limited && limited.mode !== "price-refresh") limited.limit = roundListings;
+  return limited;
+}
+
+let totalInserted = 0;
+
+async function runJobsOnce() {
+  for (const baseJob of mode.jobs) {
+      const job = limitJob(baseJob);
+    if (job.mode === "price-refresh-loop") {
+      await runPriceRefreshLoop(job);
+      continue;
     }
-  } catch (error) {
-    process.stdout.write("\n");
-    log(`HATA (${job.label || job.source}): ${error.name === "TimeoutError" ? "zaman asimi" : error.message}`);
+
+    log(`Scrape başlıyor: ${job.label || job.source} (limit ${job.limit ?? "-"})`);
+    try {
+      const response = await fetch(`${appUrl}/api/scrape/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-scrape-secret": secret,
+          "x-scrape-mode": modeNum,
+          "x-actor-label": `Terminal (Mod ${modeNum})`,
+        },
+        body: JSON.stringify(job),
+        signal: AbortSignal.timeout(12 * 60 * 60 * 1000),
+      });
+      const data = await response.json().catch(() => ({}));
+      process.stdout.write("\n");
+      if (response.ok) {
+        const del = data.deleted ?? 0;
+        totalInserted += data.inserted ?? 0;
+        log(`  ✓ ${job.label || job.source} tamamlandı:  yeni=${data.inserted ?? 0}  güncellenen=${data.updated ?? 0}  kaldırılan=${del}`);
+      } else {
+        log(`HATA (${job.label || job.source}): HTTP ${response.status} — ${data.error ?? "bilinmeyen"}`);
+      }
+    } catch (error) {
+      process.stdout.write("\n");
+      log(`HATA (${job.label || job.source}): ${error.name === "TimeoutError" ? "zaman asimi" : error.message}`);
+    }
+  }
+}
+
+console.log(`\n=== ${mode.name} basliyor ===\n`);
+if (!timed) {
+  await runJobsOnce();
+} else {
+  log(`Zamanli mod: tur basina ~${roundListings} ilan, turlar arasi ${breakMinutes} dk mola, ${maxRounds ? maxRounds + " tur" : "sen durdurana kadar (Ctrl+C)"}.`);
+  let emptyRounds = 0;
+  for (let round = 1; !maxRounds || round <= maxRounds; round++) {
+    const before = totalInserted;
+    const startedAt = Date.now();
+    log(`──── TUR ${round}${maxRounds ? "/" + maxRounds : ""} basliyor ────`);
+    await runJobsOnce();
+    const added = totalInserted - before;
+    log(`TUR ${round} bitti: +${added} yeni ilan, ${Math.round((Date.now() - startedAt) / 60000)} dk surdu (toplam +${totalInserted}).`);
+    emptyRounds = added === 0 ? emptyRounds + 1 : 0;
+    if (emptyRounds >= 2) {
+      log("Art arda 2 turda yeni ilan gelmedi: bu tarama icin eklenecek ilan kalmamis ya da Arabam engel veriyor. Durduruluyor.");
+      break;
+    }
+    if (maxRounds && round >= maxRounds) break;
+    const until = new Date(Date.now() + breakMinutes * 60000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    log(`Mola: ${breakMinutes} dk (saat ${until}'e kadar). Durdurmak icin pencereyi kapat ya da Ctrl+C.`);
+    for (let left = breakMinutes; left > 0; left--) {
+      await new Promise((r) => setTimeout(r, 60000));
+      if (left % 10 === 0 && left !== breakMinutes) log(`  mola: ${left} dk kaldi`);
+    }
   }
 }
 

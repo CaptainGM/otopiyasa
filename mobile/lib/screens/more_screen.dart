@@ -12,6 +12,7 @@ import 'package:otopiyasa/screens/sell_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/data_saver.dart';
 import 'package:otopiyasa/services/notification_service.dart';
+import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/tr_text.dart';
 import 'package:otopiyasa/widgets/data_saver_dialog.dart';
@@ -142,6 +143,15 @@ class MoreScreen extends StatelessWidget {
                       icon: mode == ThemeMode.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
                       title: mode == ThemeMode.dark ? 'Aydınlık tema' : 'Karanlık tema',
                       onTap: themeController.toggle,
+                    ),
+                  ),
+                  FutureBuilder(
+                    future: UpdateService.packageInfo(),
+                    builder: (context, snapshot) => _Row(
+                      icon: Icons.system_update_outlined,
+                      title: 'Güncellemeleri denetle',
+                      subtitle: snapshot.hasData ? 'Yüklü sürüm ${snapshot.data!.version}' : null,
+                      onTap: () => UpdateService.checkUpdate(context, manual: true),
                       last: !loggedIn,
                     ),
                   ),

@@ -27,17 +27,16 @@ class _MarketTempoCardState extends State<MarketTempoCard> {
         final drop = tempo?['drop'] as Map<String, dynamic>?;
         if (tempo == null || (days == null && drop == null)) return const SizedBox.shrink();
         final c = AppColors.of(context);
-        final onSurface = Theme.of(context).colorScheme.onSurface;
         final pct = NumberFormat.decimalPattern('tr_TR');
 
         Widget stat(String label, String value, String note) => Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: TextStyle(color: c.muted, fontSize: 11.5)),
+                  Text(label, style: TextStyle(color: c.muted, fontSize: 12.5)),
                   const SizedBox(height: 2),
-                  Text(value, style: AppText.num(size: 20, weight: FontWeight.w600, color: onSurface)),
-                  Text(note, style: TextStyle(color: c.faint, fontSize: 10.5)),
+                  Text(value, style: AppText.num(size: 22, weight: FontWeight.w600, color: AppTheme.accent2)),
+                  Text(note, style: TextStyle(color: c.muted, fontSize: 12)),
                 ],
               ),
             );
@@ -64,7 +63,7 @@ class _MarketTempoCardState extends State<MarketTempoCard> {
                       tempo['scopeLabel']?.toString() ?? '',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: c.faint, fontSize: 11),
+                      style: TextStyle(color: c.muted, fontSize: 12),
                     ),
                   ),
                 ],
@@ -92,7 +91,7 @@ class _MarketTempoCardState extends State<MarketTempoCard> {
               Text(
                 'Benzer ilanların kaynaktan kalkma süresi ve yayındayken yaptıkları indirimlerden hesaplanır. '
                 'Yayından kalkma her zaman satış anlamına gelmez.',
-                style: TextStyle(color: c.faint, fontSize: 11, height: 1.4),
+                style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.45),
               ),
             ],
           ),

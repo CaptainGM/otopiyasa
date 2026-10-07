@@ -17,7 +17,7 @@ class MarketGauge extends StatelessWidget {
     final c = AppColors.of(context);
     switch (band) {
       case MarketBand.suspicious:
-        return AppTheme.accent;
+        return Theme.of(context).colorScheme.error;
       case MarketBand.cheap:
         return c.cheap;
       case MarketBand.fair:
@@ -31,13 +31,13 @@ class MarketGauge extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     final position = MarketPosition.of(price, avg, count);
-    final labelSize = large ? 11.5 : 10.0;
+    final labelSize = large ? 13.0 : 11.0;
     if (position == null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(height: 3, decoration: BoxDecoration(color: c.border, borderRadius: BorderRadius.circular(2))),
+          Container(height: 5, decoration: BoxDecoration(color: c.border, borderRadius: BorderRadius.circular(3))),
           const SizedBox(height: 6),
           Text('PİYASA VERİSİ AZ', style: AppText.eyebrow(context, color: c.faint, size: labelSize - 0.5)),
         ],
@@ -52,7 +52,7 @@ class MarketGauge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(
-            height: 10,
+            height: large ? 18 : 14,
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final x = constraints.maxWidth * position.marker;
@@ -62,25 +62,30 @@ class MarketGauge extends StatelessWidget {
                     Positioned(
                       left: 0,
                       right: 0,
-                      top: 3.5,
+                      top: large ? 5 : 4.5,
                       child: Container(
-                        height: 3,
+                        height: large ? 8 : 5,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(2),
-                          gradient: LinearGradient(colors: [c.cheap, c.fair, c.pricey]),
+                          borderRadius: BorderRadius.circular(4),
+                          // Bölgeler banda karşılık gelir: %35 solu ucuz, %35–65 adil, %65 sağı pahalı (web ile aynı).
+                          gradient: LinearGradient(
+                            colors: [c.cheap, c.cheap, c.fair, c.fair, c.pricey, c.pricey],
+                            stops: const [0, 0.26, 0.42, 0.58, 0.74, 1],
+                          ),
                         ),
                       ),
                     ),
                     Positioned(
-                      left: x - 5,
+                      left: x - (large ? 9 : 7),
                       top: 0,
                       child: Container(
-                        width: 10,
-                        height: 10,
+                        width: large ? 18 : 14,
+                        height: large ? 18 : 14,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Theme.of(context).colorScheme.onSurface,
-                          border: Border.all(color: cardColor, width: 2.5),
+                          color: Colors.white,
+                          border: Border.all(color: color, width: large ? 4 : 3),
+                          boxShadow: [BoxShadow(color: cardColor, spreadRadius: 1.5), BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 8)],
                         ),
                       ),
                     ),

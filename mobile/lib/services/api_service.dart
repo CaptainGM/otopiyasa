@@ -1173,6 +1173,32 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Web'deki /analytics sayfasının verisi: özet göstergeler, bütçe segmentleri, markalar, yakıt/vites/kasa
+  /// dağılımı, model yılı eğrisi (sunucuda 6 saat önbellekli).
+  Future<Map<String, dynamic>> fetchAnalyticsOverview() async {
+    final response = await _http.get(_uri('/api/analytics/overview'), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Analiz verileri yüklenemedi'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Marka + model değer kaybı analizi (yıllara göre ortalama fiyat, km dilimleri, örnek ilanlar).
+  /// Marka/model verilmezse yalnızca seçilebilir marka ve model listesi döner.
+  Future<Map<String, dynamic>> fetchModelBreakdown({String? brand, String? model}) async {
+    final response = await _http.get(
+      _uri('/api/analytics/model-breakdown', {
+        if (brand != null && brand.isNotEmpty) 'brand': brand,
+        if (model != null && model.isNotEmpty) 'model': model,
+      }),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Model analizi yüklenemedi'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   /// Haritadaki kümeler (il/ilçe bazlı sayılar) + filtre seçenekleri.
   /// Dönen `options` (brands/cities/fuels) filtre açılır listelerini doldurur.
   Future<Map<String, dynamic>> fetchMap({

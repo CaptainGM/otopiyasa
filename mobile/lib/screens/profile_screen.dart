@@ -557,11 +557,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       'OtoPiyasa Mobil',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                     ),
-                    Text(
-                      'Sürüm ${UpdateService.currentVersionName} (Derleme ${UpdateService.currentVersionCode})',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).textTheme.bodySmall?.color,
+                    FutureBuilder(
+                      future: UpdateService.packageInfo(),
+                      builder: (context, snapshot) => Text(
+                        snapshot.hasData
+                            ? 'Sürüm ${snapshot.data!.version} (Derleme ${snapshot.data!.buildNumber})'
+                            : 'Sürüm …',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
                       ),
                     ),
                   ],

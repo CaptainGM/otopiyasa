@@ -126,13 +126,16 @@ export default async function HomePage({ searchParams }: HomeProps) {
     !!filters.priceMin ||
     !!filters.priceMax ||
     !!filters.fuelType ||
-    !!filters.transmission;
+    !!filters.transmission ||
+    !!filters.deals;
   // Fırsatlar, en çok bakılanlar, yakındakiler araç tipine göre süzülmüyor: tip seçilince gizlenir.
   const showStrips = !hasAnyFilter && !filters.vehicleClass;
 
   const board = boardData;
   const activeClass = filters.vehicleClass;
-  const listHeading = activeClass
+  const listHeading = filters.deals
+    ? "Haftanın fırsatları"
+    : activeClass
     ? VEHICLE_CLASSES.find((c) => c.value === activeClass)?.label ?? "İlanlar"
     : hasAnyFilter
       ? "Sonuçlar"
@@ -269,7 +272,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eyebrow">{isFeed ? "Keşfet · karışık sıra" : "Liste"}</p>
+            <p className="eyebrow">
+              {filters.deals ? "Adil değerinin %18–30 altındaki ilanlar" : isFeed ? "Keşfet · karışık sıra" : "Liste"}
+            </p>
             <h2 className="font-display text-2xl font-semibold">
               {listHeading} <span className="num text-lg font-normal text-[var(--muted)]">{total.toLocaleString("tr-TR")}</span>
             </h2>

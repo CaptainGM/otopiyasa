@@ -14,6 +14,7 @@ import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 import { enrichArabamCarIfNeeded } from "@/lib/scraper/enrich-arabam";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { resolvePlacement } from "@/lib/district-coords";
+import { liveFairValue } from "@/lib/market-fair";
 
 /** Fiyat dağılımı için segment fiyatları: önce marka+model, az ise yalnız marka (web detay sayfasıyla aynı mantık). */
 async function loadSegmentPrices(brand: string, model: string): Promise<{ label: string; prices: number[] }> {
@@ -72,7 +73,7 @@ export async function GET(
       return NextResponse.json({ error: "Araç bulunamadı." }, { status: 404 });
     }
 
-    const [marketMap, favoriteCount, segment, similarCars] = await Promise.all([
+    const [marketMap, favoriteCount, segment, similarCars, live] = await Promise.all([
       getMarketMap([{ brand: carDoc.brand, model: carDoc.model, year: carDoc.year }]),
       cached(`car-fav-count:${carDoc._id}`, CACHE_TTL.short, () => User.countDocuments({ favorites: carDoc._id })),
       cached(`segment:${carDoc.brand}|${carDoc.model}`, CACHE_TTL.medium, () =>
@@ -83,6 +84,8 @@ export async function GET(
         CACHE_TTL.medium,
         () => getSimilarCars(carDoc._id.toString(), carDoc.brand, carDoc.model, carDoc.price, 50, carDoc.title, carDoc.year, carDoc.mileage)
       ),
+      // Web ilan sayfasıyla aynı adil değer (mobildeki gösterge ve fiyat analizi kartı bunu kullanır).
+      liveFairValue(carDoc).catch(() => null),
     ]);
     const market = marketMap.get(
       segmentKey(carDoc.brand, carDoc.model, carDoc.year)
@@ -103,6 +106,9 @@ export async function GET(
         ...car,
       mapPoint: mapPlacement ? { lat: mapPlacement.lat, lng: mapPlacement.lng, level: mapPlacement.level } : null,
       favoriteCount,
+      fairPrice: live?.fields?.["market.fair"] ?? null,
+      fairSample: live?.fields?.["market.fairN"] ?? null,
+      fairMethod: live?.prediction.method ?? null,
       priceBins: buildPriceBins(segment.prices, car.price),
       segmentLabel: segment.label,
       similarCars: similarCars.map((s) => ({

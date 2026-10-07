@@ -3,7 +3,6 @@ import { PricePrediction } from "@/lib/price-prediction";
 import { SUSPICIOUS_DISCOUNT } from "@/lib/deals";
 import { FAIR_BAND_PCT } from "@/lib/market-position";
 import { Icon } from "@/components/Icon";
-import { BAND_COLOR } from "@/components/MarketGauge";
 
 const METHOD_LABELS: Record<PricePrediction["method"], string> = {
   segment: "Aynı marka/model segmenti",
@@ -48,8 +47,6 @@ export function PricePredictionBadge({
   const diff = actualPrice - prediction.predictedPrice;
   const pct = prediction.predictedPrice ? Math.round((diff / prediction.predictedPrice) * 100) : 0;
 
-  // İbre: 0 fark ortada, her %1 fark için %2,5 kayma.
-  const pinPosition = Math.max(6, Math.min(94, 50 + pct * 2.5));
 
   let band: Band = "fair";
   let statusTag = "Piyasa değerinde";
@@ -112,27 +109,17 @@ export function PricePredictionBadge({
         </div>
         {showSegment ? (
           <div>
-            <dt className="text-xs text-[var(--muted)]">Segment ortalaması</dt>
+            <dt className="text-xs text-[var(--muted)]">Ham ilan ortalaması</dt>
             <dd className="num mt-0.5 text-base font-semibold">{formatPrice(marketAvgPrice!)}</dd>
             <dd className="text-[0.72rem] text-[var(--muted)]">
               {marketScope === "family" && marketFamilyLabel
                 ? `${marketFamilyLabel} ailesi, aynı yıl (tüm donanımlar): ${marketListingCount} aktif ilan`
                 : `Aynı marka/model/yıl: ${marketListingCount} aktif ilan`}
+              {" · km ve donanım farkı gözetmez"}
             </dd>
           </div>
         ) : null}
       </dl>
-
-      <div className="space-y-1.5">
-        <div className="gauge gauge-lg">
-          <span className="gauge-marker" style={{ left: `${pinPosition}%`, ["--marker" as string]: BAND_COLOR[band] }} />
-        </div>
-        <div className="flex justify-between text-[0.7rem] font-bold uppercase tracking-[0.06em]">
-          <span className="text-[var(--cheap)]">Hesaplı</span>
-          <span className="text-[var(--fair)]">Adil</span>
-          <span className="text-[var(--pricey)]">Yüksek</span>
-        </div>
-      </div>
 
       <p className={`border-t border-[var(--border)] pt-3 text-[0.82rem] leading-relaxed ${band === "suspicious" ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>{analysisDesc}</p>
 

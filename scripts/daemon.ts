@@ -214,6 +214,13 @@ async function main() {
       const { refreshMarketSnapshot } = await import("@/lib/market-snapshot");
       const res = await refreshMarketSnapshot();
       log(`📊 [PİYASA] ${res.segments} segment, ${res.scanned} ilan; ${res.updated} güncellendi, ${res.cleared} temizlendi.`);
+      // Adil piyasa değeri (kart göstergesi, ilan sayfası, fırsatlar): eksik, eski ya da fiyatı değişmiş ilanlar.
+      const { refreshFairValues } = await import("@/lib/market-fair");
+      const fair = await refreshFairValues(8000);
+      log(`📊 [ADİL DEĞER] ${fair.scanned} ilan; ${fair.updated} hesaplandı, ${fair.cleared} emsalsiz (${Math.round(fair.ms / 1000)} sn).`);
+      const { recomputeDealFlags } = await import("@/lib/market-fair");
+      const flags = await recomputeDealFlags();
+      if (flags.changed) log(`📊 [FIRSAT] ${flags.changed} ilanın fırsat durumu güncellendi.`);
     } catch (err: any) {
       console.warn(`[PİYASA] ${err?.message || err}`);
     } finally {

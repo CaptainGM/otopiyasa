@@ -1,6 +1,9 @@
 // ============================================================================
 // OtoPiyasa - Mobil sürüm yayınlama (release-apk.bat bunu çalıştırır)
 // ============================================================================
+// NORMALDE GEREKMEZ: main'e mobil kod gönderilince GitHub Actions (.github/workflows/mobile-release.yml) APK'yı
+// derleyip sürümü kendisi yayınlar. Bu betik yalnızca GitHub Actions çalışmazsa elle yayın için.
+//
 // 1. mobile/pubspec.yaml'daki sürümü okur (version: 1.0.6+7 → v1.0.6, sürüm kodu 7).
 // 2. APK'yı derler (build-apk.bat).
 // 3. GitHub'da v1.0.6 yayınını açar ve APK'yı ekler. Yayın notuna sürüm kodu gizli yorum olarak yazılır;

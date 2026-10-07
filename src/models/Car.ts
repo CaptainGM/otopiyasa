@@ -146,7 +146,29 @@ const CarSchema = new Schema(
      * göstergesi her istekte hesaplanmasın diye. scope "family": aynı yılın tüm donanımları birlikte sayıldı.
      */
     market: {
-      type: new Schema({ avg: Number, count: Number, scope: String, at: Date }, { _id: false }),
+      type: new Schema(
+        {
+          avg: Number,
+          count: Number,
+          scope: String,
+          at: Date,
+          /**
+           * Adil piyasa değeri: ilan sayfasındaki fiyat analiziyle AYNI hesap (predictPrice: model yılı, km, hasar,
+           * donanım). Kartlardaki gösterge, ilan sayfası ve fırsatlar bu tek sayıyı kullanır (bkz. lib/market-fair.ts).
+           */
+          fair: Number,
+          /** Adil değerin dayandığı emsal ilan sayısı. */
+          fairN: Number,
+          /** (adil − fiyat) / adil: artı = piyasanın altında. */
+          disc: Number,
+          /** "Haftanın fırsatları" ölçütünü karşılıyor mu (bkz. isDealCandidate). */
+          deal: Boolean,
+          /** Hesaplandığı andaki fiyat (fiyat değişince yeniden hesaplanır). */
+          fp: Number,
+          fairAt: Date,
+        },
+        { _id: false }
+      ),
       default: undefined,
     },
   },
@@ -160,6 +182,8 @@ CarSchema.index({ title: "text", brand: "text", model: "text" });
 CarSchema.index({ status: 1, createdAt: -1 });
 CarSchema.index({ status: 1, vehicleClass: 1, createdAt: -1 });
 CarSchema.index({ verifyPriorityAt: 1 }, { sparse: true });
+// "Haftanın fırsatları" ve tümü listesi: fırsat ilanlar indirime göre sıralı (bkz. lib/market-fair.ts).
+CarSchema.index({ "market.deal": 1, "market.disc": -1 }, { sparse: true });
 CarSchema.index({ status: 1, moderationStatus: 1, createdAt: -1 });
 CarSchema.index({ status: 1, viewCount: -1 });
 CarSchema.index({ status: 1, updatedAt: -1 });

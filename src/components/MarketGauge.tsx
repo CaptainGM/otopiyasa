@@ -1,10 +1,11 @@
 import { marketPosition, type MarketBand } from "@/lib/market-position";
 
-const BAND_TEXT: Record<MarketBand, string> = {
-  suspicious: "text-[var(--accent)]",
-  cheap: "text-[var(--cheap)]",
-  fair: "text-[var(--fair)]",
-  pricey: "text-[var(--pricey)]",
+/** Bant renkleri: şüpheli ucuz kırmızı (uyarı), ucuz yeşil, adil mavi, pahalı mercan. */
+export const BAND_COLOR: Record<MarketBand, string> = {
+  suspicious: "var(--danger)",
+  cheap: "var(--cheap)",
+  fair: "var(--fair)",
+  pricey: "var(--pricey)",
 };
 
 /**
@@ -24,27 +25,31 @@ export function MarketGauge({
   size?: "sm" | "md";
 }) {
   const position = marketPosition(price, avg, count);
+  const md = size === "md";
   if (!position) {
     return (
-      <div className={size === "md" ? "space-y-2" : "space-y-1.5"}>
-        <div className="h-1 rounded-full bg-[var(--border)]" />
-        <p className="eyebrow !text-[0.62rem] !tracking-[0.1em] text-[var(--faint)]">Piyasa verisi az</p>
+      <div className={md ? "space-y-2" : "space-y-1.5"}>
+        <div className="h-1.5 rounded-full bg-[var(--border)]" />
+        <p className="eyebrow !text-[0.66rem] !tracking-[0.1em] text-[var(--faint)]">Piyasa verisi az</p>
       </div>
     );
   }
+  const color = BAND_COLOR[position.band];
   return (
-    <div className={size === "md" ? "space-y-2" : "space-y-1.5"}>
+    <div className={md ? "space-y-2.5" : "space-y-2"}>
       <div
-        className="gauge"
+        className={`gauge ${md ? "gauge-lg" : ""}`}
         role="img"
         aria-label={`Piyasaya göre: ${position.label} (${count} benzer ilan)`}
         title={`Piyasa ortalaması üzerinden: ${position.pct > 0 ? "+" : ""}${position.pct}% · ${count} benzer ilan`}
       >
-        <span className="gauge-marker" style={{ left: `${position.marker}%` }} />
+        <span className="gauge-marker" style={{ left: `${position.marker}%`, ["--marker" as string]: color }} />
       </div>
-      <p className={`num flex items-center justify-between gap-2 ${size === "md" ? "text-xs" : "text-[0.68rem]"}`}>
-        <span className={`font-semibold uppercase tracking-[0.08em] ${BAND_TEXT[position.band]}`}>{position.label}</span>
-        <span className="text-[var(--faint)]">{count} emsal</span>
+      <p className={`flex items-center justify-between gap-2 ${md ? "text-sm" : "text-xs"}`}>
+        <span className="font-bold uppercase tracking-[0.04em]" style={{ color }}>
+          {position.label}
+        </span>
+        <span className="num text-[var(--muted)]">{count} emsal</span>
       </p>
     </div>
   );

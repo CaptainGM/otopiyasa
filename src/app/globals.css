@@ -447,23 +447,42 @@ h2 {
 }
 
 /* --- Piyasa göstergesi: fiyatın kendi segmentindeki yeri (ucuz ← adil → pahalı) --- */
+/* Bölgeler banda karşılık gelir: ibre %35'in solunda ucuz (−%6), %35–65 adil, %65'in sağında pahalı (+%6). */
 .gauge {
   position: relative;
-  height: 4px;
+  height: 6px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--cheap) 0%, var(--fair) 50%, var(--pricey) 100%);
-  opacity: 0.85;
+  background: linear-gradient(
+    90deg,
+    var(--cheap) 0%,
+    var(--cheap) 26%,
+    var(--fair) 42%,
+    var(--fair) 58%,
+    var(--pricey) 74%,
+    var(--pricey) 100%
+  );
+}
+
+.gauge-lg {
+  height: 9px;
 }
 
 .gauge-marker {
   position: absolute;
   top: 50%;
-  width: 10px;
-  height: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
   transform: translate(-50%, -50%);
-  background: var(--text);
-  box-shadow: 0 0 0 3px var(--card);
+  background: #fff;
+  border: 3px solid var(--marker, var(--text));
+  box-shadow: 0 0 0 2px var(--card), 0 0 12px var(--marker, transparent);
+}
+
+.gauge-lg .gauge-marker {
+  width: 18px;
+  height: 18px;
+  border-width: 4px;
 }
 
 /* --- Piyasa şeridi (borsa bandı) --- */

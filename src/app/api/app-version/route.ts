@@ -1,38 +1,58 @@
 import { NextResponse } from "next/server";
+import { parseRelease, type AppVersion } from "@/lib/app-release";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const version = process.env.APP_LATEST_VERSION || "1.0.2";
-  const versionCode = parseInt(process.env.APP_LATEST_VERSION_CODE || "3", 10);
-  const minVersionCode = parseInt(process.env.APP_MIN_VERSION_CODE || "1", 10);
-  const apkUrl =
-    process.env.APP_APK_URL ||
-    "https://github.com/CaptainGM/otopiyasa/releases/latest/download/otopiyasa-release.apk";
+/**
+ * Mobil uygulamanın güncelleme denetimi (bkz. mobile/lib/services/update_service.dart). En son sürüm GitHub'daki
+ * son yayından (release) okunur: yeni APK yayınlanınca ayrıca bir ayar değiştirmek gerekmez (bkz. release-apk.bat).
+ * Yayın notunda `versionCode: 7` satırı olmalı (gizli yorum olarak yazılır); APK yayının eki olarak durur.
+ * GitHub'a ulaşılamazsa ortam değişkenleri (APP_LATEST_*) ya da son bilinen sürüm döner.
+ * Yanıt 10 dk CDN'de tutulur: her açılışta GitHub'a sorulmaz (kimliksiz GitHub API sınırı saatte 60 istek).
+ */
+const REPO = "CaptainGM/otopiyasa";
+const CACHE_MS = 30 * 60 * 1000;
 
-  const changelog =
-    process.env.APP_CHANGELOG ||
-    "• Üst menü düzeni yenilendi: Tema butonu açıldı, profil butonu en sağa taşındı.\n" +
-    "• Marka ve model seçimlerine anlık arama (klavyeyle hızlı filtreleme) eklendi.\n" +
-    "• Benzer ilanlar alt alta dikey liste olarak tüm emsal araçları (aynı model, yıl, km) gösterecek şekilde güncellendi.\n" +
-    "• Paylaşılan ilan bağlantılarına tıklandığında doğrudan uygulamanın açılması (Deep Link) sağlandı.\n" +
-    "• İlan detayları, piyasa termometresi ve emsal sorguları hızlandırıldı.";
+let memo: { value: AppVersion; at: number } | null = null;
 
-  return NextResponse.json(
-    {
-      version,
-      versionCode,
-      minVersionCode,
-      apkUrl,
-      title: "OtoPiyasa Güncellemesi Hazır! 🚀",
-      changelog,
-      releaseDate: "2026-09-25",
-      forceUpdate: false,
-    },
-    {
-      headers: {
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-      },
+function fallback(): AppVersion {
+  return {
+    version: process.env.APP_LATEST_VERSION || "1.0.2",
+    versionCode: Number(process.env.APP_LATEST_VERSION_CODE || "3"),
+    minVersionCode: Number(process.env.APP_MIN_VERSION_CODE || "1"),
+    apkUrl:
+      process.env.APP_APK_URL ||
+      `https://github.com/${REPO}/releases/latest/download/otopiyasa-release.apk`,
+    title: "OtoPiyasa güncellemesi hazır",
+    changelog: process.env.APP_CHANGELOG || "",
+    releaseDate: "",
+    forceUpdate: false,
+  };
+}
+
+async function latest(): Promise<AppVersion> {
+  if (memo && Date.now() - memo.at < CACHE_MS) return memo.value;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "otopiyasa-app-version" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const parsed = parseRelease(await res.json());
+      if (parsed) {
+        memo = { value: parsed, at: Date.now() };
+        return parsed;
+      }
     }
-  );
+  } catch {
+    // GitHub'a ulaşılamadı: son bilinen sürüm ya da ortam değişkenleri.
+  }
+  return memo?.value ?? fallback();
+}
+
+export async function GET() {
+  return NextResponse.json(await latest(), {
+    headers: { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600" },
+  });
 }

@@ -236,13 +236,17 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         </div>
       )}
 
-      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-        <CarGallery
-          images={car.images && car.images.length > 0 ? car.images : [car.imageUrl]}
-          title={car.title}
-        />
+      {/* Masaüstünde sol sütun: galeri, altında açıklama ve hasar/boya (fotoğrafın altı boş kalmasın); sağ sütun: başlık,
+          fiyat, analiz, eylemler. Telefonda sıra: galeri → bilgiler → açıklama. */}
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:grid-rows-[auto_1fr] lg:items-start">
+        <div className="lg:col-start-1 lg:row-start-1">
+          <CarGallery
+            images={car.images && car.images.length > 0 ? car.images : [car.imageUrl]}
+            title={car.title}
+          />
+        </div>
 
-        <div className="space-y-5">
+        <div className="space-y-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
           <div className="flex flex-wrap gap-2">
             <SourceBadge source={car.sourceSite} />
             {car.damageFlag && <span className="badge badge-danger">Hasar kaydı</span>}
@@ -320,7 +324,6 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
           {fuelCost && <FuelCostCard cost={fuelCost} />}
 
-          <ListingDescription value={car.description} />
 
           {/* Üye ilanıysa iletişim + işletme rozeti */}
           {car.sourceSite === "user" && (
@@ -398,6 +401,12 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           </div>
 
           <ViewerReportButton carId={car._id} />
+        </div>
+
+        <div className="space-y-5 lg:col-start-1 lg:row-start-2">
+          <ListingDescription value={car.description} />
+          {/* Hasar/boya görsel özeti */}
+          <DamageDiagram paintChange={car.paintChange} damageFlag={car.damageFlag} damageParts={car.damageParts} />
         </div>
       </div>
 
@@ -489,12 +498,6 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         <ViewerQuestions carId={car._id} />
       )}
 
-      {/* Hasar/boya görsel özeti — teknik özelliklerin altında, dikkat çeksin. */}
-      <DamageDiagram
-        paintChange={car.paintChange}
-        damageFlag={car.damageFlag}
-        damageParts={car.damageParts}
-      />
 
 
       {similarCars.length > 0 && (

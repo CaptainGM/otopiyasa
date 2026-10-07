@@ -63,7 +63,7 @@ export function CarCard({
 
       <div className="flex min-w-0 flex-1 flex-col gap-3 p-3.5 sm:p-4">
         <div className="min-w-0 space-y-1">
-          <p className="eyebrow truncate !text-[0.64rem]">
+          <p className="eyebrow truncate !text-[0.7rem]">
             <span className="text-[var(--text)]">{car.year}</span>
             <span className="mx-1.5 text-[var(--faint)]">/</span>
             {car.city}
@@ -74,13 +74,13 @@ export function CarCard({
             </h3>
           </Link>
           {name !== car.title && (
-            <p className="line-clamp-1 text-[0.78rem] text-[var(--muted)]" title={car.title}>
+            <p className="line-clamp-1 text-[0.82rem] text-[var(--muted)]" title={car.title}>
               {car.title}
             </p>
           )}
         </div>
 
-        <p className="num flex flex-wrap gap-x-2 gap-y-0.5 text-[0.72rem] text-[var(--muted)]">
+        <p className="num flex flex-wrap gap-x-2 gap-y-0.5 text-[0.78rem] text-[var(--muted)]">
           {specs.map((s, i) => (
             <span key={s.label} className={`whitespace-nowrap ${s.pending ? "italic text-[var(--faint)]" : ""}`}>
               {i > 0 && <span className="mr-2 not-italic text-[var(--faint)]">·</span>}

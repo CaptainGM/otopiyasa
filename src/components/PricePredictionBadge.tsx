@@ -3,6 +3,7 @@ import { PricePrediction } from "@/lib/price-prediction";
 import { SUSPICIOUS_DISCOUNT } from "@/lib/deals";
 import { FAIR_BAND_PCT } from "@/lib/market-position";
 import { Icon } from "@/components/Icon";
+import { BAND_COLOR } from "@/components/MarketGauge";
 
 const METHOD_LABELS: Record<PricePrediction["method"], string> = {
   segment: "Aynı marka/model segmenti",
@@ -15,10 +16,10 @@ const METHOD_LABELS: Record<PricePrediction["method"], string> = {
 type Band = "suspicious" | "cheap" | "fair" | "pricey";
 
 const BAND_STYLE: Record<Band, { text: string; chip: string }> = {
-  suspicious: { text: "text-[var(--accent)]", chip: "border-[var(--accent)] text-[var(--accent)]" },
-  cheap: { text: "text-[var(--cheap)]", chip: "border-[var(--cheap)] text-[var(--cheap)]" },
-  fair: { text: "text-[var(--fair)]", chip: "border-[var(--fair)] text-[var(--fair)]" },
-  pricey: { text: "text-[var(--pricey)]", chip: "border-[var(--pricey)] text-[var(--pricey)]" },
+  suspicious: { text: "text-[var(--danger)]", chip: "!border-[var(--danger)] !bg-[var(--danger)] !text-white" },
+  cheap: { text: "text-[var(--cheap)]", chip: "!border-[var(--cheap)] !bg-[color-mix(in_srgb,var(--cheap)_14%,transparent)] !text-[var(--cheap)]" },
+  fair: { text: "text-[var(--fair)]", chip: "!border-[var(--fair)] !bg-[color-mix(in_srgb,var(--fair)_14%,transparent)] !text-[var(--fair)]" },
+  pricey: { text: "text-[var(--pricey)]", chip: "!border-[var(--pricey)] !bg-[color-mix(in_srgb,var(--pricey)_14%,transparent)] !text-[var(--pricey)]" },
 };
 
 /**
@@ -87,7 +88,7 @@ export function PricePredictionBadge({
             {METHOD_LABELS[prediction.method]} · {prediction.sampleSize} emsal araç
           </p>
         </div>
-        <span className={`badge !bg-transparent ${style.chip}`}>
+        <span className={`badge !px-2.5 !py-1 !text-xs ${style.chip}`}>
           {band === "suspicious" && <Icon name="warning" size={13} />}
           {statusTag}
         </span>
@@ -95,25 +96,25 @@ export function PricePredictionBadge({
 
       <dl className={`grid gap-3 ${showSegment ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}>
         <div>
-          <dt className="text-[11px] text-[var(--muted)]">Adil piyasa değeri</dt>
+          <dt className="text-xs text-[var(--muted)]">Adil piyasa değeri</dt>
           <dd className="num mt-0.5 text-base font-semibold">{formatPrice(prediction.predictedPrice)}</dd>
-          <dd className="text-[10px] text-[var(--faint)]">km ve hasara göre</dd>
+          <dd className="text-[0.72rem] text-[var(--muted)]">km ve hasara göre</dd>
         </div>
         <div>
-          <dt className="text-[11px] text-[var(--muted)]">Fark</dt>
+          <dt className="text-xs text-[var(--muted)]">Fark</dt>
           <dd className={`num mt-0.5 text-base font-semibold ${style.text}`}>
             {diff > 0 ? "+" : ""}
             {formatPrice(diff)} ({pct > 0 ? "+" : pct < 0 ? "−" : ""}%{Math.abs(pct)})
           </dd>
-          <dd className="text-[10px] text-[var(--faint)]">
+          <dd className="text-[0.72rem] text-[var(--muted)]">
             {pct < 0 ? "değerinin altında" : pct > 0 ? "değerinin üstünde" : "tam değerinde"}
           </dd>
         </div>
         {showSegment ? (
           <div>
-            <dt className="text-[11px] text-[var(--muted)]">Segment ortalaması</dt>
+            <dt className="text-xs text-[var(--muted)]">Segment ortalaması</dt>
             <dd className="num mt-0.5 text-base font-semibold">{formatPrice(marketAvgPrice!)}</dd>
-            <dd className="text-[10px] text-[var(--faint)]">
+            <dd className="text-[0.72rem] text-[var(--muted)]">
               {marketScope === "family" && marketFamilyLabel
                 ? `${marketFamilyLabel} ailesi, aynı yıl (tüm donanımlar): ${marketListingCount} aktif ilan`
                 : `Aynı marka/model/yıl: ${marketListingCount} aktif ilan`}
@@ -123,20 +124,20 @@ export function PricePredictionBadge({
       </dl>
 
       <div className="space-y-1.5">
-        <div className="gauge">
-          <span className="gauge-marker" style={{ left: `${pinPosition}%` }} />
+        <div className="gauge gauge-lg">
+          <span className="gauge-marker" style={{ left: `${pinPosition}%`, ["--marker" as string]: BAND_COLOR[band] }} />
         </div>
-        <div className="num flex justify-between text-[10px] uppercase tracking-[0.08em]">
+        <div className="flex justify-between text-[0.7rem] font-bold uppercase tracking-[0.06em]">
           <span className="text-[var(--cheap)]">Hesaplı</span>
           <span className="text-[var(--fair)]">Adil</span>
           <span className="text-[var(--pricey)]">Yüksek</span>
         </div>
       </div>
 
-      <p className="border-t border-[var(--border)] pt-3 text-xs leading-relaxed text-[var(--muted)]">{analysisDesc}</p>
+      <p className={`border-t border-[var(--border)] pt-3 text-[0.82rem] leading-relaxed ${band === "suspicious" ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>{analysisDesc}</p>
 
       {lowConfidence && (
-        <p className="flex gap-2 rounded-lg border border-[var(--border-strong)] p-2.5 text-[11px] leading-relaxed text-[var(--muted)]">
+        <p className="flex gap-2 rounded-lg border border-[var(--border-strong)] p-2.5 text-xs leading-relaxed text-[var(--muted)]">
           <Icon name="warning" size={14} className="mt-0.5 shrink-0 text-[var(--accent)]" />
           <span>
             Bu model segmentinde piyasada sınırlı sayıda ({prediction.segmentSize} ilan) veri bulunduğu için aralık geniş

@@ -141,7 +141,7 @@ async function main() {
   process.on("exit", releaseLock);
   const { sweepAndCleanDeadListings, setArabamPageGap } = await import("@/lib/scraper/verify-listing");
   const { closeSharedBrowser } = await import("@/lib/scraper/browser-scrape");
-  const { PACING, planNextStep } = await import("@/lib/scraper/arabam-pacing");
+  const { PACING, planNextStep, ChangeWindow, discoveryShare, DISCOVERY_SHARE } = await import("@/lib/scraper/arabam-pacing");
   const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
   const { isSitemapSyncDue, syncArabamSitemap } = await import("@/lib/scraper/arabam-sitemap");
   const { SleepMeter } = await import("@/lib/scraper/sleep-meter");
@@ -162,6 +162,9 @@ async function main() {
   let sessionInserted = 0;
   let discoveryCreditMs = 0;
   let listCreditMs = 0;
+  // Keşif payı kontrolün verimine göre ayarlanır: kontrol edilen ilanlar neredeyse hiç değişmiyorsa zaman yeni ilan çekmeye kayar.
+  const changeWindow = new ChangeWindow();
+  let loggedShare: number = DISCOVERY_SHARE.min;
   let sessionListMatched = 0;
   let sessionListCorrected = 0;
   let listIdleLogged = false;
@@ -239,6 +242,13 @@ async function main() {
       if (sleptMs > 60_000) log(`  bilgisayar bu partide ~${Math.round(sleptMs / 60_000)} dk uykuda kaldı; süre çalışma süresine katılmadı.`);
       todayChecked += res.checked;
       todayArchived += res.archived;
+      changeWindow.add(res.checked, res.archived + res.updated);
+      const share = discoveryShare(changeWindow.rate());
+      if (Math.abs(share - loggedShare) >= 0.05) {
+        const rate = changeWindow.rate();
+        log(`Keşif payı %${Math.round(share * 100)} oldu (son kontrollerde değişen ilan oranı %${rate === null ? "?" : (rate * 100).toFixed(1)}).`);
+        loggedShare = share;
+      }
 
       const blocked = res.details.filter((d) => d.status === "blocked").length;
       const plan = planNextStep(state, {
@@ -273,6 +283,7 @@ async function main() {
             checked: res.checked,
             alive: res.active,
             archived: res.archived,
+            updated: res.updated,
             blocked,
             uncertain: Math.max(0, res.errors - blocked),
             pauseMinutes: plan.reason === "blocked-pause" ? plan.sleepMinutes : 0,
@@ -283,12 +294,12 @@ async function main() {
       }
       if (singleRound) break;
 
-      // Ayırılan aktif süre: kontrol 90 / keşif 10, liste taraması kontrol süresinin 0,8'i. Hepsi aynı kapı ve
+      // Ayırılan aktif süre: varsayılan kontrol 90 / keşif 10 (kontrol verimsizleşirse keşif payı %50'ye kadar artar), liste taraması kontrol süresinin 0,8'i. Hepsi aynı kapı ve
       // aralığı kullanır. Bilgisayarın kapalı/uykuda olduğu ve Cloudflare molası verilen zaman bütçeye girmez.
       if (res.checked > 0) {
         discoveryCreditMs = Math.min(
           maxDiscoveryCreditMs,
-          discoveryCreditMs + (batchActiveMs * 0.1) / 0.9
+          discoveryCreditMs + (batchActiveMs * share) / (1 - share)
         );
         listCreditMs = Math.min(maxListCreditMs, listCreditMs + batchActiveMs * LIST_SHARE);
       }

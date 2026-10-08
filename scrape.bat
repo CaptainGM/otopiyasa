@@ -26,8 +26,8 @@ echo    12 - TAM 8 KAYNAK CEKIM (8 Kaynaktan binlerce ilan, en genis havuz!)
 echo.
 echo  [B] FIYAT TAHMIN ^& AI MODELINI GUCLENDIRME (Model Dogrulugu Icin)
 echo   ------------------------------------------------------------------
-echo    6  - Nadir MODEL        (^<15 ilanli model ailelerini ~20 ilana tamamlar, denenen bir daha aranmaz)
-echo    7  - Nadir MODEL genis  (^<20 ilanli 400 model ailesi, denenen bir daha aranmaz)
+echo    6  - Nadir MODEL        (en az ilanli model ailelerinden baslar; denenen aile 3-14 gun bekler)
+echo    7  - Nadir MODEL genis  (en az ilanli 400 model ailesi; denenen aile 3-14 gun bekler)
 echo    20 - Seyrek piyasa emsali (Aykiri deger sonrasi 3'ten az marka/model/yil ilani)
 echo    4  - Nadir MARKA        (^<40 ilanli markalari Arabam'da tarar: Alfa, Jeep vb.)
 echo    5  - En Az Markalar     (^<15 ilanli nadir markalari Arabam'da 20 sayfa tarar)
@@ -48,6 +48,7 @@ echo    11 - Arabam Dogrula     (Tum Arabam ilanlari: fiyat esitle, satilani ars
 echo                             yanlislikla arsivlenenleri geri al; once sitemap)
 echo    8  - Fiyat Taramasi     (En uzun suredir dogrulanmayan 800 Arabam ilani)
 echo    9  - Adres Tamamlama    (Ilcesi eksik ilanlarin adresini doldur - Harita)
+echo    21 - Son 3 Gun Ilanlari (sitemap'ten yalnizca son 3 gunun ilanlari, en yeniden baslar; site taze kalir)
 echo    N  - Arabam Yeni Ilanlar (sitemap'ten en yeni ilanlari bul ve tam detayla ekle)
 echo    S  - Arabam Sitemap     (32 sitemap dosyasi, ~2 dk; dogrulama onceligi icin)
 echo    E  - Kurumsal Envanter  (Otokoc, DOD, VavaCars... tum envanteri senkronla)
@@ -57,7 +58,7 @@ echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve t
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, Z, K, G, D, N, S, E, 1-20 veya P, varsayilan T): "
+set /p secim="Secimin (T, Z, K, G, D, N, S, E, 1-21 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo
@@ -122,9 +123,10 @@ echo   Durdurmak icin: Ctrl+C ya da pencereyi kapat.
 echo ====================================================================
 echo.
 echo   Hangi tarama?
-echo     6  - Nadir MODEL         (^<15 ilanli model aileleri)
-echo     7  - Nadir MODEL genis   (^<20 ilanli model aileleri, daha cok model)
+echo     6  - Nadir MODEL         (en az ilanli model aileleri)
+echo     7  - Nadir MODEL genis   (en az ilanli, daha cok model ailesi)
 echo    20  - Seyrek piyasa emsali (3'ten az ilanli marka/model/yil)
+echo    21  - Son 3 gun ilanlari (en yeni ilanlar)
 echo     2  - Genis Arabam taramasi (tum markalar)
 set /p zmod="Tarama numarasi (varsayilan 6): "
 if "%zmod%"=="" set zmod=6

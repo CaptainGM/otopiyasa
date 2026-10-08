@@ -107,6 +107,14 @@ export class NewestCandidates {
   }
 }
 
+/**
+ * `lastmod` değeri ISO tarih metnidir ("2026-10-05" ya da "2026-10-05T…"); [days] gün önceki günün "YYYY-MM-DD" metnini verir.
+ * Gün öneki karşılaştırması sözlük sırasıyla doğru çalışır, bu yüzden veritabanında `lastmod >= cutoff` yazılabilir.
+ */
+export function lastmodCutoff(days: number, now = Date.now()): string {
+  return new Date(now - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 /** İlan adresinin yol kısmı ("/ilan/…/123"); bozuk adreste null. */
 export function hrefFromUrl(url: string): string | null {
   try {
@@ -277,8 +285,8 @@ export async function syncArabamSitemap(options: { log?: (msg: string) => void }
 }
 
 /** Sitemap senkronunun sırası geldi mi? */
-export async function isSitemapSyncDue(now = new Date()): Promise<boolean> {
+export async function isSitemapSyncDue(now = new Date(), intervalMs = SITEMAP_INTERVAL_MS): Promise<boolean> {
   const state = await SourceSyncState.findOne({ source: SITEMAP_STATE_KEY }).select("lastRunAt").lean<{ lastRunAt?: Date } | null>();
   if (!state?.lastRunAt) return true;
-  return now.getTime() - new Date(state.lastRunAt).getTime() >= SITEMAP_INTERVAL_MS;
+  return now.getTime() - new Date(state.lastRunAt).getTime() >= intervalMs;
 }

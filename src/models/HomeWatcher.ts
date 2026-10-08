@@ -55,6 +55,8 @@ export interface HomeWatcherHourDoc {
   checked: number;
   alive: number;
   archived: number;
+  /** Kontrol sırasında fiyatı ya da bilgisi değişip güncellenen ilan sayısı. */
+  updated: number;
   blocked: number;
   uncertain: number;
   batches: number;
@@ -79,6 +81,7 @@ const HomeWatcherHourSchema = new Schema<HomeWatcherHourDoc>(
     checked: { type: Number, default: 0 },
     alive: { type: Number, default: 0 },
     archived: { type: Number, default: 0 },
+    updated: { type: Number, default: 0 },
     blocked: { type: Number, default: 0 },
     uncertain: { type: Number, default: 0 },
     batches: { type: Number, default: 0 },
@@ -111,6 +114,8 @@ export interface WatcherBatchResult {
   checked: number;
   alive: number;
   archived: number;
+  /** Fiyatı ya da bilgisi değişip güncellenen ilan sayısı. */
+  updated?: number;
   blocked: number;
   uncertain: number;
   /** Bu partinin sonunda verilen engel molası (dk); yoksa 0. */
@@ -136,6 +141,7 @@ export async function recordWatcherBatch(result: WatcherBatchResult, end = new D
           checked: result.checked,
           alive: result.alive,
           archived: result.archived,
+          updated: result.updated || 0,
           blocked: result.blocked,
           uncertain: result.uncertain,
           batches: 1,

@@ -89,6 +89,9 @@ export interface ScrapeJobResult {
     source: ListingSource;
     fetched: number;
     saved: number;
+    /** Kaynak bazında yeni / güncellenen ilan sayısı (günlük özette manuel taramaların kaynaklara dağılımı için). */
+    inserted?: number;
+    updated?: number;
   }>;
   sampleVehicles?: Array<{
     brand: string;

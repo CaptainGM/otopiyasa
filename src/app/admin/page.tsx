@@ -7,6 +7,7 @@ import { BusinessApprovals } from "@/components/BusinessApprovals";
 import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
 import { DaemonStatsPanel } from "@/components/DaemonStatsPanel";
+import { DailySummaryPanel } from "@/components/DailySummaryPanel";
 import { HomeWatcherPanel } from "@/components/HomeWatcherPanel";
 import { SystemHealthCard } from "@/components/SystemHealthCard";
 import { collectHealthSnapshot, evaluateHealth } from "@/lib/health-check";
@@ -351,6 +352,9 @@ export default async function AdminPage() {
           </span>
         </Link>
       </div>
+
+      {/* GÜNLÜK ÖZET: bekçi + otonom + manuel, kaynak bazında (en üstte) */}
+      <DailySummaryPanel />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
         {stats.map((stat) => (

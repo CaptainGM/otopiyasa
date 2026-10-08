@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PACING, planNextStep } from "./arabam-pacing";
+import { PACING, planNextStep, discoveryShare, ChangeWindow } from "./arabam-pacing";
 
 const start = { gapSeconds: PACING.baseGapSeconds, pauseMinutes: 0 };
 
@@ -62,5 +62,34 @@ describe("planNextStep", () => {
     expect(plan.reason).toBe("errors");
     expect(plan.sleepMinutes).toBe(PACING.errorMinutes);
     expect(plan.gapSeconds).toBe(start.gapSeconds);
+  });
+});
+
+describe("discoveryShare / ChangeWindow", () => {
+  it("kontrol verimliyken varsayılan %10 kalır", () => {
+    expect(discoveryShare(0.27)).toBe(0.1);
+    expect(discoveryShare(0.08)).toBe(0.1);
+  });
+
+  it("neredeyse hiçbir ilan değişmiyorsa %50'ye çıkar, arası doğrusaldır", () => {
+    expect(discoveryShare(0.01)).toBe(0.5);
+    expect(discoveryShare(0)).toBe(0.5);
+    expect(discoveryShare(0.045)).toBeCloseTo(0.3, 2);
+  });
+
+  it("yeterli veri yoksa (null) varsayılan pay", () => {
+    expect(discoveryShare(null)).toBe(0.1);
+    expect(discoveryShare(NaN)).toBe(0.1);
+  });
+
+  it("kayan pencere az veride oran vermez, çok veride eski partileri atar", () => {
+    const w = new ChangeWindow(400, 150);
+    w.add(100, 50);
+    expect(w.rate()).toBeNull();
+    w.add(100, 0);
+    expect(w.rate()).toBeCloseTo(0.25, 5);
+    for (let i = 0; i < 8; i++) w.add(100, 0);
+    // 1000 kontrolden yalnızca son ~400'ü kalır: ilk %50'lik parti pencereden düşmüştür.
+    expect(w.rate()).toBe(0);
   });
 });

@@ -1367,6 +1367,18 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  /// Günlük özet: bugün her kaynakta bekçi / otonom motor / elle yapılan taramaların yeni (+), arşive alınan (−) ve güncellenen (~) ilanları.
+  Future<Map<String, dynamic>> fetchDailySummary() async {
+    final response = await _http.get(
+      _uri('/api/admin/daily-summary'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Günlük özet alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   /// Sunucu motoruna komut: action = start | stop | restart | set_mode (mode: hybrid | new_only | sweep_only).
   /// Dönen metin sunucunun kısa açıklamasıdır.
   Future<String> daemonControl(String action, {String? mode}) async {

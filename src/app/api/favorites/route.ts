@@ -8,9 +8,7 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { getMarketMap } from "@/lib/market-price";
 import { attachMarketToCars } from "@/lib/serialize-car";
 import { loadFavorites } from "@/lib/favorites";
-
-/** Bir kullanıcı en fazla bu kadar ilanı favorileyebilir (liste ve belge şişmesin). */
-const MAX_FAVORITES = 500;
+import { MAX_FAVORITES, serializeFavoriteLists } from "@/lib/favorite-lists";
 
 const noStore = { "Cache-Control": "private, no-store" };
 
@@ -27,15 +25,21 @@ export async function GET(request: Request) {
     }
 
     await connectDB();
-    const { ids, available, unavailable } = await loadFavorites(authUser.userId);
-
     if (new URL(request.url).searchParams.get("ids") === "1") {
-      return NextResponse.json({ ids }, { headers: noStore });
+      // Hafif sorgu: ilanlar yüklenmez; kalp durumu ve "hangi gruplarda" bilgisi yeter.
+      const user = await User.findById(authUser.userId)
+        .select("favorites favoriteLists")
+        .lean<{ favorites?: Types.ObjectId[]; favoriteLists?: { _id: Types.ObjectId; name?: string; carIds?: Types.ObjectId[] }[] } | null>();
+      return NextResponse.json(
+        { ids: (user?.favorites || []).map((id) => id.toString()), lists: serializeFavoriteLists(user?.favoriteLists) },
+        { headers: noStore }
+      );
     }
 
+    const { lists, available, unavailable } = await loadFavorites(authUser.userId);
     const marketMap = await getMarketMap(available.map((car) => ({ brand: car.brand, model: car.model, year: car.year })));
     // unavailable: yayından kalkmış/satılmış favoriler için yalnızca başlık+küçük fotoğraf (ayrıntı yok).
-    return NextResponse.json({ favorites: attachMarketToCars(available, marketMap), unavailable }, { headers: noStore });
+    return NextResponse.json({ favorites: attachMarketToCars(available, marketMap), unavailable, lists }, { headers: noStore });
   } catch (error) {
     console.error("GET /api/favorites error:", error);
     return NextResponse.json({ error: "Favoriler alınamadı." }, { status: 500 });
@@ -92,7 +96,11 @@ export async function DELETE(request: Request) {
     }
 
     await connectDB();
-    await User.updateOne({ _id: authUser.userId }, { $pull: { favorites: carId } });
+    // Favoriden çıkan ilan tüm gruplardan da çıkar (grup üyeleri her zaman favorilerin alt kümesidir).
+    await User.updateOne(
+      { _id: authUser.userId },
+      { $pull: { favorites: carId, "favoriteLists.$[].carIds": carId } }
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/favorites error:", error);

@@ -9,6 +9,14 @@ const UserSchema = new Schema(
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     favorites: [{ type: Schema.Types.ObjectId, ref: "Car" }],
+    // Favori grupları (sedan, SUV...). Bir gruptaki ilan her zaman `favorites` içindedir: gruba eklemek favoriler listesine
+    // de ekler, favoriden çıkarmak ilanı tüm gruplardan da çıkarır.
+    favoriteLists: [
+      {
+        name: { type: String, required: true, trim: true, maxlength: 40 },
+        carIds: [{ type: Schema.Types.ObjectId, ref: "Car" }],
+      },
+    ],
     resetTokenHash: { type: String, default: null },
     resetTokenExpires: { type: Date, default: null },
     // Mobil uygulamada şifre sıfırlama: e-postaya giden 6 haneli kod (bağlantı akışından ayrı tutulur)

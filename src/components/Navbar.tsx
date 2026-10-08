@@ -57,6 +57,9 @@ export function Navbar() {
           <Link href="/analytics" className="nav-link">
             Analiz
           </Link>
+          <Link href="/deger-kaybi" className="nav-link">
+            Değer Kaybı
+          </Link>
           <Link href="/predict" className="nav-link">
             Fiyat Tahmini
           </Link>

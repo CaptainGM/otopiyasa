@@ -5,6 +5,14 @@ import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { escapeRegExp } from "@/lib/utils";
+import { derivePainted } from "@/lib/price-prediction";
+import {
+  conditionCurves,
+  conditionOfRow,
+  modelEffects,
+  type ConditionFilter,
+  type DepreciationRow,
+} from "@/lib/depreciation";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +22,24 @@ const LIST_CACHE = { "Cache-Control": "public, s-maxage=3600, stale-while-revali
 const MODEL_CACHE = { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=43200" };
 
 export async function GET(request: Request) {
-  const limited = await checkSharedRateLimit(request, "model-breakdown", { limit: 20, windowMs: 10 * 60 * 1000 });
+  const limited = await checkSharedRateLimit(request, "model-breakdown", { limit: 60, windowMs: 10 * 60 * 1000 });
   if (limited) return limited;
 
   const url = new URL(request.url);
   const brand = url.searchParams.get("brand")?.trim();
   const model = url.searchParams.get("model")?.trim();
+
+  // Değer kaybı sekmesi süzgeçleri: hasar durumu ve kilometre aralığı (bkz. lib/depreciation.ts).
+  const rawCondition = url.searchParams.get("hasar");
+  const conditionFilter: ConditionFilter =
+    rawCondition === "clean" || rawCondition === "painted" || rawCondition === "damaged" ? rawCondition : "all";
+  const numParam = (name: string) => {
+    const raw = url.searchParams.get(name);
+    const value = raw === null || raw === "" ? NaN : Number(raw);
+    return Number.isFinite(value) && value >= 0 ? Math.min(value, 2_000_000) : null;
+  };
+  const kmMin = numParam("kmMin");
+  const kmMax = numParam("kmMax");
 
   if ((brand && brand.length > 80) || (model && model.length > 80)) {
     return NextResponse.json({ error: "Marka ve model en fazla 80 karakter olabilir." }, { status: 400 });
@@ -38,15 +58,45 @@ export async function GET(request: Request) {
     );
   }
 
-  const cars = await Car.find(
+  const allCars = await Car.find(
     {
       ...PUBLIC_LISTING_FILTER,
       brand: new RegExp(`^${escapeRegExp(brand)}$`, "i"),
       model: new RegExp(`^${escapeRegExp(model)}$`, "i"),
       price: { $gte: 50_000, $lte: 40_000_000 },
     },
-    { year: 1, price: 1, mileage: 1, title: 1, imageUrl: 1, city: 1 }
-  ).lean<{ _id: any; year: number; price: number; mileage: number; title?: string; imageUrl?: string; city?: string }[]>();
+    { year: 1, price: 1, mileage: 1, title: 1, imageUrl: 1, city: 1, damageFlag: 1, paintChange: 1 }
+  ).lean<
+    {
+      _id: any;
+      year: number;
+      price: number;
+      mileage: number;
+      title?: string;
+      imageUrl?: string;
+      city?: string;
+      damageFlag?: boolean;
+      paintChange?: string;
+    }[]
+  >();
+
+  // Km aralığı tüm hesapları süzer; hasar durumu yalnızca gösterilen eğri ve dağılımları (etkiler ve durum
+  // eğrileri durumdan bağımsız hesaplanır ki "hasarın etkisi" hasarsızlar süzülünce kaybolmasın).
+  const inKmRange = allCars.filter((c) => (kmMin === null || (c.mileage ?? 0) >= kmMin) && (kmMax === null || (c.mileage ?? 0) <= kmMax));
+  const rowsInRange: DepreciationRow[] = inKmRange.map((c) => ({
+    year: c.year,
+    mileage: c.mileage ?? 0,
+    price: c.price,
+    condition: conditionOfRow(c, derivePainted),
+  }));
+  const cars = inKmRange.filter((c, i) => conditionFilter === "all" || rowsInRange[i].condition === conditionFilter);
+  const conditionCounts = {
+    clean: rowsInRange.filter((r) => r.condition === "clean").length,
+    painted: rowsInRange.filter((r) => r.condition === "painted").length,
+    damaged: rowsInRange.filter((r) => r.condition === "damaged").length,
+  };
+  const maxKm = allCars.reduce((m, c) => Math.max(m, c.mileage ?? 0), 0);
+  const filters = { hasar: conditionFilter, kmMin, kmMax };
 
   if (cars.length === 0) {
     return NextResponse.json({
@@ -56,6 +106,12 @@ export async function GET(request: Request) {
       yearlyData: [],
       mileageData: [],
       stats: null,
+      filters,
+      conditionCounts,
+      conditionCurves: [],
+      effects: null,
+      maxKm,
+      totalBeforeFilters: allCars.length,
       brands: options.brands,
       brandModels: options.brandModels,
     }, { headers: MODEL_CACHE });
@@ -158,6 +214,8 @@ export async function GET(request: Request) {
     maxPrice: b.prices.length > 0 ? Math.max(...b.prices) : 0,
   }));
 
+  const effects = modelEffects(rowsInRange);
+
   const overallAvgPrice = Math.round(
     cars.reduce((sum, c) => sum + c.price, 0) / cars.length
   );
@@ -166,11 +224,18 @@ export async function GET(request: Request) {
     brand,
     model,
     count: cars.length,
+    filters,
+    conditionCounts,
+    conditionCurves: conditionCurves(rowsInRange),
+    effects,
+    maxKm,
+    totalBeforeFilters: allCars.length,
     yearlyData,
     mileageData,
     stats: {
       overallAvgPrice,
-      annualDepreciationRate,
+      // Yaş, km ve hasar birlikte ayrıştırılmış regresyon varsa o; yoksa eski ardışık yıl farkı ortalaması.
+      annualDepreciationRate: effects.annualLossPct ?? annualDepreciationRate,
       minYear: yearlyData[0]?.year || null,
       maxYear: yearlyData[yearlyData.length - 1]?.year || null,
     },

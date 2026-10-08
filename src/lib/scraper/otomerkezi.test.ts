@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseOtomerkeziListHtml } from "@/lib/scraper/otomerkezi";
+import { isOtomerkeziEmptyInventory, parseOtomerkeziListHtml } from "@/lib/scraper/otomerkezi";
 
 const sampleItem = {
   "@type": "ListItem",
@@ -146,5 +146,17 @@ describe("parseOtomerkeziListHtml", () => {
 
   it("CollectionPage ld+json yoksa boş liste döner", () => {
     expect(parseOtomerkeziListHtml("<html><body>bos sayfa</body></html>")).toEqual([]);
+  });
+});
+
+describe("isOtomerkeziEmptyInventory", () => {
+  it("site 0 arac bulundu diyorsa bos envanter sayar", () => {
+    const html = `<div><span class="font-bold">0</span> araç bulundu</div><p>Aradığınız kriterlere uygun araç bulunamadı.</p>`;
+    expect(isOtomerkeziEmptyInventory(html)).toBe(true);
+  });
+
+  it("ilan varken ya da sayfa bozukken bos envanter saymaz", () => {
+    expect(isOtomerkeziEmptyInventory(`<span>12</span> araç bulundu`)).toBe(false);
+    expect(isOtomerkeziEmptyInventory("<html><body>bos sayfa</body></html>")).toBe(false);
   });
 });

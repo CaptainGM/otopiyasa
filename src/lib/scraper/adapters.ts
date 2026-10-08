@@ -569,7 +569,7 @@ export interface ModelScrapeOptions {
   /** Her hedef işlendikten sonra (kaynakta ilan yoksa bile) çağrılır: kaç yeni ilan kaydedildi, aile adedi önce/sonra. */
   onSegment?: (
     segment: { brand: string; model: string },
-    result: { added: number; before?: number; after?: number }
+    result: { added: number; found: number; before?: number; after?: number }
   ) => Promise<void> | void;
 }
 
@@ -612,7 +612,7 @@ export async function scrapeArabamForModels(
     fresh.forEach((h) => seen.add(h));
     if (fresh.length === 0) {
       // Kaynakta bu ad için ilan yok ya da hepsi bu turda zaten alındı: yine de denenmiş sayılır.
-      await options.onSegment?.(segment, { added: 0 });
+      await options.onSegment?.(segment, { added: 0, found: hrefs.length });
       continue;
     }
 
@@ -626,7 +626,7 @@ export async function scrapeArabamForModels(
       after,
       added,
     });
-    await options.onSegment?.(segment, { added, before, after });
+    await options.onSegment?.(segment, { added, found: hrefs.length, before, after });
   }
 
   return fetched;

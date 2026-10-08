@@ -43,11 +43,92 @@ export function bodyClass(bodyType?: string | null): string | null {
   return null;
 }
 
+/**
+ * Motor hacmi ve beygir gücünden tüketim tahmini (yakıt başına doğrusal): lt/100 = a + engine·L + hp·(güç/100).
+ * Modelin kendi verisi yokken sınıf ortalaması yerine kullanılır; aksi halde 5,2 L / 560 hp'lik bir spor araba
+ * "coupe sınıfı ortalaması" olan 6,3 lt ile gösteriliyordu.
+ */
+export interface ConsumptionFit {
+  a: number;
+  engine: number;
+  /** Güç katsayısı (hp/100 başına); beygir bilinmiyorsa 0. */
+  hp: number;
+  /** Beygir de modelde kullanıldı mı. */
+  usesHp: boolean;
+  n: number;
+}
+
 export interface ConsumptionStats {
   /** "marka|model|motor|yakıt" ve "marka|model|yakıt" → resmi tüketim medyanı ve örnek sayısı. */
   model: Record<string, { median: number; count: number }>;
   /** "sınıf|yakıt" ve "yakıt" → medyan. */
   segment: Record<string, { median: number; count: number }>;
+  /** "Benzin" / "Dizel" → motor hacmi + beygir gücü regresyonu (yeterli örnek varsa). */
+  fit?: Record<string, { withHp?: ConsumptionFit; engineOnly?: ConsumptionFit }>;
+}
+
+const MIN_FIT_SAMPLES = 100;
+
+/** En küçük kareler (hafif ridge): X satırları [1, motor, (güç/100)] ve hedef y. Çözülemezse null. */
+export function fitLinear(rows: number[][], y: number[]): number[] | null {
+  const k = rows[0]?.length ?? 0;
+  if (!k || rows.length < k) return null;
+  const A = Array.from({ length: k }, () => new Array<number>(k).fill(0));
+  const b = new Array<number>(k).fill(0);
+  rows.forEach((x, i) => {
+    for (let r = 0; r < k; r++) {
+      b[r] += x[r] * y[i];
+      for (let c = 0; c < k; c++) A[r][c] += x[r] * x[c];
+    }
+  });
+  for (let r = 0; r < k; r++) A[r][r] += 1e-3;
+  // Gauss-Jordan
+  for (let col = 0; col < k; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < k; r++) if (Math.abs(A[r][col]) > Math.abs(A[pivot][col])) pivot = r;
+    if (Math.abs(A[pivot][col]) < 1e-12) return null;
+    [A[col], A[pivot]] = [A[pivot], A[col]];
+    [b[col], b[pivot]] = [b[pivot], b[col]];
+    for (let r = 0; r < k; r++) {
+      if (r === col) continue;
+      const f = A[r][col] / A[col][col];
+      for (let c = col; c < k; c++) A[r][c] -= f * A[col][c];
+      b[r] -= f * b[col];
+    }
+  }
+  return b.map((v, i) => v / A[i][i]);
+}
+
+function buildFit(points: Array<{ engine: number; hp: number | null; c: number }>) {
+  const out: { withHp?: ConsumptionFit; engineOnly?: ConsumptionFit } = {};
+  const engineRows = points.filter((p) => p.engine >= 0.6 && p.engine <= 7);
+  if (engineRows.length >= MIN_FIT_SAMPLES) {
+    const coef = fitLinear(engineRows.map((p) => [1, p.engine]), engineRows.map((p) => p.c));
+    if (coef) out.engineOnly = { a: coef[0], engine: coef[1], hp: 0, usesHp: false, n: engineRows.length };
+  }
+  const hpRows = engineRows.filter((p) => p.hp !== null && p.hp > 30 && p.hp <= 900);
+  if (hpRows.length >= MIN_FIT_SAMPLES) {
+    const coef = fitLinear(hpRows.map((p) => [1, p.engine, (p.hp as number) / 100]), hpRows.map((p) => p.c));
+    if (coef) out.withHp = { a: coef[0], engine: coef[1], hp: coef[2], usesHp: true, n: hpRows.length };
+  }
+  return out;
+}
+
+/** Motor hacmi (L) ve varsa beygir gücünden tahmini resmi tüketim; model yoksa null. */
+export function estimateConsumption(
+  stats: ConsumptionStats,
+  fuel: string,
+  engine: number | null,
+  horsepower?: number | null
+): { value: number; fit: ConsumptionFit } | null {
+  const fits = stats.fit?.[fuel === "LPG & Benzin" ? "Benzin" : fuel];
+  if (!fits || !engine || engine < 0.6 || engine > 7) return null;
+  const hp = horsepower && horsepower > 30 && horsepower <= 900 ? horsepower : null;
+  const fit = hp !== null && fits.withHp ? fits.withHp : fits.engineOnly;
+  if (!fit) return null;
+  const raw = fit.a + fit.engine * engine + (fit.usesHp && hp !== null ? fit.hp * (hp / 100) : 0);
+  const value = Math.round(Math.min(MAX_CONSUMPTION, Math.max(PLUG_IN_THRESHOLD, raw)) * 10) / 10;
+  return { value, fit };
 }
 
 const lower = (s?: string | null) => (s || "").trim().toLocaleLowerCase("tr-TR");
@@ -121,6 +202,7 @@ export interface ConsumptionSample {
   model?: string;
   title?: string;
   engineSize?: number | null;
+  horsepower?: number | null;
   fuelType?: string;
   bodyType?: string;
   consumption: number;
@@ -128,6 +210,7 @@ export interface ConsumptionSample {
 
 export function buildConsumptionStats(samples: ConsumptionSample[]): ConsumptionStats {
   const groups = { model: new Map<string, number[]>(), segment: new Map<string, number[]>() };
+  const fitPoints: Record<string, Array<{ engine: number; hp: number | null; c: number }>> = { Benzin: [], Dizel: [] };
   const push = (map: Map<string, number[]>, key: string, v: number) => {
     const list = map.get(key);
     if (list) list.push(v);
@@ -148,10 +231,16 @@ export function buildConsumptionStats(samples: ConsumptionSample[]): Consumption
     const cls = bodyClass(s.bodyType);
     if (cls) push(groups.segment, `${cls}|${fuel}`, s.consumption);
     push(groups.segment, fuel, s.consumption);
+    if (engine && fitPoints[fuel]) fitPoints[fuel].push({ engine, hp: s.horsepower ?? null, c: s.consumption });
   }
   const summarize = (map: Map<string, number[]>) =>
     Object.fromEntries([...map].map(([k, v]) => [k, { median: Math.round(median(v) * 10) / 10, count: v.length }]));
-  return { model: summarize(groups.model), segment: summarize(groups.segment) };
+  const fit: NonNullable<ConsumptionStats["fit"]> = {};
+  for (const [fuel, points] of Object.entries(fitPoints)) {
+    const built = buildFit(points);
+    if (built.withHp || built.engineOnly) fit[fuel] = built;
+  }
+  return { model: summarize(groups.model), segment: summarize(groups.segment), ...(Object.keys(fit).length ? { fit } : {}) };
 }
 
 export interface FuelCostInput {
@@ -159,7 +248,7 @@ export interface FuelCostInput {
   model?: string;
   title?: string;
   city?: string;
-  features?: { fuelType?: string; bodyType?: string; engineSize?: number | null; avgFuelConsumption?: string | null };
+  features?: { fuelType?: string; bodyType?: string; engineSize?: number | null; horsepower?: number | null; avgFuelConsumption?: string | null };
 }
 
 export interface FuelCost {
@@ -266,14 +355,22 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
       consumptionNote = `aynı modeldeki ${byModel.count} ilanın resmi değeri`;
       consumptionSource = "model";
     } else {
-      // Model için yeterli örnek yok: aynı sınıftaki (kasa + yakıt) araçların medyanı, tahmin diye etiketlenerek.
-      // Başlığında şarjlı hibrit yazan araçta sınıf ortalaması yanıltır (1 lt'ye karşı 5 lt), orada göstermeyiz.
+      // Model için yeterli örnek yok. Başlığında şarjlı hibrit yazan araçta tahmin yanıltır (1 lt'ye karşı 5 lt), orada göstermeyiz.
       if (plugIn) return null;
       const cls = bodyClass(car.features?.bodyType);
       const adj = FUEL_ADJECTIVE[fuel] || fuel;
+      // Önce motor hacmi ve beygir gücünden tahmin: spor ve büyük motorlu araçlar sınıf ortalamasından çok farklı yakar.
+      const byPower = estimateConsumption(stats, fuel, engine, car.features?.horsepower);
       const classStat = cls ? stats.segment[`${cls}|${fuel}`] : undefined;
       const wide = stats.segment[fuel];
-      if (classStat && classStat.count >= MIN_SEGMENT_SAMPLES) {
+      if (byPower) {
+        consumption = byPower.value;
+        const hp = car.features?.horsepower;
+        const engineText = (engine as number).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
+        consumptionNote = byPower.fit.usesHp && hp
+          ? `ilanda resmi değer yok; ${engineText} L motor ve ${Math.round(hp)} hp gücündeki ${adj} araçların verisinden hesaplanan tahmin`
+          : `ilanda resmi değer yok; ${engineText} L motorlu ${adj} araçların verisinden hesaplanan tahmin`;
+      } else if (classStat && classStat.count >= MIN_SEGMENT_SAMPLES) {
         consumption = classStat.median;
         consumptionNote = `ilanda resmi değer yok; ${cls} sınıfındaki ${adj} ${classStat.count} ilanın ortalaması, tahmini`;
       } else if (wide && wide.count >= MIN_SEGMENT_SAMPLES) {

@@ -211,3 +211,48 @@ describe("bodyClass", () => {
     expect(bodyClass("Belirtilmemiş")).toBeNull();
   });
 });
+
+describe("motor hacmi ve beygir gücünden tahmin", () => {
+  // 3 + 2,4·L − 0,2·(hp/100): büyük motorlu araç çok yakar. 160 örnek; motor 1,0–5,0 L, güç motorla birlikte artar.
+  const fitSamples: ConsumptionSample[] = Array.from({ length: 160 }, (_, i) => {
+    const engine = 1 + (i % 9) * 0.5;
+    const horsepower = 60 + engine * 80 + (i % 4) * 10;
+    return {
+      brand: `M${i % 20}`,
+      model: `X${i % 20}`,
+      engineSize: engine,
+      horsepower,
+      fuelType: "Benzin",
+      bodyType: "Sedan",
+      consumption: Math.round((3 + 2.4 * engine - 0.2 * (horsepower / 100)) * 10) / 10,
+    };
+  });
+  const fitStats = buildConsumptionStats(fitSamples);
+  const car = (engineSize: number, horsepower?: number) => ({
+    brand: "Lamborghini",
+    model: "Gallardo",
+    title: "Lamborghini Gallardo",
+    city: "İstanbul",
+    features: { fuelType: "Benzin", bodyType: "Coupe", engineSize, horsepower },
+  });
+
+  it("modeli bilinmeyen büyük motorlu araca sınıf ortalamasını değil motor ve güçten tahmini verir", () => {
+    const cost = computeFuelCost(car(5, 551), prices, fitStats);
+    expect(cost).not.toBeNull();
+    expect(cost!.consumption).toBeGreaterThan(10);
+    expect(cost!.consumptionSource).toBe("sinif");
+    expect(cost!.consumptionNote).toContain("5 L motor ve 551 hp");
+  });
+
+  it("beygir yoksa yalnızca motor hacminden tahmin eder", () => {
+    const small = computeFuelCost(car(1.0), prices, fitStats)!;
+    const large = computeFuelCost(car(5.0), prices, fitStats)!;
+    expect(large.consumption).toBeGreaterThan(small.consumption + 5);
+    expect(large.consumptionNote).toContain("5 L motorlu");
+  });
+
+  it("yeterli örnek yoksa eski sınıf ortalamasına düşer", () => {
+    const cost = computeFuelCost({ ...car(5, 551), features: { fuelType: "Benzin", bodyType: "SUV", engineSize: 5, horsepower: 551 } }, prices, stats);
+    expect(cost!.consumptionNote).toContain("SUV sınıfındaki");
+  });
+});

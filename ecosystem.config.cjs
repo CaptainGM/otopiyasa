@@ -12,11 +12,14 @@ module.exports = {
         DISABLE_ZENROWS: "true",
         SCRAPE_CONCURRENCY: "1",
         SCRAPE_MIN_INTERVAL_MS: "4500",
+        // 945 MB RAM'li sunucuda sistem ajanları ~430 MB tutuyor; süreç bellek tavanını aşınca makine takas diskinde boğulup donuyordu
+        // (8 Eki 2026, ssh bile yanıt vermedi). Heap sınırı sürecin kendisini yavaş değil net hatayla durdurur, pm2 yeniden başlatır.
+        NODE_OPTIONS: "--max-old-space-size=360",
       },
       autorestart: true,
       restart_delay: 5000,
-      // 1 GB RAM'li sunucuda şişen süreci yeniden başlat.
-      max_memory_restart: "600M",
+      // Makine kilitlenmeden önce şişen süreci yeniden başlat (eskiden 600M: kullanılabilir RAM'in üstündeydi).
+      max_memory_restart: "420M",
       log_date_format: "DD.MM.YYYY HH:mm:ss",
       merge_logs: true,
       watch: false,

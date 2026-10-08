@@ -26,6 +26,7 @@ type HeartbeatLike = {
   memoryMb?: number;
   uptimeSeconds?: number;
   lastHeartbeat?: Date | string;
+  commandAt?: Date | string | null;
   recentLogs?: string[];
 } | null | undefined;
 
@@ -41,10 +42,18 @@ export function describeDaemon(heartbeat: HeartbeatLike, now = Date.now()): Daem
   const fresh = ageSec !== null && ageSec * 1000 < HEARTBEAT_STALE_MS;
   const isOnline = !stopped && fresh;
 
+  const commandAt = heartbeat?.commandAt ? new Date(heartbeat.commandAt) : null;
+  const commandAgeMin = commandAt && !Number.isNaN(commandAt.getTime()) ? Math.max(0, Math.round((now - commandAt.getTime()) / 60000)) : null;
+  const silent = `Motordan ${ageSec === null ? "hiç" : `${Math.round(ageSec / 60)} dakikadır`} sinyal gelmiyor`;
+  // Komut verildi ama motor görmedi: sunucudaki süreç çalışmıyor demektir; panel "çalışıyor" dememeli.
+  const unanswered = !fresh && heartbeat?.command === "restart" && commandAgeMin !== null;
+
   const currentPhase = stopped
     ? "🛑 Durduruldu (Panelden 'Motoru Başlat' ile çalıştırılabilir)"
+    : unanswered
+    ? `⚠️ Yeniden başlatma komutu ${commandAgeMin} dk önce verildi ama motor yanıt vermiyor (${silent.replace("Motordan ", "")}). Sunucudaki süreç çalışmıyor olabilir.`
     : !fresh
-    ? `⚠️ Motordan ${ageSec === null ? "hiç" : `${Math.round(ageSec / 60)} dakikadır`} sinyal gelmiyor`
+    ? `⚠️ ${silent}`
     : heartbeat?.currentPhase || "Çalışıyor";
 
   const mode = heartbeat?.mode === "new_only" || heartbeat?.mode === "sweep_only" ? heartbeat.mode : "hybrid";

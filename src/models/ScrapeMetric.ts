@@ -109,6 +109,8 @@ export interface IDaemonHeartbeat extends Document {
   uptimeSeconds: number;
   recentLogs?: string[];
   lastHeartbeat: Date;
+  /** Panelden son komutun (başlat/durdur/yeniden başlat) verildiği an; kalp atışı zamanını değiştirmez. */
+  commandAt?: Date;
 }
 
 const DaemonHeartbeatSchema = new Schema<IDaemonHeartbeat>(
@@ -125,6 +127,7 @@ const DaemonHeartbeatSchema = new Schema<IDaemonHeartbeat>(
     uptimeSeconds: { type: Number, default: 0 },
     recentLogs: { type: [String], default: [] },
     lastHeartbeat: { type: Date, default: Date.now, index: true },
+    commandAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -291,7 +294,9 @@ export async function setDaemonControl(command: "run" | "stop" | "restart", phas
               : command === "restart"
               ? "🔄 Yeniden Başlatılıyor (Taze Kod Çekiliyor)..."
               : "🚀 Otonom Motor Aktif - Canlı Taramalar Devam Ediyor..."),
-          lastHeartbeat: new Date(),
+          // lastHeartbeat BİLEREK yazılmaz: yalnızca çalışan motor kalp atışını yeniler. Eskiden komut verilince burası
+          // da güncelleniyordu ve ölü motor panelde "çalışıyor, son sinyal 1 dk önce" görünüyordu.
+          commandAt: new Date(),
         },
       },
       { upsert: true, new: true }

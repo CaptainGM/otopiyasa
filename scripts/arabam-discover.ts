@@ -2,8 +2,11 @@
 //   npx tsx scripts/arabam-discover.ts [adet]      (varsayılan 200)
 // Kuyruğu `npm run arabam-sitemap` (ya da 7/24 motor, günde bir) doldurur.
 import { loadEnv } from "./load-env";
+import { pauseWatcher } from "./bekci-pause.mjs";
 
 loadEnv();
+// Ev bilgisayarında Arabam bekçisi çalışırken aynı internetten ikinci bir istek akışı açılmasın.
+pauseWatcher("yeni ilan keşfi");
 
 async function main() {
   const { connectDB } = await import("@/lib/mongodb");

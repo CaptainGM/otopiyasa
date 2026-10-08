@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CarThumb } from "@/components/CarThumb";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -26,7 +27,7 @@ interface YearlyPoint {
   minPrice: number;
   maxPrice: number;
   avgMileage: number;
-  cars?: Array<{ _id: string; title: string; price: number; mileage: number; city?: string }>;
+  cars?: Array<{ _id: string; title: string; price: number; mileage: number; city?: string; imageUrl?: string }>;
 }
 
 interface Effects {
@@ -266,8 +267,11 @@ export function DegerKaybi() {
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {(active.cars || []).map((c) => (
                     <li key={c._id}>
-                      <Link href={`/cars/${c._id}`} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] px-3 py-2 transition hover:border-[var(--border-strong)]">
-                        <span className="min-w-0">
+                      <Link href={`/cars/${c._id}`} className="flex items-center gap-3 rounded-lg border border-[var(--border)] p-2 transition hover:border-[var(--border-strong)]">
+                        <span className="relative h-14 w-[4.5rem] shrink-0 overflow-hidden rounded-md bg-[var(--bg-soft)]">
+                          <CarThumb src={c.imageUrl} alt={c.title} className="object-cover" sizes="72px" />
+                        </span>
+                        <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">{c.title}</span>
                           <span className="num text-xs text-[var(--muted)]">{formatNumber(c.mileage)} km{c.city ? ` · ${c.city}` : ""}</span>
                         </span>

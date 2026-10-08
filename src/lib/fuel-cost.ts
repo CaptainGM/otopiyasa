@@ -124,6 +124,9 @@ export function estimateConsumption(
   const fits = stats.fit?.[fuel === "LPG & Benzin" ? "Benzin" : fuel];
   if (!fits || !engine || engine < 0.6 || engine > 7) return null;
   const hp = horsepower && horsepower > 30 && horsepower <= 900 ? horsepower : null;
+  // Doğrulama (8 Eki 2026, hiç görülmemiş model aileleriyle): 300+ hp dizelde tahminlerin yalnızca %33'ü ±%25 içinde kaldı; orada
+  // göstermemek yanlış sayı göstermekten iyidir. Diğer tüm bantlarda %73–97 (bkz. ConsumptionFit açıklaması).
+  if (fuel === "Dizel" && hp !== null && hp >= 300) return null;
   const fit = hp !== null && fits.withHp ? fits.withHp : fits.engineOnly;
   if (!fit) return null;
   const raw = fit.a + fit.engine * engine + (fit.usesHp && hp !== null ? fit.hp * (hp / 100) : 0);
@@ -368,8 +371,12 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
         const hp = car.features?.horsepower;
         const engineText = (engine as number).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
         consumptionNote = byPower.fit.usesHp && hp
-          ? `ilanda resmi değer yok; ${engineText} L motor ve ${Math.round(hp)} hp gücündeki ${adj} araçların verisinden hesaplanan tahmin`
-          : `ilanda resmi değer yok; ${engineText} L motorlu ${adj} araçların verisinden hesaplanan tahmin`;
+          ? `ilanda resmi değer yok; ${engineText} L motor ve ${Math.round(hp)} hp gücündeki ${adj} araçların verisinden hesaplanan tahmin (genelde ±%25 içinde)`
+          : `ilanda resmi değer yok; ${engineText} L motorlu ${adj} araçların verisinden hesaplanan tahmin (genelde ±%25 içinde)`;
+      } else if ((car.features?.horsepower ?? 0) >= 200 || (engine ?? 0) >= 2.5) {
+        // Güçlü ya da büyük motorlu araçta sınıf ortalaması yanlıştır (doğrulamada 300+ hp benzinlide ortalama 4 lt sapma); tahmin
+        // de yapılamıyorsa yanlış sayı yazmaktansa maliyet gösterilmez.
+        return null;
       } else if (classStat && classStat.count >= MIN_SEGMENT_SAMPLES) {
         consumption = classStat.median;
         consumptionNote = `ilanda resmi değer yok; ${cls} sınıfındaki ${adj} ${classStat.count} ilanın ortalaması, tahmini`;

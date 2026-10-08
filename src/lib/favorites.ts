@@ -4,6 +4,9 @@ import { User } from "@/models/User";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { LIST_IMAGE_LIMIT, isLeanCarDoc, type LeanCarDoc } from "@/lib/serialize-car";
 import { serializeFavoriteLists, type FavoriteListDTO } from "@/lib/favorite-lists";
+import { FavoriteMeta } from "@/models/FavoriteMeta";
+import { removeFavorites } from "@/lib/favorite-lists-server";
+import { isDefaultMeta, toMetaDTO, type FavoriteMetaDTO } from "@/lib/favorite-meta";
 
 /**
  * Kullanıcının favorilediği ama artık yayında olmayan (kaynaktan kalkmış ya da satılmış) ilanın MİNİMUM görünümü:
@@ -23,11 +26,27 @@ export interface UnavailableFavorite {
 export interface FavoritesResult {
   /** Favori kimliklerinin tamamı (ilan sayfasındaki kalp durumu için). */
   ids: string[];
-  /** Kullanıcının favori grupları (her grup yalnızca ilan kimliklerini taşır). */
+  /** Varsayılan "Favori Listem" + kullanıcının kendi listeleri (her liste yalnızca ilan kimliklerini taşır). */
   lists: FavoriteListDTO[];
+  /** İlan kimliği → not ve bildirim ayarı (yalnızca varsayılandan farklı olanlar). */
+  meta: Record<string, FavoriteMetaDTO>;
   /** Herkese açık (aktif + onaylı) favori ilanlar; en son eklenen başta. */
   available: LeanCarDoc[];
   unavailable: UnavailableFavorite[];
+}
+
+/** Kullanıcının favorileri için kayıtlı not/bildirim ayarları; varsayılandan farklı olanlar. */
+export async function loadMeta(userId: string, carIds: string[]): Promise<Record<string, FavoriteMetaDTO>> {
+  if (carIds.length === 0) return {};
+  const rows = await FavoriteMeta.find({ userId, carId: { $in: carIds } }).lean<
+    Array<{ carId: Types.ObjectId; note?: string; alertMode?: string; alertBelow?: number | null; alertEmail?: boolean; alertPush?: boolean }>
+  >();
+  const out: Record<string, FavoriteMetaDTO> = {};
+  for (const row of rows) {
+    const dto = toMetaDTO(row);
+    if (!isDefaultMeta(dto)) out[row.carId.toString()] = dto;
+  }
+  return out;
 }
 
 export async function loadFavorites(userId: string): Promise<FavoritesResult> {
@@ -35,8 +54,9 @@ export async function loadFavorites(userId: string): Promise<FavoritesResult> {
     .select("favorites favoriteLists")
     .lean<{ favorites?: Types.ObjectId[]; favoriteLists?: { _id: Types.ObjectId; name?: string; carIds?: Types.ObjectId[] }[] } | null>();
   const ids = (user?.favorites || []).map((id) => id.toString());
-  const lists = serializeFavoriteLists(user?.favoriteLists);
-  if (ids.length === 0) return { ids, lists, available: [], unavailable: [] };
+  const lists = serializeFavoriteLists(user?.favoriteLists, user?.favorites);
+  const meta = await loadMeta(userId, ids);
+  if (ids.length === 0) return { ids, lists, meta, available: [], unavailable: [] };
 
   const [publicDocs, otherDocs] = await Promise.all([
     Car.find({ _id: { $in: ids }, ...PUBLIC_LISTING_FILTER })
@@ -78,11 +98,8 @@ export async function loadFavorites(userId: string): Promise<FavoritesResult> {
   const hiddenIds = new Set(stillExistsHidden.map((doc) => String(doc._id)));
   const gone = ids.filter((id) => !known.has(id) && !hiddenIds.has(id));
   if (gone.length > 0) {
-    User.updateOne(
-      { _id: userId },
-      { $pull: { favorites: { $in: gone }, "favoriteLists.$[].carIds": { $in: gone } } }
-    ).catch(() => {});
+    removeFavorites(userId, gone).catch(() => {});
   }
 
-  return { ids, lists, available, unavailable };
+  return { ids, lists, meta, available, unavailable };
 }

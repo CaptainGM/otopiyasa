@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CarCard } from "@/components/CarCard";
-import { FavoritesBoard } from "@/components/FavoritesBoard";
+import { FavoritesBoard, type BoardItem } from "@/components/FavoritesBoard";
 import { UnavailableFavoriteCard } from "@/components/UnavailableFavoriteCard";
 import { connectDB } from "@/lib/mongodb";
 import { getCurrentUser } from "@/lib/auth";
@@ -9,6 +9,7 @@ import { attachMarketToCars } from "@/lib/serialize-car";
 import { getMarketMap } from "@/lib/market-price";
 import { loadFavorites, type UnavailableFavorite } from "@/lib/favorites";
 import type { FavoriteListDTO } from "@/lib/favorite-lists";
+import type { FavoriteMetaDTO } from "@/lib/favorite-meta";
 import { Car as CarType } from "@/types";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 
@@ -21,11 +22,13 @@ export default async function FavoritesPage() {
   let favorites: CarType[] = [];
   let unavailable: UnavailableFavorite[] = [];
   let lists: FavoriteListDTO[] = [];
+  let meta: Record<string, FavoriteMetaDTO> = {};
   try {
     await connectDB();
     const result = await loadFavorites(authUser.userId);
     unavailable = result.unavailable;
     lists = result.lists;
+    meta = result.meta;
     if (result.available.length > 0) {
       const marketMap = await getMarketMap(
         result.available.map((car) => ({ brand: car.brand, model: car.model, year: car.year }))
@@ -36,43 +39,43 @@ export default async function FavoritesPage() {
     console.error("Favoriler yüklenirken hata:", err);
   }
 
+  const items: BoardItem[] = [
+    ...favorites.map((car) => {
+      const item = serializeCarListItem(car);
+      return {
+        id: car._id,
+        node: <CarCard car={item} />,
+        cover: item.imageUrl || item.images?.[0],
+        price: car.price,
+      };
+    }),
+    ...unavailable.map((item) => ({
+      id: item._id,
+      node: <UnavailableFavoriteCard item={item} />,
+      cover: item.imageUrl,
+      unavailable: true,
+    })),
+  ];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Favorilerim</h1>
         <p className="text-slate-500">
-          Kaydettiğin araçları buradan takip edebilirsin. İlanları sedan, SUV gibi kendi gruplarına ayırabilirsin.
+          Kaydettiğin araçlar listelerde durur. İstediğin kadar liste açıp ilanları sedan, SUV gibi ayırabilir, her ilana not ve
+          fiyat bildirimi ekleyebilirsin.
         </p>
       </div>
 
-      {favorites.length === 0 && unavailable.length === 0 ? (
-        <div className="card p-8 text-center">
-          <p className="text-slate-500">Henüz favori eklemedin.</p>
-          <Link href="/" className="mt-4 inline-block text-blue-700 hover:underline">
+      {items.length === 0 && (
+        <p className="text-sm text-slate-500">
+          Henüz favori eklemedin.{" "}
+          <Link href="/" className="text-blue-700 hover:underline">
             İlanlara git
           </Link>
-        </div>
-      ) : (
-        <FavoritesBoard
-          initialLists={lists}
-          items={favorites.map((car) => ({ id: car._id, node: <CarCard car={serializeCarListItem(car)} /> }))}
-          unavailable={
-            unavailable.length > 0 ? (
-              <section className="space-y-3">
-                <h2 className="text-lg font-bold text-slate-300">Artık yayında olmayan ilanlar</h2>
-                <p className="text-sm text-slate-500">
-                  Bu ilanlar satıldı ya da kaynağından kaldırıldı. Ayrıntıları gösterilmez; istersen favorilerden çıkarabilirsin.
-                </p>
-                <div className="listing-grid">
-                  {unavailable.map((item) => (
-                    <UnavailableFavoriteCard key={item._id} item={item} />
-                  ))}
-                </div>
-              </section>
-            ) : null
-          }
-        />
+        </p>
       )}
+      <FavoritesBoard initialLists={lists} initialMeta={meta} items={items} />
     </div>
   );
 }

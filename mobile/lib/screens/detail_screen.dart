@@ -48,6 +48,8 @@ class _DetailScreenState extends State<DetailScreen> {
   int _activeImageIndex = 0;
   Map<String, dynamic>? _fuelCost;
   bool _inCompare = false;
+  static const _similarStep = 6;
+  int _similarShown = _similarStep;
 
   @override
   void initState() {
@@ -660,15 +662,19 @@ class _DetailScreenState extends State<DetailScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: car.similarCars.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final similar = car.similarCars[index];
-                      return _buildSimilarCarRow(context, similar);
-                    },
+                // Sunucu 50 benzer ilan gönderiyor; hepsini birden çizmek 50 küçük resim indiriyordu (açılışta ~1–2 MB).
+                // İlk birkaçı gösterilir, kalanı kullanıcı isterse açılır.
+                for (final similar in car.similarCars.take(_similarShown)) ...[
+                  _buildSimilarCarRow(context, similar),
+                  const SizedBox(height: 10),
+                ],
+                if (car.similarCars.length > _similarShown)
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () => setState(() => _similarShown += _similarStep),
+                      icon: const Icon(Icons.expand_more),
+                      label: Text('Daha fazla göster (${car.similarCars.length - _similarShown})'),
+                    ),
                   ),
               ],
             ],

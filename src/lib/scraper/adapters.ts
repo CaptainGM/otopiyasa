@@ -19,6 +19,7 @@ import { parseArabamListPage } from "@/lib/scraper/arabam-list";
 import { ScrapedListing, ScrapeAdapter, OnListing } from "@/lib/scraper/types";
 import { seedCars } from "@/lib/seed-data";
 import { Car } from "@/models/Car";
+import { modelFamilyRegex } from "@/lib/model-family";
 
 
 const SCRAPE_CONCURRENCY = Math.max(1, Number(process.env.SCRAPE_CONCURRENCY) || 1);
@@ -562,16 +563,33 @@ export async function refetchArabamDetails(
   return fetchAndSaveArabamDetails(hrefs, onListing, false, onGone, progressOffset, progressTotal);
 }
 
+export interface ModelScrapeOptions {
+  /** Ad bir ailenin tüm donanımlarını kapsar ("Linea" → "Linea 1.3 M.Jet AC" dahil); adet olayları aile toplamını gösterir. */
+  familyCounts?: boolean;
+  /** Her hedef işlendikten sonra (kaynakta ilan yoksa bile) çağrılır: kaç yeni ilan kaydedildi, aile adedi önce/sonra. */
+  onSegment?: (
+    segment: { brand: string; model: string },
+    result: { added: number; before?: number; after?: number }
+  ) => Promise<void> | void;
+}
+
 export async function scrapeArabamForModels(
   segments: { brand: string; model: string }[],
   perModelPages: number,
   onListing: OnListing,
-  maxListings = Number.MAX_SAFE_INTEGER
+  maxListings = Number.MAX_SAFE_INTEGER,
+  options: ModelScrapeOptions = {}
 ): Promise<number> {
   if (segments.length === 0) return 0;
 
-  
-  const seen = new Set<string>(); 
+  const countActive = (segment: { brand: string; model: string }) =>
+    Car.countDocuments(
+      options.familyCounts
+        ? { brand: segment.brand, model: modelFamilyRegex(segment.model, segment.brand), status: "active" }
+        : { brand: segment.brand, model: segment.model, status: "active" }
+    ).catch(() => undefined);
+
+  const seen = new Set<string>();
   let fetched = 0;
 
   for (const [index, segment] of segments.entries()) {
@@ -587,23 +605,28 @@ export async function scrapeArabamForModels(
     try {
       hrefs = await collectArabamHrefsForModel(segment.brand, segment.model, perModelPages);
     } catch {
-      continue; 
+      continue;
     }
 
     const fresh = hrefs.filter((h) => !seen.has(h));
     fresh.forEach((h) => seen.add(h));
-    if (fresh.length === 0) continue;
+    if (fresh.length === 0) {
+      // Kaynakta bu ad için ilan yok ya da hepsi bu turda zaten alındı: yine de denenmiş sayılır.
+      await options.onSegment?.(segment, { added: 0 });
+      continue;
+    }
 
-   
-    const before = await Car.countDocuments({ brand: segment.brand, model: segment.model, status: "active" }).catch(() => undefined);
+    const before = await countActive(segment);
     const added = await fetchAndSaveArabamDetails(fresh, onListing);
     fetched += added;
+    const after = before === undefined ? undefined : before + added;
     reportEvent({
       label: `${segment.brand} ${segment.model}`,
       before,
-      after: before === undefined ? undefined : before + added,
+      after,
       added,
     });
+    await options.onSegment?.(segment, { added, before, after });
   }
 
   return fetched;

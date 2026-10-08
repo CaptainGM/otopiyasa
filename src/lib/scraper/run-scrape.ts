@@ -32,6 +32,8 @@ import { ListingSource } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
 import { modelFamilyKey } from "@/lib/model-family";
+import { RareModelAttempt } from "@/models/RareModelAttempt";
+import { familyId, selectRareFamilies } from "@/lib/scraper/rare-models";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
   if (source === "sahibinden") return [sahibindenAdapter];
@@ -476,31 +478,41 @@ export async function runRareBrandScrape(
 }
 
 
+/** Taranıp hâlâ az kalan (kaynakta da az olan) model ailesi bu süre yeniden aranmaz. */
+const RARE_FAMILY_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
 const RARE_MODEL_PAGES = 2;
 
 const RARE_MODEL_LIMIT = 120;
 
 const RARE_MODEL_MAX_LISTINGS = 1500;
 
-
+/**
+ * Az ilanlı model AİLELERİNİ kaynakta arar. Sayım ve hedef seçimi aile düzeyindedir (tüm donanımlar toplanır) ve kaynakta zaten
+ * tükenmiş aileler bir süre atlanır (bkz. rare-models.ts); böylece her tur gerçekten yeni, az ilanlı ailelere gider.
+ */
 export async function runRareModelScrape(
   threshold = 10,
   perModelPages = RARE_MODEL_PAGES,
   maxSegments = RARE_MODEL_LIMIT,
   maxListings = RARE_MODEL_MAX_LISTINGS
 ): Promise<ScrapeJobResult> {
-  
-  const segments = await Car.aggregate<{ _id: { brand: string; model: string }; count: number }>([
+  const rows = await Car.aggregate<{ _id: { brand: string; model: string }; count: number }>([
     { $group: { _id: { brand: "$brand", model: "$model" }, count: { $sum: 1 } } },
-    { $match: { count: { $lt: threshold } } },
-    
-    { $sort: { count: 1 } },
-    { $limit: maxSegments },
   ]);
-
-  const targets = segments
-    .map((s) => ({ brand: s._id?.brand || "", model: s._id?.model || "" }))
-    .filter((s) => s.brand && s.model && s.model !== "Model" && s.model !== "Bilinmiyor");
+  const attempts = await RareModelAttempt.find({}, { brand: 1, familyKey: 1, attemptedAt: 1 }).lean<
+    Array<{ brand: string; familyKey: string; attemptedAt: Date }>
+  >();
+  const attempted = new Map(attempts.map((a) => [familyId(a.brand, a.familyKey), a.attemptedAt.getTime()]));
+  const targets = selectRareFamilies(
+    rows.map((r) => ({ brand: r._id?.brand || "", model: r._id?.model || "", count: r.count })),
+    threshold,
+    maxSegments,
+    attempted,
+    Date.now(),
+    RARE_FAMILY_COOLDOWN_MS
+  );
+  const familyKeyOf = new Map(targets.map((t) => [familyId(t.brand, t.model), t.familyKey]));
 
   const counter = createSaveCounter();
   const { counts } = counter;
@@ -524,9 +536,30 @@ export async function runRareModelScrape(
   };
 
   let fetched = 0;
+  let processed = 0;
   const errors: string[] = [];
   try {
-    fetched = await scrapeArabamForModels(targets, perModelPages, onListing, maxListings);
+    fetched = await scrapeArabamForModels(targets, perModelPages, onListing, maxListings, {
+      familyCounts: true,
+      onSegment: async (segment, result) => {
+        const familyKey = familyKeyOf.get(familyId(segment.brand, segment.model));
+        if (!familyKey) return;
+        processed += 1;
+        await RareModelAttempt.updateOne(
+          { brand: segment.brand, familyKey },
+          {
+            $set: {
+              model: segment.model,
+              attemptedAt: new Date(),
+              added: result.added,
+              before: result.before ?? 0,
+              after: result.after ?? 0,
+            },
+          },
+          { upsert: true }
+        ).catch(() => {});
+      },
+    });
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
@@ -542,7 +575,7 @@ export async function runRareModelScrape(
   return {
     success: true,
     message:
-      `Nadir-model taraması: ${threshold} ilandan az olan ${targets.length} model tarandı` +
+      `Nadir-model taraması: toplam ${threshold} ilandan az olan ${targets.length} model ailesinden ${processed} tanesi tarandı` +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
     inserted: counts.inserted,
     updated: counts.updated,

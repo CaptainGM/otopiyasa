@@ -5,21 +5,17 @@ import { User } from "@/models/User";
 import { Car } from "@/models/Car";
 import { getCurrentUser } from "@/lib/auth";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { MAX_FAVORITES, normalizeListName, serializeFavoriteLists } from "@/lib/favorite-lists";
+import { DEFAULT_LIST_ID, MAX_FAVORITES, normalizeListName } from "@/lib/favorite-lists";
+import { loadFavoriteState, loadSerializedLists, placeCarInList } from "@/lib/favorite-lists-server";
 
 const noStore = { "Cache-Control": "private, no-store" };
 
-type UserLists = {
-  favorites?: Types.ObjectId[];
-  favoriteLists?: { _id: Types.ObjectId; name?: string; carIds?: Types.ObjectId[] }[];
-} | null;
-
 /**
- * PATCH /api/favorites/lists/:id  { name? , add? , remove? }
- *   name   → grubu yeniden adlandırır
- *   add    → ilanı gruba ekler (favorilerde değilse favoriler listesine de ekler)
- *   remove → ilanı yalnızca bu gruptan çıkarır (favorilerde kalır)
- * Yanıt: güncel grup listesi.
+ * PATCH /api/favorites/lists/:id  { name? , add? }
+ *   name → listeyi yeniden adlandırır ("Favori Listem" adı değişmez)
+ *   add  → ilanı bu listeye TAŞIR: öteki listelerden çıkar, favorilerde değilse favorilere de eklenir.
+ *          id "default" ise ilan "Favori Listem"e taşınır.
+ * Yanıt: güncel listeler.
  */
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -27,27 +23,32 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!authUser) return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
 
     const { id } = await context.params;
-    if (!Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Geçersiz grup." }, { status: 400 });
+    const isDefault = id === DEFAULT_LIST_ID;
+    if (!isDefault && !Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Geçersiz liste." }, { status: 400 });
 
     const body = await request.json().catch(() => ({}));
     await connectDB();
-    const user = await User.findById(authUser.userId).select("favorites favoriteLists").lean<UserLists>();
-    if (!user) return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
+    const state = await loadFavoriteState(authUser.userId);
+    if (!state) return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
 
-    const lists = user.favoriteLists || [];
-    if (!lists.some((list) => list._id.toString() === id)) {
-      return NextResponse.json({ error: "Grup bulunamadı." }, { status: 404 });
+    const lists = state.favoriteLists || [];
+    if (!isDefault && !lists.some((list) => list._id.toString() === id)) {
+      return NextResponse.json({ error: "Liste bulunamadı." }, { status: 404 });
     }
-    const arrayFilters = [{ "l._id": new Types.ObjectId(id) }];
 
     if (body?.name !== undefined) {
+      if (isDefault) return NextResponse.json({ error: "\"Favori Listem\" yeniden adlandırılamaz." }, { status: 400 });
       const name = normalizeListName(body.name);
-      if (!name) return NextResponse.json({ error: "Grup adı boş olamaz." }, { status: 400 });
+      if (!name) return NextResponse.json({ error: "Liste adı boş olamaz." }, { status: 400 });
       const lower = name.toLocaleLowerCase("tr-TR");
-      if (lists.some((list) => list._id.toString() !== id && String(list.name || "").toLocaleLowerCase("tr-TR") === lower)) {
-        return NextResponse.json({ error: "Bu adda bir grubun zaten var." }, { status: 409 });
+      if (lower === "favori listem" || lists.some((list) => list._id.toString() !== id && String(list.name || "").toLocaleLowerCase("tr-TR") === lower)) {
+        return NextResponse.json({ error: "Bu adda bir listen zaten var." }, { status: 409 });
       }
-      await User.updateOne({ _id: authUser.userId }, { $set: { "favoriteLists.$[l].name": name } }, { arrayFilters });
+      await User.updateOne(
+        { _id: authUser.userId },
+        { $set: { "favoriteLists.$[l].name": name } },
+        { arrayFilters: [{ "l._id": new Types.ObjectId(id) }] }
+      );
     }
 
     if (body?.add !== undefined) {
@@ -58,48 +59,35 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if (!(await Car.exists({ _id: carId, ...PUBLIC_LISTING_FILTER }))) {
         return NextResponse.json({ error: "İlan bulunamadı." }, { status: 404 });
       }
-      const alreadyFavorite = (user.favorites || []).some((fav) => fav.toString() === carId);
-      if (!alreadyFavorite && (user.favorites || []).length >= MAX_FAVORITES) {
+      const alreadyFavorite = (state.favorites || []).some((fav) => fav.toString() === carId);
+      if (!alreadyFavorite && (state.favorites || []).length >= MAX_FAVORITES) {
         return NextResponse.json({ error: `En fazla ${MAX_FAVORITES} ilan favorilenebilir.` }, { status: 400 });
       }
-      await User.updateOne(
-        { _id: authUser.userId },
-        { $addToSet: { "favoriteLists.$[l].carIds": carId, favorites: carId } },
-        { arrayFilters }
-      );
+      await placeCarInList(authUser.userId, carId, isDefault ? null : id);
     }
 
-    if (body?.remove !== undefined) {
-      const carId = body.remove;
-      if (typeof carId !== "string" || !Types.ObjectId.isValid(carId)) {
-        return NextResponse.json({ error: "Geçerli bir ilan gerekli." }, { status: 400 });
-      }
-      await User.updateOne({ _id: authUser.userId }, { $pull: { "favoriteLists.$[l].carIds": carId } }, { arrayFilters });
-    }
-
-    const fresh = await User.findById(authUser.userId).select("favoriteLists").lean<UserLists>();
-    return NextResponse.json({ lists: serializeFavoriteLists(fresh?.favoriteLists) }, { headers: noStore });
+    return NextResponse.json({ lists: await loadSerializedLists(authUser.userId) }, { headers: noStore });
   } catch (error) {
     console.error("PATCH /api/favorites/lists/[id] error:", error);
-    return NextResponse.json({ error: "Grup güncellenemedi." }, { status: 500 });
+    return NextResponse.json({ error: "Liste güncellenemedi." }, { status: 500 });
   }
 }
 
-/** DELETE /api/favorites/lists/:id → grubu siler; içindeki ilanlar favorilerde kalır. */
+/** DELETE /api/favorites/lists/:id → listeyi siler; içindeki ilanlar "Favori Listem"e döner (favorilerde kalır). */
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const authUser = await getCurrentUser();
     if (!authUser) return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
 
     const { id } = await context.params;
-    if (!Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Geçersiz grup." }, { status: 400 });
+    if (id === DEFAULT_LIST_ID) return NextResponse.json({ error: "\"Favori Listem\" silinemez." }, { status: 400 });
+    if (!Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Geçersiz liste." }, { status: 400 });
 
     await connectDB();
     await User.updateOne({ _id: authUser.userId }, { $pull: { favoriteLists: { _id: new Types.ObjectId(id) } } });
-    const fresh = await User.findById(authUser.userId).select("favoriteLists").lean<UserLists>();
-    return NextResponse.json({ lists: serializeFavoriteLists(fresh?.favoriteLists) }, { headers: noStore });
+    return NextResponse.json({ lists: await loadSerializedLists(authUser.userId) }, { headers: noStore });
   } catch (error) {
     console.error("DELETE /api/favorites/lists/[id] error:", error);
-    return NextResponse.json({ error: "Grup silinemedi." }, { status: 500 });
+    return NextResponse.json({ error: "Liste silinemedi." }, { status: 500 });
   }
 }

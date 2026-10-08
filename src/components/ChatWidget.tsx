@@ -352,7 +352,13 @@ export function ChatWidget() {
                 )}
               </div>
             ))}
-            {loading && <div className="text-xs text-slate-500">Yazıyor...</div>}
+            {loading && (
+              <div className="flex w-fit items-center gap-1 rounded-xl bg-white/5 px-3.5 py-3" role="status" aria-label="Asistan yazıyor">
+                {[0, 150, 300].map((delay) => (
+                  <span key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" style={{ animationDelay: `${delay}ms` }} />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Hazır soru butonları */}

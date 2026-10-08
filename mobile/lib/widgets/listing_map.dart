@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:otopiyasa/models/car.dart';
+import 'package:otopiyasa/services/data_saver.dart';
 
 /// İlan konumu önizlemesi (web'deki "Konum" haritasının karşılığı). Dokununca tam ekran, sürüklenebilir
 /// harita açılır. Konum çoğu zaman ilçe/il merkezi olduğundan işaret yaklaşık bir dairedir.
@@ -26,7 +27,30 @@ class ListingMap extends StatelessWidget {
             height: 180,
             child: Stack(
               children: [
-                _MapView(point: point, interactive: false),
+                // Veri tasarrufunda harita karoları otomatik indirilmez; dokununca tam ekran harita açılır.
+                ValueListenableBuilder<bool>(
+                  valueListenable: DataSaver.instance.lowData,
+                  builder: (context, lowData, _) {
+                    if (!lowData) return _MapView(point: point, interactive: false);
+                    return Container(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      alignment: Alignment.center,
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.map_outlined, size: 30, color: Colors.white54),
+                          SizedBox(height: 6),
+                          Text('Haritayı açmak için dokun', style: TextStyle(fontWeight: FontWeight.w700)),
+                          SizedBox(height: 2),
+                          Text(
+                            'Veri tasarrufu açık, harita otomatik yüklenmedi',
+                            style: TextStyle(fontSize: 11, color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
                 Positioned.fill(
                   child: Material(
                     color: Colors.transparent,

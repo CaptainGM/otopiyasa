@@ -6,6 +6,7 @@ import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/screens/search_results_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/widgets/listing_image.dart';
 import 'package:otopiyasa/utils/tr_text.dart';
 
 /// DEĞER KAYBI — web'deki /deger-kaybi sayfasının karşılığı (aynı API: /api/analytics/model-breakdown).
@@ -338,6 +339,17 @@ class _DegerKaybiScreenState extends State<DegerKaybiScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 7),
                             child: Row(
                               children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: SizedBox(
+                                    width: 64,
+                                    height: 48,
+                                    child: (car['imageUrl']?.toString() ?? '').isEmpty
+                                        ? ColoredBox(color: c.border.withValues(alpha: 0.4))
+                                        : ListingImage(url: car['imageUrl'].toString(), cacheWidth: 160),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,

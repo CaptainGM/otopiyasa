@@ -43,6 +43,13 @@ class _Http {
     Duration timeout = _defaultTimeout,
   }) => _send('POST', url, headers: headers, body: body, timeout: timeout);
 
+  Future<http.Response> put(
+    Uri url, {
+    Map<String, String>? headers,
+    Object? body,
+    Duration timeout = _defaultTimeout,
+  }) => _send('PUT', url, headers: headers, body: body, timeout: timeout);
+
   Future<http.Response> patch(
     Uri url, {
     Map<String, String>? headers,
@@ -139,6 +146,9 @@ class ApiService {
   String? _authToken;
   Map<String, dynamic>? currentUser;
   final authRevision = ValueNotifier<int>(0);
+
+  /// Favoriler başka ekranlarda değişince (ilan sayfasından ekleme/taşıma) artar; Favoriler sekmesi kendini tazeler.
+  static final favoritesRevision = ValueNotifier<int>(0);
 
   bool get isLoggedIn => _authToken != null && currentUser != null;
   bool get isAdmin => currentUser?['role'] == 'admin';
@@ -513,10 +523,50 @@ class ApiService {
           .map(UnavailableFavorite.fromJson)
           .toList(),
       lists: FavoriteList.parseAll(body['lists']),
+      meta: FavoriteMeta.parseMap(body['meta']),
     );
   }
 
-  /// Favori grubu uçlarının ortak çağrısı: başarılıysa sunucudaki güncel grup listesini döner.
+  /// Hafif durum: favori kimlikleri + listeler + ilan ayarları (ilan sayfasındaki kalp için).
+  Future<({Set<String> ids, List<FavoriteList> lists, Map<String, FavoriteMeta> meta})> fetchFavoriteState() async {
+    final response = await _http.get(_uri('/api/favorites', {'ids': '1'}), headers: _headers);
+    if (response.statusCode == 401) throw Exception('Favoriler için giriş yapmalısın');
+    if (response.statusCode != 200) throw Exception('Favoriler yüklenemedi');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (
+      ids: (body['ids'] as List<dynamic>? ?? const []).map((e) => e.toString()).toSet(),
+      lists: FavoriteList.parseAll(body['lists']),
+      meta: FavoriteMeta.parseMap(body['meta']),
+    );
+  }
+
+  /// İlanın not ve bildirim ayarını günceller (yalnızca verilen alanlar değişir).
+  Future<FavoriteMeta> saveFavoriteMeta(
+    String carId, {
+    String? note,
+    String? alertMode,
+    int? alertBelow,
+    bool clearBelow = false,
+    bool? alertEmail,
+    bool? alertPush,
+  }) async {
+    final response = await _http.put(
+      _uri('/api/favorites/meta'),
+      headers: _headers,
+      body: jsonEncode({
+        'carId': carId,
+        'note': ?note,
+        'alertMode': ?alertMode,
+        if (clearBelow) 'alertBelow': null else 'alertBelow': ?alertBelow,
+        'alertEmail': ?alertEmail,
+        'alertPush': ?alertPush,
+      }),
+    );
+    if (response.statusCode != 200) throw Exception(_errorOf(response, 'Ayar kaydedilemedi'));
+    return FavoriteMeta.fromJson((jsonDecode(response.body) as Map<String, dynamic>)['meta'] as Map<String, dynamic>);
+  }
+
+  /// Favori listesi uçlarının ortak çağrısı: başarılıysa sunucudaki güncel listeleri döner.
   Future<List<FavoriteList>> _listsCall(String method, String path, {Map<String, dynamic>? body}) async {
     final uri = _uri('/api/favorites/lists$path');
     final payload = body == null ? null : jsonEncode(body);
@@ -531,14 +581,14 @@ class ApiService {
       default:
         response = await _http.get(uri, headers: _headers);
     }
-    if (response.statusCode == 401) throw Exception('Gruplar için giriş yapmalısın');
+    if (response.statusCode == 401) throw Exception('Listeler için giriş yapmalısın');
     if (response.statusCode != 200) throw Exception(_errorOf(response, 'İşlem yapılamadı'));
     return FavoriteList.parseAll((jsonDecode(response.body) as Map<String, dynamic>)['lists']);
   }
 
   Future<List<FavoriteList>> fetchFavoriteLists() => _listsCall('GET', '');
 
-  /// Yeni grup açar; [carId] verilirse ilan hemen eklenir (ve favorilere de girer).
+  /// Yeni liste açar; [carId] verilirse ilan hemen eklenir (ve favorilere de girer).
   Future<List<FavoriteList>> createFavoriteList(String name, {String? carId}) =>
       _listsCall('POST', '', body: {'name': name, 'carId': ?carId});
 
@@ -547,18 +597,19 @@ class ApiService {
 
   Future<List<FavoriteList>> deleteFavoriteList(String listId) => _listsCall('DELETE', '/$listId');
 
-  /// İlanı gruba ekler (favorilerde değilse favorilere de girer) ya da yalnızca bu gruptan çıkarır.
-  Future<List<FavoriteList>> setCarInFavoriteList(String listId, String carId, {required bool add}) =>
-      _listsCall('PATCH', '/$listId', body: add ? {'add': carId} : {'remove': carId});
+  /// İlanı bu listeye taşır (öteki listelerden çıkar; favorilerde değilse favorilere de girer). "default" = Favori Listem.
+  Future<List<FavoriteList>> moveToFavoriteList(String listId, String carId) =>
+      _listsCall('PATCH', '/$listId', body: {'add': carId});
 
-  Future<void> addFavorite(String carId) async {
+  /// İlanı favorilere ekler; [listId] verilirse o listeye, yoksa "Favori Listem"e koyar.
+  Future<void> addFavorite(String carId, {String? listId}) async {
     final response = await _http.post(
       _uri('/api/favorites'),
       headers: _headers,
-      body: jsonEncode({'carId': carId}),
+      body: jsonEncode({'carId': carId, 'listId': ?listId}),
     );
     if (response.statusCode != 200) {
-      throw Exception('Favoriye eklenemedi');
+      throw Exception(_errorOf(response, 'Favoriye eklenemedi'));
     }
   }
 

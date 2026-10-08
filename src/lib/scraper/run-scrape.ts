@@ -33,7 +33,7 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
 import { modelFamilyKey } from "@/lib/model-family";
 import { RareModelAttempt } from "@/models/RareModelAttempt";
-import { familyId, selectRareFamilies } from "@/lib/scraper/rare-models";
+import { cooldownDaysFor, DAY_MS, DEFAULT_COOLDOWN_DAYS, familyId, selectRareFamilies } from "@/lib/scraper/rare-models";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
   if (source === "sahibinden") return [sahibindenAdapter];
@@ -478,9 +478,6 @@ export async function runRareBrandScrape(
 }
 
 
-/** Taranıp hâlâ az kalan (kaynakta da az olan) model ailesi bu süre yeniden aranmaz. */
-const RARE_FAMILY_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
-
 const RARE_MODEL_PAGES = 2;
 
 const RARE_MODEL_LIMIT = 120;
@@ -488,8 +485,9 @@ const RARE_MODEL_LIMIT = 120;
 const RARE_MODEL_MAX_LISTINGS = 1500;
 
 /**
- * Az ilanlı model AİLELERİNİ kaynakta arar. Sayım ve hedef seçimi aile düzeyindedir (tüm donanımlar toplanır) ve kaynakta zaten
- * tükenmiş aileler bir süre atlanır (bkz. rare-models.ts); böylece her tur gerçekten yeni, az ilanlı ailelere gider.
+ * Az ilanlı model AİLELERİNİ kaynakta arar. Amaç her marka-modelden en az [threshold] ilan olması; kaynakta yoksa olan çekilir ve
+ * aile bırakılır. Sayım aile düzeyindedir, popüler markaların az ilanlı modelleri önce gelir, kaynakta tükenmiş aileler uzun süre
+ * atlanır (bkz. rare-models.ts).
  */
 export async function runRareModelScrape(
   threshold = 10,
@@ -500,17 +498,19 @@ export async function runRareModelScrape(
   const rows = await Car.aggregate<{ _id: { brand: string; model: string }; count: number }>([
     { $group: { _id: { brand: "$brand", model: "$model" }, count: { $sum: 1 } } },
   ]);
-  const attempts = await RareModelAttempt.find({}, { brand: 1, familyKey: 1, attemptedAt: 1 }).lean<
-    Array<{ brand: string; familyKey: string; attemptedAt: Date }>
+  const attempts = await RareModelAttempt.find({}, { brand: 1, familyKey: 1, attemptedAt: 1, cooldownDays: 1 }).lean<
+    Array<{ brand: string; familyKey: string; attemptedAt: Date; cooldownDays?: number }>
   >();
-  const attempted = new Map(attempts.map((a) => [familyId(a.brand, a.familyKey), a.attemptedAt.getTime()]));
+  // Denenen aile, kaynakta ilan azsa uzun (tükenmiş), değilse kısa süre yeniden aranmaz.
+  const blockedUntil = new Map(
+    attempts.map((a) => [familyId(a.brand, a.familyKey), a.attemptedAt.getTime() + (a.cooldownDays ?? DEFAULT_COOLDOWN_DAYS) * DAY_MS])
+  );
   const targets = selectRareFamilies(
     rows.map((r) => ({ brand: r._id?.brand || "", model: r._id?.model || "", count: r.count })),
     threshold,
     maxSegments,
-    attempted,
-    Date.now(),
-    RARE_FAMILY_COOLDOWN_MS
+    blockedUntil,
+    Date.now()
   );
   const familyKeyOf = new Map(targets.map((t) => [familyId(t.brand, t.model), t.familyKey]));
 
@@ -551,6 +551,8 @@ export async function runRareModelScrape(
             $set: {
               model: segment.model,
               attemptedAt: new Date(),
+              found: result.found,
+              cooldownDays: cooldownDaysFor(result.found),
               added: result.added,
               before: result.before ?? 0,
               after: result.after ?? 0,

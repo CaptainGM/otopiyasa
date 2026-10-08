@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:otopiyasa/screens/analytics_screen.dart';
+import 'package:otopiyasa/screens/compare_screen.dart';
+import 'package:otopiyasa/screens/deger_kaybi_screen.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
+import 'package:otopiyasa/screens/favorites_screen.dart';
+import 'package:otopiyasa/screens/map_screen.dart';
+import 'package:otopiyasa/screens/my_listings_screen.dart';
+import 'package:otopiyasa/screens/offers_screen.dart';
+import 'package:otopiyasa/screens/predict_screen.dart';
+import 'package:otopiyasa/screens/profile_screen.dart';
 import 'package:otopiyasa/screens/search_results_screen.dart';
+import 'package:otopiyasa/screens/sell_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
@@ -98,7 +108,22 @@ class _AssistantScreenState extends State<AssistantScreen> {
     }
   }
 
-  /// Site içi adresi uygulama ekranına çevirir: `/cars/<id>` → ilan detayı, `/?…` → arama sonuçları.
+  /// Sunucunun önerdiği site içi sayfaların uygulamadaki karşılığı (`/sell` → İlan ver gibi).
+  static final Map<String, Widget Function()> _pages = {
+    '/sell': () => const SellScreen(),
+    '/listings': () => const MyListingsScreen(),
+    '/offers': () => const OffersScreen(),
+    '/favorites': () => const FavoritesScreen(),
+    '/compare': () => const CompareScreen(),
+    '/deger-kaybi': () => const DegerKaybiScreen(),
+    '/predict': () => const PredictScreen(),
+    '/map': () => const MapScreen(),
+    '/analytics': () => const AnalyticsScreen(),
+    '/profile': () => const ProfileScreen(),
+  };
+
+  /// Site içi adresi uygulama ekranına çevirir: `/cars/<id>` → ilan detayı, `/sell` gibi sayfalar → ilgili ekran,
+  /// `/?…` → arama sonuçları.
   void _openHref(String href) {
     final uri = Uri.parse(href);
     final segments = uri.pathSegments.where((p) => p.isNotEmpty).toList();
@@ -106,9 +131,36 @@ class _AssistantScreenState extends State<AssistantScreen> {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => DetailScreen(carId: segments[1])));
       return;
     }
+    if (uri.path == '/login') {
+      Navigator.of(context).pushNamed('/login');
+      return;
+    }
+    final page = _pages[uri.path];
+    if (page != null) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => page()));
+      return;
+    }
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SearchResultsScreen(params: uri.queryParameters, title: 'Asistanın önerisi'),
     ));
+  }
+
+  IconData _hrefIcon(String href) {
+    if (href.startsWith('/cars/')) return Icons.directions_car;
+    if (href.startsWith('/?')) return Icons.search;
+    return switch (href) {
+      '/sell' => Icons.add_box_outlined,
+      '/favorites' => Icons.favorite_border,
+      '/compare' => Icons.compare_arrows,
+      '/deger-kaybi' => Icons.trending_down,
+      '/predict' => Icons.calculate_outlined,
+      '/map' => Icons.map_outlined,
+      '/offers' => Icons.local_offer_outlined,
+      '/listings' => Icons.list_alt,
+      '/analytics' => Icons.insights_outlined,
+      '/login' || '/profile' => Icons.person_outline,
+      _ => Icons.arrow_forward,
+    };
   }
 
   static final _money = NumberFormat.decimalPattern('tr_TR');
@@ -175,8 +227,9 @@ class _AssistantScreenState extends State<AssistantScreen> {
             child: ListView.builder(
               controller: _scroll,
               padding: const EdgeInsets.all(12),
-              itemCount: _messages.length,
+              itemCount: _messages.length + (_sending ? 1 : 0),
               itemBuilder: (context, i) {
+                if (i == _messages.length) return const _TypingBubble();
                 final m = _messages[i];
                 return Align(
                   alignment: m.mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -202,9 +255,9 @@ class _AssistantScreenState extends State<AssistantScreen> {
                               if (m.href != null)
                               OutlinedButton.icon(
                                 onPressed: () => _openHref(m.href!),
-                                icon: Icon(m.href!.startsWith('/cars/') ? Icons.directions_car : Icons.search, size: 18),
+                                icon: Icon(_hrefIcon(m.href!), size: 18),
                                 label: Text(
-                                  m.label?.isNotEmpty == true ? m.label! : 'İlanları gör',
+                                  m.label?.isNotEmpty == true ? m.label! : 'Aç',
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -216,11 +269,6 @@ class _AssistantScreenState extends State<AssistantScreen> {
               },
             ),
           ),
-          if (_sending)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text('yazıyor…', style: TextStyle(fontSize: 12, color: Colors.white54)),
-            ),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -244,5 +292,70 @@ class _AssistantScreenState extends State<AssistantScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Asistan yanıt hazırlarken sohbetin içinde görünen, üç noktası sırayla zıplayan baloncuk.
+class _TypingBubble extends StatefulWidget {
+  const _TypingBubble();
+
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Semantics(
+        label: 'Asistan yazıyor',
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < 3; i++) ...[
+                  if (i > 0) const SizedBox(width: 5),
+                  Opacity(
+                    opacity: 0.35 + 0.65 * _pulse(_controller.value, i),
+                    child: Transform.translate(
+                      offset: Offset(0, -3 * _pulse(_controller.value, i)),
+                      child: Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(color: theme.colorScheme.onSurfaceVariant, shape: BoxShape.circle),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Her nokta, döngünün kendi payında 0 → 1 → 0 yumuşak bir tepe yapar.
+  double _pulse(double t, int index) {
+    final shifted = (t - index * 0.18) % 1.0;
+    return shifted < 0.4 ? (1 - (shifted - 0.2).abs() / 0.2).clamp(0.0, 1.0) : 0.0;
   }
 }

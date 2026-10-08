@@ -1,10 +1,14 @@
 import { modelFamily, modelFamilyKey } from "@/lib/model-family";
 
 /**
- * "Nadir model" taramasının hedef seçimi. Eskiden donanım adıyla ("Linea 1.3 M.Jet AC") sayılıyordu: her yeni ilanın kendine
- * has donanım yazımı yeni bir "1 ilanlı model" doğurduğundan liste hiç bitmiyor (5000 küme, 1700'ü tek ilanlı), aynı aile
- * defalarca hedefleniyordu. Burada sayım AİLE düzeyinde yapılır ("Fiat Linea" = tüm donanımlar), kaynakta zaten tükenmiş
- * (denendi ama hâlâ az) aileler bir süre atlanır.
+ * "Nadir model" taramasının hedef seçimi. Amaç: her marka-modelden en az [threshold] ilan olsun (fiyat tahmini ve piyasa
+ * emsali için); kaynakta o kadar yoksa olan çekilir ve model bırakılır.
+ *
+ * - Sayım AİLE düzeyindedir ("Fiat Linea" = tüm donanımlar). Donanım adıyla sayınca her yeni ilan yeni bir "1 ilanlı model"
+ *   doğuruyor, liste hiç bitmiyordu.
+ * - Sıra: ÖNCE POPÜLER MARKALARIN az ilanlı modelleri (Hyundai'nin bir modelinden 10 ilan vardır; Lamborghini'nin belki
+ *   yoktur), sonra nadir markalar. Böylece bütçe kaynakta ilan bulunması muhtemel yerlere gider.
+ * - Kaynakta tükenmiş aileler (denendi ama bulunan ilan az) uzun süre; diğerleri kısa süre atlanır.
  */
 export interface SegmentCount {
   brand: string;
@@ -23,26 +27,39 @@ export interface RareFamilyTarget {
 
 export const familyId = (brand: string, familyKey: string) => `${brand}::${familyKey}`;
 
+/** Bir arama sonucu bundan az ilan buluyorsa (tek sayfa dolmuyor) kaynakta o aile tükenmiş demektir. */
+export const SOURCE_PAGE_SIZE = 20;
+export const DAY_MS = 24 * 60 * 60 * 1000;
+/** Kaynakta tükenmiş aile bu kadar gün, diğerleri bu kadar gün yeniden aranmaz. */
+export const EXHAUSTED_COOLDOWN_DAYS = 90;
+export const DEFAULT_COOLDOWN_DAYS = 30;
+
+/** Deneme sonucuna göre ailenin ne kadar bekletileceği (gün). */
+export function cooldownDaysFor(found: number): number {
+  return found < SOURCE_PAGE_SIZE ? EXHAUSTED_COOLDOWN_DAYS : DEFAULT_COOLDOWN_DAYS;
+}
+
 const IGNORED_MODELS = new Set(["", "model", "bilinmiyor"]);
 
 /**
- * Toplam ilanı [threshold]'dan az olan aileleri, en azdan başlayarak seçer. [attempted]: aile → son deneme zamanı (ms);
- * [cooldownMs] içinde denenmiş aileler atlanır (kaynakta daha fazla ilan yoksa boşuna tekrar aranmasın). Hiç denenmemişler
- * önce gelir, eşit sayıda olanlarda en eski denenen önce.
+ * Toplam ilanı [threshold]'dan az olan aileleri seçer. [blockedUntil]: aile → bu zamana (ms) kadar yeniden aranmaz.
+ * Sıralama: marka toplam ilanı çok olan önce, aynı markada en az ilanlı aile önce.
  */
 export function selectRareFamilies(
   segments: SegmentCount[],
   threshold: number,
   maxFamilies: number,
-  attempted: Map<string, number>,
-  now: number,
-  cooldownMs: number
+  blockedUntil: Map<string, number>,
+  now: number
 ): RareFamilyTarget[] {
   const families = new Map<string, RareFamilyTarget & { bestTrimCount: number }>();
+  const brandTotals = new Map<string, number>();
   for (const segment of segments) {
     const brand = (segment.brand || "").trim();
     const rawModel = (segment.model || "").trim();
-    if (!brand || IGNORED_MODELS.has(rawModel.toLocaleLowerCase("tr-TR"))) continue;
+    if (!brand) continue;
+    brandTotals.set(brand, (brandTotals.get(brand) || 0) + segment.count);
+    if (IGNORED_MODELS.has(rawModel.toLocaleLowerCase("tr-TR"))) continue;
     const familyKey = modelFamilyKey(rawModel, brand);
     const display = modelFamily(rawModel, brand);
     if (!familyKey || !display) continue;
@@ -64,12 +81,14 @@ export function selectRareFamilies(
   return [...families.entries()]
     .filter(([id, family]) => {
       if (family.count >= threshold) return false;
-      const last = attempted.get(id);
-      return last === undefined || now - last >= cooldownMs;
+      const until = blockedUntil.get(id);
+      return until === undefined || now >= until;
     })
-    .sort(([idA, a], [idB, b]) => {
-      if (a.count !== b.count) return a.count - b.count;
-      return (attempted.get(idA) ?? 0) - (attempted.get(idB) ?? 0);
+    .sort(([, a], [, b]) => {
+      const popularity = (brandTotals.get(b.brand) || 0) - (brandTotals.get(a.brand) || 0);
+      if (popularity !== 0) return popularity;
+      if (a.brand !== b.brand) return a.brand.localeCompare(b.brand, "tr");
+      return a.count - b.count;
     })
     .slice(0, maxFamilies)
     .map(([, family]) => ({ brand: family.brand, model: family.model, familyKey: family.familyKey, count: family.count }));

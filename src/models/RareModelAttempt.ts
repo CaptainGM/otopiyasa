@@ -12,6 +12,10 @@ const RareModelAttemptSchema = new Schema(
     attemptedAt: { type: Date, required: true },
     /** O denemede kaydedilen yeni ilan sayısı. */
     added: { type: Number, default: 0 },
+    /** Kaynakta bulunan ilan sayısı (sayfa başına 20 ile sınırlı); azsa kaynakta o aile tükenmiş demektir. */
+    found: { type: Number, default: 0 },
+    /** Bu aile kaç gün yeniden aranmaz (tükenmişse uzun). */
+    cooldownDays: { type: Number, default: 30 },
     /** Denemeden önceki / sonraki toplam aile ilan sayısı. */
     before: { type: Number, default: 0 },
     after: { type: Number, default: 0 },

@@ -17,7 +17,7 @@ import 'package:otopiyasa/utils/relative_time.dart';
 import 'package:otopiyasa/widgets/market_badge.dart';
 import 'package:otopiyasa/widgets/price_histogram.dart';
 import 'package:otopiyasa/widgets/damage_diagram.dart';
-import 'package:otopiyasa/widgets/favorite_lists_sheet.dart';
+import 'package:otopiyasa/widgets/favorite_sheets.dart';
 import 'package:otopiyasa/widgets/report_dialog.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -44,6 +44,8 @@ class _DetailScreenState extends State<DetailScreen> {
   bool _loading = true;
   bool _isFavorite = false;
   bool _togglingFavorite = false;
+  List<FavoriteList> _favLists = const [];
+  FavoriteMeta? _favMeta;
   String? _error;
   int _activeImageIndex = 0;
   Map<String, dynamic>? _fuelCost;
@@ -67,6 +69,7 @@ class _DetailScreenState extends State<DetailScreen> {
       _loading = widget.initialCar == null;
     }
     _load();
+    if (_api.isLoggedIn) _loadFavoriteState();
     // Görüntülenme + bekçi önceliği (kaynakta son kontrolü eski ilan sıranın başına alınır).
     _api.reportView(widget.carId);
     _api.fetchFuelCost(widget.carId).then((cost) {
@@ -120,70 +123,132 @@ class _DetailScreenState extends State<DetailScreen> {
     }
   }
 
-  Future<void> _toggleFavorite() async {
+  /// Favori kimliği, listeler ve bu ilanın not/bildirim ayarı.
+  Future<void> _loadFavoriteState() async {
+    try {
+      final state = await _api.fetchFavoriteState();
+      if (!mounted) return;
+      setState(() {
+        _isFavorite = state.ids.contains(widget.carId);
+        _favLists = state.lists;
+        _favMeta = state.meta[widget.carId];
+      });
+    } catch (_) {
+      // Durum alınamazsa kalp, oturumdaki favori listesine göre görünmeye devam eder.
+    }
+  }
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  FavoriteList? get _currentFavList {
+    for (final list in _favLists) {
+      if (list.contains(widget.carId)) return list;
+    }
+    return null;
+  }
+
+  /// Favorilerin değiştiğini diğer ekranlara (Favoriler sekmesi) ve oturuma bildirir.
+  Future<void> _favoritesChanged() async {
+    ApiService.favoritesRevision.value++;
+    final refreshed = await _api.me();
+    if (refreshed != null) _api.currentUser = refreshed;
+  }
+
+  /// Kalbe dokununca: favori değilse "hangi listeye ekleyelim?", favoriyse seçenek menüsü
+  /// (not, fiyat bildirimi, başka listeye taşı, favorilerden kaldır).
+  Future<void> _onHeart() async {
     HapticFeedback.lightImpact();
     if (!_api.isLoggedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Favorilere eklemek için giriş yapmalısın')),
-      );
+      _snack('Favorilere eklemek için giriş yapmalısın');
       return;
     }
-
+    if (_togglingFavorite) return;
     setState(() => _togglingFavorite = true);
     try {
-      if (_isFavorite) {
-        await _api.removeFavorite(widget.carId);
+      if (_favLists.isEmpty) await _loadFavoriteState();
+      if (!mounted) return;
+      if (!_isFavorite) {
+        await _addToList();
       } else {
-        await _api.addFavorite(widget.carId);
-      }
-      // Oturumdaki favori listesini tazele ki diğer ekranlar da güncel kalsın.
-      _api.currentUser = await _api.me() ?? _api.currentUser;
-      setState(() => _isFavorite = !_isFavorite);
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.toString())),
-        );
+        await _openFavoriteMenu();
       }
     } finally {
       if (mounted) setState(() => _togglingFavorite = false);
     }
   }
 
-  /// Favori gruplarını (sedan, SUV...) açar. Gruba eklenen ilan favorilere de girer, o yüzden kalp durumu güncellenir.
-  Future<void> _openFavoriteLists() async {
-    HapticFeedback.lightImpact();
-    if (!_api.isLoggedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gruplara eklemek için giriş yapmalısın')),
-      );
-      return;
-    }
-    final List<FavoriteList> lists;
+  Future<void> _addToList() async {
+    final pick = await showFavoriteListPicker(context, title: 'Hangi listeye ekleyelim?', lists: _favLists);
+    if (pick == null || !mounted) return;
     try {
-      lists = await _api.fetchFavoriteLists();
+      final lists = await applyFavoriteListPick(_api, widget.carId, pick);
+      if (!mounted) return;
+      setState(() {
+        _favLists = lists;
+        _isFavorite = true;
+      });
+      final name = _currentFavList?.name ?? 'Favori Listem';
+      _snack('"$name" listesine eklendi');
+      unawaited(_favoritesChanged());
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
-        );
-      }
-      return;
+      _snack(error.toString().replaceFirst('Exception: ', ''));
     }
-    if (!mounted) return;
-    await showFavoriteListsSheet(
+  }
+
+  Future<void> _openFavoriteMenu() async {
+    final car = _car;
+    final action = await showFavoriteCarMenu(
       context,
-      carId: widget.carId,
-      lists: lists,
-      onChanged: (updated) {
-        if (updated.any((list) => list.contains(widget.carId)) && !_isFavorite && mounted) {
-          setState(() => _isFavorite = true);
-        }
-      },
+      title: car?.title ?? 'İlan',
+      listName: _currentFavList?.name ?? 'Favori Listem',
+      meta: _favMeta,
     );
-    // Oturumdaki favori listesini tazele ki diğer ekranlar da güncel kalsın.
-    final refreshed = await _api.me();
-    if (refreshed != null) _api.currentUser = refreshed;
+    if (action == null || !mounted) return;
+    switch (action) {
+      case FavoriteMenuAction.note:
+        final saved = await showFavoriteNoteSheet(context, carId: widget.carId, meta: _favMeta);
+        if (saved != null && mounted) setState(() => _favMeta = saved);
+      case FavoriteMenuAction.alert:
+        final saved = await showFavoriteAlertSheet(context, carId: widget.carId, meta: _favMeta, price: car?.price);
+        if (saved != null && mounted) setState(() => _favMeta = saved);
+      case FavoriteMenuAction.move:
+        final pick = await showFavoriteListPicker(
+          context,
+          title: 'Hangi listeye taşıyalım?',
+          lists: _favLists,
+          currentId: _currentFavList?.id,
+        );
+        if (pick == null || !mounted) return;
+        try {
+          final lists = await applyFavoriteListPick(_api, widget.carId, pick);
+          if (!mounted) return;
+          setState(() => _favLists = lists);
+          _snack('İlan "${_currentFavList?.name ?? 'Favori Listem'}" listesine taşındı');
+          unawaited(_favoritesChanged());
+        } catch (error) {
+          _snack(error.toString().replaceFirst('Exception: ', ''));
+        }
+      case FavoriteMenuAction.remove:
+        try {
+          await _api.removeFavorite(widget.carId);
+          if (!mounted) return;
+          setState(() {
+            _isFavorite = false;
+            _favMeta = null;
+            _favLists = [
+              for (final list in _favLists)
+                FavoriteList(id: list.id, name: list.name, carIds: list.carIds.where((e) => e != widget.carId).toList()),
+            ];
+          });
+          _snack('Favorilerden kaldırıldı');
+          unawaited(_favoritesChanged());
+        } catch (error) {
+          _snack(error.toString().replaceFirst('Exception: ', ''));
+        }
+    }
   }
 
   /// Karşılaştırma listesine ekler/çıkarır; hem fotoğrafın üstündeki düğme hem alttaki buton bunu kullanır.
@@ -319,7 +384,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 Icon(active ? Icons.check : Icons.compare_arrows, size: 17, color: Colors.white),
                 const SizedBox(width: 5),
                 Text(
-                  active ? 'Kıyasta' : 'Kıyasla',
+                  active ? 'Karşılaştırmada' : 'Karşılaştır',
                   style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ],
@@ -342,17 +407,12 @@ class _DetailScreenState extends State<DetailScreen> {
         title: const Text('İlan Detayı'),
         actions: [
           IconButton(
-            onPressed: _openFavoriteLists,
-            icon: const Icon(Icons.label_outline),
-            tooltip: 'Favori gruplarına ekle',
-          ),
-          IconButton(
-            onPressed: _togglingFavorite ? null : _toggleFavorite,
+            onPressed: _togglingFavorite ? null : _onHeart,
             icon: Icon(
               _isFavorite ? Icons.favorite : Icons.favorite_outline,
               color: _isFavorite ? Colors.redAccent : null,
             ),
-            tooltip: _isFavorite ? 'Favoriden çıkar' : 'Favorilere ekle',
+            tooltip: _isFavorite ? 'Favori seçenekleri' : 'Favorilere ekle',
           ),
         ],
       ),

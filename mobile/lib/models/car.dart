@@ -61,13 +61,18 @@ class UnavailableFavorite {
       );
 }
 
-/// Kullanıcının kendi favori grubu (ör. "Sedan", "SUV"). Gruptaki ilan her zaman favorilerdedir.
+/// Favori listesi: varsayılan "Favori Listem" (`id == 'default'`, silinemez) ya da kullanıcının kendi listesi (ör. "SUV").
+/// Bir ilan aynı anda yalnızca tek listededir.
 class FavoriteList {
   const FavoriteList({required this.id, required this.name, required this.carIds});
+
+  static const defaultId = 'default';
 
   final String id;
   final String name;
   final List<String> carIds;
+
+  bool get isDefault => id == defaultId;
 
   bool contains(String carId) => carIds.contains(carId);
 
@@ -81,12 +86,75 @@ class FavoriteList {
       (raw as List<dynamic>? ?? const []).whereType<Map<String, dynamic>>().map(FavoriteList.fromJson).toList();
 }
 
+/// Favori bir ilanın kişisel notu ve fiyat bildirimi tercihi. Kaydı olmayan favori "her düşüşte, e-posta + bildirim" demektir.
+class FavoriteMeta {
+  const FavoriteMeta({
+    this.note = '',
+    this.alertMode = 'any',
+    this.alertBelow,
+    this.alertEmail = true,
+    this.alertPush = true,
+  });
+
+  final String note;
+
+  /// any: her fiyat düşüşünde, below: hedef fiyatın altına düşünce, off: bildirim yok.
+  final String alertMode;
+  final int? alertBelow;
+  final bool alertEmail;
+  final bool alertPush;
+
+  factory FavoriteMeta.fromJson(Map<String, dynamic> json) => FavoriteMeta(
+        note: json['note']?.toString() ?? '',
+        alertMode: json['alertMode']?.toString() ?? 'any',
+        alertBelow: (json['alertBelow'] as num?)?.toInt(),
+        alertEmail: json['alertEmail'] != false,
+        alertPush: json['alertPush'] != false,
+      );
+
+  static Map<String, FavoriteMeta> parseMap(dynamic raw) {
+    final out = <String, FavoriteMeta>{};
+    if (raw is Map) {
+      raw.forEach((key, value) {
+        if (value is Map<String, dynamic>) out[key.toString()] = FavoriteMeta.fromJson(value);
+      });
+    }
+    return out;
+  }
+
+  /// Bildirim ayarının tek satırlık özeti.
+  String get alertSummary {
+    if (alertMode == 'off') return 'Bildirim kapalı';
+    final channels = [if (alertEmail) 'e-posta', if (alertPush) 'mobil'].join(' + ');
+    final when = alertMode == 'below' && alertBelow != null ? '${_money(alertBelow!)} ₺ altına düşünce' : 'Her fiyat düşüşünde';
+    return '$when · $channels';
+  }
+
+  static String moneyText(int value) => _money(value);
+
+  static String _money(int value) {
+    final digits = value.toString();
+    final buffer = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buffer.write('.');
+      buffer.write(digits[i]);
+    }
+    return buffer.toString();
+  }
+}
+
 class FavoritesResult {
-  const FavoritesResult({required this.available, required this.unavailable, this.lists = const []});
+  const FavoritesResult({
+    required this.available,
+    required this.unavailable,
+    this.lists = const [],
+    this.meta = const {},
+  });
 
   final List<CarListing> available;
   final List<UnavailableFavorite> unavailable;
   final List<FavoriteList> lists;
+  final Map<String, FavoriteMeta> meta;
 }
 
 class PricePoint {

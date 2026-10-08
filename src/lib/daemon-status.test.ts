@@ -34,4 +34,23 @@ describe("describeDaemon", () => {
     expect(s.host).toBe("bilinmiyor");
     expect(s.cycle).toBe(0);
   });
+  it("yeniden başlat komutu verildi ama motor sessizse çalışıyor demez, komutun cevapsız kaldığını söyler", () => {
+    const s = describeDaemon(
+      { status: "online", command: "restart", lastHeartbeat: new Date(now - 83 * 60_000), commandAt: new Date(now - 2 * 60_000), currentPhase: "🔄 Yeniden Başlatılıyor" },
+      now
+    );
+    expect(s.isOnline).toBe(false);
+    expect(s.status).toBe("offline");
+    expect(s.currentPhase).toContain("2 dk önce verildi ama motor yanıt vermiyor");
+    expect(s.currentPhase).toContain("83 dakikadır sinyal gelmiyor");
+  });
+
+  it("komut sonrası motor taze sinyal verdiyse mevcut aşamayı gösterir", () => {
+    const s = describeDaemon(
+      { status: "online", command: "restart", lastHeartbeat: new Date(now - 5_000), commandAt: new Date(now - 20_000), currentPhase: "🔄 Yeniden Başlatılıyor" },
+      now
+    );
+    expect(s.isOnline).toBe(true);
+    expect(s.currentPhase).toBe("🔄 Yeniden Başlatılıyor");
+  });
 });

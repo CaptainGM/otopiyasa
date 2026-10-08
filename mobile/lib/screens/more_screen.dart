@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:otopiyasa/screens/admin_screen.dart';
 import 'package:otopiyasa/screens/assistant_screen.dart';
-import 'package:otopiyasa/screens/favorites_screen.dart';
+import 'package:otopiyasa/screens/map_screen.dart';
 import 'package:otopiyasa/screens/my_listings_screen.dart';
 import 'package:otopiyasa/screens/nearby_screen.dart';
 import 'package:otopiyasa/screens/notifications_screen.dart';
@@ -95,7 +95,6 @@ class MoreScreen extends StatelessWidget {
                 _Section('İlanlar'),
                 _Panel(
                   child: Column(children: [
-                    _Row(icon: Icons.favorite_outline, title: 'Favorilerim', onTap: () => _push(context, const FavoritesScreen())),
                     _Row(icon: Icons.local_offer_outlined, title: 'Tekliflerim', onTap: () => _push(context, const OffersScreen())),
                     _Row(icon: Icons.list_alt, title: 'İlanlarım', onTap: () => _push(context, const MyListingsScreen())),
                     _Row(icon: Icons.add_box_outlined, title: 'İlan ver', onTap: () => _push(context, const SellScreen()), last: true),
@@ -105,6 +104,7 @@ class MoreScreen extends StatelessWidget {
               _Section('Araçlar'),
               _Panel(
                 child: Column(children: [
+                  _Row(icon: Icons.map_outlined, title: 'Harita', onTap: () => _push(context, const MapScreen())),
                   _Row(icon: Icons.near_me_outlined, title: 'Yakınımdaki ilanlar', onTap: () => _push(context, const NearbyScreen())),
                   _Row(icon: Icons.auto_awesome_outlined, title: 'Asistan', onTap: () => _push(context, const AssistantScreen()), last: true),
                 ]),

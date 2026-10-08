@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:otopiyasa/screens/analytics_screen.dart';
+import 'package:otopiyasa/screens/compare_screen.dart';
+import 'package:otopiyasa/screens/deger_kaybi_screen.dart';
 import 'package:otopiyasa/screens/home_screen.dart';
 import 'package:otopiyasa/screens/map_screen.dart';
 import 'package:otopiyasa/screens/more_screen.dart';
 import 'package:otopiyasa/screens/predict_screen.dart';
 
-/// Uygulamanın iskeleti: alt gezinme çubuğu (Keşfet, Harita, Analiz, Tahmin, Hesap). Sekmeler ilk açıldıklarında
+/// Uygulamanın iskeleti: alt gezinme çubuğu (Keşfet, Harita, Analiz, Değer kaybı, Karşılaştır, Tahmin, Hesap). Sekmeler ilk açıldıklarında
 /// kurulur (harita ve analiz, kullanıcı hiç açmadan veri indirmesin) ve sonra durumlarını korur.
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -18,11 +20,15 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
   final Set<int> _opened = {0};
+  // Karşılaştırma listesi başka ekranlardan değişir (ilandan "karşılaştırmaya ekle"); sekmeye her girişte yeniden kurulur.
+  int _compareVersion = 0;
 
   static const _tabs = <({IconData icon, IconData selected, String label})>[
     (icon: Icons.explore_outlined, selected: Icons.explore, label: 'Keşfet'),
     (icon: Icons.map_outlined, selected: Icons.map, label: 'Harita'),
     (icon: Icons.insights_outlined, selected: Icons.insights, label: 'Analiz'),
+    (icon: Icons.trending_down_outlined, selected: Icons.trending_down, label: 'Değer'),
+    (icon: Icons.compare_arrows_outlined, selected: Icons.compare_arrows, label: 'Kıyasla'),
     (icon: Icons.calculate_outlined, selected: Icons.calculate, label: 'Tahmin'),
     (icon: Icons.person_outline, selected: Icons.person, label: 'Hesap'),
   ];
@@ -36,6 +42,10 @@ class _MainShellState extends State<MainShell> {
       case 2:
         return const AnalyticsScreen();
       case 3:
+        return const DegerKaybiScreen();
+      case 4:
+        return const CompareScreen();
+      case 5:
         return const PredictScreen();
       default:
         return const MoreScreen();
@@ -48,6 +58,7 @@ class _MainShellState extends State<MainShell> {
     setState(() {
       _index = i;
       _opened.add(i);
+      if (i == 4) _compareVersion++;
     });
   }
 
@@ -62,7 +73,10 @@ class _MainShellState extends State<MainShell> {
       child: Scaffold(
         body: IndexedStack(
           index: _index,
-          children: [for (var i = 0; i < _tabs.length; i++) _opened.contains(i) ? _build(i) : const SizedBox.shrink()],
+          children: [
+            for (var i = 0; i < _tabs.length; i++)
+              _opened.contains(i) ? KeyedSubtree(key: ValueKey(i == 4 ? 'cmp$_compareVersion' : 'tab$i'), child: _build(i)) : const SizedBox.shrink(),
+          ],
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,

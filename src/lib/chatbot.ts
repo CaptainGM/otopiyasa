@@ -4,6 +4,7 @@ import { classifyIntent, isGeminiConfigured, GeminiIntent } from "@/lib/gemini";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { ABSOLUTE_PRICE_FLOOR } from "@/lib/listing-validation";
+import { topicLinkFor } from "@/lib/chat-topics";
 
 /**
  * Asistanın gösterebileceği ilanlar: yalnızca herkese açık (aktif, onaylı) ve makul fiyatlı olanlar.
@@ -57,7 +58,7 @@ const FAQ: FaqEntry[] = [
   {
     keywords: ["favori", "kaydet"],
     answer:
-      "Bir ilanı favorilere eklemek için araç detay sayfasındaki 'Favorilere Ekle' butonuna tıkla. Favorilerini üst menüdeki 'Favoriler' sekmesinden görebilirsin.",
+      "Bir ilanı favorilere eklemek için ilan sayfasındaki 'Favorilere ekle' butonuna tıkla ve hangi listeye koyacağını seç (varsayılan liste 'Favori Listem'; sedan, SUV gibi kendi listelerini de açabilirsin). Her ilana not ve fiyat bildirimi ekleyebilir, ilanı başka listeye taşıyabilirsin. Favorilerini üst menüdeki 'Favoriler' sekmesinden görebilirsin.",
   },
   {
     keywords: ["abone", "alarm", "bildirim"],
@@ -77,7 +78,7 @@ const FAQ: FaqEntry[] = [
   {
     keywords: ["karşılaştır"],
     answer:
-      "İki veya daha fazla aracı karşılaştırmak için üst menüdeki 'Karşılaştır' sayfasını kullanabilirsin.",
+      "İki veya daha fazla aracı karşılaştırmak için ilan kartındaki ya da ilan sayfasındaki 'Karşılaştır' düğmesine bas (en fazla 4 araç), sonra 'Karşılaştır' sayfasını aç.",
   },
   {
     keywords: ["harita", "konum", "nerede"],
@@ -685,6 +686,11 @@ export async function answerQuery(
   history?: ChatHistoryItem[]
 ): Promise<ChatReply> {
   const reply = await answerQueryInner(rawMessage, context, history);
+  // Site özelliği anlatan düz metin yanıtlara tek dokunuşla ilgili sayfaya götüren düğme eklenir (nasıl ilan veririm → İlan ver).
+  if (!reply.link && !reply.card && !reply.cards) {
+    const topic = topicLinkFor(rawMessage);
+    if (topic) return { ...reply, link: topic };
+  }
   // Arama bağlantısı binlerce ilan açabiliyor; yanına en mantıklı birkaç öneri eklenir.
   if (reply.link?.href.startsWith("/?") && !reply.card && !reply.cards) {
     try {

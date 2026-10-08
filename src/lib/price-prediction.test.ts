@@ -11,7 +11,6 @@ import {
   archiveWeight,
   effectiveSampleSize,
   ARCHIVE_MAX_AGE_DAYS,
-  ARCHIVE_MAX_WEIGHT,
 } from "./price-prediction";
 
 const CY = new Date().getFullYear();
@@ -235,17 +234,22 @@ describe("arşiv ilanları (ağırlıklı eğitim)", () => {
   });
   const input = { year: CY - 3, mileage: 36000, damaged: 0, painted: 0, engineSize: 1.6, horsepower: 110, automatic: 0, diesel: 0 };
 
-  it("arşiv ağırlığı yaşla doğrusal azalır, 6 aydan sonra sıfırdır", () => {
-    expect(archiveWeight(0)).toBeCloseTo(ARCHIVE_MAX_WEIGHT);
-    expect(archiveWeight(90)).toBeCloseTo(ARCHIVE_MAX_WEIGHT / 2);
+  it("arşiv ağırlığı aylık takvimle azalır: ilk ay 1,0, her ay 0,1 eksik, 6. ayda 0,5, sonrası 0", () => {
+    const expected: Array<[number, number]> = [[0, 1], [29, 1], [30, 0.9], [59, 0.9], [60, 0.8], [90, 0.7], [120, 0.6], [150, 0.5], [179, 0.5]];
+    for (const [days, weight] of expected) expect(archiveWeight(days)).toBeCloseTo(weight, 5);
     expect(archiveWeight(ARCHIVE_MAX_AGE_DAYS)).toBe(0);
     expect(archiveWeight(400)).toBe(0);
     expect(archiveWeight(-1)).toBe(0);
     expect(archiveWeight(NaN)).toBe(0);
   });
 
-  it("arşiv ağırlığı hiçbir zaman aktif ilanın (1) ağırlığına ulaşmaz", () => {
-    expect(archiveWeight(0)).toBeLessThan(1);
+  it("arşiv ağırlığı yaşlandıkça hiç artmaz", () => {
+    let previous = Infinity;
+    for (let day = 0; day < 200; day += 7) {
+      const w = archiveWeight(day);
+      expect(w).toBeLessThanOrEqual(previous);
+      previous = w;
+    }
   });
 
   it("ağırlıksız çağrı eskisiyle aynı sonucu verir", () => {

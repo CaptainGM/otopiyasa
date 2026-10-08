@@ -316,22 +316,26 @@ async function loadTrainingRows(
 
 
 /**
- * ARŞİV İLANLARI (satılmış/kaldırılmış) tahmini besler ama düşük payla: aktif ilan 1, arşiv ilanı en çok 0,5 ağırlıkta ve yaşlandıkça
- * azalır; 180 günden eskisi hiç etkilemez (enflasyon, eski fiyatlar bugünün piyasasını bozmasın). Sıfır km araçlar arşivden alınmaz
- * (liste fiyatı zamlarla değişir). Arşiv satırları kullanıcıya emsal olarak gösterilmez ve emsal sayısına girmez.
+ * ARŞİV İLANLARI (satılmış/kaldırılmış) tahmini besler, yaşlandıkça etkisi azalır. Kullanıcının takvimi: arşive girişten sonraki ilk 30
+ * gün ağırlık 1,0; sonraki her 30 günde 0,1 azalır (2. ay 0,9 ... 6. ay 0,5); 180 günden eskisi hiç etkilemez (eski fiyatlar bugünün
+ * piyasasını bozmasın; "6 ayda ahım şahım zam gelmez" varsayımı). Sıfır km araçlar arşivden alınmaz (liste fiyatı zamlarla değişir).
+ * Arşiv satırları kullanıcıya emsal olarak gösterilmez ve emsal sayısına girmez.
  *
- * Seçimin dayanağı (8 Eki 2026, 2.200 aktif ilanı tek tek gizleyip tahmin ettirerek): arşivsiz medyan hata %9,7 ve ±%10 içinde %51;
- * bu ayarla %9,1 ve %54; 8–29 ilanlı modellerde ortalama hata %17,3 → %14,4. Ağırlık 1,0 ya da 90/365 gün pek fark yaratmadı.
- * Eski davranışta marka ve genel katmanlar arşivi yaşa bakmadan tam ağırlıkla karıştırıyordu ve kazanç sağlamıyordu.
+ * Dayanak (8 Eki 2026, 2.200 aktif ilanı tek tek gizleyip tahmin ettirerek, iki ayrı rastgele örnek): bu takvimle medyan hata %8,9 → %8,2
+ * ve ±%10 içinde %54 → %58; 3–7 ilanlı modellerde ±%10 içinde %43 → %51, 8–29 ilanlı modellerde %55 → %60. Eski davranışta marka ve genel
+ * katmanlar arşivi yaşa bakmadan tam ağırlıkla karıştırıyordu ve kazanç sağlamıyordu. (Veritabanındaki tüm arşiv şu an 90 günden genç;
+ * 4–6. ay basamakları ilerideki veriyle devreye girer.)
  */
 export const ARCHIVE_MAX_AGE_DAYS = 180;
-export const ARCHIVE_MAX_WEIGHT = 0.5;
 export const ARCHIVE_MIN_KM = 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ARCHIVE_MONTH_DAYS = 30;
+const ARCHIVE_MONTHLY_DROP = 0.1;
 
-export function archiveWeight(ageDays: number, maxAgeDays = ARCHIVE_MAX_AGE_DAYS, maxWeight = ARCHIVE_MAX_WEIGHT): number {
+export function archiveWeight(ageDays: number, maxAgeDays = ARCHIVE_MAX_AGE_DAYS): number {
   if (!Number.isFinite(ageDays) || ageDays < 0 || ageDays >= maxAgeDays) return 0;
-  return maxWeight * (1 - ageDays / maxAgeDays);
+  const months = Math.floor(ageDays / ARCHIVE_MONTH_DAYS);
+  return Math.max(0, Math.round((1 - ARCHIVE_MONTHLY_DROP * months) * 100) / 100);
 }
 
 type ArchivedDoc = TrainingDoc & { removedAt?: Date; updatedAt?: Date };

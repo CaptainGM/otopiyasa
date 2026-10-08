@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cooldownDaysFor, DAY_MS, familyId, selectRareFamilies, SOURCE_PAGE_SIZE } from "@/lib/scraper/rare-models";
-
-const NOW = Date.UTC(2026, 9, 8);
+import { familyId, selectRareFamilies } from "@/lib/scraper/rare-models";
 
 describe("selectRareFamilies", () => {
   const segments = [
@@ -20,8 +18,7 @@ describe("selectRareFamilies", () => {
   ];
 
   it("donanımları aile altında toplar: büyük ailenin tek ilanlı donanımı nadir sayılmaz", () => {
-    const result = selectRareFamilies(segments, 10, 50, new Map(), NOW);
-    const names = result.map((t) => `${t.brand} ${t.model}`);
+    const names = selectRareFamilies(segments, 10, 50, new Set()).map((t) => `${t.brand} ${t.model}`);
     expect(names).not.toContain("Fiat Linea"); // 43 ilan
     expect(names).not.toContain("Honda Civic");
     expect(names).toContain("Ford Escort");
@@ -29,8 +26,7 @@ describe("selectRareFamilies", () => {
   });
 
   it("popüler markanın az ilanlı modeli, nadir markanınkinden önce gelir", () => {
-    const result = selectRareFamilies(segments, 10, 50, new Map(), NOW);
-    const order = result.map((t) => t.brand);
+    const order = selectRareFamilies(segments, 10, 50, new Set()).map((t) => t.brand);
     expect(order.indexOf("Ford")).toBeLessThan(order.indexOf("Anadol"));
     expect(order.indexOf("Fiat")).toBeLessThan(order.indexOf("Anadol"));
   });
@@ -45,38 +41,27 @@ describe("selectRareFamilies", () => {
       ],
       10,
       50,
-      new Map(),
-      NOW
+      new Set()
     );
     expect(result.map((t) => t.model)).toEqual(["Uno", "Doblo"]);
     expect(result[0].count).toBe(2);
   });
 
   it("anlamsız model adları hedeflenmez", () => {
-    const result = selectRareFamilies(segments, 100, 50, new Map(), NOW);
-    expect(result.some((t) => t.brand === "Opel")).toBe(false);
+    expect(selectRareFamilies(segments, 100, 50, new Set()).some((t) => t.brand === "Opel")).toBe(false);
   });
 
-  it("bekleme süresi dolmamış aile atlanır, dolunca yeniden gelir", () => {
-    const ford = selectRareFamilies(segments, 10, 50, new Map(), NOW).find((t) => t.brand === "Ford")!;
-    const id = familyId(ford.brand, ford.familyKey);
-    expect(selectRareFamilies(segments, 10, 50, new Map([[id, NOW + 5 * DAY_MS]]), NOW).some((t) => t.brand === "Ford")).toBe(false);
-    expect(selectRareFamilies(segments, 10, 50, new Map([[id, NOW - 1]]), NOW).some((t) => t.brand === "Ford")).toBe(true);
+  it("bir kez denenen aile bir daha seçilmez, sıra başka aileye geçer", () => {
+    const first = selectRareFamilies(segments, 10, 1, new Set())[0];
+    const attempted = new Set([familyId(first.brand, first.familyKey)]);
+    const next = selectRareFamilies(segments, 10, 1, attempted)[0];
+    expect(`${next.brand} ${next.model}`).not.toBe(`${first.brand} ${first.model}`);
+    // Aylar sonra bile aynı aile geri gelmez (zaman aşımı yok).
+    const all = selectRareFamilies(segments, 10, 50, attempted).map((t) => `${t.brand}::${t.familyKey}`);
+    expect(all).not.toContain(familyId(first.brand, first.familyKey));
   });
 
   it("üst sınırı uygular", () => {
-    expect(selectRareFamilies(segments, 10, 1, new Map(), NOW)).toHaveLength(1);
-  });
-});
-
-describe("cooldownDaysFor", () => {
-  it("kaynakta az ilan bulunan aileyi uzun bekletir", () => {
-    expect(cooldownDaysFor(0)).toBe(90);
-    expect(cooldownDaysFor(SOURCE_PAGE_SIZE - 1)).toBe(90);
-  });
-
-  it("sayfa dolduysa kısa bekletir", () => {
-    expect(cooldownDaysFor(SOURCE_PAGE_SIZE)).toBe(30);
-    expect(cooldownDaysFor(40)).toBe(30);
+    expect(selectRareFamilies(segments, 10, 1, new Set())).toHaveLength(1);
   });
 });

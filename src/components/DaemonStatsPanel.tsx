@@ -40,13 +40,33 @@ const SYNC_STATUS: Record<string, { label: string; cls: string }> = {
   failed: { label: "Başarısız", cls: "text-rose-300 bg-rose-500/10 border-rose-500/30" },
 };
 
+interface SourceTotals {
+  scanned: number;
+  inserted: number;
+  updated: number;
+  deleted: number;
+}
+
 interface TodayTotals {
   date: string;
   scanned: number;
   inserted: number;
   updated: number;
   deleted: number;
+  /** Kaynak bazında bugünün toplamı (motorun yeni eklediği / güncellediği / arşive taşıdığı). */
+  bySource?: Record<string, SourceTotals>;
 }
+
+const SOURCE_LABELS: Record<string, string> = {
+  arabam: "Arabam",
+  dod: "DOD",
+  otokoc: "Otokoç",
+  otoplus: "Otoplus",
+  otomerkezi: "Otomerkezi",
+  carvak: "Carvak",
+  vavacars: "VavaCars",
+  ikinciyeni: "İkinciyeni",
+};
 
 interface HourlyStat {
   _id: string;
@@ -79,6 +99,7 @@ export interface DaemonStatsPanelProps {
 export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }: DaemonStatsPanelProps = {}) {
   const [daemon, setDaemon] = useState<DaemonInfo | null>(initialDaemon || null);
   const [today, setToday] = useState<TodayTotals | null>(initialToday || null);
+  const [activeBySource, setActiveBySource] = useState<Record<string, number>>({});
   const [hourly, setHourly] = useState<HourlyStat[]>(initialHourly || []);
   const [selectedSlot, setSelectedSlot] = useState<HourlyStat | null>(null);
   const [loading, setLoading] = useState(!initialDaemon && !initialHourly?.length);
@@ -137,6 +158,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
 
         setDaemon(data.daemon);
         setToday(data.today);
+        setActiveBySource(data.activeBySource || {});
         setHourly(data.hourly || []);
         setSyncStates(data.syncStates || []);
         setLastRefreshed(new Date());
@@ -590,6 +612,47 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
             <p className="text-[10px] text-slate-500 mt-0.5">Satılan / kaldırılan ilan</p>
           </div>
         </div>
+        <p className="mt-2 text-[11px] text-slate-500">
+          &quot;Taranan&quot; aynı ilanların her turda yeniden sayılmasıdır; gerçek iş aşağıdaki kaynak tablosundadır.
+        </p>
+
+        {/* Kaynaklara göre: aktif envanter ve bugün motorun yaptığı iş */}
+        {(Object.keys(activeBySource).length > 0 || Object.keys(today?.bySource || {}).length > 0) && (
+          <div className="mt-4 overflow-x-auto rounded-xl border border-white/5 bg-slate-900/80">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-slate-400">
+                  <th className="px-3.5 py-2.5 font-bold">Kaynak</th>
+                  <th className="px-3.5 py-2.5 text-right font-bold">Aktif ilan</th>
+                  <th className="px-3.5 py-2.5 text-right font-bold text-emerald-400">Bugün yeni</th>
+                  <th className="px-3.5 py-2.5 text-right font-bold text-sky-400">Güncellenen</th>
+                  <th className="px-3.5 py-2.5 text-right font-bold text-rose-400">Arşive taşınan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.keys(SOURCE_LABELS)
+                  .filter((key) => key in activeBySource || key in (today?.bySource || {}))
+                  .sort((a, b) => (activeBySource[b] || 0) - (activeBySource[a] || 0))
+                  .map((key) => {
+                    const row = today?.bySource?.[key];
+                    return (
+                      <tr key={key} className="border-t border-white/5">
+                        <td className="px-3.5 py-2 font-semibold text-white">{SOURCE_LABELS[key]}</td>
+                        <td className="px-3.5 py-2 text-right text-slate-300">{(activeBySource[key] || 0).toLocaleString("tr-TR")}</td>
+                        <td className="px-3.5 py-2 text-right font-bold text-emerald-400">{(row?.inserted || 0).toLocaleString("tr-TR")}</td>
+                        <td className="px-3.5 py-2 text-right text-sky-400">{(row?.updated || 0).toLocaleString("tr-TR")}</td>
+                        <td className="px-3.5 py-2 text-right text-rose-400">{(row?.deleted || 0).toLocaleString("tr-TR")}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+            <p className="border-t border-white/5 px-3.5 py-2.5 text-[11px] leading-relaxed text-slate-500">
+              Arabam sunucudan çekilemiyor (Cloudflare engeli); Arabam ilanlarını bilgisayardaki bekçi ve elle tarama besliyor. Diğer
+              kaynaklar küçük olduğu için günde birkaç on yeni ilan normaldir.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Saatlik İstatistik Tablosu */}

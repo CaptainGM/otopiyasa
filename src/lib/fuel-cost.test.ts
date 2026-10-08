@@ -251,8 +251,53 @@ describe("motor hacmi ve beygir gücünden tahmin", () => {
     expect(large.consumptionNote).toContain("5 L motorlu");
   });
 
-  it("yeterli örnek yoksa eski sınıf ortalamasına düşer", () => {
-    const cost = computeFuelCost({ ...car(5, 551), features: { fuelType: "Benzin", bodyType: "SUV", engineSize: 5, horsepower: 551 } }, prices, stats);
-    expect(cost!.consumptionNote).toContain("SUV sınıfındaki");
+  it("yeterli örnek yoksa sıradan araçta eski sınıf ortalamasına düşer, güçlü araçta düşmez", () => {
+    const typical = computeFuelCost({ ...car(1.4, 90), features: { fuelType: "Benzin", bodyType: "SUV", engineSize: 1.4, horsepower: 90 } }, prices, stats);
+    expect(typical!.consumptionNote).toContain("SUV sınıfındaki");
+    // Güçlü araçta sınıf ortalaması yanlış olur; tahmin de yapılamıyorsa maliyet hiç gösterilmez.
+    expect(computeFuelCost({ ...car(5, 551), features: { fuelType: "Benzin", bodyType: "SUV", engineSize: 5, horsepower: 551 } }, prices, stats)).toBeNull();
+  });
+});
+
+describe("güvenilir olmayan tahmin gösterilmez", () => {
+  const rows: ConsumptionSample[] = Array.from({ length: 200 }, (_, i) => {
+    const engine = 1 + (i % 9) * 0.5;
+    const horsepower = 60 + engine * 80 + (i % 4) * 10;
+    return {
+      brand: `M${i % 20}`,
+      model: `X${i % 20}`,
+      engineSize: engine,
+      horsepower,
+      fuelType: i % 2 ? "Dizel" : "Benzin",
+      bodyType: "SUV",
+      consumption: Math.round((3 + 1.8 * engine - 0.1 * (horsepower / 100)) * 10) / 10,
+    };
+  });
+  const st = buildConsumptionStats(rows);
+  const car = (fuelType: string, engineSize: number, horsepower: number) => ({
+    brand: "Bilinmeyen",
+    model: "Marka",
+    title: "x",
+    city: "İstanbul",
+    features: { fuelType, bodyType: "SUV", engineSize, horsepower },
+  });
+
+  it("300+ hp dizelde tahmin yok ve sınıf ortalamasına da düşmez", () => {
+    expect(computeFuelCost(car("Dizel", 3, 340), prices, st)).toBeNull();
+  });
+
+  it("güçlü benzinlide tahmin var", () => {
+    expect(computeFuelCost(car("Benzin", 4, 500), prices, st)).not.toBeNull();
+  });
+
+  it("güçlü araçta tahmin yapılamıyorsa sınıf ortalaması yazılmaz", () => {
+    // Motor/beygir istatistiği olmayan veri: yalnızca sınıf ortalaması var, ama araç güçlü.
+    const noFit = buildConsumptionStats(samples);
+    expect(computeFuelCost(car("Benzin", 5, 560), prices, noFit)).toBeNull();
+  });
+
+  it("sıradan araçta (güç ve motor bilinmiyor) sınıf ortalaması hâlâ kullanılır", () => {
+    const cost = computeFuelCost({ brand: "Y", model: "Z", city: "İstanbul", features: { fuelType: "Benzin", bodyType: "SUV" } }, prices, stats);
+    expect(cost?.consumptionNote).toContain("SUV sınıfındaki");
   });
 });

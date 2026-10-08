@@ -42,6 +42,22 @@ const DETAIL_BATCH = 20;
 const DISCOVERY_BATCH = 30;
 
 type Mode = "hybrid" | "new_only" | "sweep_only";
+/**
+ * Yeni ilan keşfi kaynak başına bu aralıktan sık yapılmaz. Küçük kaynaklarda (toplam birkaç yüz ilan) her 5 dakikada aynı
+ * ilanları yeniden okumak işe yaramıyor, 1 GB'lık sunucuyu yoruyordu: onlara günde 3 kez bakılır. Büyük kaynaklar (bin+ ilan,
+ * günde onlarca yeni ilan) 2 saatte bir kontrol edilir.
+ */
+const HOUR_MS = 60 * 60 * 1000;
+const DISCOVERY_INTERVAL_MS: Record<string, number> = {
+  otokoc: 2 * HOUR_MS,
+  dod: 2 * HOUR_MS,
+  otomerkezi: 8 * HOUR_MS,
+  vavacars: 8 * HOUR_MS,
+  otoplus: 8 * HOUR_MS,
+  carvak: 8 * HOUR_MS,
+};
+const lastDiscoveryAt = new Map<string, number>();
+
 type DiscoverySource = "dod" | "otokoc" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "ikinciyeni" | "arabam";
 
 const liveLogs: string[] = [];
@@ -268,9 +284,18 @@ async function main() {
           { source: "carvak", limit: 25 },
           { source: "dod", limit: 20 },
         ];
-        currentPhase = `🚗 Yeni ilan keşfi (${targets.length} kaynak)`;
+        const nowMs = Date.now();
+        const due = targets.filter((t) => nowMs - (lastDiscoveryAt.get(t.source) ?? 0) >= (DISCOVERY_INTERVAL_MS[t.source] ?? 0));
+        if (due.length === 0) {
+          const next = targets
+            .map((t) => ({ source: t.source, wait: (lastDiscoveryAt.get(t.source) ?? 0) + (DISCOVERY_INTERVAL_MS[t.source] ?? 0) - nowMs }))
+            .sort((a, b) => a.wait - b.wait)[0];
+          log(`🚗 [KEŞİF] Bu turda sıra yok (sıradaki: ${next.source}, ${Math.max(1, Math.round(next.wait / 60000))} dk sonra).`);
+        }
+        currentPhase = `🚗 Yeni ilan keşfi (${due.length}/${targets.length} kaynak)`;
+        for (const t of due) lastDiscoveryAt.set(t.source, nowMs);
         const results = await Promise.allSettled(
-          targets.map(async (t) => {
+          due.map(async (t) => {
             const res = await runScrapeJob({ source: t.source, query: "otomobil", limit: t.limit, pageOffset: 1 });
             await recordHourlyMetric({
               source: t.source,
@@ -285,10 +310,10 @@ async function main() {
         touch();
         const parts = results.map((r, i) =>
           r.status === "fulfilled"
-            ? `${targets[i].source} +${r.value.res.inserted}/${r.value.res.updated}g`
-            : `${targets[i].source} HATA: ${(r.reason as Error)?.message?.slice(0, 60)}`
+            ? `${due[i].source} +${r.value.res.inserted}/${r.value.res.updated}g`
+            : `${due[i].source} HATA: ${(r.reason as Error)?.message?.slice(0, 60)}`
         );
-        log(`🚗 [KEŞİF] ${parts.join(" | ")}`);
+        if (parts.length > 0) log(`🚗 [KEŞİF] ${parts.join(" | ")}`);
       }
 
       // Eski kodla eklenmiş ilanlar "Keşfet" akışından dışlanmasın (Car.rand eksikse yaz).

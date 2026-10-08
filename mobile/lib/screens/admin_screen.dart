@@ -467,11 +467,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           // BUGÜNÜN İSTATİSTİKLERİ
           const Text('Bugün motor ne yaptı?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          const Text('Sunucu motorunun bugün baktığı, eklediği ve temizlediği ilanlar (saatlik kayıtların toplamı).', style: TextStyle(fontSize: 11, color: Colors.white54)),
+          const Text('Sunucu motorunun bugün eklediği ve temizlediği ilanlar. "Taranan" aynı ilanların her turda yeniden sayılmasıdır; asıl iş aşağıda kaynak kaynak yazıyor.', style: TextStyle(fontSize: 11, color: Colors.white54)),
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: _statBox('Bakılan ilan', '${today['scanned'] ?? 0}', Colors.blue)),
+              Expanded(child: _statBox('Taranan (tekrar dahil)', '${today['scanned'] ?? 0}', Colors.blue)),
               const SizedBox(width: 8),
               Expanded(child: _statBox('Yeni eklenen', '${today['inserted'] ?? 0}', Colors.green)),
             ],
@@ -483,6 +483,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               const SizedBox(width: 8),
               Expanded(child: _statBox('Arşive taşınan', '${today['deleted'] ?? 0}', Colors.redAccent)),
             ],
+          ),
+
+          const SizedBox(height: 14),
+          _sourceBreakdown(
+            (today['bySource'] as Map?)?.cast<String, dynamic>() ?? const {},
+            (_statsData?['activeBySource'] as Map?)?.cast<String, dynamic>() ?? const {},
           ),
 
           const SizedBox(height: 20),
@@ -655,6 +661,64 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Kaynak bazında: aktif envanter ve bugün motorun yeni eklediği / güncellediği / arşive taşıdığı ilanlar.
+  /// Arabam sunucudan çekilemediği için (Cloudflare) onu PC'deki bekçi ve elle tarama besler; satır bunu açıkça yazar.
+  Widget _sourceBreakdown(Map<String, dynamic> bySource, Map<String, dynamic> active) {
+    const labels = {
+      'arabam': 'Arabam',
+      'dod': 'DOD',
+      'otokoc': 'Otokoç',
+      'otoplus': 'Otoplus',
+      'otomerkezi': 'Otomerkezi',
+      'carvak': 'Carvak',
+      'vavacars': 'VavaCars',
+      'ikinciyeni': 'İkinciyeni',
+    };
+    final names = labels.keys.where((k) => active.containsKey(k) || bySource.containsKey(k)).toList()
+      ..sort((a, b) => ((active[b] as num?) ?? 0).compareTo((active[a] as num?) ?? 0));
+    if (names.isEmpty) return const SizedBox.shrink();
+    int n(dynamic v) => (v as num?)?.toInt() ?? 0;
+    final c = AppColors.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Kaynaklara göre bugün', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Expanded(flex: 4, child: SizedBox.shrink()),
+                for (final h in const ['Aktif', 'Yeni', 'Güncel', 'Arşiv'])
+                  Expanded(flex: 2, child: Text(h, textAlign: TextAlign.right, style: TextStyle(fontSize: 10.5, color: c.muted, fontWeight: FontWeight.w600))),
+              ],
+            ),
+            const Divider(height: 12),
+            for (final key in names)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(flex: 4, child: Text(labels[key]!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                    Expanded(flex: 2, child: Text(_money.format(n(active[key])), textAlign: TextAlign.right, style: TextStyle(fontSize: 12.5, color: c.muted))),
+                    Expanded(flex: 2, child: Text('${n((bySource[key] as Map?)?['inserted'])}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, color: Colors.green, fontWeight: FontWeight.w700))),
+                    Expanded(flex: 2, child: Text('${n((bySource[key] as Map?)?['updated'])}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, color: Colors.amber))),
+                    Expanded(flex: 2, child: Text('${n((bySource[key] as Map?)?['deleted'])}', textAlign: TextAlign.right, style: const TextStyle(fontSize: 12.5, color: Colors.redAccent))),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 6),
+            Text(
+              'Arabam sunucudan çekilemiyor (Cloudflare engeli); Arabam ilanlarını PC\'deki bekçi ve elle tarama besliyor. Diğer kaynaklar küçük olduğu için günde birkaç on yeni ilan normaldir.',
+              style: TextStyle(fontSize: 11, color: c.muted, height: 1.35),
             ),
           ],
         ),

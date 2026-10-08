@@ -9,22 +9,24 @@ import { describeDaemon } from "@/lib/daemon-status";
 
 export const dynamic = "force-dynamic";
 
-let cachedCounts: { active: number | null; archived: number | null; ts: number } | null = null;
+let cachedCounts: { active: number | null; archived: number | null; bySource: Record<string, number>; ts: number } | null = null;
 async function getInventoryCounts() {
   const now = Date.now();
   if (cachedCounts && now - cachedCounts.ts < 60000) {
     return cachedCounts;
   }
   try {
-    const [active, archived] = await Promise.all([
+    const [active, archived, perSource] = await Promise.all([
       Car.countDocuments({ status: { $ne: "removed" } }),
       Car.countDocuments({ status: "removed" }),
+      Car.aggregate<{ _id: string; n: number }>([{ $match: { status: { $ne: "removed" } } }, { $group: { _id: "$sourceSite", n: { $sum: 1 } } }]),
     ]);
-    cachedCounts = { active, archived, ts: now };
+    const bySource = Object.fromEntries(perSource.map((row) => [row._id || "bilinmiyor", row.n]));
+    cachedCounts = { active, archived, bySource, ts: now };
     return cachedCounts;
   } catch {
     // Sayılamadıysa uydurma sayı değil "bilinmiyor" döner.
-    return cachedCounts || { active: null, archived: null, ts: now };
+    return cachedCounts || { active: null, archived: null, bySource: {}, ts: now };
   }
 }
 
@@ -60,9 +62,18 @@ export async function GET() {
     let todayInserted = 0;
     let todayUpdated = 0;
     let todayDeleted = 0;
+    // Kaynak bazında bugün: "taranan" aynı ilanların her turda yeniden sayılması olduğundan tek başına yanıltıcıdır.
+    const todayBySource: Record<string, { scanned: number; inserted: number; updated: number; deleted: number }> = {};
 
     for (const stat of hourlyDocs as any[]) {
       if (stat.dateStr === todayStr) {
+        for (const [name, v] of Object.entries((stat.bySource || {}) as Record<string, any>)) {
+          const total = (todayBySource[name] ||= { scanned: 0, inserted: 0, updated: 0, deleted: 0 });
+          total.scanned += v?.scanned || 0;
+          total.inserted += v?.inserted || 0;
+          total.updated += v?.updated || 0;
+          total.deleted += v?.deleted || 0;
+        }
         todayScanned += stat.scanned || 0;
         todayInserted += stat.inserted || 0;
         todayUpdated += stat.updated || 0;
@@ -91,6 +102,7 @@ export async function GET() {
         isAdmin: true,
         activeCount: counts.active,
         archivedCount: counts.archived,
+        activeBySource: counts.bySource,
         syncStates,
         daemon: describeDaemon(heartbeatDoc as any),
         today: {
@@ -99,6 +111,7 @@ export async function GET() {
           inserted: todayInserted,
           updated: todayUpdated,
           deleted: todayDeleted,
+          bySource: todayBySource,
         },
         hourly: hourlyDocs,
       },

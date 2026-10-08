@@ -343,6 +343,8 @@ export async function sweepAndCleanDeadListings(options: {
   checked: number;
   archived: number;
   active: number;
+  /** Canlı çıkıp fiyatı/bilgisi değişen (kaydı güncellenen) ilan sayısı. */
+  updated: number;
   errors: number;
   breaker: string[];
   /** Bu turda art arda engel yüzünden durdurulan kaynaklar. */
@@ -385,7 +387,7 @@ export async function sweepAndCleanDeadListings(options: {
   const candidates = [...priority, ...rest];
 
   const details: SweepDetail[] = [];
-  if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, errors: 0, breaker: [], pausedSources: [], details };
+  if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, updated: 0, errors: 0, breaker: [], pausedSources: [], details };
 
   const aliveIds: Types.ObjectId[] = [];
   const attemptedIds: Types.ObjectId[] = [];
@@ -396,6 +398,7 @@ export async function sweepAndCleanDeadListings(options: {
   const checkedBySource = new Map<string, number>();
   const aliveBySource = new Map<string, number>();
   let errorCount = 0;
+  let updatedCount = 0;
   let processed = 0;
   const started = Date.now();
   const maxDuration = options.maxDurationMs ?? 5 * 60 * 1000;
@@ -459,7 +462,8 @@ export async function sweepAndCleanDeadListings(options: {
     const { saveListing } = await import("@/lib/scraper/run-scrape");
     for (const listing of refreshListings) {
       try {
-        await saveListing(sanitizeRefresh(listing, oldPrices.get(listing.externalId)), { markVerified: true });
+        const saved = await saveListing(sanitizeRefresh(listing, oldPrices.get(listing.externalId)), { markVerified: true });
+        if (saved === "updated" || saved === "reactivated") updatedCount++;
       } catch {
         // ayrıştırılan veri kaydedilemezse canlı/tarih bilgisi yine de yukarıda işlendi
       }
@@ -491,6 +495,7 @@ export async function sweepAndCleanDeadListings(options: {
     checked: processed,
     archived: archivedCount,
     active: aliveIds.length,
+    updated: updatedCount,
     errors: errorCount,
     breaker,
     pausedSources: blocks.pausedSources,

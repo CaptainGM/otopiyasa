@@ -8,7 +8,7 @@ import { modelFamily, modelFamilyKey } from "@/lib/model-family";
  *   doğuruyor, liste hiç bitmiyordu.
  * - Sıra: ÖNCE POPÜLER MARKALARIN az ilanlı modelleri (Hyundai'nin bir modelinden 10 ilan vardır; Lamborghini'nin belki
  *   yoktur), sonra nadir markalar. Böylece bütçe kaynakta ilan bulunması muhtemel yerlere gider.
- * - Kaynakta tükenmiş aileler (denendi ama bulunan ilan az) uzun süre; diğerleri kısa süre atlanır.
+ * - Bir aile BİR KEZ denenince (kaynakta ne kadar varsa o kadar çekilir) bir daha aranmaz; sıra hep başka az ilanlı aileye geçer.
  */
 export interface SegmentCount {
   brand: string;
@@ -27,30 +27,17 @@ export interface RareFamilyTarget {
 
 export const familyId = (brand: string, familyKey: string) => `${brand}::${familyKey}`;
 
-/** Bir arama sonucu bundan az ilan buluyorsa (tek sayfa dolmuyor) kaynakta o aile tükenmiş demektir. */
-export const SOURCE_PAGE_SIZE = 20;
-export const DAY_MS = 24 * 60 * 60 * 1000;
-/** Kaynakta tükenmiş aile bu kadar gün, diğerleri bu kadar gün yeniden aranmaz. */
-export const EXHAUSTED_COOLDOWN_DAYS = 90;
-export const DEFAULT_COOLDOWN_DAYS = 30;
-
-/** Deneme sonucuna göre ailenin ne kadar bekletileceği (gün). */
-export function cooldownDaysFor(found: number): number {
-  return found < SOURCE_PAGE_SIZE ? EXHAUSTED_COOLDOWN_DAYS : DEFAULT_COOLDOWN_DAYS;
-}
-
 const IGNORED_MODELS = new Set(["", "model", "bilinmiyor"]);
 
 /**
- * Toplam ilanı [threshold]'dan az olan aileleri seçer. [blockedUntil]: aile → bu zamana (ms) kadar yeniden aranmaz.
+ * Toplam ilanı [threshold]'dan az olan aileleri seçer. [attempted]: daha önce denenmiş aileler (bir daha aranmaz).
  * Sıralama: marka toplam ilanı çok olan önce, aynı markada en az ilanlı aile önce.
  */
 export function selectRareFamilies(
   segments: SegmentCount[],
   threshold: number,
   maxFamilies: number,
-  blockedUntil: Map<string, number>,
-  now: number
+  attempted: Set<string>
 ): RareFamilyTarget[] {
   const families = new Map<string, RareFamilyTarget & { bestTrimCount: number }>();
   const brandTotals = new Map<string, number>();
@@ -80,9 +67,7 @@ export function selectRareFamilies(
 
   return [...families.entries()]
     .filter(([id, family]) => {
-      if (family.count >= threshold) return false;
-      const until = blockedUntil.get(id);
-      return until === undefined || now >= until;
+      return family.count < threshold && !attempted.has(id);
     })
     .sort(([, a], [, b]) => {
       const popularity = (brandTotals.get(b.brand) || 0) - (brandTotals.get(a.brand) || 0);

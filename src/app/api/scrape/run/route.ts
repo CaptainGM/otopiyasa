@@ -154,11 +154,11 @@ export async function POST(request: Request) {
       const threshold =
         typeof body.threshold === "number" && body.threshold > 0
           ? Math.min(body.threshold, 100)
-          : 10;
+          : 15;
       const perModelPages =
         typeof body.perModelPages === "number" && body.perModelPages > 0
           ? Math.min(body.perModelPages, 20)
-          : 6;
+          : 1;
       const maxSegments =
         typeof body.maxSegments === "number" && body.maxSegments > 0
           ? Math.min(body.maxSegments, 500)

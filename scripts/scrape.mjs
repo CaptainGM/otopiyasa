@@ -69,15 +69,15 @@ const MODES = {
   },
   
   6: {
-    name: "Nadir MODEL doldurma (<10 ilanli marka+model segmentlerini tarar)",
+    name: "Nadir MODEL doldurma (<15 ilanli model ailelerini ~20 ilana tamamlar; bir kez denenen bir daha aranmaz)",
     jobs: [
-      { mode: "rare-model", threshold: 10, perModelPages: 2, maxSegments: 120, maxListings: 1500, label: "Nadir modeller" },
+      { mode: "rare-model", threshold: 15, perModelPages: 1, maxSegments: 150, maxListings: 3000, label: "Nadir modeller" },
     ],
   },
   7: {
-    name: "Nadir MODEL - genis (<15 ilanli, 300 segment, ~2000 ilan sinir)",
+    name: "Nadir MODEL - genis (<20 ilanli, 400 model ailesi; bir kez denenen bir daha aranmaz)",
     jobs: [
-      { mode: "rare-model", threshold: 15, perModelPages: 3, maxSegments: 300, maxListings: 2500, label: "Nadir modeller (genis)" },
+      { mode: "rare-model", threshold: 20, perModelPages: 1, maxSegments: 400, maxListings: 4000, label: "Nadir modeller (genis)" },
     ],
   },
   // Var olan ilanlari yeniden cekip FIYATLARINI gunceller (kaynak siteyle esitler).

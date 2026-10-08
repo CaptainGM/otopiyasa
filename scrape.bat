@@ -26,8 +26,8 @@ echo    12 - TAM 8 KAYNAK CEKIM (8 Kaynaktan binlerce ilan, en genis havuz!)
 echo.
 echo  [B] FIYAT TAHMIN ^& AI MODELINI GUCLENDIRME (Model Dogrulugu Icin)
 echo   ------------------------------------------------------------------
-echo    6  - Nadir MODEL        (^<10 ilanli modelleri Arabam'da arar, AI R2 artar)
-echo    7  - Nadir MODEL genis  (^<15 ilanli 300 modeli Arabam'da derin tarar)
+echo    6  - Nadir MODEL        (^<15 ilanli model ailelerini ~20 ilana tamamlar, denenen bir daha aranmaz)
+echo    7  - Nadir MODEL genis  (^<20 ilanli 400 model ailesi, denenen bir daha aranmaz)
 echo    20 - Seyrek piyasa emsali (Aykiri deger sonrasi 3'ten az marka/model/yil ilani)
 echo    4  - Nadir MARKA        (^<40 ilanli markalari Arabam'da tarar: Alfa, Jeep vb.)
 echo    5  - En Az Markalar     (^<15 ilanli nadir markalari Arabam'da 20 sayfa tarar)
@@ -122,8 +122,8 @@ echo   Durdurmak icin: Ctrl+C ya da pencereyi kapat.
 echo ====================================================================
 echo.
 echo   Hangi tarama?
-echo     6  - Nadir MODEL         (^<10 ilanli modeller)
-echo     7  - Nadir MODEL genis   (^<15 ilanli modeller, daha cok model)
+echo     6  - Nadir MODEL         (^<15 ilanli model aileleri)
+echo     7  - Nadir MODEL genis   (^<20 ilanli model aileleri, daha cok model)
 echo    20  - Seyrek piyasa emsali (3'ten az ilanli marka/model/yil)
 echo     2  - Genis Arabam taramasi (tum markalar)
 set /p zmod="Tarama numarasi (varsayilan 6): "

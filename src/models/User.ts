@@ -9,8 +9,8 @@ const UserSchema = new Schema(
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     favorites: [{ type: Schema.Types.ObjectId, ref: "Car" }],
-    // Favori grupları (sedan, SUV...). Bir gruptaki ilan her zaman `favorites` içindedir: gruba eklemek favoriler listesine
-    // de ekler, favoriden çıkarmak ilanı tüm gruplardan da çıkarır.
+    // Kullanıcının kendi favori listeleri (sedan, SUV...); "Favori Listem" varsayılan listesi saklanmaz, hesaplanır. Bir ilan en fazla tek listededir ve her zaman `favorites` içindedir:
+    // listeye koymak favorilere de ekler, favoriden çıkarmak ilanı listesinden de çıkarır.
     favoriteLists: [
       {
         name: { type: String, required: true, trim: true, maxlength: 40 },

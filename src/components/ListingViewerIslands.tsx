@@ -49,9 +49,9 @@ function useOwnerInfo(carId: string, enabled: boolean): OwnerInfo | null {
   return info;
 }
 
-export function FavoriteOrLogin({ carId }: { carId: string }) {
+export function FavoriteOrLogin({ carId, price }: { carId: string; price?: number }) {
   const { viewer, ready } = useViewer();
-  if (ready && viewer) return <FavoriteButton carId={carId} />;
+  if (ready && viewer) return <FavoriteButton carId={carId} price={price} />;
   return (
     <Link href={`/login?next=/cars/${carId}`} className="btn btn-secondary">
       <Icon name="heart" size={16} />

@@ -392,7 +392,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
                 <Icon name="external" size={16} />
               </a>
             )}
-            <FavoriteOrLogin carId={car._id} />
+            <FavoriteOrLogin carId={car._id} price={car.price} />
             <CompareButton carId={car._id} variant="full" />
             <ShareButton title={car.title} />
             <ValuationReportModal

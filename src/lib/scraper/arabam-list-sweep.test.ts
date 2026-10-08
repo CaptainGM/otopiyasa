@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LIST_SWEEP, matchModelPath, pickFamily, sweepRatio } from "./arabam-list-sweep";
+import { LIST_SWEEP, matchModelPath, pickFamily, skipMsForError, sweepRatio } from "./arabam-list-sweep";
 import type { ArabamListDoc, ArabamListPage } from "./arabam-list";
 
 const fam = (over: Record<string, unknown>) =>
@@ -61,5 +61,18 @@ describe("matchModelPath", () => {
 
   it("ayrı araç olan kolun sayfası kısa ada düşerse kabul etmez", () => {
     expect(matchModelPath(page(["otomobil/toyota-corolla"]), "Toyota", "Corolla Cross")).toBeNull();
+  });
+});
+
+describe("skipMsForError", () => {
+  it("art arda yönlendirme ve 404 veren sayfayı uzun süre bekletir", () => {
+    expect(skipMsForError("page.goto: net::ERR_TOO_MANY_REDIRECTS at https://www.arabam.com/ikinci-el/otomobil/tesla-model-y")).toBe(LIST_SWEEP.brokenPageRetryMs);
+    expect(skipMsForError("HTTP 404")).toBe(LIST_SWEEP.brokenPageRetryMs);
+  });
+
+  it("diğer hatalarda kısa süre bekletir ama aileyi yine de sıradan çıkarır", () => {
+    expect(skipMsForError("Timeout 30000ms exceeded")).toBe(LIST_SWEEP.errorRetryMs);
+    expect(LIST_SWEEP.errorRetryMs).toBeGreaterThan(0);
+    expect(LIST_SWEEP.errorRetryMs).toBeLessThan(LIST_SWEEP.brokenPageRetryMs);
   });
 });

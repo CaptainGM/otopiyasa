@@ -577,8 +577,11 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
       {/* Bugünün Hızlı Toplamları (4 Kart) */}
       <div>
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-          Bugünün Özeti ({today?.date || new Date().toLocaleDateString("tr-TR")})
+          Otonom motor — bugünün özeti ({today?.date || new Date().toLocaleDateString("tr-TR")})
         </h3>
+        <p className="-mt-2 mb-3 text-[11px] text-slate-500">
+          Yalnızca sunucudaki 7/24 motorun işi. Bekçi ve elle yapılan taramalar dahil toplam için sayfanın en üstündeki günlük özete bak.
+        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl bg-slate-900/80 border border-white/5 p-3.5">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Taranan İlan</p>

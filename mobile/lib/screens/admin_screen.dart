@@ -43,6 +43,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   String? _error;
 
   Map<String, dynamic>? _statsData;
+  Map<String, dynamic>? _summary;
   List<Map<String, dynamic>> _reports = [];
   List<Map<String, dynamic>> _business = [];
   List<Map<String, dynamic>> _manualLogs = [];
@@ -95,6 +96,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   }
 
   Future<void> _refreshStatsOnly() async {
+    // Günlük özet ayrı bir uçtan gelir; o hata verirse motor durumu yine de gösterilir.
+    _api.fetchDailySummary().then((data) {
+      if (mounted) setState(() => _summary = data);
+    }).catchError((_) {});
     try {
       final data = await _api.fetchDaemonStats();
       if (mounted) {
@@ -368,6 +373,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         physics: const AlwaysScrollableScrollPhysics(),
         padding: _listPadding(context),
         children: [
+          // GÜNLÜK ÖZET: bekçi + otonom + elle yapılan taramalar, kaynak bazında
+          _dailySummaryCard(),
+          const SizedBox(height: 16),
+
           // HERO CANLI STATÜ KARTI
           Container(
             padding: const EdgeInsets.all(16),
@@ -465,9 +474,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           const SizedBox(height: 20),
 
           // BUGÜNÜN İSTATİSTİKLERİ
-          const Text('Bugün motor ne yaptı?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('Otonom motor bugün ne yaptı?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
-          const Text('Sunucu motorunun bugün eklediği ve temizlediği ilanlar. "Taranan" aynı ilanların her turda yeniden sayılmasıdır; asıl iş aşağıda kaynak kaynak yazıyor.', style: TextStyle(fontSize: 11, color: Colors.white54)),
+          const Text('Yalnızca sunucudaki 7/24 motorun bugün eklediği ve temizlediği ilanlar (bekçi ve elle taramalar en üstteki günlük özette). "Taranan" aynı ilanların her turda yeniden sayılmasıdır; asıl iş aşağıda kaynak kaynak yazıyor.', style: TextStyle(fontSize: 11, color: Colors.white54)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -668,19 +677,145 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
     );
   }
 
+  static const _sourceLabels = {
+    'arabam': 'Arabam',
+    'dod': 'DOD',
+    'otokoc': 'Otokoç',
+    'otoplus': 'Otoplus',
+    'otomerkezi': 'Otomerkezi',
+    'carvak': 'Carvak',
+    'vavacars': 'VavaCars',
+    'ikinciyeni': 'İkinciyeni',
+  };
+
+  static const _plusColor = Color(0xFF34D399);
+  static const _minusColor = Color(0xFFF87171);
+  static const _updatedColor = Color(0xFFFACC15);
+
+  /// Bir hücre: + yeşil, − kırmızı, ~ sarı; sıfırlar gizlenir, hepsi sıfırsa tire.
+  Widget _deltaCell(Map? d, {bool bold = false}) {
+    int n(dynamic v) => (v as num?)?.toInt() ?? 0;
+    final added = n(d?['added']);
+    final removed = n(d?['removed']);
+    final updated = n(d?['updated']);
+    final weight = bold ? FontWeight.w900 : FontWeight.w700;
+    Widget line(String text, Color color) =>
+        Text(text, textAlign: TextAlign.right, style: TextStyle(fontSize: 12.5, color: color, fontWeight: weight));
+    if (added == 0 && removed == 0 && updated == 0) {
+      return Text('—', textAlign: TextAlign.right, style: TextStyle(fontSize: 12.5, color: AppColors.of(context).muted));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (added > 0) line('+${_money.format(added)}', _plusColor),
+        if (removed > 0) line('−${_money.format(removed)}', _minusColor),
+        if (updated > 0) line('~${_money.format(updated)}', _updatedColor),
+      ],
+    );
+  }
+
+  /// Günlük özet: bugün kaynak başına bekçi / otonom / manuel / toplam etkisi (web panelindeki tabloyla aynı).
+  Widget _dailySummaryCard() {
+    final summary = _summary;
+    if (summary == null) return const SizedBox.shrink();
+    final c = AppColors.of(context);
+    final rows = (summary['rows'] as List?)?.cast<Map>() ?? const [];
+    final totals = (summary['totals'] as Map?) ?? const {};
+    final unattributed = summary['unattributedManual'] as Map?;
+    int n(dynamic v) => (v as num?)?.toInt() ?? 0;
+    final hasUnattributed =
+        unattributed != null && (n(unattributed['added']) + n(unattributed['removed']) + n(unattributed['updated'])) > 0;
+    const columns = [
+      ('Bekçi', 'watcher'),
+      ('Otonom', 'daemon'),
+      ('Manuel', 'manual'),
+      ('Toplam', 'total'),
+    ];
+
+    Widget legend(String mark, Color color, String text) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(mark, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: color)),
+            const SizedBox(width: 4),
+            Text(text, style: TextStyle(fontSize: 11, color: c.muted)),
+          ],
+        );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Günlük özet (${summary['date'] ?? ''})', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 14,
+              runSpacing: 2,
+              children: [
+                legend('+', _plusColor, 'yeni ilan'),
+                legend('−', _minusColor, 'arşive alınan / kalkan'),
+                legend('~', _updatedColor, 'güncellenen'),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Expanded(flex: 4, child: SizedBox.shrink()),
+                for (final col in columns)
+                  Expanded(
+                    flex: 3,
+                    child: Text(col.$1, textAlign: TextAlign.right, style: TextStyle(fontSize: 10.5, color: c.muted, fontWeight: FontWeight.w700)),
+                  ),
+              ],
+            ),
+            const Divider(height: 12),
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_sourceLabels[row['source']] ?? '${row['source']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                          Text('${_money.format(n(row['active']))} aktif', style: TextStyle(fontSize: 10.5, color: c.muted)),
+                        ],
+                      ),
+                    ),
+                    for (final col in columns) Expanded(flex: 3, child: _deltaCell(row[col.$2] as Map?, bold: col.$2 == 'total')),
+                  ],
+                ),
+              ),
+            const Divider(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(flex: 4, child: Text('Tümü', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900))),
+                for (final col in columns) Expanded(flex: 3, child: _deltaCell(totals[col.$2] as Map?, bold: true)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Bekçi: evdeki bilgisayar (yalnız Arabam). Otonom: 7/24 sunucu motoru. Manuel: scrape.bat ve panelden elle yapılanlar. '
+              'Toplam: veritabanındaki gerçek değişim; diğer sütunların toplamından fazlaysa fark kayıt tutmayan betiklerden gelir.'
+              '${hasUnattributed ? ' Kaynağı ayrılamayan eski manuel kayıtlar: +${n(unattributed['added'])} −${n(unattributed['removed'])} ~${n(unattributed['updated'])}.' : ''}',
+              style: TextStyle(fontSize: 10.5, color: c.muted, height: 1.35),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Kaynak bazında: aktif envanter ve bugün motorun yeni eklediği / güncellediği / arşive taşıdığı ilanlar.
   /// Arabam sunucudan çekilemediği için (Cloudflare) onu PC'deki bekçi ve elle tarama besler; satır bunu açıkça yazar.
   Widget _sourceBreakdown(Map<String, dynamic> bySource, Map<String, dynamic> active) {
-    const labels = {
-      'arabam': 'Arabam',
-      'dod': 'DOD',
-      'otokoc': 'Otokoç',
-      'otoplus': 'Otoplus',
-      'otomerkezi': 'Otomerkezi',
-      'carvak': 'Carvak',
-      'vavacars': 'VavaCars',
-      'ikinciyeni': 'İkinciyeni',
-    };
+    const labels = _sourceLabels;
     final names = labels.keys.where((k) => active.containsKey(k) || bySource.containsKey(k)).toList()
       ..sort((a, b) => ((active[b] as num?) ?? 0).compareTo((active[a] as num?) ?? 0));
     if (names.isEmpty) return const SizedBox.shrink();

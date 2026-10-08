@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/widgets/car_card.dart';
+import 'package:otopiyasa/widgets/favorite_lists_sheet.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
 
 class FavoritesScreen extends StatefulWidget {
@@ -15,6 +17,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   final _api = ApiService();
   List<CarListing> _favorites = [];
   List<UnavailableFavorite> _unavailable = [];
+  List<FavoriteList> _lists = [];
+  // null = "Tümü", aksi halde seçili grubun kimliği.
+  String? _activeListId;
   bool _loading = true;
   String? _error;
 
@@ -34,6 +39,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       setState(() {
         _favorites = result.available;
         _unavailable = result.unavailable;
+        _lists = result.lists;
+        if (_activeListId != null && !_lists.any((l) => l.id == _activeListId)) _activeListId = null;
       });
     } catch (error) {
       setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
@@ -42,12 +49,162 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     }
   }
 
+  FavoriteList? get _activeList {
+    for (final list in _lists) {
+      if (list.id == _activeListId) return list;
+    }
+    return null;
+  }
+
+  List<CarListing> get _visibleCars {
+    final list = _activeList;
+    if (list == null) return _favorites;
+    return _favorites.where((car) => list.contains(car.id)).toList();
+  }
+
+  int _countOf(FavoriteList list) => _favorites.where((car) => list.contains(car.id)).length;
+
+  void _snack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<String?> _askName({required String title, String initial = '', required String action}) {
+    final controller = TextEditingController(text: initial);
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 40,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          decoration: const InputDecoration(hintText: 'ör. Sedan, SUV, Aile arabası'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Vazgeç')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: Text(action)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createList() async {
+    final name = await _askName(title: 'Yeni grup', action: 'Oluştur');
+    if (name == null || name.isEmpty) return;
+    final before = _lists.map((l) => l.id).toSet();
+    try {
+      final updated = await _api.createFavoriteList(name);
+      if (!mounted) return;
+      setState(() {
+        _lists = updated;
+        _activeListId = updated.where((l) => !before.contains(l.id)).map((l) => l.id).firstOrNull;
+      });
+    } catch (error) {
+      _snack(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _renameList(FavoriteList list) async {
+    final name = await _askName(title: 'Grubu yeniden adlandır', initial: list.name, action: 'Kaydet');
+    if (name == null || name.isEmpty || name == list.name) return;
+    try {
+      final updated = await _api.renameFavoriteList(list.id, name);
+      if (mounted) setState(() => _lists = updated);
+    } catch (error) {
+      _snack(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _deleteList(FavoriteList list) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Grup silinsin mi?'),
+        content: Text('"${list.name}" grubu silinir; içindeki ilanlar favorilerinde kalır.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Vazgeç')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Sil')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final updated = await _api.deleteFavoriteList(list.id);
+      if (mounted) {
+        setState(() {
+          _lists = updated;
+          _activeListId = null;
+        });
+      }
+    } catch (error) {
+      _snack(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _removeFromActiveList(String carId) async {
+    final list = _activeList;
+    if (list == null) return;
+    try {
+      final updated = await _api.setCarInFavoriteList(list.id, carId, add: false);
+      if (mounted) setState(() => _lists = updated);
+    } catch (error) {
+      _snack(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _assignLists(String carId) => showFavoriteListsSheet(
+        context,
+        carId: carId,
+        lists: _lists,
+        onChanged: (updated) {
+          if (mounted) setState(() => _lists = updated);
+        },
+      );
+
+  /// "Tümü" + grup sekmeleri + "Yeni grup".
+  Widget _listChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ChoiceChip(
+            label: Text('Tümü (${_favorites.length})'),
+            selected: _activeListId == null,
+            onSelected: (_) => setState(() => _activeListId = null),
+          ),
+          for (final list in _lists) ...[
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: Text('${list.name} (${_countOf(list)})'),
+              selected: _activeListId == list.id,
+              onSelected: (_) => setState(() => _activeListId = list.id),
+            ),
+          ],
+          const SizedBox(width: 8),
+          ActionChip(
+            avatar: const Icon(Icons.add, size: 18),
+            label: const Text('Yeni grup'),
+            onPressed: _createList,
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _remove(String id, String title) async {
     try {
       await _api.removeFavorite(id);
       setState(() {
         _favorites.removeWhere((item) => item.id == id);
         _unavailable.removeWhere((item) => item.id == id);
+        // Favoriden çıkan ilan sunucuda gruplardan da çıkar; ekran da aynısını yapsın.
+        _lists = [
+          for (final list in _lists)
+            FavoriteList(id: list.id, name: list.name, carIds: list.carIds.where((e) => e != id).toList()),
+        ];
       });
       if (mounted) {
         ScaffoldMessenger.of(
@@ -191,27 +348,67 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  for (final car in _favorites) ...[
+                  _listChips(),
+                  if (_activeList case final list?) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${_countOf(list)} ilan · ${list.name}',
+                            style: TextStyle(color: AppColors.of(context).muted, fontSize: 12.5),
+                          ),
+                        ),
+                        TextButton(onPressed: () => _renameList(list), child: const Text('Yeniden adlandır')),
+                        TextButton(onPressed: () => _deleteList(list), child: const Text('Sil')),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  if (_activeListId != null && _visibleCars.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 36),
+                      child: Text(
+                        'Bu grup henüz boş.\n"Tümü" sekmesinde bir ilanın üstündeki etiket düğmesiyle buraya ilan ekleyebilirsin.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.of(context).muted, height: 1.4),
+                      ),
+                    ),
+                  for (final car in _visibleCars) ...[
                     Stack(
                       children: [
                         CarCard(car: car),
                         Positioned(
                           right: 10,
                           top: 10,
-                          child: IconButton.filledTonal(
-                            onPressed: () => _remove(car.id, car.title),
-                            icon: const Icon(
-                              Icons.favorite,
-                              color: Colors.redAccent,
-                            ),
-                            tooltip: 'Favoriden çıkar',
+                          child: Row(
+                            children: [
+                              IconButton.filledTonal(
+                                onPressed: () => _assignLists(car.id),
+                                icon: const Icon(Icons.label_outline),
+                                tooltip: 'Gruplara ekle',
+                              ),
+                              const SizedBox(width: 6),
+                              if (_activeListId != null)
+                                IconButton.filledTonal(
+                                  onPressed: () => _removeFromActiveList(car.id),
+                                  icon: const Icon(Icons.bookmark_remove_outlined),
+                                  tooltip: 'Gruptan çıkar',
+                                )
+                              else
+                                IconButton.filledTonal(
+                                  onPressed: () => _remove(car.id, car.title),
+                                  icon: const Icon(Icons.favorite, color: Colors.redAccent),
+                                  tooltip: 'Favoriden çıkar',
+                                ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 14),
                   ],
-                  if (_unavailable.isNotEmpty) ...[
+                  if (_unavailable.isNotEmpty && _activeListId == null) ...[
                     const Padding(
                       padding: EdgeInsets.only(top: 8, bottom: 4),
                       child: Text(

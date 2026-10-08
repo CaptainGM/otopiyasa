@@ -6,6 +6,9 @@ import 'package:otopiyasa/screens/login_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/relative_time.dart';
+import 'package:otopiyasa/widgets/admin_health_tab.dart';
+import 'package:otopiyasa/widgets/admin_motor_controls.dart';
+import 'package:otopiyasa/widgets/admin_users_tab.dart';
 import 'package:otopiyasa/widgets/home_watcher_card.dart';
 
 const _emerald = Color(0xFF10B981);
@@ -57,7 +60,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
     _loadAllData();
     // 25 saniyede bir canlı otomatik yenileme
     // Uygulama arka plandayken istek atılmaz (sunucu fonksiyon çağrısı limiti).
@@ -250,6 +253,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           indicatorColor: AppTheme.accent,
           tabs: [
             const Tab(icon: Icon(Icons.speed, size: 18), text: 'Motor'),
+            const Tab(icon: Icon(Icons.home_work_outlined, size: 18), text: 'Bekçi'),
+            const Tab(icon: Icon(Icons.monitor_heart_outlined, size: 18), text: 'Sağlık'),
+            const Tab(icon: Icon(Icons.people_outline, size: 18), text: 'Kullanıcılar'),
             Tab(
               icon: const Icon(Icons.report_problem_outlined, size: 18),
               text: 'Şikayetler (${_reports.length})',
@@ -270,6 +276,9 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   controller: _tabController,
                   children: [
                     _buildDaemonTab(),
+                    _buildWatcherTab(),
+                    const AdminHealthTab(),
+                    const AdminUsersTab(),
                     _buildReportsTab(),
                     _buildBusinessTab(),
                     _buildControlsTab(),
@@ -310,6 +319,18 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Evdeki bilgisayarda çalışan Arabam bekçisi (motor sekmesinde uzun sayfanın ortasında kalıyordu).
+  Widget _buildWatcherTab() {
+    return RefreshIndicator(
+      onRefresh: _loadAllData,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: _listPadding(context),
+        children: const [HomeWatcherCard()],
       ),
     );
   }
@@ -425,6 +446,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 16),
 
+          // MOTOR KONTROLÜ: başlat / durdur / yeniden başlat ve çalışma modu (web paneliyle aynı)
+          AdminMotorControls(daemon: daemon, onChanged: _refreshStatsOnly),
+          const SizedBox(height: 16),
+
           // DÖNGÜ & DONANIM METRİKLERİ
           Row(
             children: [
@@ -439,8 +464,27 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 20),
 
-          // EVDEKİ BİLGİSAYARDA ÇALIŞAN ARABAM BEKÇİSİ
-          const HomeWatcherCard(),
+          // BUGÜNÜN İSTATİSTİKLERİ
+          const Text('Bugün motor ne yaptı?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          const Text('Sunucu motorunun bugün baktığı, eklediği ve temizlediği ilanlar (saatlik kayıtların toplamı).', style: TextStyle(fontSize: 11, color: Colors.white54)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _statBox('Bakılan ilan', '${today['scanned'] ?? 0}', Colors.blue)),
+              const SizedBox(width: 8),
+              Expanded(child: _statBox('Yeni eklenen', '${today['inserted'] ?? 0}', Colors.green)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _statBox('Fiyatı/durumu güncellenen', '${today['updated'] ?? 0}', Colors.amber)),
+              const SizedBox(width: 8),
+              Expanded(child: _statBox('Arşive taşınan', '${today['deleted'] ?? 0}', Colors.redAccent)),
+            ],
+          ),
+
           const SizedBox(height: 20),
 
           // ENVANTER
@@ -465,10 +509,10 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           const SizedBox(height: 20),
 
           // KAYNAK SENKRON DURUMU
-          const Text('Kaynak Senkron Durumu', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text('Kurumsal kaynakların son tam taraması', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 2),
           const Text(
-            'Her kaynağın tüm ilan listesi belirli aralıklarla taranır; satılanlar arşive, geri gelenler yayına alınır.',
+            'Motor, her kurumsal sitenin (Otokoç, DOD, VavaCars...) tüm ilan listesini belirli aralıklarla baştan sona okur. Sitede artık görünmeyen ilan arşive taşınır, geri gelen yayına alınır. "Kaynakta görülen": taramada sitede bulunan ilan sayısı. Satıra dokununca son mesaj görünür.',
             style: TextStyle(fontSize: 11, color: Colors.white54),
           ),
           const SizedBox(height: 8),
@@ -485,25 +529,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           else
             ...syncStates.map(_syncRow),
           const SizedBox(height: 20),
-
-          // BUGÜNÜN İSTATİSTİKLERİ
-          const Text('Bugünün İşlem Hacmi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _statBox('Taranan İlan', '${today['scanned'] ?? 0}', Colors.blue)),
-              const SizedBox(width: 8),
-              Expanded(child: _statBox('Yeni Eklenen', '${today['inserted'] ?? 0}', Colors.green)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _statBox('Güncellenen', '${today['updated'] ?? 0}', Colors.amber)),
-              const SizedBox(width: 8),
-              Expanded(child: _statBox('Arşivlenen', '${today['deleted'] ?? 0}', Colors.redAccent)),
-            ],
-          ),
 
           // SAATLİK AKTİVİTE GRAFİĞİ
           if (hourly.isNotEmpty) ...[
@@ -582,8 +607,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                 spacing: 12,
                 runSpacing: 2,
                 children: [
-                  Text('Görülen: ${s['seen'] ?? '—'}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
-                  Text('Güncel: ${n('updated')}', style: const TextStyle(fontSize: 11, color: Colors.lightBlueAccent)),
+                  Text('Kaynakta görülen: ${s['seen'] ?? '—'}', style: const TextStyle(fontSize: 11, color: Colors.white70)),
+                  Text('Güncellenen: ${n('updated')}', style: const TextStyle(fontSize: 11, color: Colors.lightBlueAccent)),
                   Text('Geri alınan: ${n('reactivated')}', style: const TextStyle(fontSize: 11, color: _emerald)),
                   Text('Arşivlenen: ${n('archived')}', style: const TextStyle(fontSize: 11, color: _roseColor)),
                   if (n('markedMissing') > 0)

@@ -512,8 +512,44 @@ class ApiService {
           .whereType<Map<String, dynamic>>()
           .map(UnavailableFavorite.fromJson)
           .toList(),
+      lists: FavoriteList.parseAll(body['lists']),
     );
   }
+
+  /// Favori grubu uçlarının ortak çağrısı: başarılıysa sunucudaki güncel grup listesini döner.
+  Future<List<FavoriteList>> _listsCall(String method, String path, {Map<String, dynamic>? body}) async {
+    final uri = _uri('/api/favorites/lists$path');
+    final payload = body == null ? null : jsonEncode(body);
+    final http.Response response;
+    switch (method) {
+      case 'POST':
+        response = await _http.post(uri, headers: _headers, body: payload);
+      case 'PATCH':
+        response = await _http.patch(uri, headers: _headers, body: payload);
+      case 'DELETE':
+        response = await _http.delete(uri, headers: _headers);
+      default:
+        response = await _http.get(uri, headers: _headers);
+    }
+    if (response.statusCode == 401) throw Exception('Gruplar için giriş yapmalısın');
+    if (response.statusCode != 200) throw Exception(_errorOf(response, 'İşlem yapılamadı'));
+    return FavoriteList.parseAll((jsonDecode(response.body) as Map<String, dynamic>)['lists']);
+  }
+
+  Future<List<FavoriteList>> fetchFavoriteLists() => _listsCall('GET', '');
+
+  /// Yeni grup açar; [carId] verilirse ilan hemen eklenir (ve favorilere de girer).
+  Future<List<FavoriteList>> createFavoriteList(String name, {String? carId}) =>
+      _listsCall('POST', '', body: {'name': name, 'carId': ?carId});
+
+  Future<List<FavoriteList>> renameFavoriteList(String listId, String name) =>
+      _listsCall('PATCH', '/$listId', body: {'name': name});
+
+  Future<List<FavoriteList>> deleteFavoriteList(String listId) => _listsCall('DELETE', '/$listId');
+
+  /// İlanı gruba ekler (favorilerde değilse favorilere de girer) ya da yalnızca bu gruptan çıkarır.
+  Future<List<FavoriteList>> setCarInFavoriteList(String listId, String carId, {required bool add}) =>
+      _listsCall('PATCH', '/$listId', body: add ? {'add': carId} : {'remove': carId});
 
   Future<void> addFavorite(String carId) async {
     final response = await _http.post(
@@ -1191,11 +1227,16 @@ class ApiService {
 
   /// Marka + model değer kaybı analizi (yıllara göre ortalama fiyat, km dilimleri, örnek ilanlar).
   /// Marka/model verilmezse yalnızca seçilebilir marka ve model listesi döner.
-  Future<Map<String, dynamic>> fetchModelBreakdown({String? brand, String? model}) async {
+  /// [condition]: clean | painted | damaged (boşsa tümü); [kmMin]/[kmMax]: kilometre aralığı. Yanıt: yıllık eğri, durum
+  /// eğrileri, km dilimleri ve regresyondan çıkan etkiler (yaş, 10 bin km, hasar, boya).
+  Future<Map<String, dynamic>> fetchModelBreakdown({String? brand, String? model, String? condition, int? kmMin, int? kmMax}) async {
     final response = await _http.get(
       _uri('/api/analytics/model-breakdown', {
         if (brand != null && brand.isNotEmpty) 'brand': brand,
         if (model != null && model.isNotEmpty) 'model': model,
+        if (condition != null && condition.isNotEmpty) 'hasar': condition,
+        if (kmMin != null) 'kmMin': '$kmMin',
+        if (kmMax != null) 'kmMax': '$kmMax',
       }),
       headers: _headers,
     );
@@ -1271,6 +1312,42 @@ class ApiService {
     );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Daemon istatistikleri alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Sunucu motoruna komut: action = start | stop | restart | set_mode (mode: hybrid | new_only | sweep_only).
+  /// Dönen metin sunucunun kısa açıklamasıdır.
+  Future<String> daemonControl(String action, {String? mode}) async {
+    final response = await _http.post(
+      _uri('/api/admin/daemon/control'),
+      headers: _headers,
+      body: jsonEncode({'action': action, 'mode': ?mode}),
+    );
+    final body = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(body['error']?.toString() ?? 'Komut gönderilemedi (${response.statusCode})');
+    }
+    return body['message']?.toString() ?? 'Komut gönderildi.';
+  }
+
+  /// Anlık sistem sağlığı (sorun listesi) — yalnızca yönetici.
+  Future<Map<String, dynamic>> fetchAdminHealth() async {
+    final response = await _http.get(_uri('/api/admin/health'), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Sistem sağlığı alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Kullanıcı listesi (ad/e-posta aramalı, 30'ar kayıt) — yalnızca yönetici.
+  Future<Map<String, dynamic>> fetchAdminUsers({String q = '', int page = 1}) async {
+    final response = await _http.get(
+      _uri('/api/admin/users', {if (q.isNotEmpty) 'q': q, 'page': '$page'}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Kullanıcılar alınamadı'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }

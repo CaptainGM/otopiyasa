@@ -187,6 +187,15 @@ function rscVehicleToListing(vehicle: RscVehicle): ScrapedListing | null {
   };
 }
 
+/**
+ * Site liste sayfasını sağlıklı açıp "0 araç bulundu / uygun araç bulunamadı" diyorsa kaynak şu an ilan göstermiyordur
+ * (ayrıştırıcı bozuk değildir). Bu ayrım yapılmazsa boş envanter "site yapısı değişmiş" alarmı olarak görünüyordu.
+ */
+export function isOtomerkeziEmptyInventory(html: string): boolean {
+  if (!/Aradığınız kriterlere uygun araç bulunamadı/.test(html)) return false;
+  return /<span[^>]*>\s*0\s*<\/span>\s*araç bulundu/.test(html) || /"numberOfItems":0\b/.test(html);
+}
+
 export function parseOtomerkeziListHtml(html: string): ScrapedListing[] {
 
   const rscListings = extractRscVehicles(html)
@@ -292,6 +301,12 @@ export async function scrapeOtomerkeziListings(
 
     const pageListings = parseOtomerkeziListHtml(result.html);
     if (pageListings.length === 0) {
+      if (page === 1 && isOtomerkeziEmptyInventory(result.html)) {
+        // Kaynak şu an hiç ilan göstermiyor. "Tamamlandı" sayılmaz: kaynakta var olan ilanlar toplu "kayıp" işaretlenmesin,
+        // tek tek bekçi doğrulasın.
+        if (report) report.error = "Kaynak şu an 0 ilan gösteriyor (site boş envanter bildirdi); mevcut ilanlar kaldırılmış sayılmadı.";
+        return 0;
+      }
       // Son sayfanın ötesi boş döner (ölçüldü: ?page=999 → 0 araç).
       if (report) {
         if (page > 1) report.endedNaturally = true;

@@ -33,14 +33,6 @@ export const BrandTrendChart = dynamic(
   { ssr: false, loading: () => <ChartSkeleton /> }
 ) as (props: { trends: BrandTrends }) => React.ReactElement;
 
-export const InteractiveModelAnalytics = dynamic(
-  () => import("@/components/InteractiveModelAnalytics").then((m) => m.InteractiveModelAnalytics),
-  { ssr: false, loading: () => <ChartSkeleton height={420} /> }
-) as (props: {
-  initialBrands?: string[];
-  initialBrandModels?: Record<string, string[]>;
-}) => React.ReactElement;
-
 export const MarketInsightsCharts = dynamic(
   () => import("@/components/MarketInsightsCharts").then((m) => m.MarketInsightsCharts),
   { ssr: false, loading: () => <ChartSkeleton height={380} /> }

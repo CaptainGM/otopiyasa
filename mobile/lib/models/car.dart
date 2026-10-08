@@ -61,11 +61,32 @@ class UnavailableFavorite {
       );
 }
 
+/// Kullanıcının kendi favori grubu (ör. "Sedan", "SUV"). Gruptaki ilan her zaman favorilerdedir.
+class FavoriteList {
+  const FavoriteList({required this.id, required this.name, required this.carIds});
+
+  final String id;
+  final String name;
+  final List<String> carIds;
+
+  bool contains(String carId) => carIds.contains(carId);
+
+  factory FavoriteList.fromJson(Map<String, dynamic> json) => FavoriteList(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        carIds: (json['carIds'] as List<dynamic>? ?? const []).map((e) => e.toString()).toList(),
+      );
+
+  static List<FavoriteList> parseAll(dynamic raw) =>
+      (raw as List<dynamic>? ?? const []).whereType<Map<String, dynamic>>().map(FavoriteList.fromJson).toList();
+}
+
 class FavoritesResult {
-  const FavoritesResult({required this.available, required this.unavailable});
+  const FavoritesResult({required this.available, required this.unavailable, this.lists = const []});
 
   final List<CarListing> available;
   final List<UnavailableFavorite> unavailable;
+  final List<FavoriteList> lists;
 }
 
 class PricePoint {

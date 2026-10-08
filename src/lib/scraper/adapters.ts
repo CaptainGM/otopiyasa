@@ -14,7 +14,7 @@ import { scrapeCarvakListings } from "@/lib/scraper/carvak";
 import { scrapeOtokocListings } from "@/lib/scraper/otokoc";
 import { scrapeDodListings } from "@/lib/scraper/dod";
 import { scrapeIkinciyeniListings } from "@/lib/scraper/ikinciyeni";
-import { reportProgress } from "@/lib/scraper/progress";
+import { reportEvent, reportProgress } from "@/lib/scraper/progress";
 import { parseArabamListPage } from "@/lib/scraper/arabam-list";
 import { ScrapedListing, ScrapeAdapter, OnListing } from "@/lib/scraper/types";
 import { seedCars } from "@/lib/seed-data";
@@ -489,6 +489,7 @@ async function scrapeArabamListings(
 
       console.log(`  🔍 [Marka Taraması] ${brand.toUpperCase()} taranıyor...`);
       let brandZeroSaves = 0;
+      const brandStartSaved = totalSaved;
 
       for (let brandPage = 1; brandPage <= 30; brandPage++) {
         if (totalSaved >= limit) break;
@@ -526,6 +527,7 @@ async function scrapeArabamListings(
 
         await new Promise((r) => setTimeout(r, 1000));
       }
+      reportEvent({ label: brand.toUpperCase(), added: totalSaved - brandStartSaved });
     }
   }
 
@@ -593,7 +595,15 @@ export async function scrapeArabamForModels(
     if (fresh.length === 0) continue;
 
    
-    fetched += await fetchAndSaveArabamDetails(fresh, onListing);
+    const before = await Car.countDocuments({ brand: segment.brand, model: segment.model, status: "active" }).catch(() => undefined);
+    const added = await fetchAndSaveArabamDetails(fresh, onListing);
+    fetched += added;
+    reportEvent({
+      label: `${segment.brand} ${segment.model}`,
+      before,
+      after: before === undefined ? undefined : before + added,
+      added,
+    });
   }
 
   return fetched;
@@ -638,8 +648,16 @@ export async function scrapeArabamForMarketYears(
     fresh.forEach((href) => seen.add(href));
     if (fresh.length === 0) continue;
 
-    fetched += await fetchAndSaveArabamDetails(fresh, async (listing) => {
+    const before = await Car.countDocuments({ brand: segment.brand, model: segment.model, status: "active" }).catch(() => undefined);
+    const added = await fetchAndSaveArabamDetails(fresh, async (listing) => {
       if (years.has(listing.year)) await onListing(listing);
+    });
+    fetched += added;
+    reportEvent({
+      label: `${segment.brand} ${segment.model} (${[...years].join(", ")})`,
+      before,
+      after: before === undefined ? undefined : before + added,
+      added,
     });
   }
 

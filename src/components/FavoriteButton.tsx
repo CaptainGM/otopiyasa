@@ -3,11 +3,14 @@
 import { Icon } from "@/components/Icon";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FavoriteListPicker } from "@/components/FavoriteListPicker";
+import type { FavoriteListDTO } from "@/lib/favorite-lists";
 
 export function FavoriteButton({ carId }: { carId: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [lists, setLists] = useState<FavoriteListDTO[]>([]);
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
@@ -24,6 +27,7 @@ export function FavoriteButton({ carId }: { carId: string }) {
         const favData = await favResponse.json();
         const ids: string[] = favData.ids || [];
         setIsFavorite(ids.includes(carId));
+        setLists(favData.lists || []);
       }
       setChecked(true);
     }
@@ -46,6 +50,8 @@ export function FavoriteButton({ carId }: { carId: string }) {
       }
 
       if (response.ok) {
+        // Favoriden çıkan ilan gruplardan da çıkar (sunucudaki kuralla aynı).
+        if (isFavorite) setLists((current) => current.map((list) => ({ ...list, carIds: list.carIds.filter((id) => id !== carId) })));
         setIsFavorite(!isFavorite);
         router.refresh();
       }
@@ -57,13 +63,16 @@ export function FavoriteButton({ carId }: { carId: string }) {
   if (!checked) return null;
 
   return (
-    <button
-      onClick={toggleFavorite}
-      disabled={loading}
-      className="btn btn-secondary"
-    >
-      <Icon name="heart" size={16} className={isFavorite ? "fill-[var(--pricey)] text-[var(--pricey)]" : ""} />
-      {isFavorite ? "Favoriden çıkar" : "Favorilere ekle"}
-    </button>
+    <>
+      <button
+        onClick={toggleFavorite}
+        disabled={loading}
+        className="btn btn-secondary"
+      >
+        <Icon name="heart" size={16} className={isFavorite ? "fill-[var(--pricey)] text-[var(--pricey)]" : ""} />
+        {isFavorite ? "Favoriden çıkar" : "Favorilere ekle"}
+      </button>
+      <FavoriteListPicker carId={carId} lists={lists} onLists={setLists} onFavoriteAdded={() => setIsFavorite(true)} />
+    </>
   );
 }

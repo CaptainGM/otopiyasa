@@ -17,6 +17,7 @@ import 'package:otopiyasa/utils/relative_time.dart';
 import 'package:otopiyasa/widgets/market_badge.dart';
 import 'package:otopiyasa/widgets/price_histogram.dart';
 import 'package:otopiyasa/widgets/damage_diagram.dart';
+import 'package:otopiyasa/widgets/favorite_lists_sheet.dart';
 import 'package:otopiyasa/widgets/report_dialog.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -46,10 +47,14 @@ class _DetailScreenState extends State<DetailScreen> {
   String? _error;
   int _activeImageIndex = 0;
   Map<String, dynamic>? _fuelCost;
+  bool _inCompare = false;
 
   @override
   void initState() {
     super.initState();
+    CompareStore.contains(widget.carId).then((value) {
+      if (mounted) setState(() => _inCompare = value);
+    });
     // Yayından kaldırılmış araç kontrolü: Eğer initialCar aktif değilse ve kullanıcı admin değilse gösterme
     if (widget.initialCar != null && !widget.initialCar!.isActive && !_api.isAdmin) {
       _car = null;
@@ -143,6 +148,69 @@ class _DetailScreenState extends State<DetailScreen> {
     }
   }
 
+  /// Favori gruplarını (sedan, SUV...) açar. Gruba eklenen ilan favorilere de girer, o yüzden kalp durumu güncellenir.
+  Future<void> _openFavoriteLists() async {
+    HapticFeedback.lightImpact();
+    if (!_api.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gruplara eklemek için giriş yapmalısın')),
+      );
+      return;
+    }
+    final List<FavoriteList> lists;
+    try {
+      lists = await _api.fetchFavoriteLists();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    await showFavoriteListsSheet(
+      context,
+      carId: widget.carId,
+      lists: lists,
+      onChanged: (updated) {
+        if (updated.any((list) => list.contains(widget.carId)) && !_isFavorite && mounted) {
+          setState(() => _isFavorite = true);
+        }
+      },
+    );
+    // Oturumdaki favori listesini tazele ki diğer ekranlar da güncel kalsın.
+    final refreshed = await _api.me();
+    if (refreshed != null) _api.currentUser = refreshed;
+  }
+
+  /// Karşılaştırma listesine ekler/çıkarır; hem fotoğrafın üstündeki düğme hem alttaki buton bunu kullanır.
+  Future<void> _toggleCompare(CarListing car) async {
+    HapticFeedback.selectionClick();
+    // context'i async boşluktan ÖNCE yakala; sonrasında State'in kendi `mounted` kontrolü geçerli olan.
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final wasThere = _inCompare;
+    final added = await CompareStore.toggle(car.id);
+    if (!mounted) return;
+    setState(() => _inCompare = added);
+    final full = !wasThere && !added;
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(full
+            ? 'Karşılaştırma listesi dolu (en fazla ${CompareStore.maxItems} araç)'
+            : added
+                ? 'Karşılaştırmaya eklendi'
+                : 'Karşılaştırmadan çıkarıldı'),
+        action: SnackBarAction(
+          label: 'Aç',
+          onPressed: () => navigator.push(MaterialPageRoute(builder: (_) => const CompareScreen())),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openListing(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
@@ -163,10 +231,16 @@ class _DetailScreenState extends State<DetailScreen> {
     if (allImages.isEmpty) {
       return AspectRatio(
         aspectRatio: 16 / 10,
-        child: Container(
-          color: const Color(0xFF202631),
-          alignment: Alignment.center,
-          child: const Icon(Icons.directions_car_outlined, size: 48, color: Colors.white38),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              color: const Color(0xFF202631),
+              alignment: Alignment.center,
+              child: const Icon(Icons.directions_car_outlined, size: 48, color: Colors.white38),
+            ),
+            Positioned(top: 10, right: 10, child: _compareOverlayButton(car)),
+          ],
         ),
       );
     }
@@ -218,7 +292,38 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
               ),
             ),
+          Positioned(top: 10, right: 10, child: _compareOverlayButton(car)),
         ],
+      ),
+    );
+  }
+
+  /// Fotoğrafın sağ üstündeki "karşılaştırmaya ekle" düğmesi; ekliyken dolu vurgulu görünür.
+  Widget _compareOverlayButton(CarListing car) {
+    final active = _inCompare;
+    return Tooltip(
+      message: active ? 'Karşılaştırmadan çıkar' : 'Karşılaştırmaya ekle',
+      child: Material(
+        color: active ? AppTheme.accent : Colors.black.withValues(alpha: 0.62),
+        shape: const StadiumBorder(side: BorderSide(color: Color(0x33FFFFFF))),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => _toggleCompare(car),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(active ? Icons.check : Icons.compare_arrows, size: 17, color: Colors.white),
+                const SizedBox(width: 5),
+                Text(
+                  active ? 'Kıyasta' : 'Kıyasla',
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -234,6 +339,11 @@ class _DetailScreenState extends State<DetailScreen> {
       appBar: AppBar(
         title: const Text('İlan Detayı'),
         actions: [
+          IconButton(
+            onPressed: _openFavoriteLists,
+            icon: const Icon(Icons.label_outline),
+            tooltip: 'Favori gruplarına ekle',
+          ),
           IconButton(
             onPressed: _togglingFavorite ? null : _toggleFavorite,
             icon: Icon(
@@ -490,29 +600,9 @@ class _DetailScreenState extends State<DetailScreen> {
                 const SizedBox(height: 10),
               ],
               OutlinedButton.icon(
-                onPressed: () async {
-                  // context'i async boşluktan ÖNCE yakala; sonrasında State'in
-                  // kendi `mounted` kontrolü geçerli olan.
-                  final messenger = ScaffoldMessenger.of(context);
-                  final navigator = Navigator.of(context);
-                  final added = await CompareStore.toggle(car.id);
-                  if (!mounted) return;
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(added
-                          ? 'Karşılaştırmaya eklendi'
-                          : 'Karşılaştırmadan çıkarıldı (ya da liste dolu)'),
-                      action: SnackBarAction(
-                        label: 'Aç',
-                        onPressed: () => navigator.push(
-                          MaterialPageRoute(builder: (_) => const CompareScreen()),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.compare_arrows),
-                label: const Text('Karşılaştırmaya ekle'),
+                onPressed: () => _toggleCompare(car),
+                icon: Icon(_inCompare ? Icons.check : Icons.compare_arrows),
+                label: Text(_inCompare ? 'Karşılaştırmadan çıkar' : 'Karşılaştırmaya ekle'),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(

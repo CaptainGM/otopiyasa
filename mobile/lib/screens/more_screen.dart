@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:otopiyasa/screens/admin_screen.dart';
 import 'package:otopiyasa/screens/assistant_screen.dart';
-import 'package:otopiyasa/screens/compare_screen.dart';
 import 'package:otopiyasa/screens/favorites_screen.dart';
 import 'package:otopiyasa/screens/my_listings_screen.dart';
 import 'package:otopiyasa/screens/nearby_screen.dart';
@@ -107,7 +106,6 @@ class MoreScreen extends StatelessWidget {
               _Panel(
                 child: Column(children: [
                   _Row(icon: Icons.near_me_outlined, title: 'Yakınımdaki ilanlar', onTap: () => _push(context, const NearbyScreen())),
-                  _Row(icon: Icons.compare_arrows, title: 'Karşılaştır', onTap: () => _push(context, const CompareScreen())),
                   _Row(icon: Icons.auto_awesome_outlined, title: 'Asistan', onTap: () => _push(context, const AssistantScreen()), last: true),
                 ]),
               ),

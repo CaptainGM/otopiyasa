@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CarCard } from "@/components/CarCard";
+import { FavoritesBoard } from "@/components/FavoritesBoard";
 import { UnavailableFavoriteCard } from "@/components/UnavailableFavoriteCard";
 import { connectDB } from "@/lib/mongodb";
 import { getCurrentUser } from "@/lib/auth";
 import { attachMarketToCars } from "@/lib/serialize-car";
 import { getMarketMap } from "@/lib/market-price";
 import { loadFavorites, type UnavailableFavorite } from "@/lib/favorites";
+import type { FavoriteListDTO } from "@/lib/favorite-lists";
 import { Car as CarType } from "@/types";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 
@@ -18,10 +20,12 @@ export default async function FavoritesPage() {
 
   let favorites: CarType[] = [];
   let unavailable: UnavailableFavorite[] = [];
+  let lists: FavoriteListDTO[] = [];
   try {
     await connectDB();
     const result = await loadFavorites(authUser.userId);
     unavailable = result.unavailable;
+    lists = result.lists;
     if (result.available.length > 0) {
       const marketMap = await getMarketMap(
         result.available.map((car) => ({ brand: car.brand, model: car.model, year: car.year }))
@@ -36,7 +40,9 @@ export default async function FavoritesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Favorilerim</h1>
-        <p className="text-slate-500">Kaydettiğin araçları buradan takip edebilirsin.</p>
+        <p className="text-slate-500">
+          Kaydettiğin araçları buradan takip edebilirsin. İlanları sedan, SUV gibi kendi gruplarına ayırabilirsin.
+        </p>
       </div>
 
       {favorites.length === 0 && unavailable.length === 0 ? (
@@ -47,29 +53,25 @@ export default async function FavoritesPage() {
           </Link>
         </div>
       ) : (
-        <>
-          {favorites.length > 0 && (
-            <div className="listing-grid">
-              {favorites.map((car) => (
-                <CarCard key={car._id} car={serializeCarListItem(car)} />
-              ))}
-            </div>
-          )}
-
-          {unavailable.length > 0 && (
-            <section className="space-y-3">
-              <h2 className="text-lg font-bold text-slate-300">Artık yayında olmayan ilanlar</h2>
-              <p className="text-sm text-slate-500">
-                Bu ilanlar satıldı ya da kaynağından kaldırıldı. Ayrıntıları gösterilmez; istersen favorilerden çıkarabilirsin.
-              </p>
-              <div className="listing-grid">
-                {unavailable.map((item) => (
-                  <UnavailableFavoriteCard key={item._id} item={item} />
-                ))}
-              </div>
-            </section>
-          )}
-        </>
+        <FavoritesBoard
+          initialLists={lists}
+          items={favorites.map((car) => ({ id: car._id, node: <CarCard car={serializeCarListItem(car)} /> }))}
+          unavailable={
+            unavailable.length > 0 ? (
+              <section className="space-y-3">
+                <h2 className="text-lg font-bold text-slate-300">Artık yayında olmayan ilanlar</h2>
+                <p className="text-sm text-slate-500">
+                  Bu ilanlar satıldı ya da kaynağından kaldırıldı. Ayrıntıları gösterilmez; istersen favorilerden çıkarabilirsin.
+                </p>
+                <div className="listing-grid">
+                  {unavailable.map((item) => (
+                    <UnavailableFavoriteCard key={item._id} item={item} />
+                  ))}
+                </div>
+              </section>
+            ) : null
+          }
+        />
       )}
     </div>
   );

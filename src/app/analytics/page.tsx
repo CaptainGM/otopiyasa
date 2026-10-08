@@ -1,16 +1,12 @@
 // Grafikler sayfa boyandıktan SONRA yüklenir (recharts ağır) — bkz. LazyCharts.
 import { Suspense } from "react";
-import {
-  InteractiveModelAnalytics,
-  MarketInsightsCharts,
-  PriceCharts,
-} from "@/components/LazyCharts";
+import { MarketInsightsCharts, PriceCharts } from "@/components/LazyCharts";
+import Link from "next/link";
 import type { MarketInsightData } from "@/components/MarketInsightsCharts";
 import type { BrandSummary } from "@/lib/brand-summaries";
 import { getAnalyticsData } from "@/lib/analytics-data";
 import { formatNumber, formatPrice, trPercent } from "@/lib/utils";
 import { StatsResponse } from "@/types";
-import { getBrandModelOptions } from "@/lib/brand-models";
 
 // ISR: 2 dakikada bir arka planda tazeler — anlık yükleme + güncel veri
 // Analiz sayfası 6 saatte bir yeniden çizilir (ISR). Eskiden 5 dakikaydı ve ayrıca veri önbelleği (unstable_cache)
@@ -64,16 +60,10 @@ async function AnalyticsContent() {
     topBrands: [],
   };
 
-  let brandOptions = { brands: [] as string[], brandModels: {} as Record<string, string[]> };
-
   try {
-    const [data, bOptions] = await Promise.all([
-      getAnalyticsData(),
-      getBrandModelOptions().catch(() => ({ brands: [], brandModels: {} })),
-    ]);
+    const data = await getAnalyticsData();
 
     brandSummaries = data.brandSummaries;
-    brandOptions = bOptions;
     insightsData = data.insights;
     stats = {
       byBrand: [],
@@ -154,11 +144,15 @@ async function AnalyticsContent() {
           {/* MARKA & DÜZELTİLMİŞ MODEL YILI EĞRİSİ */}
           <PriceCharts brandSummaries={brandSummaries} byYear={stats.byYear} />
 
-          {/* İNTERAKTİF MARKA & MODEL DEĞER KAYBI ANALİZİ */}
-          <InteractiveModelAnalytics
-            initialBrands={brandOptions.brands}
-            initialBrandModels={brandOptions.brandModels}
-          />
+          {/* Model bazlı değer kaybı artık kendi sayfasında (km ve hasar etkileriyle) */}
+          <Link href="/deger-kaybi" className="card group flex flex-wrap items-center justify-between gap-3 p-5 transition hover:border-[var(--accent)]">
+            <div>
+              <p className="eyebrow">Marka ve model seç</p>
+              <p className="font-display text-xl font-semibold">Değer kaybı: yaş, kilometre ve hasar etkisi</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Aynı yaş ve kilometrede hasarın, boyanın ve her 10 bin km'nin fiyata etkisi.</p>
+            </div>
+            <span className="btn btn-primary">Değer kaybına git</span>
+          </Link>
         </>
       )}
     </div>

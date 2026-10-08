@@ -3,6 +3,7 @@ import { Car } from "@/models/Car";
 import { User } from "@/models/User";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { LIST_IMAGE_LIMIT, isLeanCarDoc, type LeanCarDoc } from "@/lib/serialize-car";
+import { serializeFavoriteLists, type FavoriteListDTO } from "@/lib/favorite-lists";
 
 /**
  * Kullanıcının favorilediği ama artık yayında olmayan (kaynaktan kalkmış ya da satılmış) ilanın MİNİMUM görünümü:
@@ -22,15 +23,20 @@ export interface UnavailableFavorite {
 export interface FavoritesResult {
   /** Favori kimliklerinin tamamı (ilan sayfasındaki kalp durumu için). */
   ids: string[];
+  /** Kullanıcının favori grupları (her grup yalnızca ilan kimliklerini taşır). */
+  lists: FavoriteListDTO[];
   /** Herkese açık (aktif + onaylı) favori ilanlar; en son eklenen başta. */
   available: LeanCarDoc[];
   unavailable: UnavailableFavorite[];
 }
 
 export async function loadFavorites(userId: string): Promise<FavoritesResult> {
-  const user = await User.findById(userId).select("favorites").lean<{ favorites?: Types.ObjectId[] } | null>();
+  const user = await User.findById(userId)
+    .select("favorites favoriteLists")
+    .lean<{ favorites?: Types.ObjectId[]; favoriteLists?: { _id: Types.ObjectId; name?: string; carIds?: Types.ObjectId[] }[] } | null>();
   const ids = (user?.favorites || []).map((id) => id.toString());
-  if (ids.length === 0) return { ids, available: [], unavailable: [] };
+  const lists = serializeFavoriteLists(user?.favoriteLists);
+  if (ids.length === 0) return { ids, lists, available: [], unavailable: [] };
 
   const [publicDocs, otherDocs] = await Promise.all([
     Car.find({ _id: { $in: ids }, ...PUBLIC_LISTING_FILTER })
@@ -72,8 +78,11 @@ export async function loadFavorites(userId: string): Promise<FavoritesResult> {
   const hiddenIds = new Set(stillExistsHidden.map((doc) => String(doc._id)));
   const gone = ids.filter((id) => !known.has(id) && !hiddenIds.has(id));
   if (gone.length > 0) {
-    User.updateOne({ _id: userId }, { $pull: { favorites: { $in: gone } } }).catch(() => {});
+    User.updateOne(
+      { _id: userId },
+      { $pull: { favorites: { $in: gone }, "favoriteLists.$[].carIds": { $in: gone } } }
+    ).catch(() => {});
   }
 
-  return { ids, available, unavailable };
+  return { ids, lists, available, unavailable };
 }

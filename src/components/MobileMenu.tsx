@@ -14,6 +14,7 @@ interface Props {
 const PUBLIC_LINKS = [
   { href: "/", label: "Keşfet" },
   { href: "/analytics", label: "Analiz" },
+  { href: "/deger-kaybi", label: "Değer Kaybı" },
   { href: "/predict", label: "Fiyat Tahmini" },
   { href: "/compare", label: "Karşılaştır" },
   { href: "/map", label: "Harita" },

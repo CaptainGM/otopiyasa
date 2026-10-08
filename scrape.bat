@@ -74,6 +74,10 @@ if /i "%secim%"=="S" goto :sitemap
 if /i "%secim%"=="N" goto :yeniilan
 if /i "%secim%"=="E" goto :envanter
 
+rem Sunucu artik scrape.mjs tarafindan ayri pencere acilmadan, bu terminalin arka planinda baslatilir ve kapatilir.
+rem Yalnizca paralel modda (iki tarama ayni sunucuyu paylasir) sunucu ayri pencerede acilir.
+if /i not "%secim%"=="P" goto :sunucusuz
+
 echo.
 echo Sunucu kontrol ediliyor...
 powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:3000' -TimeoutSec 5 -UseBasicParsing | Out-Null; exit 0 } catch { exit 1 }"
@@ -94,6 +98,7 @@ if errorlevel 1 (
     echo Sunucu zaten calisiyor.
 )
 
+:sunucusuz
 if /i "%secim%"=="P" goto :paralel
 if /i "%secim%"=="Z" goto :zamanli
 
@@ -101,8 +106,7 @@ echo.
 node scripts\scrape.mjs %secim%
 
 echo.
-echo Not: veri cekme bitti. Sunucu ayri pencerede acik kaldi;
-echo siteyi kullanmaya devam edebilir ya da o pencereyi kapatabilirsin.
+echo Not: veri cekme bitti. Tarama icin acilan sunucu da kapatildi.
 pause
 goto :eof
 

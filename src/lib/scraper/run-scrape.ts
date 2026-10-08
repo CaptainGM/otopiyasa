@@ -33,7 +33,7 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
 import { modelFamilyKey } from "@/lib/model-family";
 import { RareModelAttempt } from "@/models/RareModelAttempt";
-import { familyId, selectRareFamilies } from "@/lib/scraper/rare-models";
+import { DAY_MS, familyId, retryDaysFor, selectRareFamilies } from "@/lib/scraper/rare-models";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
   if (source === "sahibinden") return [sahibindenAdapter];
@@ -347,11 +347,19 @@ export async function runScrapeJob(options: {
 
   for (const adapter of adapters) {
     let saved = 0;
+    let adapterInserted = 0;
+    let adapterUpdated = 0;
 
     const onListing = async (listing: ScrapedListing) => {
       const result = await saveListing(listing);
-      if (result === "inserted") inserted += 1;
-      if (result === "updated" || result === "reactivated") updated += 1;
+      if (result === "inserted") {
+        inserted += 1;
+        adapterInserted += 1;
+      }
+      if (result === "updated" || result === "reactivated") {
+        updated += 1;
+        adapterUpdated += 1;
+      }
       if (result === "reactivated") reactivated += 1;
       if (result === "unchanged") unchanged += 1;
       if (result !== "skipped" && result !== "unchanged") {
@@ -377,7 +385,7 @@ export async function runScrapeJob(options: {
         onListing,
         options.pageOffset
       );
-      sources.push({ source: adapter.id as ListingSource, fetched, saved });
+      sources.push({ source: adapter.id as ListingSource, fetched, saved, inserted: adapterInserted, updated: adapterUpdated });
     } catch (error) {
       errors.push(
         `${adapter.label}: ${
@@ -386,7 +394,7 @@ export async function runScrapeJob(options: {
       );
 
       if (saved > 0) {
-        sources.push({ source: adapter.id as ListingSource, fetched: saved, saved });
+        sources.push({ source: adapter.id as ListingSource, fetched: saved, saved, inserted: adapterInserted, updated: adapterUpdated });
       }
     }
   }
@@ -478,8 +486,11 @@ export async function runRareBrandScrape(
 }
 
 
-/** Aile başına bir sayfa (~20 ilan): hedef 15–20 ilan, fazlası gereksiz. */
-const RARE_MODEL_PAGES = 1;
+/** Aile başına en çok bu kadar liste sayfası (~20 ilan/sayfa); zaten kayıtlı ilanların detayı yeniden çekilmez. */
+const RARE_MODEL_PAGES = 2;
+
+/** Bu kadar ya da daha çok ilanı olan aileler nadir sayılmaz; kademeli ilerleme için geniş bir tavan (sabit hedef yok). */
+const RARE_MODEL_CEILING = 100;
 
 const RARE_MODEL_LIMIT = 120;
 
@@ -491,7 +502,7 @@ const RARE_MODEL_MAX_LISTINGS = 1500;
  * atlanır (bkz. rare-models.ts).
  */
 export async function runRareModelScrape(
-  threshold = 15,
+  threshold = RARE_MODEL_CEILING,
   perModelPages = RARE_MODEL_PAGES,
   maxSegments = RARE_MODEL_LIMIT,
   maxListings = RARE_MODEL_MAX_LISTINGS
@@ -499,14 +510,21 @@ export async function runRareModelScrape(
   const rows = await Car.aggregate<{ _id: { brand: string; model: string }; count: number }>([
     { $group: { _id: { brand: "$brand", model: "$model" }, count: { $sum: 1 } } },
   ]);
-  const attempts = await RareModelAttempt.find({}, { brand: 1, familyKey: 1 }).lean<Array<{ brand: string; familyKey: string }>>();
-  // Bir kez denenen aile (kaynakta ne kadar varsa çekildi) bir daha aranmaz; sıra başka az ilanlı aileye geçer.
-  const attempted = new Set(attempts.map((a) => familyId(a.brand, a.familyKey)));
+  const attempts = await RareModelAttempt.find({}, { brand: 1, familyKey: 1, attemptedAt: 1, retryAfterDays: 1 }).lean<
+    Array<{ brand: string; familyKey: string; attemptedAt: Date; retryAfterDays?: number }>
+  >();
+  // Denenen aile not alınır; kaynakta daha fazlası varsa 3 gün, tükenmişse 14 gün sonra yeniden denenir (bkz. rare-models.ts).
+  const blockedUntil = new Map(
+    attempts.map((a) => [familyId(a.brand, a.familyKey), a.attemptedAt.getTime() + (a.retryAfterDays ?? 3) * DAY_MS])
+  );
+  const nowMs = Date.now();
+  const waiting = [...blockedUntil.values()].filter((until) => until > nowMs);
   const targets = selectRareFamilies(
     rows.map((r) => ({ brand: r._id?.brand || "", model: r._id?.model || "", count: r.count })),
     threshold,
     maxSegments,
-    attempted
+    blockedUntil,
+    nowMs
   );
   const familyKeyOf = new Map(targets.map((t) => [familyId(t.brand, t.model), t.familyKey]));
 
@@ -548,6 +566,7 @@ export async function runRareModelScrape(
               model: segment.model,
               attemptedAt: new Date(),
               found: result.found,
+              retryAfterDays: retryDaysFor(result.found, perModelPages),
               added: result.added,
               before: result.before ?? 0,
               after: result.after ?? 0,
@@ -572,7 +591,8 @@ export async function runRareModelScrape(
   return {
     success: true,
     message:
-      `Nadir-model taraması: toplam ${threshold} ilandan az olan ${targets.length} model ailesinden ${processed} tanesi tarandı` +
+      `Nadir-model taraması: en az ilanlı ${targets.length} model ailesinden ${processed} tanesi tarandı` +
+      (waiting.length > 0 ? ` (${waiting.length} aile bekleme süresinde: kaynakta yeni ilan çıkmış olabilir diye 3-14 gün sonra yeniden denenir)` : "") +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
     inserted: counts.inserted,
     updated: counts.updated,

@@ -11,6 +11,7 @@ import {
   arabamRefreshStatus,
 } from "@/lib/scraper/run-scrape";
 import { runEnrichArabamBatch } from "@/lib/scraper/enrich-arabam";
+import { runRecentArabamScrape } from "@/lib/scraper/arabam-discovery";
 import { requireAdmin } from "@/lib/auth";
 import { ManualScrapeLog } from "@/models/ManualScrapeLog";
 
@@ -60,12 +61,15 @@ export async function POST(request: Request) {
           (result.inserted || 0) + (result.updated || 0) ||
           (typeof result.scanned === "number" ? result.scanned : 0);
 
-        const bySourceMap: Record<string, { fetched: number; saved: number }> = {};
+        const bySourceMap: Record<string, { fetched: number; saved: number; inserted?: number; updated?: number }> = {};
         if (Array.isArray(result.sources)) {
           for (const s of result.sources) {
             bySourceMap[s.source] = {
               fetched: s.fetched || 0,
               saved: s.saved || 0,
+              // Kaynak bazında yeni/güncellenen yalnızca bildiren taramalarda yazılır (günlük özet bunlara bakar).
+              ...(typeof s.inserted === "number" ? { inserted: s.inserted } : {}),
+              ...(typeof s.updated === "number" ? { updated: s.updated } : {}),
             };
           }
         }
@@ -153,12 +157,12 @@ export async function POST(request: Request) {
     if (body.mode === "rare-model") {
       const threshold =
         typeof body.threshold === "number" && body.threshold > 0
-          ? Math.min(body.threshold, 100)
-          : 15;
+          ? Math.min(body.threshold, 1000)
+          : 100;
       const perModelPages =
         typeof body.perModelPages === "number" && body.perModelPages > 0
           ? Math.min(body.perModelPages, 20)
-          : 1;
+          : 2;
       const maxSegments =
         typeof body.maxSegments === "number" && body.maxSegments > 0
           ? Math.min(body.maxSegments, 500)
@@ -169,6 +173,25 @@ export async function POST(request: Request) {
           : 1500;
       const result = await runRareModelScrape(threshold, perModelPages, maxSegments, maxListings);
       await recordLog(result, "rare-model", "Nadir Model Doldurma");
+      return NextResponse.json(result);
+    }
+
+    // 5a. En güncel ilanlar: sitemap'ten son N günde yayınlanan ilanları en yeniden başlayarak çeker.
+    if (body.mode === "recent") {
+      if (isVercel) {
+        return NextResponse.json(
+          { success: false, message: "Bu tarama ev bilgisayarındaki scrape.bat üzerinden çalıştırılır." },
+          { status: 409 }
+        );
+      }
+      const days =
+        typeof body.days === "number" && body.days > 0 ? Math.min(Math.trunc(body.days), 30) : 3;
+      const maxListings =
+        typeof body.maxListings === "number" && body.maxListings > 0
+          ? Math.min(Math.trunc(body.maxListings), 5000)
+          : 600;
+      const result = await runRecentArabamScrape(days, maxListings);
+      await recordLog(result, "recent", `Son ${days} Gün İlanları`);
       return NextResponse.json(result);
     }
 

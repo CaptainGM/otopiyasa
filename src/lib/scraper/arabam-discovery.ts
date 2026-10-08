@@ -4,7 +4,8 @@ import { enrichListing, fetchArabamByHrefs } from "@/lib/scraper/adapters";
 import { createSaveCounter, saveListing } from "@/lib/scraper/run-scrape";
 import { fetchPageWithBrowser, isCloudflareChallenge, isListingGone, parseArabamDetailHtml } from "@/lib/scraper/browser-scrape";
 import { waitForArabamTurn } from "@/lib/scraper/verify-listing";
-import { hrefFromUrl } from "@/lib/scraper/arabam-sitemap";
+import { hrefFromUrl, isSitemapSyncDue, lastmodCutoff, syncArabamSitemap } from "@/lib/scraper/arabam-sitemap";
+import { reportEvent, reportProgress } from "@/lib/scraper/progress";
 
 /**
  * Sitemap'ten gelen yeni ilan adaylarının detayını okur (arabam-sitemap.ts kuyruğu doldurur).
@@ -140,11 +141,90 @@ async function runPacedBrowserDiscovery(
   };
 }
 
+/** Sitemap kuyruğu bu süreden eskiyse "son günler" taraması önce sitemap'i yeniler (yaklaşık 2-3 dk). */
+const RECENT_SITEMAP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const RECENT_BATCH = 25;
+const RECENT_MAX_IDLE_BATCHES = 3;
+
+export interface RecentScrapeResult {
+  success: boolean;
+  message: string;
+  inserted: number;
+  updated: number;
+  deleted: number;
+  sources: Array<{ source: string; fetched: number; saved: number }>;
+}
+
+/**
+ * "En güncel ilanlar" taraması: sitemap'teki yeni ilan adaylarından son [days] gün içinde yayınlanan/güncellenenleri
+ * en yeni numaradan başlayarak okur. Eski ilanlarla uğraşmaz; amaç sitenin son günlerin ilanlarıyla güncel kalması.
+ * Kuyruk boşsa ya da son günlerin adayları bittiyse kendiliğinden durur.
+ */
+export async function runRecentArabamScrape(days = 3, maxCandidates = 600): Promise<RecentScrapeResult> {
+  const notes: string[] = [];
+  if (await isSitemapSyncDue(new Date(), RECENT_SITEMAP_MAX_AGE_MS)) {
+    reportProgress("Sitemap okunuyor", 0, 1);
+    const sync = await syncArabamSitemap({ log: (m) => console.log(m) });
+    if (sync.status === "failed") notes.push(`sitemap yenilenemedi (${sync.message}); eldeki kuyrukla devam edildi`);
+  }
+
+  const windowTotal = await DiscoveryCandidate.countDocuments({
+    source: "arabam",
+    attempts: { $lt: MAX_ATTEMPTS },
+    lastmod: { $gte: lastmodCutoff(days) },
+  });
+  const planned = Math.min(windowTotal, maxCandidates);
+  if (planned === 0) {
+    return {
+      success: true,
+      message: `Son ${days} günde eklenen, bizde olmayan ilan adayı yok${notes.length ? ` (${notes.join("; ")})` : ""}.`,
+      inserted: 0,
+      updated: 0,
+      deleted: 0,
+      sources: [{ source: "arabam", fetched: 0, saved: 0 }],
+    };
+  }
+
+  let read = 0;
+  let inserted = 0;
+  let idle = 0;
+  while (read < planned) {
+    const r = await runSitemapDiscovery(Math.min(RECENT_BATCH, planned - read), { sinceDays: days });
+    if (r.picked === 0) break;
+    read += r.picked;
+    inserted += r.inserted;
+    reportProgress(`Son ${days} gün ilanları`, Math.min(read, planned), planned);
+    if (r.inserted > 0) reportEvent({ label: `Son ${days} gün`, added: r.inserted });
+    idle = r.inserted === 0 ? idle + 1 : 0;
+    if (idle >= RECENT_MAX_IDLE_BATCHES) {
+      notes.push(`art arda ${RECENT_MAX_IDLE_BATCHES} partide yeni ilan gelmedi (araç olmayan ilanlar ya da engel), durduruldu`);
+      break;
+    }
+  }
+
+  const left = await DiscoveryCandidate.countDocuments({
+    source: "arabam",
+    attempts: { $lt: MAX_ATTEMPTS },
+    lastmod: { $gte: lastmodCutoff(days) },
+  });
+  return {
+    success: true,
+    message:
+      `Son ${days} gün: ${read} aday okundu, ${inserted} yeni ilan eklendi; bu aralıkta ${left} aday sırada` +
+      (notes.length ? ` (${notes.join("; ")})` : "."),
+    inserted,
+    updated: 0,
+    deleted: 0,
+    sources: [{ source: "arabam", fetched: read, saved: inserted }],
+  };
+}
+
 export async function runSitemapDiscovery(
   limit = 40,
-  options: { safeForWatcher?: boolean } = {}
+  options: { safeForWatcher?: boolean; sinceDays?: number } = {}
 ): Promise<DiscoveryResult> {
-  const batch = await DiscoveryCandidate.find({ source: "arabam", attempts: { $lt: MAX_ATTEMPTS } })
+  const recentOnly = options.sinceDays && options.sinceDays > 0 ? { lastmod: { $gte: lastmodCutoff(options.sinceDays) } } : {};
+  const batch = await DiscoveryCandidate.find({ source: "arabam", attempts: { $lt: MAX_ATTEMPTS }, ...recentOnly })
     .sort({ numericId: -1 })
     .limit(limit)
     .lean<Array<{ _id: unknown; externalId: string; url: string; attempts: number }>>();

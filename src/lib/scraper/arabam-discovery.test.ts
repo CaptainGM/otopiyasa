@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { NewestCandidates, createSitemapParser, hrefFromUrl } from "./arabam-sitemap";
+import { NewestCandidates, createSitemapParser, hrefFromUrl, lastmodCutoff } from "./arabam-sitemap";
 
 describe("NewestCandidates", () => {
   const add = (c: NewestCandidates, ids: number[]) => ids.forEach((id) => c.add(String(id), "2026-09-30", `https://www.arabam.com/ilan/x/${id}`));
@@ -32,6 +32,22 @@ describe("createSitemapParser (adres)", () => {
     );
     p.end();
     expect(got).toEqual([["43138071", "2026-09-30", "https://www.arabam.com/ilan/galeriden-satilik-bmw/baslik/43138071"]]);
+  });
+});
+
+describe("lastmodCutoff", () => {
+  const now = Date.UTC(2026, 9, 8, 15, 30);
+
+  it("N gün önceki günün tarih metnini verir", () => {
+    expect(lastmodCutoff(3, now)).toBe("2026-10-05");
+    expect(lastmodCutoff(0, now)).toBe("2026-10-08");
+  });
+
+  it("hem tarih hem tarih-saat biçimindeki lastmod ile sözlük sırasıyla doğru karşılaştırılır", () => {
+    const cutoff = lastmodCutoff(3, now);
+    expect("2026-10-05" >= cutoff).toBe(true);
+    expect("2026-10-05T01:00:00+00:00" >= cutoff).toBe(true);
+    expect("2026-10-04T23:59:59+00:00" >= cutoff).toBe(false);
   });
 });
 

@@ -69,15 +69,15 @@ const MODES = {
   },
   
   6: {
-    name: "Nadir MODEL doldurma (<15 ilanli model ailelerini ~20 ilana tamamlar; bir kez denenen bir daha aranmaz)",
+    name: "Nadir MODEL doldurma (en az ilanli model ailelerinden baslar; denenen aile 3-14 gun beklemeye alinir)",
     jobs: [
-      { mode: "rare-model", threshold: 15, perModelPages: 1, maxSegments: 150, maxListings: 3000, label: "Nadir modeller" },
+      { mode: "rare-model", threshold: 100, perModelPages: 2, maxSegments: 150, maxListings: 3000, label: "Nadir modeller" },
     ],
   },
   7: {
-    name: "Nadir MODEL - genis (<20 ilanli, 400 model ailesi; bir kez denenen bir daha aranmaz)",
+    name: "Nadir MODEL - genis (en az ilanli 400 model ailesi; denenen aile 3-14 gun beklemeye alinir)",
     jobs: [
-      { mode: "rare-model", threshold: 20, perModelPages: 1, maxSegments: 400, maxListings: 4000, label: "Nadir modeller (genis)" },
+      { mode: "rare-model", threshold: 100, perModelPages: 3, maxSegments: 400, maxListings: 4000, label: "Nadir modeller (genis)" },
     ],
   },
   // Var olan ilanlari yeniden cekip FIYATLARINI gunceller (kaynak siteyle esitler).
@@ -159,6 +159,11 @@ const MODES = {
     jobs: [
       { mode: "sparse-market-segments", maxSegments: 100, pagesPerYear: 4, maxListings: 500, label: "Seyrek piyasa emsalleri" },
     ],
+  },
+  // Sitemap'ten yalnizca SON GUNLERIN ilanlarini, en yeniden baslayarak ceker (site taze kalsin).
+  21: {
+    name: "SON 3 GUN: sitemap'ten son 3 gunun Arabam ilanlari, en yeniden baslayarak",
+    jobs: [{ mode: "recent", days: 3, maxListings: 600, label: "Son 3 gun ilanlari" }],
   },
 };
 

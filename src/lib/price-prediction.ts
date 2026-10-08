@@ -51,6 +51,8 @@ export interface PricePrediction {
   outliersRemoved?: number;
   
   segmentSize?: number;
+  /** Tahmini besleyen arşiv ilanı sayısı (düşük ağırlıkla; emsal sayısına girmez). */
+  archivedUsed?: number;
  
   comparableRange?: { min: number; max: number };
   
@@ -71,7 +73,7 @@ export interface PricePrediction {
   logStd?: number;
 }
 
-interface TrainingRow {
+export interface TrainingRow {
   year: number;
   mileage: number;
   price: number;
@@ -84,6 +86,10 @@ interface TrainingRow {
   /** 1/0; vites ya da yakıt kaynakta bilinmiyorsa null (segmentin bilinen oranıyla doldurulur). */
   automatic: number | null;
   diesel: number | null;
+  /** Eğitimdeki payı: aktif ilan 1; arşivdeki (satılmış/kaldırılmış) ilan yaşına göre 0–0,5. Yoksa 1. */
+  weight?: number;
+  /** Arşivden gelen satır: emsal sayısına ve kullanıcıya gösterilen sayılara girmez. */
+  archived?: boolean;
 }
 
 
@@ -121,7 +127,9 @@ function solveLinearSystem(matrix: number[][], vector: number[]): number[] | nul
 export function fitLinear(
   X: number[][],
   y: number[],
-  ridge = 0
+  ridge = 0,
+  /** Satır ağırlıkları (yoksa hepsi 1). Arşiv ilanları aktiflerden daha az etki etsin diye kullanılır. */
+  weights?: number[]
 ): { coeffs: number[]; r2: number } | null {
   const n = y.length;
   if (n === 0) return null;
@@ -131,13 +139,13 @@ export function fitLinear(
   const XtX = Array.from({ length: k }, () => new Array(k).fill(0));
   const Xty = new Array(k).fill(0);
   for (let i = 0; i < n; i++) {
+    const w = weights ? weights[i] : 1;
     for (let a = 0; a < k; a++) {
-      Xty[a] += X[i][a] * y[i];
-      for (let b = 0; b < k; b++) XtX[a][b] += X[i][a] * X[i][b];
+      Xty[a] += w * X[i][a] * y[i];
+      for (let b = 0; b < k; b++) XtX[a][b] += w * X[i][a] * X[i][b];
     }
   }
 
-  
   if (ridge > 0) {
     for (let a = 1; a < k; a++) XtX[a][a] += ridge;
   }
@@ -145,14 +153,22 @@ export function fitLinear(
   const beta = solveLinearSystem(XtX, Xty);
   if (!beta) return null;
 
-  const mean = y.reduce((s, v) => s + v, 0) / n;
+  let wSum = 0;
+  let wy = 0;
+  for (let i = 0; i < n; i++) {
+    const w = weights ? weights[i] : 1;
+    wSum += w;
+    wy += w * y[i];
+  }
+  const mean = wSum > 0 ? wy / wSum : 0;
   let ssRes = 0;
   let ssTot = 0;
   for (let i = 0; i < n; i++) {
+    const w = weights ? weights[i] : 1;
     let pred = 0;
     for (let a = 0; a < k; a++) pred += beta[a] * X[i][a];
-    ssRes += (y[i] - pred) ** 2;
-    ssTot += (y[i] - mean) ** 2;
+    ssRes += w * (y[i] - pred) ** 2;
+    ssTot += w * (y[i] - mean) ** 2;
   }
   const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
   return { coeffs: beta, r2 };
@@ -270,15 +286,19 @@ function dieselIndicator(raw?: string): number | null {
   return fuel === "Bilinmiyor" ? null : fuel === "Dizel" ? 1 : 0;
 }
 
+/** Marka regex'i + durum filtresi varken planlayıcı updatedAt indeksini seçip nadir markada tüm koleksiyonu tarıyordu (2 sn); marka+model indeksi süzmeyi anahtarlarda yapar. */
+const BRAND_INDEX_HINT = { status: 1, brand: 1, model: 1, year: 1 } as const;
+
 async function loadTrainingRows(
   filter: Record<string, unknown>,
   limit: number
 ): Promise<TrainingRow[]> {
-  const docs = await Car.find({ ...filter, ...UNMODERATED_EXCLUDED })
+  const query = Car.find({ ...filter, ...UNMODERATED_EXCLUDED })
     .sort({ updatedAt: -1 })
     .select("year mileage price damageFlag paintChange features")
-    .limit(limit)
-    .lean<TrainingDoc[]>();
+    .limit(limit);
+  if (filter.status !== undefined && typeof filter.brand === "object" && filter.brand !== null) query.hint(BRAND_INDEX_HINT);
+  const docs = await query.lean<TrainingDoc[]>();
   return docs
     .filter((d) => d.price > 0 && d.year > 1900 && d.mileage >= 0)
     .map((d) => ({
@@ -294,6 +314,91 @@ async function loadTrainingRows(
     }));
 }
 
+
+/**
+ * ARŞİV İLANLARI (satılmış/kaldırılmış) tahmini besler ama düşük payla: aktif ilan 1, arşiv ilanı en çok 0,5 ağırlıkta ve yaşlandıkça
+ * azalır; 180 günden eskisi hiç etkilemez (enflasyon, eski fiyatlar bugünün piyasasını bozmasın). Sıfır km araçlar arşivden alınmaz
+ * (liste fiyatı zamlarla değişir). Arşiv satırları kullanıcıya emsal olarak gösterilmez ve emsal sayısına girmez.
+ *
+ * Seçimin dayanağı (8 Eki 2026, 2.200 aktif ilanı tek tek gizleyip tahmin ettirerek): arşivsiz medyan hata %9,7 ve ±%10 içinde %51;
+ * bu ayarla %9,1 ve %54; 8–29 ilanlı modellerde ortalama hata %17,3 → %14,4. Ağırlık 1,0 ya da 90/365 gün pek fark yaratmadı.
+ * Eski davranışta marka ve genel katmanlar arşivi yaşa bakmadan tam ağırlıkla karıştırıyordu ve kazanç sağlamıyordu.
+ */
+export const ARCHIVE_MAX_AGE_DAYS = 180;
+export const ARCHIVE_MAX_WEIGHT = 0.5;
+export const ARCHIVE_MIN_KM = 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function archiveWeight(ageDays: number, maxAgeDays = ARCHIVE_MAX_AGE_DAYS, maxWeight = ARCHIVE_MAX_WEIGHT): number {
+  if (!Number.isFinite(ageDays) || ageDays < 0 || ageDays >= maxAgeDays) return 0;
+  return maxWeight * (1 - ageDays / maxAgeDays);
+}
+
+type ArchivedDoc = TrainingDoc & { removedAt?: Date; updatedAt?: Date };
+
+async function loadArchivedRows(identity: Record<string, unknown>, limit: number, now = Date.now()): Promise<TrainingRow[]> {
+  const since = new Date(now - ARCHIVE_MAX_AGE_DAYS * DAY_MS);
+  const query = Car.find({
+    ...identity,
+    ...UNMODERATED_EXCLUDED,
+    status: "removed",
+    price: { $gt: 0 },
+    mileage: { $gte: ARCHIVE_MIN_KM },
+    // Arşive girme tarihi: removedAt (yeni kayıtlarda); eski kayıtlarda yoksa son güncelleme zamanı.
+    $and: [{ $or: [{ removedAt: { $gte: since } }, { removedAt: { $exists: false }, updatedAt: { $gte: since } }] }],
+  })
+    .sort({ updatedAt: -1 })
+    .select("year mileage price damageFlag paintChange features removedAt updatedAt")
+    .limit(limit);
+  // Marka filtresi varken planlayıcı updatedAt sıralama indeksini seçip nadir markada (3 kayıt) 28 bin arşiv kaydını tek tek
+  // tarıyordu (2,4 sn); marka+model indeksi regex'i anahtarlar üzerinde süzer.
+  if (identity.brand !== undefined) query.hint(BRAND_INDEX_HINT);
+  const docs = await query.lean<ArchivedDoc[]>();
+  const rows: TrainingRow[] = [];
+  for (const d of docs) {
+    if (!(d.price > 0) || !(d.year > 1900) || !(d.mileage >= ARCHIVE_MIN_KM)) continue;
+    const when = (d.removedAt ?? d.updatedAt) as Date | undefined;
+    const weight = archiveWeight(when ? (now - new Date(when).getTime()) / DAY_MS : Infinity);
+    if (weight <= 0) continue;
+    rows.push({
+      year: d.year,
+      mileage: d.mileage,
+      price: d.price,
+      damaged: d.damageFlag ? 1 : 0,
+      painted: derivePainted(d.paintChange),
+      engineSize: d.features?.engineSize ?? null,
+      horsepower: d.features?.horsepower ?? null,
+      automatic: gearIndicator(d.features?.transmission),
+      diesel: dieselIndicator(d.features?.fuelType),
+      weight,
+      archived: true,
+    });
+  }
+  return rows;
+}
+
+/** Bir katmanın eğitim satırları: önce aktif ilanlar (tam ağırlık), ardından yaşa göre azalan ağırlıkla arşiv ilanları. */
+async function loadTier(
+  identity: Record<string, unknown>,
+  activeLimit: number,
+  archiveLimit: number,
+  /** Aktif ilan sayısı bunu geçtiyse arşiv sorgulanmaz: geriye dönük testte (2.200 ilan) çok ilanlı modellerde kazanç <1 puandı. */
+  skipArchiveAbove = Number.POSITIVE_INFINITY,
+  /** Arşiv için daha dar bir eşleşme (başlık regex'i arşivde pahalı bir tarama olduğundan atlanır). */
+  archiveIdentity: Record<string, unknown> = identity
+): Promise<TrainingRow[]> {
+  const active = await loadTrainingRows({ ...identity, status: { $ne: "removed" } }, activeLimit);
+  if (active.length >= skipArchiveAbove) return active;
+  return [...active, ...(await loadArchivedRows(archiveIdentity, archiveLimit))];
+}
+
+/** Segmentte (marka + model) bu kadar aktif ilan varsa arşiv gerekmez. */
+const SEGMENT_SKIP_ARCHIVE_ABOVE = 60;
+
+/** Ağırlıkların toplamı: arşiv satırları aktiften az saydığı için örneklem büyüklüğü ölçüsü olarak satır sayısından doğrudur. */
+export function effectiveSampleSize(rows: TrainingRow[]): number {
+  return rows.reduce((sum, r) => sum + (r.weight ?? 1), 0);
+}
 
 async function loadComparables(
   brand: string,
@@ -464,33 +569,64 @@ export async function predictPrice(
   const { damaged, painted } = conditionFlags(condition);
   const input: FeatureInput = { year, mileage, damaged, painted };
 
-  // 1. Önce doğrudan indeksli segment sorgusu (~5ms)
-  let segmentRows = await memo(`seg:${brand}|${resolvedModel}`, () =>
-    loadTrainingRows(
-      {
-        brand,
-        model: resolvedModel,
-        status: { $ne: "removed" },
-      },
-      200
-    )
-  );
+  // 1. Önce doğrudan indeksli segment sorgusu (~5ms): aktif ilanlar + yaşa göre ağırlıklı arşiv.
+  let segmentRows = await memo(`seg:${brand}|${resolvedModel}`, () => loadTier({ brand, model: resolvedModel }, 200, 100, SEGMENT_SKIP_ARCHIVE_ABOVE));
 
   // Yeterli örnek yoksa geniş regex sorgusuyla destekle
-  if (segmentRows.length < MIN_SAMPLE_FOR_REGRESSION) {
-    segmentRows = await memo(`segrx:${brand}|${resolvedModel}`, () => loadTrainingRows(
-      {
-        brand: { $regex: turkishSearchRegex(brand), $options: "i" },
-        $or: [
-          { model: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } },
-          { title: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } },
-        ],
-      },
-      200
-    ));
+  if (effectiveSampleSize(segmentRows) < MIN_SAMPLE_FOR_REGRESSION) {
+    segmentRows = await memo(`segrx:${brand}|${resolvedModel}`, () =>
+      loadTier(
+        {
+          brand: { $regex: turkishSearchRegex(brand), $options: "i" },
+          $or: [
+            { model: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } },
+            { title: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } },
+          ],
+        },
+        200,
+        100,
+        SEGMENT_SKIP_ARCHIVE_ABOVE,
+        { brand: { $regex: turkishSearchRegex(brand), $options: "i" }, model: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } }
+      )
+    );
   }
 
   const comparables = await loadComparables(brand, resolvedModel, year, mileage, 5, title);
+  const finalPrediction = await predictFromTiers(
+    {
+      segment: segmentRows,
+      brand: () => memo(`brand:${brand}`, () => loadTier({ brand: { $regex: turkishSearchRegex(brand), $options: "i" } }, 500, 250)),
+      global: () => memo("global", () => loadTier({}, 1000, 300)),
+    },
+    input,
+    comparables,
+    matchedModel
+  );
+
+  return anchorToClosePeers(finalPrediction, comparables, year, mileage, condition);
+}
+
+export interface PredictionTiers {
+  /** Marka + model satırları (aktif + ağırlıklı arşiv). */
+  segment: TrainingRow[];
+  /** Marka geneli; yalnızca segment yetmezse çağrılır. */
+  brand: () => Promise<TrainingRow[]>;
+  /** Tüm piyasa; yalnızca marka da yetmezse çağrılır. */
+  global: () => Promise<TrainingRow[]>;
+}
+
+/**
+ * Katmanlı tahmin (segment → marka → genel), veritabanından bağımsız: yükleme dışarıdadır. Aynı fonksiyonu geriye dönük test de
+ * (bellekteki satırlarla) kullanır, böylece ölçülen doğruluk canlı sistemin doğruluğudur.
+ */
+export async function predictFromTiers(
+  tiers: PredictionTiers,
+  input: FeatureInput,
+  comparables: ComparableCar[],
+  matchedModel?: string
+): Promise<PricePrediction> {
+  const segmentRows = tiers.segment;
+  const activeSegment = segmentRows.filter((r) => !r.archived);
   const comparableRange =
     comparables.length > 0
       ? {
@@ -498,15 +634,15 @@ export async function predictPrice(
           max: Math.max(...comparables.map((c) => c.price)),
         }
       : undefined;
-  
-  const annualDepreciationPct = annualDepreciation(segmentRows) ?? undefined;
+
+  // Gösterilen sayılar (emsal sayısı, yıllık değer kaybı) yalnızca aktif ilanlardan gelir.
+  const annualDepreciationPct = annualDepreciation(activeSegment) ?? undefined;
   const extra = {
     matchedModel,
     annualDepreciationPct,
-    segmentSize: segmentRows.length,
+    segmentSize: activeSegment.length,
     comparableRange,
   };
-
 
   const withSegmentSpecs = (rows: TrainingRow[]): FeatureInput => {
     const m = featureMedians(rows);
@@ -519,56 +655,38 @@ export async function predictPrice(
     };
   };
 
-  let finalPrediction: PricePrediction;
+  const attempt = tryPredict(segmentRows, withSegmentSpecs(segmentRows), "segment", comparables);
+  if (attempt) return { ...attempt, ...extra };
 
-  const attempt = tryPredict(
-    segmentRows,
-    withSegmentSpecs(segmentRows),
-    "segment",
+  const brandRows = await tiers.brand();
+  const brandAttempt = tryPredict(
+    brandRows,
+    withSegmentSpecs(segmentRows.length > 0 ? segmentRows : brandRows),
+    "brand",
     comparables
   );
-  if (attempt) {
-    finalPrediction = { ...attempt, ...extra };
-  } else {
-    const brandRows = await memo(`brand:${brand}`, () =>
-      loadTrainingRows({ brand: { $regex: turkishSearchRegex(brand), $options: "i" } }, 500)
-    );
-    const brandAttempt = tryPredict(
-      brandRows,
-      withSegmentSpecs(segmentRows.length > 0 ? segmentRows : brandRows),
-      "brand",
-      comparables
-    );
-    if (brandAttempt) {
-      finalPrediction = { ...applyModelOffset(brandAttempt, segmentRows), ...extra };
-    } else {
-      const globalRows = await memo("global", () => loadTrainingRows({}, 1000));
-      const globalAttempt = tryPredict(
-        globalRows,
-        withSegmentSpecs(segmentRows.length > 0 ? segmentRows : globalRows),
-        "global",
-        comparables
-      );
-      if (globalAttempt) {
-        finalPrediction = { ...applyModelOffset(globalAttempt, segmentRows), ...extra };
-      } else {
-        const fallbackAvg =
-          globalRows.length > 0
-            ? globalRows.reduce((sum, r) => sum + r.price, 0) / globalRows.length
-            : 0;
-        finalPrediction = {
-          predictedPrice: Math.round(fallbackAvg),
-          method: "average",
-          sampleSize: globalRows.length,
-          r2: null,
-          comparables,
-          ...extra,
-        };
-      }
-    }
-  }
+  if (brandAttempt) return { ...applyModelOffset(brandAttempt, segmentRows), ...extra };
 
-  return anchorToClosePeers(finalPrediction, comparables, year, mileage, condition);
+  const globalRows = await tiers.global();
+  const globalAttempt = tryPredict(
+    globalRows,
+    withSegmentSpecs(segmentRows.length > 0 ? segmentRows : globalRows),
+    "global",
+    comparables
+  );
+  if (globalAttempt) return { ...applyModelOffset(globalAttempt, segmentRows), ...extra };
+
+  const activeGlobal = globalRows.filter((r) => !r.archived);
+  const pool = activeGlobal.length > 0 ? activeGlobal : globalRows;
+  const fallbackAvg = pool.length > 0 ? pool.reduce((sum, r) => sum + r.price, 0) / pool.length : 0;
+  return {
+    predictedPrice: Math.round(fallbackAvg),
+    method: "average",
+    sampleSize: pool.length,
+    r2: null,
+    comparables,
+    ...extra,
+  };
 }
 
 /**
@@ -698,28 +816,30 @@ export function tryPredict(
   method: PricePrediction["method"],
   comparables: ComparableCar[]
 ): PricePrediction | null {
-  if (rows.length < MIN_SAMPLE_FOR_REGRESSION) return null;
+  if (rows.length < MIN_SAMPLE_FOR_REGRESSION || effectiveSampleSize(rows) < MIN_SAMPLE_FOR_REGRESSION) return null;
 
   const medians = featureMedians(rows);
   let X = rows.map((r) => toFeatures(r, medians));
 
   let yLog = rows.map((r) => Math.log(r.price));
   let trainRows = rows;
+  let w = rows.map((r) => r.weight ?? 1);
 
-  const firstFit = fitLinear(X, yLog, RIDGE_LAMBDA);
+  const firstFit = fitLinear(X, yLog, RIDGE_LAMBDA, w);
   if (!firstFit) return null;
-
 
   const cleaned = dropOutliers(trainRows, X, yLog, firstFit.coeffs);
   const outliersRemoved = cleaned.removed;
   let fit = firstFit;
   if (outliersRemoved > 0) {
-    const refit = fitLinear(cleaned.X, cleaned.yLog, RIDGE_LAMBDA);
+    const cleanedW = cleaned.rows.map((r) => r.weight ?? 1);
+    const refit = fitLinear(cleaned.X, cleaned.yLog, RIDGE_LAMBDA, cleanedW);
     if (refit) {
       fit = refit;
       trainRows = cleaned.rows;
       X = cleaned.X;
       yLog = cleaned.yLog;
+      w = cleanedW;
     }
   }
 
@@ -729,31 +849,33 @@ export function tryPredict(
   const predicted = Math.exp(predictedLog);
   if (!Number.isFinite(predicted) || predicted <= 0) return null;
 
-
   const prices = trainRows.map((r) => r.price);
-  const meanPrice = prices.reduce((s, v) => s + v, 0) / prices.length;
+  const wSum = w.reduce((s, v) => s + v, 0);
+  const meanPrice = wSum > 0 ? prices.reduce((s, v, i) => s + w[i] * v, 0) / wSum : 0;
   let ssRes = 0;
   let ssTot = 0;
-  let sumLogResSq = 0; 
+  let sumLogResSq = 0;
   for (let i = 0; i < trainRows.length; i++) {
     let pLog = 0;
     for (let a = 0; a < X[i].length; a++) pLog += fit.coeffs[a] * X[i][a];
     const pred = Math.exp(pLog);
-    ssRes += (prices[i] - pred) ** 2;
-    ssTot += (prices[i] - meanPrice) ** 2;
-    sumLogResSq += (yLog[i] - pLog) ** 2;
+    ssRes += w[i] * (prices[i] - pred) ** 2;
+    ssTot += w[i] * (prices[i] - meanPrice) ** 2;
+    sumLogResSq += w[i] * (yLog[i] - pLog) ** 2;
   }
   const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
 
-
-  const dof = Math.max(1, trainRows.length - point.length);
+  const dof = Math.max(1, wSum - point.length);
   const logStd = Math.sqrt(sumLogResSq / dof);
   const factor = Math.exp(logStd);
+  const archivedUsed = trainRows.filter((r) => r.archived).length;
 
   return {
     predictedPrice: Math.round(predicted),
     method,
-    sampleSize: trainRows.length,
+    // Kullanıcıya gösterilen örneklem yalnızca aktif ilanlardır; arşiv ayrıca archivedUsed'da.
+    sampleSize: trainRows.length - archivedUsed,
+    ...(archivedUsed > 0 ? { archivedUsed } : {}),
     outliersRemoved,
     r2: Math.max(0, Math.min(1, r2)),
     comparables,
@@ -775,13 +897,17 @@ export function modelOffset(
 ): number {
   if (segmentRows.length === 0) return 0;
   let sum = 0;
+  let wSum = 0;
   for (const row of segmentRows) {
+    const w = row.weight ?? 1;
     const x = toFeatures(row, medians);
     let pred = 0;
     for (let a = 0; a < x.length; a++) pred += coeffs[a] * x[a];
-    sum += Math.log(row.price) - pred;
+    sum += w * (Math.log(row.price) - pred);
+    wSum += w;
   }
-  const meanResidual = sum / segmentRows.length;
-  const shrink = segmentRows.length / (segmentRows.length + POOLING_K);
+  if (wSum <= 0) return 0;
+  const meanResidual = sum / wSum;
+  const shrink = wSum / (wSum + POOLING_K);
   return meanResidual * shrink;
 }

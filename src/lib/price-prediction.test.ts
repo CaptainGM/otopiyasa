@@ -8,6 +8,10 @@ import {
   median,
   featureMedians,
   modelOffset,
+  archiveWeight,
+  effectiveSampleSize,
+  ARCHIVE_MAX_AGE_DAYS,
+  ARCHIVE_MAX_WEIGHT,
 } from "./price-prediction";
 
 const CY = new Date().getFullYear();
@@ -221,5 +225,72 @@ describe("derivePainted", () => {
     expect(derivePainted("Belirtilmemiş")).toBe(0);
     expect(derivePainted("")).toBe(0);
     expect(derivePainted(undefined)).toBe(0);
+  });
+});
+
+describe("arşiv ilanları (ağırlıklı eğitim)", () => {
+  const base = Array.from({ length: 10 }, (_, i) => {
+    const age = i + 1;
+    return row(CY - age, 12000 * age, Math.round(2_000_000 * Math.pow(0.9, age)));
+  });
+  const input = { year: CY - 3, mileage: 36000, damaged: 0, painted: 0, engineSize: 1.6, horsepower: 110, automatic: 0, diesel: 0 };
+
+  it("arşiv ağırlığı yaşla doğrusal azalır, 6 aydan sonra sıfırdır", () => {
+    expect(archiveWeight(0)).toBeCloseTo(ARCHIVE_MAX_WEIGHT);
+    expect(archiveWeight(90)).toBeCloseTo(ARCHIVE_MAX_WEIGHT / 2);
+    expect(archiveWeight(ARCHIVE_MAX_AGE_DAYS)).toBe(0);
+    expect(archiveWeight(400)).toBe(0);
+    expect(archiveWeight(-1)).toBe(0);
+    expect(archiveWeight(NaN)).toBe(0);
+  });
+
+  it("arşiv ağırlığı hiçbir zaman aktif ilanın (1) ağırlığına ulaşmaz", () => {
+    expect(archiveWeight(0)).toBeLessThan(1);
+  });
+
+  it("ağırlıksız çağrı eskisiyle aynı sonucu verir", () => {
+    const a = fitLinear(base.map((r) => [1, carAge(r.year)]), base.map((r) => Math.log(r.price)), 1e-6);
+    const b = fitLinear(base.map((r) => [1, carAge(r.year)]), base.map((r) => Math.log(r.price)), 1e-6, base.map(() => 1));
+    expect(b!.coeffs[1]).toBeCloseTo(a!.coeffs[1], 8);
+  });
+
+  it("ağırlığı sıfıra yakın satır uyumu bozmaz, ağırlıklı satır çeker", () => {
+    const X = [...base.map((r) => [1, carAge(r.year)]), [1, 2]];
+    const y = [...base.map((r) => Math.log(r.price)), Math.log(100_000)]; // uç, yanlış fiyat
+    const heavy = fitLinear(X, y, 1e-6, [...base.map(() => 1), 1])!;
+    const light = fitLinear(X, y, 1e-6, [...base.map(() => 1), 0.001])!;
+    const clean = fitLinear(X.slice(0, -1), y.slice(0, -1), 1e-6)!;
+    expect(Math.abs(light.coeffs[1] - clean.coeffs[1])).toBeLessThan(Math.abs(heavy.coeffs[1] - clean.coeffs[1]));
+  });
+
+  it("etkin örnek sayısı ağırlıkların toplamıdır", () => {
+    expect(effectiveSampleSize([{ ...base[0] }, { ...base[1], weight: 0.5, archived: true }])).toBeCloseTo(1.5);
+  });
+
+  it("etkin örnek az ise (çok arşiv, az aktif ağırlık) tahmin yapılmaz", () => {
+    const tiny = Array.from({ length: 12 }, (_, i) => ({ ...base[i % 10], weight: 0.1, archived: true }));
+    expect(tryPredict(tiny, input, "segment", [])).toBeNull();
+  });
+
+  it("arşiv satırları sampleSize'a girmez, archivedUsed olarak ayrıca sayılır", () => {
+    const archived = Array.from({ length: 4 }, (_, i) => ({ ...base[i], weight: 0.3, archived: true }));
+    const result = tryPredict([...base, ...archived], input, "segment", [])!;
+    expect(result.archivedUsed).toBeGreaterThan(0);
+    // Aykırı elenen satırlar da dahil toplam 14 satır: aktif + arşiv + elenen.
+    expect(result.sampleSize + (result.archivedUsed ?? 0) + (result.outliersRemoved ?? 0)).toBe(base.length + archived.length);
+    expect(result.sampleSize).toBeLessThanOrEqual(base.length);
+  });
+
+  it("arşiv yoksa archivedUsed alanı hiç yazılmaz", () => {
+    expect(tryPredict(base, input, "segment", [])).not.toHaveProperty("archivedUsed");
+  });
+
+  it("modelOffset da ağırlıklıdır: hafif satır kaydırmayı az etkiler", () => {
+    const coeffs = [14, -0.1, 0, 0, 0, 0, 0, 0, 0, 0];
+    const medians = featureMedians(base);
+    const full = modelOffset([row(CY - 3, 30000, 5_000_000)], coeffs, medians);
+    const light = modelOffset([row(CY - 3, 30000, 5_000_000), { ...row(CY - 3, 30000, 5_000_000), weight: 0.2, archived: true }], coeffs, medians);
+    expect(light).toBeGreaterThan(0);
+    expect(full).toBeGreaterThan(0);
   });
 });

@@ -254,6 +254,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           tabs: [
             const Tab(icon: Icon(Icons.speed, size: 18), text: 'Motor'),
             const Tab(icon: Icon(Icons.home_work_outlined, size: 18), text: 'Bekçi'),
+            const Tab(icon: Icon(Icons.tune, size: 18), text: 'Manuel Kontrol'),
             const Tab(icon: Icon(Icons.monitor_heart_outlined, size: 18), text: 'Sağlık'),
             const Tab(icon: Icon(Icons.people_outline, size: 18), text: 'Kullanıcılar'),
             Tab(
@@ -264,7 +265,6 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               icon: const Icon(Icons.store_mall_directory_outlined, size: 18),
               text: 'İşletmeler (${_business.length})',
             ),
-            const Tab(icon: Icon(Icons.tune, size: 18), text: 'Manuel Kontrol'),
           ],
         ),
       ),
@@ -277,11 +277,11 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                   children: [
                     _buildDaemonTab(),
                     _buildWatcherTab(),
+                    _buildControlsTab(),
                     const AdminHealthTab(),
                     const AdminUsersTab(),
                     _buildReportsTab(),
                     _buildBusinessTab(),
-                    _buildControlsTab(),
                   ],
                 ),
     );

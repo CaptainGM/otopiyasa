@@ -597,7 +597,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 14,
-        title: const AppLogo(),
+        // Girişli kullanıcıda zil de eklenince logo satırı taşıyordu; dar alanda küçülür.
+        title: const FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: AppLogo()),
         actions: [
           ValueListenableBuilder<int>(
             valueListenable: _api.authRevision,

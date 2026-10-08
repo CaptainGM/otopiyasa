@@ -85,7 +85,7 @@ class AppTheme {
         indicatorColor: accent.withValues(alpha: isDark ? 0.16 : 0.22),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
-            fontSize: 10.5,
+            fontSize: 9.5,
             fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
             color: states.contains(WidgetState.selected) ? textColor : c.muted,
           ),

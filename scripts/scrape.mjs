@@ -529,8 +529,12 @@ const breakMinutes = Number.isFinite(flagValue("--mola")) ? flagValue("--mola") 
 const maxRounds = Number.isFinite(flagValue("--tur")) ? flagValue("--tur") : 0; // 0 = durdurulana kadar
 const timed = Number.isFinite(roundListings) && roundListings > 0;
 
+// --adet N: taramanın kendi ilan üst sınırını (maxListings) değiştirir (scrape.bat 21 "Son 3 gün" adet sorar).
+const countOverride = flagValue("--adet");
+
 /** Tur başına ilan sınırı: taramanın kendi üst sınırı varsa (limit/maxListings) onunla değiştirilir. */
 function limitJob(job) {
+  if (Number.isFinite(countOverride) && countOverride > 0 && "maxListings" in job) job = { ...job, maxListings: countOverride };
   if (!timed) return job;
   const limited = { ...job };
   if ("maxListings" in limited) limited.maxListings = roundListings;

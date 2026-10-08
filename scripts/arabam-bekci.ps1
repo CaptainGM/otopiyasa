@@ -64,7 +64,7 @@ switch ($Islem) {
             -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
         $principal = New-ScheduledTaskPrincipal -UserId $User -LogonType Interactive -RunLevel Limited
         Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
-            -Principal $principal -Force -Description "Arabam ilanlarini ev internetinden ~10 sn arayla kontrol eder (OtoPiyasa)." | Out-Null
+            -Principal $principal -Force -Description "Arabam ilanlarini ev internetinden ~8 sn arayla kontrol eder (OtoPiyasa)." | Out-Null
         Write-Host "Gorev kuruldu: her oturum acilisinda (1 dk sonra) kendiliginden baslar."
         # Calisan eski kopya varsa durdurulur; yeni kod ile yeniden baslar (kodu guncelleyince de ayni komut).
         Stop-Watcher

@@ -1,4 +1,5 @@
 import { modelFamily, modelFamilyKey, modelNameKey } from "@/lib/model-family";
+import { reasonLabel, type AttemptReason } from "@/lib/scraper/model-page";
 
 /**
  * YÖNETİM PANELİ "EN AZ İLANLI MODELLER" LİSTESİ: sitede şu an görünen (aktif) ilan sayısı en az olan marka/model aileleri, en azdan
@@ -80,18 +81,67 @@ export function buildRareBoard(segments: BoardSegment[], catalog: BoardCatalogEn
     );
 }
 
-export interface BoardPage {
+/** Kaynakta bizdekinden çok ilanı olduğu bilinen (yani gerçekten eksik) satırlar; kaynaktakinin tamamı bizde olanlar ve kaynağı bilinmeyenler dışarıda kalır. */
+export function onlyMissing<Row extends BoardRow>(rows: Row[]): Row[] {
+  return rows.filter((row) => row.sourceCount !== null && row.sourceCount > row.count);
+}
+
+/** Nadir model taramasının aile bazlı deneme kaydından listeye gereken alanlar. */
+export interface BoardAttempt {
+  brand: string;
+  familyKey: string;
+  attemptedAt: Date | string;
+  retryAfterDays?: number;
+  reason?: string;
+  added?: number;
+  before?: number;
+  after?: number;
+}
+
+export interface NotedBoardRow extends BoardRow {
+  /** Bu ailenin neden artmadığını/artacağını anlatan kısa not (deneme kaydından). */
+  note: string;
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Eski kayıtlarda gerekçe yazılı değil: sayılardan çıkarılır. */
+function legacyReason(a: BoardAttempt): string {
+  const added = a.added ?? 0;
+  if (added > 0 && a.before !== undefined && a.after !== undefined && a.after - a.before < added * 0.5) return "mismatch";
+  const days = a.retryAfterDays ?? 3;
+  return days <= 0 ? "satisfied" : days >= 14 ? "exhausted" : "more";
+}
+
+/** Satırın yanına: son deneme sonucu ve ne zaman yeniden aranacağı (hiç denenmediyse sırasını bekliyor). */
+export function attemptNote(attempt: BoardAttempt | undefined, now = Date.now()): string {
+  if (!attempt) return "henüz sırası gelmedi";
+  const reason = (attempt.reason || legacyReason(attempt)) as AttemptReason;
+  const label = reasonLabel(reason);
+  const retryDays = attempt.retryAfterDays ?? 3;
+  const left = Math.ceil((new Date(attempt.attemptedAt).getTime() + retryDays * DAY - now) / DAY);
+  if (retryDays <= 0 || left <= 0) return label ? `${label} · sırada` : "sırada";
+  const when = left === 1 ? "yarın yeniden" : `${left} gün sonra yeniden`;
+  return label ? `${label} · ${when}` : when;
+}
+
+export function withAttemptNotes(rows: BoardRow[], attempts: BoardAttempt[], now = Date.now()): NotedBoardRow[] {
+  const byFamily = new Map(attempts.map((a) => [`${a.brand}::${a.familyKey}`, a]));
+  return rows.map((row) => ({ ...row, note: attemptNote(byFamily.get(`${row.brand}::${modelFamilyKey(row.model, row.brand)}`), now) }));
+}
+
+export interface BoardPage<Row = BoardRow> {
   page: number;
   pages: number;
   pageSize: number;
   total: number;
-  rows: BoardRow[];
+  rows: Row[];
 }
 
 export const BOARD_PAGE_SIZE = 15;
 
 /** Sayfa numarasını geçerli aralığa sıkıştırır (1'den başlar) ve o sayfanın satırlarını verir. */
-export function pageOfBoard(rows: BoardRow[], requested: number, pageSize = BOARD_PAGE_SIZE): BoardPage {
+export function pageOfBoard<Row extends BoardRow>(rows: Row[], requested: number, pageSize = BOARD_PAGE_SIZE): BoardPage<Row> {
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const page = Math.min(pages, Math.max(1, Math.trunc(Number.isFinite(requested) ? requested : 1)));
   return { page, pages, pageSize, total: rows.length, rows: rows.slice((page - 1) * pageSize, page * pageSize) };

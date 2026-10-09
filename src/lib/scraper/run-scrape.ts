@@ -15,12 +15,18 @@ import {
   scrapeArabamForQuotas,
   scrapeArabamForMarketYears,
   refetchArabamDetails,
+  fetchArabamByHrefs,
+  createDetailFetchStats,
+  arabamModelSlug,
   POPULAR_BRANDS,
 } from "@/lib/scraper/adapters";
+import { judgeAttempt, lastSlug, RETRY_DAYS, type AttemptReason } from "@/lib/scraper/model-page";
+import { collectFamilyCandidates, type FamilySlugTarget } from "@/lib/scraper/sitemap-family";
+import { reportEvent, reportProgress } from "@/lib/scraper/progress";
 import { normalizeBrand, normalizeBrandModel } from "@/lib/normalize-brand";
 import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
-import { ScrapeAdapter, ScrapeJobResult, ScrapedListing } from "@/lib/scraper/types";
+import { ScrapeAdapter, ScrapeJobResult, ScrapedListing, OnListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
 import { fetchDetailPatch, isDetailSource, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
 import { isPermanentRemoval, knownFeatureUpdates, PLATFORM_SCOPE_REASON } from "@/lib/scraper/feature-merge";
@@ -31,7 +37,7 @@ import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality
 import { ListingSource } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
-import { modelFamily, modelFamilyKey, modelNameKey } from "@/lib/model-family";
+import { modelFamily, modelFamilyKey, modelFamilyRegex, modelNameKey } from "@/lib/model-family";
 import { RareModelAttempt } from "@/models/RareModelAttempt";
 import { ArabamCatalog, type ArabamCatalogDoc } from "@/models/ArabamCatalog";
 import { DAY_MS, familyId, planRareLevel, selectRareFamilies, type SegmentCount } from "@/lib/scraper/rare-models";
@@ -497,6 +503,86 @@ const RARE_MODEL_LIMIT = 120;
 
 const RARE_MODEL_MAX_LISTINGS = 1500;
 
+interface SitemapFill extends FamilySlugTarget {
+  brand: string;
+  model: string;
+  familyKey: string;
+}
+
+/** Ailenin son denemesini (sonuç gerekçesi ve kaç gün sonra yeniden aranacağı) yazar. */
+async function recordRareAttempt(
+  brand: string,
+  familyKey: string,
+  model: string,
+  verdict: { reason: AttemptReason; retryDays: number },
+  facts: { found: number; added: number; before: number; after: number }
+): Promise<void> {
+  await RareModelAttempt.updateOne(
+    { brand, familyKey },
+    {
+      $set: {
+        model,
+        attemptedAt: new Date(),
+        found: facts.found,
+        retryAfterDays: verdict.retryDays,
+        reason: verdict.reason,
+        added: facts.added,
+        before: facts.before,
+        after: facts.after,
+      },
+    },
+    { upsert: true }
+  ).catch(() => {});
+}
+
+/**
+ * Kaynakta model sayfası olmayan ailelerin bizde olmayan ilanlarını site haritasından bulup detay sayfasından okur (bkz. sitemap-family.ts).
+ * Site haritası tek seferde okunur (~2-3 dk), Cloudflare doğrulaması yoktur.
+ */
+async function fillUnavailableFromSitemap(
+  targets: SitemapFill[],
+  budget: number,
+  catalogSlugs: string[],
+  onListing: OnListing
+): Promise<{ added: number; families: number }> {
+  const known = new Set(
+    (await Car.find({ sourceSite: "arabam" }, { externalId: 1 }).lean<Array<{ externalId?: string }>>())
+      .map((d) => String(d.externalId || "").replace(/^arabam-/, ""))
+      .filter(Boolean)
+  );
+  const candidates = await collectFamilyCandidates(targets, catalogSlugs, known, (done, total, entries) =>
+    reportProgress(`Site haritası okunuyor (${done}/${total} dosya, ${entries.toLocaleString("tr-TR")} adres)`, done, total)
+  );
+
+  let added = 0;
+  let families = 0;
+  for (const [index, t] of targets.entries()) {
+    if (added >= budget) break;
+    const list = candidates.get(t.id) ?? [];
+    reportProgress(`Site haritasından: ${t.brand} ${t.model} (${list.length} aday)`, index + 1, targets.length);
+    const countFamily = () =>
+      Car.countDocuments({ brand: t.brand, model: modelFamilyRegex(t.model, t.brand), status: "active" }).catch(() => undefined);
+    const before = await countFamily();
+    const hrefs = list.slice(0, Math.min(t.quota, budget - added)).map((c) => c.href);
+    const got = hrefs.length > 0 ? await fetchArabamByHrefs(hrefs, onListing) : 0;
+    added += got;
+    const after = before === undefined ? undefined : await countFamily();
+    if (got > 0) {
+      families += 1;
+      reportEvent({ label: `${t.brand} ${t.model}`, before, after, added: got });
+    }
+    const mismatch = got > 0 && before !== undefined && after !== undefined && after - before < got * 0.5;
+    await recordRareAttempt(
+      t.brand,
+      t.familyKey,
+      t.model,
+      { reason: mismatch ? "mismatch" : "sitemap", retryDays: mismatch ? RETRY_DAYS.mismatch : got >= t.quota ? 0 : RETRY_DAYS.sitemap },
+      { found: list.length, added: got, before: before ?? 0, after: after ?? 0 }
+    );
+  }
+  return { added, families };
+}
+
 /**
  * Az ilanlı model AİLELERİNİ kaynakta arar. Amaç her marka-modelden en az [threshold] ilan olması; kaynakta yoksa olan çekilir ve
  * aile bırakılır. Sayım aile düzeyindedir, popüler markaların az ilanlı modelleri önce gelir, kaynakta tükenmiş aileler uzun süre
@@ -550,6 +636,8 @@ export async function runRareModelScrape(
   let blocked = false;
   const levels: Array<{ level: number; models: number; added: number }> = [];
   const errors: string[] = [];
+  // Kaynakta model sayfası olmayan (markanın sayfasına yönlenen) aileler: tur sonunda site haritasından aranır.
+  const unavailable = new Map<string, SitemapFill>();
 
   // Bütçe bitene ya da uygun model kalmayana kadar kademe kademe ilerler: 5'in altındakiler 5'e çıkınca aynı tur 10. kademeye geçer.
   // Her taranan model ya kademesine ulaşır ya da bekleme listesine girer, bu yüzden her tur ilerleme sağlar.
@@ -598,26 +686,29 @@ export async function runRareModelScrape(
             if (!familyKey) return;
             processedThisRound += 1;
             processed += 1;
-            // Kademeye ulaşan model beklemez (sıradaki kademede yine aday olur); kaynakta tükenen 14, daha fazlası olan 3 gün sonra denenir.
-            // Hiç ilan eklenemediyse (kapsam dışı araç, ad uyuşmazlığı) ya da eklenenler aile sayısını artırmıyorsa kısır döngüye girmesin diye 14 gün bekletilir.
-            const mismatch =
-              result.added > 0 && result.before !== undefined && result.after !== undefined && result.after - result.before < result.added * 0.5;
-            const retryAfterDays = mismatch || result.added === 0 ? 14 : result.outcome === "satisfied" ? 0 : result.outcome === "exhausted" ? 14 : 3;
-            await RareModelAttempt.updateOne(
-              { brand: segment.brand, familyKey },
-              {
-                $set: {
-                  model: segment.model,
-                  attemptedAt: new Date(),
-                  found: result.found,
-                  retryAfterDays,
-                  added: result.added,
-                  before: result.before ?? 0,
-                  after: result.after ?? 0,
-                },
-              },
-              { upsert: true }
-            ).catch(() => {});
+            // Bekleme süresi sayfanın nasıl bittiğine göre (bkz. judgeAttempt): kademe dolduysa beklemez, kaynakta tükendiyse 14 gün, daha
+            // fazlası varsa 3 gün; sayfa okunamadıysa 1 gün, model sayfası yoksa 7 gün (site haritasından aranır). Eklenenler aile sayısını
+            // artırmıyorsa (başka model adıyla kaydoluyor) 14 gün.
+            const verdict = judgeAttempt({
+              outcome: result.outcome,
+              added: result.added,
+              fresh: result.fresh,
+              before: result.before,
+              after: result.after,
+            });
+            await recordRareAttempt(segment.brand, familyKey, segment.model, verdict, {
+              found: result.found,
+              added: result.added,
+              before: result.before ?? 0,
+              after: result.after ?? 0,
+            });
+            if (result.outcome === "unavailable") {
+              const id = familyId(segment.brand, familyKey);
+              if (!unavailable.has(id)) {
+                const slug = segment.path ? lastSlug(segment.path) : arabamModelSlug(segment.brand, segment.model);
+                unavailable.set(id, { id, brand: segment.brand, model: segment.model, familyKey, slug, quota: segment.quota });
+              }
+            }
           },
         }
       );
@@ -628,6 +719,26 @@ export async function runRareModelScrape(
     fetched += roundFetched;
     levels.push({ level: plan.level, models: processedThisRound, added: roundFetched });
     if (processedThisRound === 0) break;
+  }
+
+  // Model sayfası olmayan ailelerin ilanları site haritasından (ilan adresindeki marka-model adıyla) bulunur.
+  let sitemapNote = "";
+  if (unavailable.size > 0 && !blocked) {
+    try {
+      // Site haritasını okumanın sabit bir maliyeti var (~2-3 dk); ana bütçe bitmiş olsa bile bu aileler için küçük bir pay ayrılır.
+      const filled = await fillUnavailableFromSitemap(
+        [...unavailable.values()].sort((a, b) => a.quota - b.quota),
+        Math.max(maxListings - fetched, Math.min(60, unavailable.size * 4)),
+        catalogDocs.flatMap((doc) => doc.models.map((m) => m.slug)),
+        onListing
+      );
+      fetched += filled.added;
+      sitemapNote = ` Model sayfası olmayan ${unavailable.size} aile site haritasından arandı: +${filled.added} ilan, ${filled.families} ailede.`;
+    } catch (error) {
+      sitemapNote = ` Model sayfası olmayan ${unavailable.size} aile için site haritası okunamadı (${error instanceof Error ? error.message : "hata"}).`;
+    }
+  } else if (unavailable.size > 0) {
+    sitemapNote = ` Model sayfası olmayan ${unavailable.size} aile var; site haritası araması bir sonraki çalıştırmaya kaldı.`;
   }
 
   if (counts.inserted > 0) {
@@ -645,7 +756,8 @@ export async function runRareModelScrape(
     success: true,
     message:
       `Nadir-model taraması (en azdan başlayıp kademe kademe): ${levelText}` +
-      (waiting > 0 ? ` (${waiting} aile bekleme süresinde: kaynakta yeni ilan çıkmış olabilir diye 3-14 gün sonra yeniden denenir)` : "") +
+      sitemapNote +
+      (waiting > 0 ? ` (${waiting} aile bekleme süresinde: kaynakta yeni ilan çıkmış olabilir diye 1-14 gün sonra yeniden denenir)` : "") +
       (blocked ? " Kaynak hız sınırı koydu, tur erken durduruldu; hiçbir model 'tükendi' diye işaretlenmedi, biraz sonra yeniden çalıştırın." : "") +
       (catalogAgeDays !== null && catalogAgeDays > 14 ? ` Model kataloğu ${catalogAgeDays} gün önce okundu; scrape.bat 22 ile yenileyin.` : "") +
       (catalogAgeDays === null ? " Model kataloğu yok: scrape.bat 22 ile okuyun (kaynakta olup bizde hiç olmayan modeller bundan bulunur)." : "") +
@@ -835,9 +947,13 @@ export async function pickArabamRefreshQueue(limit: number, now = new Date()): P
 
 export async function runPriceRefresh(limit = 500, progressOffset?: number, progressTotal?: number): Promise<ScrapeJobResult> {
   const queue = await pickArabamRefreshQueue(limit);
-  const { result, aliveIds, goneIds } = await refetchByUrls(queue, "Fiyat taraması", progressOffset, progressTotal);
+  const { result, aliveIds, goneIds, attemptedIds, blockedIds } = await refetchByUrls(queue, "Fiyat taraması", progressOffset, progressTotal);
 
-  await markVerifyAttempt(queue.map((d) => d._id));
+  // Yalnızca gerçekten denenenler "denendi" olur (engelle yarıda bırakılan partinin kalanı kuyrukta başta kalır); engellenenler
+  // "blocked" damgası alır ve 6 saat dinlendirilir.
+  const blocked = new Set(blockedIds.map(String));
+  await markVerifyAttempt(attemptedIds.filter((id) => !blocked.has(String(id))));
+  await markVerifyAttempt(blockedIds, new Date(), "blocked");
   // Yeniden kontrol bayrağını yalnızca KESİN sonuç alınan arşiv kayıtlarında kaldır;
   // engellenen denemeler bir sonraki turda tekrar sıraya girsin.
   const decided = new Set([...aliveIds, ...goneIds].map(String));
@@ -869,8 +985,16 @@ async function refetchByUrls(
   label: string,
   progressOffset?: number,
   progressTotal?: number
-): Promise<{ result: ScrapeJobResult; aliveIds: mongoose.Types.ObjectId[]; goneIds: mongoose.Types.ObjectId[] }> {
+): Promise<{
+  result: ScrapeJobResult;
+  aliveIds: mongoose.Types.ObjectId[];
+  goneIds: mongoose.Types.ObjectId[];
+  attemptedIds: mongoose.Types.ObjectId[];
+  blockedIds: mongoose.Types.ObjectId[];
+}> {
   const hrefToId = new Map<string, mongoose.Types.ObjectId>();
+  // Adresi bozuk kayıtlar hiç denenemez; yine de "denendi" sayılır ki kuyruğun başında takılı kalmasınlar.
+  const unparsableIds: mongoose.Types.ObjectId[] = [];
   const hrefs = docs
     .map((c) => {
       try {
@@ -878,6 +1002,7 @@ async function refetchByUrls(
         if (c._id) hrefToId.set(href, c._id);
         return href;
       } catch {
+        if (c._id) unparsableIds.push(c._id);
         return null;
       }
     })
@@ -904,11 +1029,15 @@ async function refetchByUrls(
 
   let fetched = 0;
   const errors: string[] = [];
+  const stats = createDetailFetchStats();
   try {
-    fetched = await refetchArabamDetails(hrefs, onListing, onGone, progressOffset, progressTotal);
+    fetched = await refetchArabamDetails(hrefs, onListing, onGone, progressOffset, progressTotal, stats);
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
+  const idsOf = (set: Set<string>) => [...set].map((href) => hrefToId.get(href)).filter((id): id is mongoose.Types.ObjectId => !!id);
+  const attemptedIds = [...idsOf(stats.attempted), ...unparsableIds];
+  const blockedIds = idsOf(stats.blocked);
 
   // Arşivleme: ilan sayfası 404/410 verdi, kategori sayfasına yönlendi ya da
   // "yayında değil" yazıyor (güçlü kanıt). Yine de partinin büyük kısmı ölü
@@ -924,10 +1053,17 @@ async function refetchByUrls(
   return {
     aliveIds,
     goneIds: breakerNote ? [] : goneIds,
+    attemptedIds,
+    blockedIds,
     result: {
       success: true,
+      checked: stats.attempted.size,
+      blocked: stats.blocked.size,
+      aborted: stats.aborted,
       message:
-        `${label}: ${hrefs.length} ilan kontrol edildi, ${counts.updated} güncellendi` +
+        `${label}: ${stats.attempted.size} ilan kontrol edildi` +
+        (stats.blocked.size > 0 ? ` (${stats.blocked.size} tanesi engel yüzünden okunamadı${stats.aborted ? ", parti erken bırakıldı" : ""})` : "") +
+        `, ${counts.updated} güncellendi` +
         (counts.reactivated > 0 ? `, ${counts.reactivated} arşivden geri alındı` : "") +
         (archived > 0 ? `, ${archived} kaynaktan kaldırılmış olarak arşivlendi` : "") +
         breakerNote +

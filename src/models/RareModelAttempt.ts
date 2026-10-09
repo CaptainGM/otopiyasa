@@ -14,8 +14,10 @@ const RareModelAttemptSchema = new Schema(
     added: { type: Number, default: 0 },
     /** Kaynakta bulunan ilan sayısı (sayfa başına 20 ile sınırlı); azsa kaynakta o aile tükenmiş demektir. */
     found: { type: Number, default: 0 },
-    /** Bu aile kaç gün sonra yeniden denenir (kaynakta daha fazlası varsa 3, tükenmişse 14). */
+    /** Bu aile kaç gün sonra yeniden denenir (kaynakta daha fazlası varsa 3, tükenmişse 14, sayfa okunamadıysa 1). */
     retryAfterDays: { type: Number, default: 3 },
+    /** Denemenin sonucu (bkz. model-page.ts judgeAttempt): yönetim panelinde bekleme gerekçesi olarak gösterilir. Eski kayıtlarda yoktur. */
+    reason: { type: String, default: "" },
     /** Denemeden önceki / sonraki toplam aile ilan sayısı. */
     before: { type: Number, default: 0 },
     after: { type: Number, default: 0 },

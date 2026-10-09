@@ -4,6 +4,10 @@
 // Web sunucusuna (localhost:3000) ve ayrı bir CMD penceresine İHTİYAÇ DUYMADAN
 // doğrudan veritabanına bağlanır; tüm Arabam ilanlarının fiyatlarını günceller,
 // satılan/ölü ilanları arşivler ve canlı ilerlemeyi tek ekranda gösterir.
+//
+// ZAMANLI ÇALIŞMA (mod 11): tur başına N ilan doğrulanır, sonra M dakika mola verilir (--tur-ilan, --mola, --tur).
+// Kaynak engel verirse (429 / Cloudflare) parti erken bırakılır, 10-20-40-60 dakika kendiliğinden dinlenilir ve devam edilir;
+// elle kapatıp açmaya gerek kalmaz. Uzun süre düzelmezse (6 ardışık mola) işlem durur.
 // ============================================================================
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
@@ -27,8 +31,28 @@ const modeArg = process.argv[2] || "11";
 const isSingleBatch = modeArg === "8" || modeArg === "800";
 const batchSize = isSingleBatch ? 800 : 250;
 
+const flagNumber = (name: string): number => {
+  const i = process.argv.indexOf(name);
+  return i > 0 ? Number(process.argv[i + 1]) : NaN;
+};
+/** Tur başına doğrulanacak ilan (varsayılan 1200), turlar arası mola dakikası (varsayılan 20), tur sayısı (0 = bitene kadar). */
+const roundSize = flagNumber("--tur-ilan") > 0 ? flagNumber("--tur-ilan") : 1200;
+const breakMinutes = Number.isFinite(flagNumber("--mola")) && flagNumber("--mola") >= 0 ? flagNumber("--mola") : 20;
+const maxRounds = flagNumber("--tur") > 0 ? flagNumber("--tur") : 0;
 mkdirSync(path.join(projectRoot, "logs"), { recursive: true });
 const stateFile = path.join(projectRoot, "logs", `sync-state-mod${modeArg}.json`);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Dakika dakika bekler; her 5 dakikada bir kalan süreyi yazar. Ctrl+C her an çalışır. */
+async function rest(minutes: number, title: string) {
+  const until = new Date(Date.now() + minutes * 60_000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  console.log(`\n   ☕ ${title}: ${minutes} dk (saat ${until}'e kadar). Pencereyi kapatma, kendiliğinden devam eder; durdurmak için Ctrl+C.`);
+  for (let left = minutes; left > 0; left--) {
+    await sleep(60_000);
+    if (left > 1 && (left - 1) % 5 === 0) console.log(`   ⏳ ${left - 1} dk kaldı...`);
+  }
+}
 
 async function main() {
   console.log("====================================================================");
@@ -37,11 +61,18 @@ async function main() {
   console.log(`  🎯 Mod: ${isSingleBatch ? "En Bayat 800 İlan (Tek Seferlik)" : "Tüm İlanları Doğrula ve Senkronize Et (Parti Döngüsü)"}`);
   console.log(`  ⚡ Doğrudan Terminal Modu: Web sunucusu yok, harici popup cmd yok!`);
   console.log(`  🛡️ Ritim: 0 Blok Stealth + Güvenli Oturum`);
-  console.log(`  📋 İşlem: Fiyat Eşitleme + Satılanları Arşivleme + Açıklama/Hasar Kontrolü\n`);
+  console.log(`  📋 İşlem: Fiyat Eşitleme + Satılanları Arşivleme + Açıklama/Hasar Kontrolü`);
+  if (!isSingleBatch) {
+    console.log(
+      `  ⏱️ Zamanlı: tur başına ${roundSize.toLocaleString("tr-TR")} ilan, turlar arası ${breakMinutes} dk mola${maxRounds ? `, en çok ${maxRounds} tur` : ""}; engel gelirse kendiliğinden dinlenir.`
+    );
+  }
+  console.log("");
 
   const { connectDB } = await import("../src/lib/mongodb.js").catch(async () => await import("../src/lib/mongodb"));
   const { runPriceRefresh, arabamRefreshStatus } = await import("../src/lib/scraper/run-scrape.js").catch(async () => await import("../src/lib/scraper/run-scrape"));
   const { ManualScrapeLog } = await import("../src/models/ManualScrapeLog.js").catch(async () => await import("../src/models/ManualScrapeLog"));
+  const { judgeBatch, MAX_BLOCK_STREAK } = await import("../src/lib/scraper/verify-rhythm");
 
   console.log("  ⏳ Veritabanına (MongoDB Atlas) bağlanılıyor...");
   await connectDB();
@@ -162,7 +193,9 @@ async function main() {
   console.log("  TARAMA BAŞLATILIYOR (İstediğin an Ctrl+C ile güvenle durdurabilirsin)");
   console.log("--------------------------------------------------------------------\n");
 
-  let blockedBatches = 0;
+  let blockStreak = 0;
+  let roundChecked = 0;
+  let roundsDone = 0;
   while (batchNum < maxBatches) {
     batchNum++;
     const currentOffset = (batchNum - 1) * batchSize;
@@ -181,15 +214,19 @@ async function main() {
         console.warn(`   ⚠️ [Hata / Deneme ${attempt}/3] ${err?.message || err}`);
         if (attempt < 3) {
           console.log("   🔄 10 saniye beklenip tekrar deneniyor...");
-          await new Promise((r) => setTimeout(r, 10000));
+          await sleep(10000);
         }
       }
     }
 
-    if (result) {
+    if (!result) {
+      console.log(`   ❌ Bu parti zaman aşımına uğradı, sonraki partiye geçiliyor.`);
+    } else {
       const bUpd = result.updated || 0;
       const bDel = result.deleted || 0;
       const bScanned = result.sources?.[0]?.fetched || 0;
+      const checked: number = result.checked ?? bScanned + bDel;
+      const blocked: number = result.blocked ?? 0;
 
       totalUpdated += bUpd;
       totalDeleted += bDel;
@@ -198,41 +235,61 @@ async function main() {
       console.log(`   ✅ Parti Tamamlandı: ✨ ${bUpd} İlan Güncellendi | 🔁 ${result.reactivated || 0} Arşivden Geri Alındı | 🗑️ ${bDel} Satılmış İlan Arşivlendi | Toplam Taranan: ${totalScanned}`);
       console.log(`   ℹ️ ${result.message}`);
 
-      // Parti hiçbir ilanı okuyamadıysa büyük ihtimalle Cloudflare engeli var.
-      if (bScanned === 0 && bDel === 0) {
-        blockedBatches++;
-        if (blockedBatches >= 2) {
-          console.log("\n   ⛔ Art arda iki parti hiçbir ilan okuyamadı (Cloudflare/ağ engeli). İşlem durduruldu; ilanlara dokunulmadı.");
-          await syncLogToDB("partial");
-          process.exit(1);
-        }
-      } else {
-        blockedBatches = 0;
+      // Kuyruk boşsa kalan ilanların hepsi son 6 saatte denenmiş (ör. engellenenler); partinin büyük kısmı engel yüzünden okunamadıysa
+      // (ya da art arda engelle yarıda kaldıysa) kendiliğinden dinlenilir. Engellenen ilanlar "blocked" damgası alıp 6 saat sonra yeniden
+      // denenir, yarıda kalan partinin kalanına dokunulmamıştır.
+      const verdict = judgeBatch({ checked: result.checked, blocked: result.blocked, aborted: result.aborted }, blockStreak);
+      blockStreak = verdict.streak;
+      if (verdict.kind === "empty") {
+        console.log("\n   ℹ️ Sırada kontrol edilecek ilan kalmadı (kalanların hepsi son 6 saatte denendi). Birkaç saat sonra tekrar açabilirsin.");
+        batchNum = maxBatches;
+        break;
       }
+      if (verdict.kind === "give-up") {
+        console.log(`\n   ⛔ Arabam ${MAX_BLOCK_STREAK} molaya rağmen engelli kaldı. İşlem durduruldu; ilanlara dokunulmadı. Birkaç saat sonra tekrar aç, kaldığı yerden devam eder.`);
+        await syncLogToDB("partial");
+        process.exit(1);
+      }
+      if (verdict.kind === "blocked") {
+        console.log(`\n   ⛔ Arabam engel verdi (${blocked}/${checked} ilan okunamadı). Bu parti sayılmadı; dinlenip devam edilecek (${verdict.streak}/${MAX_BLOCK_STREAK}).`);
+        batchNum--; // aynı parti numarasıyla devam: engelli ilanlar kuyrukta 6 saat geride kalır, sıradakiler alınır
+        await syncLogToDB("partial");
+        await rest(verdict.waitMinutes, "Engel molası");
+        continue;
+      }
+      roundChecked += Math.max(0, checked - blocked);
 
       if (!isSingleBatch) {
         writeFileSync(stateFile, JSON.stringify({ offset: batchNum * batchSize, updatedAt: new Date().toISOString() }));
       }
       await syncLogToDB("partial");
-    } else {
-      console.log(`   ❌ Bu parti zaman aşımına uğradı, sonraki partiye geçiliyor.`);
     }
 
-    // Kısa bir nefes alma (1 saniye)
-    if (batchNum < maxBatches) {
-      await new Promise((r) => setTimeout(r, 1000));
+    // Tur doldu: mola ver (Cloudflare uzun, kesintisiz taramada takılıyor); bitmediyse sonraki turla devam.
+    if (!isSingleBatch && batchNum < maxBatches && roundChecked >= roundSize) {
+      roundsDone++;
+      console.log(`\n   🔁 Tur ${roundsDone} bitti: ${roundChecked.toLocaleString("tr-TR")} ilan doğrulandı (toplam ${totalScanned.toLocaleString("tr-TR")}).`);
+      roundChecked = 0;
+      if (maxRounds && roundsDone >= maxRounds) {
+        console.log(`  ✅ İstenen ${maxRounds} tur tamamlandı; kalan ilanlar için scrape.bat 11'i yeniden aç (kaldığı yerden devam eder).`);
+        break;
+      }
+      if (breakMinutes > 0) await rest(breakMinutes, "Tur molası");
+    } else if (batchNum < maxBatches) {
+      // Kısa bir nefes alma (1 saniye)
+      await sleep(1000);
     }
   }
 
   console.log("\n====================================================================");
-  console.log("  🎉 TEBRİKLER! SENKRONİZASYON TAMAMLANDI");
+  console.log(batchNum >= maxBatches ? "  🎉 TEBRİKLER! SENKRONİZASYON TAMAMLANDI" : "  ⏹️ TUR SAYISI TAMAMLANDI");
   console.log(`  - Toplam Denetlenen: ${totalScanned.toLocaleString("tr-TR")}`);
   console.log(`  - Fiyatı / Bilgisi Güncellenen: ${totalUpdated.toLocaleString("tr-TR")}`);
   console.log(`  - Satıldığı Tespit Edilip Arşivlenen: ${totalDeleted.toLocaleString("tr-TR")}`);
   console.log("====================================================================\n");
 
-  await syncLogToDB("success");
-  if (existsSync(stateFile)) {
+  await syncLogToDB(batchNum >= maxBatches ? "success" : "partial");
+  if (batchNum >= maxBatches && existsSync(stateFile)) {
     try {
       const fs = await import("node:fs");
       fs.unlinkSync(stateFile);

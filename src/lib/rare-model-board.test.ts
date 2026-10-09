@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRareBoard, pageOfBoard, type BoardRow } from "./rare-model-board";
+import { attemptNote, buildRareBoard, onlyMissing, pageOfBoard, withAttemptNotes, type BoardRow } from "./rare-model-board";
 
 describe("buildRareBoard", () => {
   const segments = [
@@ -44,6 +44,60 @@ describe("buildRareBoard", () => {
     const rows = buildRareBoard(segments, catalog);
     expect(rows.some((r) => r.model === "Egea")).toBe(false);
     expect(rows.some((r) => r.brand === "Opel")).toBe(false);
+  });
+});
+
+describe("onlyMissing", () => {
+  it("kaynaktakinin tamamı bizde olanları ve kaynağı bilinmeyenleri çıkarır", () => {
+    const rows: BoardRow[] = [
+      { brand: "A", model: "Eksik", count: 3, sourceCount: 10 },
+      { brand: "A", model: "Tam", count: 21, sourceCount: 19 },
+      { brand: "A", model: "Esit", count: 5, sourceCount: 5 },
+      { brand: "A", model: "Bilinmeyen", count: 1, sourceCount: null },
+      { brand: "A", model: "Sifir", count: 0, sourceCount: 1 },
+    ];
+    expect(onlyMissing(rows).map((r) => r.model)).toEqual(["Eksik", "Sifir"]);
+  });
+});
+
+describe("attemptNote", () => {
+  const now = new Date("2026-10-09T12:00:00Z").getTime();
+  const at = (daysAgo: number) => new Date(now - daysAgo * 86_400_000);
+
+  it("hiç denenmemişse sırasını bekliyor der", () => {
+    expect(attemptNote(undefined, now)).toBe("henüz sırası gelmedi");
+  });
+
+  it("bekleme sürüyorsa gerekçeyi ve kalan günü yazar", () => {
+    const note = attemptNote({ brand: "Audi", familyKey: "a7", attemptedAt: at(1), retryAfterDays: 7, reason: "unavailable" }, now);
+    expect(note).toContain("model sayfası yok");
+    expect(note).toContain("6 gün sonra yeniden");
+    expect(attemptNote({ brand: "A", familyKey: "x", attemptedAt: at(0), retryAfterDays: 1, reason: "unknown" }, now)).toContain("yarın yeniden");
+  });
+
+  it("bekleme bitmişse ya da kademe dolmuşsa sırada der", () => {
+    expect(attemptNote({ brand: "A", familyKey: "x", attemptedAt: at(20), retryAfterDays: 14, reason: "exhausted" }, now)).toContain("sırada");
+    expect(attemptNote({ brand: "A", familyKey: "x", attemptedAt: at(0), retryAfterDays: 0, reason: "satisfied" }, now)).toContain("sırada");
+  });
+
+  it("gerekçesi yazılı olmayan eski kaydı sayılardan çıkarır", () => {
+    const old = { brand: "A", familyKey: "x", attemptedAt: at(1), retryAfterDays: 14, added: 4, before: 6, after: 6 };
+    expect(attemptNote(old, now)).toContain("başka model adıyla");
+    expect(attemptNote({ brand: "A", familyKey: "x", attemptedAt: at(1), retryAfterDays: 3 }, now)).toContain("daha fazlası var");
+  });
+});
+
+describe("withAttemptNotes", () => {
+  it("satırları aile anahtarıyla deneme kaydına bağlar", () => {
+    const rows: BoardRow[] = [{ brand: "Fiat", model: "Linea", count: 3, sourceCount: 300 }];
+    const now = new Date("2026-10-09T12:00:00Z").getTime();
+    const noted = withAttemptNotes(
+      rows,
+      [{ brand: "Fiat", familyKey: "linea", attemptedAt: new Date(now - 86_400_000), retryAfterDays: 14, reason: "exhausted" }],
+      now
+    );
+    expect(noted[0].note).toContain("13 gün sonra yeniden");
+    expect(withAttemptNotes(rows, [], now)[0].note).toBe("henüz sırası gelmedi");
   });
 });
 

@@ -3,6 +3,7 @@ import {
   extractArabamListingHrefs,
   fetchPageHtml,
   fetchPageHtmlWithBrowser,
+  fetchPageWithBrowser,
   isListingGone,
   parseArabamDetailHtml,
   parseSahibindenHtml,
@@ -20,7 +21,10 @@ import { ScrapedListing, ScrapeAdapter, OnListing } from "@/lib/scraper/types";
 import { seedCars } from "@/lib/seed-data";
 import { Car } from "@/models/Car";
 import { modelFamilyRegex } from "@/lib/model-family";
+import { isRealListPage, isRequestedModelPage, lastSlug, type QuotaOutcome } from "@/lib/scraper/model-page";
+import { isPermanentRemoval } from "@/lib/scraper/feature-merge";
 
+export type { QuotaOutcome } from "@/lib/scraper/model-page";
 
 const SCRAPE_CONCURRENCY = Math.max(1, Number(process.env.SCRAPE_CONCURRENCY) || 1);
 
@@ -136,20 +140,28 @@ export function arabamBrandSlug(brand: string): string {
 }
 
 
-async function listHtmlFromUrl(url: string): Promise<string> {
+/** Liste sayfası: HTML ve yönlendirmelerden sonra varılan gerçek adres (model sayfası markanın sayfasına düşmüş mü anlaşılsın diye). */
+async function listPageFromUrl(url: string): Promise<{ html: string; finalUrl: string }> {
   const direct = await fetchPageHtml(url);
   if (direct.status === 429 || direct.status === 403) {
     throw new Error(`Arabam.com hız sınırı / Cloudflare koruması (HTTP ${direct.status})`);
   }
   let html = direct.ok ? direct.html : "";
+  let finalUrl = direct.finalUrl || url;
   if (extractArabamListingHrefs(html, 30).length === 0 && !direct.status) {
     try {
-      html = await fetchPageHtmlWithBrowser(url);
+      const page = await fetchPageWithBrowser(url);
+      html = page.html;
+      finalUrl = page.finalUrl || url;
     } catch {
       // ignore
     }
   }
-  return html;
+  return { html, finalUrl };
+}
+
+async function listHtmlFromUrl(url: string): Promise<string> {
+  return (await listPageFromUrl(url)).html;
 }
 
 async function hrefsFromUrl(url: string): Promise<string[]> {
@@ -329,13 +341,33 @@ async function collectArabamHrefsAcrossBrands(
 }
 
 
+/**
+ * Bir detay okuma partisinin engel istatistiği. Engel ("429", Cloudflare, ağ hatası) yutulduğunda parti "başarılı" görünüyor ve engelli
+ * kaynağa 250 ilan boyunca (her biri ~30 sn bekleyerek) vurulmaya devam ediliyordu; sayaçlar partiyi erken bitirmeye ve doğrulayıcının
+ * mola vermesine yarar.
+ */
+export interface DetailFetchStats {
+  /** Sayfası açılmaya çalışılan ilan adresleri (erken bitirilen partide kalanlar yoktur). */
+  attempted: Set<string>;
+  /** Engel / ağ hatası yüzünden okunamayanlar (404/410 ölü ilan sayılır, buraya girmez). */
+  blocked: Set<string>;
+  /** Art arda çok engel gelince kalan ilanlara dokunulmadan parti bitirildi. */
+  aborted: boolean;
+}
+
+export const createDetailFetchStats = (): DetailFetchStats => ({ attempted: new Set(), blocked: new Set(), aborted: false });
+
+/** Bu kadar ilan üst üste engelli okunamazsa parti bırakılır (her biri ~30 sn sürer; 5 engel ≈ 2-3 dk). */
+const ABORT_AFTER_CONSECUTIVE_BLOCKS = 5;
+
 async function fetchAndSaveArabamDetails(
   hrefs: string[],
   onListing: OnListing,
   skipExisting = true,
   onGone?: (href: string) => void,
   progressOffset = 0,
-  progressTotal?: number
+  progressTotal?: number,
+  stats?: DetailFetchStats
 ): Promise<number> {
   let toFetch = hrefs;
   const tTotal = progressTotal ?? toFetch.length;
@@ -365,10 +397,20 @@ async function fetchAndSaveArabamDetails(
   let fetched = 0;
   let done = 0;
   let rateLimitHits = 0;
+  let consecutiveBlocked = 0;
+  const noteBlocked = (href: string) => {
+    if (!stats) return;
+    stats.blocked.add(href);
+    consecutiveBlocked += 1;
+    if (consecutiveBlocked >= ABORT_AFTER_CONSECUTIVE_BLOCKS) stats.aborted = true;
+  };
   await mapPool(toFetch, SCRAPE_CONCURRENCY, async (href) => {
+    if (stats?.aborted) return;
+    stats?.attempted.add(href);
     const listingUrl = `https://www.arabam.com${href}`;
+    let detail: Awaited<ReturnType<typeof fetchPageHtml>> | undefined;
     try {
-      let detail = await fetchPageHtml(listingUrl);
+      detail = await fetchPageHtml(listingUrl);
 
       // 429 rate-limit: bekle ve tekrar dene (1 kez)
       if (detail.status === 429) {
@@ -380,6 +422,7 @@ async function fetchAndSaveArabamDetails(
       }
 
       if (detail.ok) {
+        consecutiveBlocked = 0;
         if (isListingGone(detail.html, detail.finalUrl)) {
           onGone?.(href);
         } else {
@@ -391,10 +434,14 @@ async function fetchAndSaveArabamDetails(
           // Ayrıştırma hatası veya eksik HTML'de ilan silinmez/arşivlenmez, korunur.
         }
       } else if (detail.status === 404 || detail.status === 410) {
+        consecutiveBlocked = 0;
         onGone?.(href);
+      } else {
+        noteBlocked(href);
       }
     } catch {
-      // ignore
+      // Sayfa hiç okunamadıysa (ağ hatası, zaman aşımı) engel sayılır; okunduktan sonraki ayrıştırma/kayıt hatası engel değildir.
+      if (!detail || !detail.ok) noteBlocked(href);
     } finally {
       done += 1;
       reportProgress("2/2 İlan çekiliyor ve kaydediliyor", done + progressOffset, tTotal);
@@ -560,9 +607,10 @@ export async function refetchArabamDetails(
   onListing: OnListing,
   onGone?: (href: string) => void,
   progressOffset?: number,
-  progressTotal?: number
+  progressTotal?: number,
+  stats?: DetailFetchStats
 ): Promise<number> {
-  return fetchAndSaveArabamDetails(hrefs, onListing, false, onGone, progressOffset, progressTotal);
+  return fetchAndSaveArabamDetails(hrefs, onListing, false, onGone, progressOffset, progressTotal, stats);
 }
 
 export interface ModelScrapeOptions {
@@ -584,17 +632,15 @@ export interface QuotaTarget {
   path?: string;
 }
 
-/** Bir model sayfasının nasıl bittiği: kota doldu / kaynakta başka yok / aranan sayfalar yetmedi (daha fazlası var). */
-export type QuotaOutcome = "satisfied" | "exhausted" | "more";
-
 export interface QuotaScrapeOptions {
   /** Kota doldurulamazsa en çok kaç liste sayfasına bakılır. */
   maxPages?: number;
   /** Kaynak hız sınırı koyarsa (Cloudflare/429) çağrılır ve tur durdurulur; o model "tükendi" diye işaretlenmez. */
   onBlocked?: () => void;
+  /** [fresh]: kaynakta görülen, bizde olmayan ve kaydedilmeye çalışılan ilan sayısı ([added] bunların kaydedilebilenleri). */
   onSegment?: (
     segment: QuotaTarget,
-    result: { added: number; found: number; outcome: QuotaOutcome; before?: number; after?: number }
+    result: { added: number; fresh: number; found: number; outcome: QuotaOutcome; before?: number; after?: number }
   ) => Promise<void> | void;
 }
 
@@ -603,11 +649,16 @@ function isRateLimitError(error: unknown): boolean {
   return error instanceof Error && /hız sınırı|Cloudflare/i.test(error.message);
 }
 
-/** Model sayfasında bizde olmayan ilanları (en çok [quota] tane) arar; sayfa sayfa ilerler, doyunca ya da sayfa bitince durur. */
+/**
+ * Model sayfasında bizde olmayan ilanları (en çok [quota] tane) arar; sayfa sayfa ilerler, doyunca ya da sayfa bitince durur.
+ * [expectedSlug]: istenen sayfanın adres parçası; kaynak başka sayfaya yönlendirirse ("audi-a7" → "audi") o sayfanın ilanları bu modele
+ * ait olmadığı için hiçbiri alınmaz ("unavailable"). Boş sayfa gerçek bir liste sayfasıysa "empty", değilse (engel/hata) "unknown".
+ */
 export async function collectFreshArabamHrefs(
   base: string,
   quota: number,
-  maxPages: number
+  maxPages: number,
+  expectedSlug?: string
 ): Promise<{ fresh: string[]; seen: number; outcome: QuotaOutcome }> {
   const fresh: string[] = [];
   const seenAll = new Set<string>();
@@ -615,24 +666,42 @@ export async function collectFreshArabamHrefs(
 
   for (let page = 1; page <= maxPages; page++) {
     let all: string[] = [];
+    let html = "";
+    let finalUrl = base;
     try {
-      const html = await listHtmlFromUrl(page > 1 ? `${base}?page=${page}` : base);
+      ({ html, finalUrl } = await listPageFromUrl(page > 1 ? `${base}?page=${page}` : base));
       all = extractArabamListingHrefs(html, 30);
     } catch (error) {
       if (isRateLimitError(error)) throw error;
-      outcome = fresh.length > 0 ? "satisfied" : "exhausted";
+      outcome = fresh.length > 0 ? "more" : "unknown";
+      break;
+    }
+    if (page === 1 && expectedSlug && !isRequestedModelPage(expectedSlug, finalUrl)) {
+      return { fresh: [], seen: 0, outcome: "unavailable" };
+    }
+    if (all.length === 0) {
+      if (isRealListPage(html)) outcome = page === 1 ? "empty" : "exhausted";
+      else outcome = fresh.length > 0 ? "more" : "unknown";
       break;
     }
     const pageNew = all.filter((h) => !seenAll.has(h));
     pageNew.forEach((h) => seenAll.add(h));
-    if (all.length === 0 || pageNew.length === 0) {
+    if (pageNew.length === 0) {
       outcome = "exhausted";
       break;
     }
 
     const ids = [...new Set(pageNew.map(arabamIdFromHref).filter(Boolean))].map((id) => `arabam-${id}`);
+    // Zaten sitede olanlar ("existing") atlanır. Arşivdeki bir ilan kaynağın GÜNCEL model sayfasında hâlâ listeleniyorsa yayındadır (eski
+    // doğrulama hatasıyla arşive düşmüş olabilir): aday sayılır, detay okunup canlıysa geri açılır. Elle kaldırılan / kapsam dışı olanlar hariç.
     const existing = new Set(
-      (await Car.find({ externalId: { $in: ids } }, { externalId: 1 }).lean<Array<{ externalId: string }>>()).map((d) => d.externalId)
+      (
+        await Car.find({ externalId: { $in: ids } }, { externalId: 1, status: 1, removedReason: 1 }).lean<
+          Array<{ externalId: string; status?: string; removedReason?: string }>
+        >()
+      )
+        .filter((d) => d.status !== "removed" || isPermanentRemoval(d.removedReason))
+        .map((d) => d.externalId)
     );
     for (const href of pageNew) {
       const id = arabamIdFromHref(href);
@@ -663,6 +732,8 @@ export async function scrapeArabamForQuotas(
 ): Promise<number> {
   const maxPages = options.maxPages ?? 6;
   let fetched = 0;
+  // Art arda belirsiz sayfa (okunamayan / boş dönen liste) büyük olasılıkla engeldir: tur durdurulur, modeller 1 gün sonra yeniden denenir.
+  let unknownStreak = 0;
 
   for (const [index, target] of targets.entries()) {
     if (fetched >= maxListings) break;
@@ -681,13 +752,14 @@ export async function scrapeArabamForQuotas(
       }
     }
     if (!base) {
-      await options.onSegment?.(target, { added: 0, found: 0, outcome: "exhausted" });
+      // Ad kaynakta bir model sayfasına çözülemedi: ilanlarına site haritasından bakılır (bkz. sitemap-family.ts).
+      await options.onSegment?.(target, { added: 0, fresh: 0, found: 0, outcome: "unavailable" });
       continue;
     }
 
     let result: Awaited<ReturnType<typeof collectFreshArabamHrefs>>;
     try {
-      result = await collectFreshArabamHrefs(base, Math.min(target.quota, maxListings - fetched), maxPages);
+      result = await collectFreshArabamHrefs(base, Math.min(target.quota, maxListings - fetched), maxPages, target.path ? lastSlug(target.path) : undefined);
     } catch (error) {
       if (isRateLimitError(error)) {
         options.onBlocked?.();
@@ -696,14 +768,26 @@ export async function scrapeArabamForQuotas(
       continue;
     }
 
+    if (result.outcome === "unavailable" || result.outcome === "empty" || result.outcome === "unknown") {
+      unknownStreak = result.outcome === "unknown" ? unknownStreak + 1 : 0;
+      await options.onSegment?.(target, { added: 0, fresh: 0, found: result.seen, outcome: result.outcome });
+      if (unknownStreak >= 3) {
+        options.onBlocked?.();
+        break;
+      }
+      continue;
+    }
+    unknownStreak = 0;
+
     const countActive = () =>
       Car.countDocuments({ brand: target.brand, model: modelFamilyRegex(target.model, target.brand), status: "active" }).catch(() => undefined);
     const before = await countActive();
-    const added = result.fresh.length > 0 ? await fetchAndSaveArabamDetails(result.fresh, onListing) : 0;
+    // Adaylar zaten "bizde yok ya da arşivde" diye süzüldü; skipExisting=false: arşivdekiler okunup canlıysa geri açılır.
+    const added = result.fresh.length > 0 ? await fetchAndSaveArabamDetails(result.fresh, onListing, false) : 0;
     fetched += added;
     const after = before === undefined ? undefined : await countActive();
     if (added > 0) reportEvent({ label: `${target.brand} ${target.model}`, before, after, added });
-    await options.onSegment?.(target, { added, found: result.seen, outcome: result.outcome, before, after });
+    await options.onSegment?.(target, { added, fresh: result.fresh.length, found: result.seen, outcome: result.outcome, before, after });
   }
 
   return fetched;

@@ -85,6 +85,12 @@ export interface ScrapeJobResult {
   deleted?: number;
   /** Arşivdeyken kaynakta yeniden görülüp aktife alınan ilanlar. */
   reactivated?: number;
+  /** Detay doğrulama partisi: sayfası açılmaya çalışılan ilan sayısı. */
+  checked?: number;
+  /** ... bunlardan engel / ağ hatası yüzünden okunamayanlar (ölü ilan sayılmaz). */
+  blocked?: number;
+  /** Art arda çok engel gelince parti erken bırakıldı (kalan ilanlara dokunulmadı). */
+  aborted?: boolean;
   sources: Array<{
     source: ListingSource;
     fetched: number;

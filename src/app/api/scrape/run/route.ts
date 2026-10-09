@@ -14,9 +14,12 @@ import { runEnrichArabamBatch } from "@/lib/scraper/enrich-arabam";
 import { runRecentArabamScrape } from "@/lib/scraper/arabam-discovery";
 import { requireAdmin } from "@/lib/auth";
 import { ManualScrapeLog } from "@/models/ManualScrapeLog";
+import { startManualBeat } from "@/lib/manual-scrape-state";
 
 export async function POST(request: Request) {
   const startTime = Date.now();
+  // Yönetim panelindeki "manuel tarama çalışıyor" işareti: iş sürerken yenilenir, bitince (hata dahil) kapanır.
+  let stopBeat: (() => Promise<void>) | null = null;
 
   try {
     const secret = process.env.SCRAPE_RUN_SECRET;
@@ -47,6 +50,9 @@ export async function POST(request: Request) {
 
     const isVercel = Boolean(process.env.VERCEL);
     await connectDB();
+    if (body.mode !== "refresh-status") {
+      stopBeat = await startManualBeat(String(body.label || body.mode || body.source || "tarama"), actor);
+    }
 
     const recordLog = async (
       result: any,
@@ -257,5 +263,7 @@ export async function POST(request: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    await stopBeat?.();
   }
 }

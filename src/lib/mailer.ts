@@ -93,6 +93,13 @@ export function isMailerConfigured() {
   return getTransporter() !== null;
 }
 
+/** SMTP sunucusuna bağlanıp kimlik doğrular; e-posta GÖNDERMEZ (günlük kotayı harcamaz). */
+export async function verifyMailerConnection(): Promise<void> {
+  const t = getTransporter();
+  if (!t) throw new Error("SMTP ayarları yok");
+  await t.verify();
+}
+
 export async function sendVerifyEmail(to: string, verifyUrl: string) {
   const subject = "OtoPiyasa - E-posta adresini doğrula";
   const html = `<p>OtoPiyasa'ya hoş geldin! Hesabını etkinleştirmek için aşağıdaki bağlantıya tıkla:</p>

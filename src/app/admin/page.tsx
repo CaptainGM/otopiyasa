@@ -8,6 +8,8 @@ import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
 import { DaemonStatsPanel } from "@/components/DaemonStatsPanel";
 import { DailySummaryPanel } from "@/components/DailySummaryPanel";
+import { FeatureStatusPanel } from "@/components/FeatureStatusPanel";
+import { RemoveAvatarButton } from "@/components/RemoveAvatarButton";
 import { HomeWatcherPanel } from "@/components/HomeWatcherPanel";
 import { SystemHealthCard } from "@/components/SystemHealthCard";
 import { collectHealthSnapshot, evaluateHealth } from "@/lib/health-check";
@@ -40,6 +42,7 @@ interface AdminUserRow {
   role?: string;
   favorites?: unknown[];
   createdAt?: Date;
+  avatarType?: string | null;
 }
 
 interface AdminCarRow {
@@ -133,7 +136,7 @@ export default async function AdminPage() {
         .sort({ updatedAt: -1 })
         .lean()
         .catch(() => []),
-      User.find({}, { name: 1, email: 1, role: 1, favorites: 1, createdAt: 1 })
+      User.find({}, { name: 1, email: 1, role: 1, favorites: 1, createdAt: 1, avatarType: 1 })
         .sort({ createdAt: -1 })
         .limit(50)
         .lean()
@@ -334,7 +337,15 @@ export default async function AdminPage() {
   const healthIssues = await collectHealthSnapshot(healthAt).then(evaluateHealth).catch(() => []);
 
   return (
-    <div className="space-y-8 pb-10">
+    <div className="relative space-y-8 pb-10">
+      {/* Site özelliklerinin canlı durumu: geniş ekranda ana içeriğin SAĞINDAKİ boş kenar boşluğunda (kaydırınca yapışık),
+          dar ekranda üstte katlanabilir tek satır. */}
+      <aside className="min-[2160px]:absolute min-[2160px]:left-full min-[2160px]:top-0 min-[2160px]:ml-5 min-[2160px]:!mt-0 min-[2160px]:h-full min-[2160px]:w-[340px]">
+        <div className="min-[2160px]:sticky min-[2160px]:top-4">
+          <FeatureStatusPanel />
+        </div>
+      </aside>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-black">Yönetim Paneli</h1>
@@ -353,7 +364,7 @@ export default async function AdminPage() {
         </Link>
       </div>
 
-      {/* GÜNLÜK ÖZET: bekçi + otonom + manuel, kaynak bazında (en üstte) */}
+      {/* GÜNLÜK ÖZET: bekçi + otonom + manuel, kaynak bazında (tam genişlik) */}
       <DailySummaryPanel />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
@@ -511,6 +522,7 @@ export default async function AdminPage() {
                 <th className="p-2.5">Rol</th>
                 <th className="p-2.5">Favori</th>
                 <th className="p-2.5">Kayıt</th>
+                <th className="p-2.5">Fotoğraf</th>
               </tr>
             </thead>
             <tbody>
@@ -530,6 +542,9 @@ export default async function AdminPage() {
                     {user.createdAt
                       ? new Date(user.createdAt).toLocaleDateString("tr-TR")
                       : "-"}
+                  </td>
+                  <td className="p-2.5">
+                    {user.avatarType === "photo" ? <RemoveAvatarButton userId={user._id.toString()} /> : <span className="text-slate-600">—</span>}
                   </td>
                 </tr>
               ))}

@@ -16,6 +16,7 @@ export function VerifyEmailClient() {
   const [state, setState] = useState<State>("verifying");
   const [message, setMessage] = useState("");
   const [resent, setResent] = useState(false);
+  const [resendError, setResendError] = useState("");
   const ran = useRef(false);
 
   useEffect(() => {
@@ -55,12 +56,22 @@ export function VerifyEmailClient() {
   }, [email, token, router]);
 
   async function resend() {
-    setResent(true);
-    await fetch("/api/auth/resend-verification", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    }).catch(() => {});
+    setResendError("");
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (response.ok) {
+        setResent(true);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setResendError(data.error || "Yeni bağlantı gönderilemedi.");
+      }
+    } catch {
+      setResendError("Sunucuya bağlanılamadı.");
+    }
   }
 
   return (
@@ -96,6 +107,7 @@ export function VerifyEmailClient() {
               {resent ? "Yeni bağlantı gönderildi" : "Yeni doğrulama bağlantısı gönder"}
             </button>
           )}
+          {resendError && <p className="text-sm text-rose-300">{resendError}</p>}
           <Link href="/login" className="block text-sm text-amber-300 hover:underline">
             Giriş sayfasına dön
           </Link>

@@ -5,6 +5,7 @@ import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { ChangeEmailForm } from "@/components/ChangeEmailForm";
+import { EditProfileForm } from "@/components/EditProfileForm";
 import { PushToggle } from "@/components/PushToggle";
 import { DevicesSection } from "@/components/DevicesSection";
 import { BusinessSection } from "@/components/BusinessSection";
@@ -99,12 +100,11 @@ export default async function ProfilePage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="card p-6">
           <h2 className="mb-1 text-lg font-semibold">Hesap bilgileri</h2>
-          <p className="mb-5 text-sm text-slate-500">Profil bilgilerin.</p>
+          <p className="mb-5 text-sm text-slate-500">Adını değiştirebilirsin; e-posta ve şifre aşağıdaki bölümlerden değişir.</p>
+          <div className="mb-4 border-b border-white/5 pb-4">
+            <EditProfileForm initialName={user.name} />
+          </div>
           <dl className="space-y-3 text-sm">
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
-              <dt className="text-slate-500">Ad Soyad</dt>
-              <dd className="font-medium">{user.name}</dd>
-            </div>
             <div className="flex items-center justify-between border-b border-white/5 pb-3">
               <dt className="text-slate-500">E-posta</dt>
               <dd className="font-medium">{user.email}</dd>

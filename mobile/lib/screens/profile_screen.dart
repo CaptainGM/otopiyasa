@@ -77,6 +77,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _searches = _api.fetchSubscriptions().catchError((_) => <SavedSearch>[]));
   }
 
+  Future<void> _editName() async {
+    final controller = TextEditingController(text: _api.currentUser?['name']?.toString() ?? '');
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adını değiştir'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 60,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Ad Soyad'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Kaydet')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newName == null || newName.isEmpty || newName == _api.currentUser?['name']) return;
+    setState(() => _busy = true);
+    try {
+      await _api.updateProfileName(newName);
+      _toast('Profilin güncellendi');
+    } catch (e) {
+      _toast(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _changePassword() async {
     if (_current.text.isEmpty || _next.text.isEmpty) {
       _toast('İki alanı da doldur');
@@ -236,7 +268,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(user?['name']?.toString() ?? 'Hesabım'),
-              subtitle: Text(user?['email']?.toString() ?? ''),
+              subtitle: Text('${user?['email']?.toString() ?? ''}\nAdını değiştirmek için dokun'),
+              isThreeLine: true,
+              onTap: _busy ? null : _editName,
               trailing: _api.isAdmin
                   ? Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

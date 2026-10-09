@@ -1094,6 +1094,21 @@ class ApiService {
   // HESAP
   // ---------------------------------------------------------------------------
 
+  /// Ad soyadı günceller (web'deki profil düzenlemeyle aynı uç).
+  Future<void> updateProfileName(String name) async {
+    final response = await _http.patch(
+      _uri('/api/auth/profile'),
+      headers: _headers,
+      body: jsonEncode({'name': name}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Profil güncellenemedi'));
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final saved = (body['user'] as Map?)?['name']?.toString();
+    if (saved != null && currentUser != null) currentUser = {...currentUser!, 'name': saved};
+  }
+
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,

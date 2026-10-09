@@ -316,10 +316,28 @@ echo   MARKA / MODEL KATALOGU
 echo   - Kaynagin kendi marka ve model listesi (sayilariyla) okunur; i20 / i20 N / i20 Active ayri model sayilir.
 echo   - Bizde hic ilani olmayan modeller bu listeden bulunur ve Nadir MODEL taramasina (6, 7) girer.
 echo   - Yaklasik 170 istek, 20-30 dk. Bekci bitene kadar bekler. Haftada bir yeterli.
-echo   - Bitince src\lib\model-catalog-data.ts degisirse commit edip push et (filtre listesi buradan gelir).
+echo   - Bitince model listesi dosyasi degistiyse kendiliginden commit edilip GitHub'a gonderilir (senin yapacagin bir sey yok).
 echo ====================================================================
 echo.
 npx tsx scripts\model-catalog.ts
+if errorlevel 2 (
+    echo.
+    echo [!] Kaynak hiz siniri koydu, katalog yarim kaldi. Biraz sonra 22'yi tekrar calistir ^(kaldigi yerden devam eder^).
+    goto :katalogson
+)
+rem Model listesi dosyasi degistiyse kendiliginden commit edilir ve gonderilir (site filtresi buradan okur).
+git diff --quiet -- src\lib\model-catalog-data.ts
+if errorlevel 1 (
+    git add src\lib\model-catalog-data.ts
+    git commit -m "model listesi guncellendi" -- src\lib\model-catalog-data.ts
+    git push origin main
+    echo.
+    echo Model listesi degisti: commit edildi ve GitHub'a gonderildi. Site birkac dakika icinde guncellenir.
+) else (
+    echo.
+    echo Model listesi degismedi, commit gerekmedi.
+)
+:katalogson
 echo.
 pause
 goto :eof

@@ -216,6 +216,7 @@ async function resolveArabamModelBase(brand: string, model: string): Promise<str
   for (const category of ARABAM_MODEL_CATEGORIES) {
     try {
       const probe = await fetchPageHtml(`https://www.arabam.com/ikinci-el/${category}/${modelSlug}`);
+      if (probe.status === 429 || probe.status === 403) throw new Error(`Arabam.com hız sınırı / Cloudflare koruması (HTTP ${probe.status})`);
       if (!probe.ok || !probe.finalUrl.includes("/ikinci-el/")) continue;
       const base = probe.finalUrl.split("?")[0];
       const last = base.split("/").filter(Boolean).pop() || "";
@@ -223,7 +224,8 @@ async function resolveArabamModelBase(brand: string, model: string): Promise<str
         resolved = base;
         break;
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && /hız sınırı|Cloudflare/i.test(error.message)) throw error; // engelde "model yok" diye önbelleğe yazılmaz
       // bir sonraki kategori denenir
     }
   }
@@ -588,10 +590,17 @@ export type QuotaOutcome = "satisfied" | "exhausted" | "more";
 export interface QuotaScrapeOptions {
   /** Kota doldurulamazsa en çok kaç liste sayfasına bakılır. */
   maxPages?: number;
+  /** Kaynak hız sınırı koyarsa (Cloudflare/429) çağrılır ve tur durdurulur; o model "tükendi" diye işaretlenmez. */
+  onBlocked?: () => void;
   onSegment?: (
     segment: QuotaTarget,
     result: { added: number; found: number; outcome: QuotaOutcome; before?: number; after?: number }
   ) => Promise<void> | void;
+}
+
+/** Kaynağın hız sınırı / bot koruması hatası mı (listHtmlFromUrl bu iletiyle fırlatır). */
+function isRateLimitError(error: unknown): boolean {
+  return error instanceof Error && /hız sınırı|Cloudflare/i.test(error.message);
 }
 
 /** Model sayfasında bizde olmayan ilanları (en çok [quota] tane) arar; sayfa sayfa ilerler, doyunca ya da sayfa bitince durur. */
@@ -609,7 +618,8 @@ export async function collectFreshArabamHrefs(
     try {
       const html = await listHtmlFromUrl(page > 1 ? `${base}?page=${page}` : base);
       all = extractArabamListingHrefs(html, 30);
-    } catch {
+    } catch (error) {
+      if (isRateLimitError(error)) throw error;
       outcome = fresh.length > 0 ? "satisfied" : "exhausted";
       break;
     }
@@ -662,7 +672,11 @@ export async function scrapeArabamForQuotas(
     if (!base) {
       try {
         base = await resolveArabamModelBase(target.brand, target.model);
-      } catch {
+      } catch (error) {
+        if (isRateLimitError(error)) {
+          options.onBlocked?.();
+          break;
+        }
         base = null;
       }
     }
@@ -674,7 +688,11 @@ export async function scrapeArabamForQuotas(
     let result: Awaited<ReturnType<typeof collectFreshArabamHrefs>>;
     try {
       result = await collectFreshArabamHrefs(base, Math.min(target.quota, maxListings - fetched), maxPages);
-    } catch {
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        options.onBlocked?.();
+        break;
+      }
       continue;
     }
 

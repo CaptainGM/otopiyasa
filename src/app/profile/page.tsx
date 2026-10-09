@@ -5,6 +5,8 @@ import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
 import { ChangePasswordForm } from "@/components/ChangePasswordForm";
 import { ChangeEmailForm } from "@/components/ChangeEmailForm";
+import { AvatarEditor } from "@/components/AvatarEditor";
+import { avatarDescriptor } from "@/lib/avatar";
 import { PushToggle } from "@/components/PushToggle";
 import { DevicesSection } from "@/components/DevicesSection";
 import { BusinessSection } from "@/components/BusinessSection";
@@ -20,9 +22,13 @@ export default async function ProfilePage() {
   const user = await User.findById(authUser.userId)
     .select(
       "name email role favorites createdAt businessStatus businessName businessRejectionReason " +
-        "emailChangePendingEmail emailChangeCurrentCodeHash emailChangeNewCodeHash emailChangeCodeExpires"
+        "emailChangePendingEmail emailChangeCurrentCodeHash emailChangeNewCodeHash emailChangeCodeExpires avatarType avatarPreset avatarVersion"
     )
     .lean<{
+      _id: unknown;
+      avatarType?: string | null;
+      avatarPreset?: string | null;
+      avatarVersion?: number | null;
       name: string;
       email: string;
       role: string;
@@ -54,19 +60,12 @@ export default async function ProfilePage() {
         day: "numeric",
       })
     : "-";
-  const initials = user.name
-    .split(" ")
-    .map((p) => p[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+  const avatar = avatarDescriptor(user);
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 pb-10">
       <div className="flex items-center gap-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-2xl font-black text-[#221202]">
-          {initials || "?"}
-        </div>
+        <AvatarEditor name={user.name} avatar={avatar} />
         <div>
           <h1 className="text-2xl font-black tracking-tight">{user.name}</h1>
           <p className="text-sm text-slate-400">{user.email}</p>

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { AvatarDescriptor } from "@/lib/avatar";
 
 /** Giriş yapmış kullanıcının tarayıcıda okunabilen işareti (asıl oturum çerezi httpOnly'dir). */
 export const SESSION_FLAG_COOKIE = "op_session";
 const CHECKED_KEY = "op_viewer_checked";
 
-export type Viewer = { id: string; name: string; role: "user" | "admin" } | null;
+export type Viewer = { id: string; name: string; role: "user" | "admin"; avatar?: AvatarDescriptor } | null;
 
 let pending: Promise<Viewer> | null = null;
 

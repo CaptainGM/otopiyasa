@@ -5,6 +5,8 @@ import 'package:otopiyasa/screens/devices_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/widgets/avatar_picker_sheet.dart';
+import 'package:otopiyasa/widgets/user_avatar.dart';
 
 /// PROFİL — hesap bilgisi, şifre değiştirme ve kayıtlı aramalar (fiyat alarmı).
 ///
@@ -75,6 +77,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _reloadSearches() {
     setState(() => _searches = _api.fetchSubscriptions().catchError((_) => <SavedSearch>[]));
+  }
+
+  Future<void> _editAvatar() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const AvatarPickerSheet(),
+    );
+    if (result != null && mounted) {
+      setState(() {});
+      _toast(result);
+    }
   }
 
   Future<void> _changePassword() async {
@@ -234,9 +249,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Card(
             child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
+              leading: GestureDetector(
+                onTap: _editAvatar,
+                child: UserAvatar(name: user?['name']?.toString() ?? '', avatar: user?['avatar'] as Map?, size: 48),
+              ),
               title: Text(user?['name']?.toString() ?? 'Hesabım'),
-              subtitle: Text(user?['email']?.toString() ?? ''),
+              subtitle: GestureDetector(
+                onTap: _editAvatar,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(user?['email']?.toString() ?? ''),
+                    const Text('Profil resmini düzenle', style: TextStyle(fontSize: 11, color: AppTheme.accent)),
+                  ],
+                ),
+              ),
+              isThreeLine: true,
               trailing: _api.isAdmin
                   ? Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

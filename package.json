@@ -19,6 +19,11 @@
     "backfill-feed-ranks": "npx tsx scripts/backfill-feed-ranks.ts"
   },
   "dependencies": {
+    "@dicebear/core": "^9.4.3",
+    "@dicebear/lorelei": "^9.4.2",
+    "@dicebear/notionists": "^9.4.2",
+    "@dicebear/open-peeps": "^9.4.2",
+    "@dicebear/thumbs": "^9.4.2",
     "@types/leaflet": "^1.9.22",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.2.0",

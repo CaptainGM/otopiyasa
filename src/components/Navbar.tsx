@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Avatar } from "@/components/Avatar";
 import { useViewer } from "@/components/useViewer";
 import { LogoutButton } from "@/components/LogoutButton";
 import { Logo } from "@/components/Logo";
@@ -99,7 +100,7 @@ export function Navbar() {
               )}
               <NotificationBell />
               <Link href="/profile" className="user-pill transition hover:brightness-110" title="Profilim">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+                <Avatar name={user.name} avatar={user.avatar} size={22} />
                 {user.name}
               </Link>
               <LogoutButton />

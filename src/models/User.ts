@@ -31,6 +31,10 @@ const UserSchema = new Schema(
     verifyResendCount: { type: Number, default: 0 },
     // Adres değişikliği bilgilendirmesi (scripts/notify-domain-change.ts) gönderildiyse zamanı; ikinci kez gönderilmez.
     domainNoticeAt: { type: Date, default: null },
+    // Profil fotoğrafı: hazır avatar kimliği ("car.3") ya da yüklenen fotoğraf (UserAvatar koleksiyonu, sürüm adresi önbelleği yeniler).
+    avatarType: { type: String, enum: [null, "preset", "photo"], default: null },
+    avatarPreset: { type: String, default: null },
+    avatarVersion: { type: Number, default: 0 },
   
     accountType: { type: String, enum: ["individual", "business"], default: "individual" },
     businessName: { type: String, default: "" },

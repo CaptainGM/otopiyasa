@@ -573,6 +573,124 @@ export interface ModelScrapeOptions {
   ) => Promise<void> | void;
 }
 
+export interface QuotaTarget {
+  brand: string;
+  model: string;
+  /** Bu turda en çok kaç YENİ ilan çekilecek (hedef kademe − mevcut ilan sayısı). */
+  quota: number;
+  /** Katalogdan gelen kesin adres parçası ("arazi-suv-pick-up/hyundai-ioniq-5"); yoksa ad adrese çevrilir. */
+  path?: string;
+}
+
+/** Bir model sayfasının nasıl bittiği: kota doldu / kaynakta başka yok / aranan sayfalar yetmedi (daha fazlası var). */
+export type QuotaOutcome = "satisfied" | "exhausted" | "more";
+
+export interface QuotaScrapeOptions {
+  /** Kota doldurulamazsa en çok kaç liste sayfasına bakılır. */
+  maxPages?: number;
+  onSegment?: (
+    segment: QuotaTarget,
+    result: { added: number; found: number; outcome: QuotaOutcome; before?: number; after?: number }
+  ) => Promise<void> | void;
+}
+
+/** Model sayfasında bizde olmayan ilanları (en çok [quota] tane) arar; sayfa sayfa ilerler, doyunca ya da sayfa bitince durur. */
+export async function collectFreshArabamHrefs(
+  base: string,
+  quota: number,
+  maxPages: number
+): Promise<{ fresh: string[]; seen: number; outcome: QuotaOutcome }> {
+  const fresh: string[] = [];
+  const seenAll = new Set<string>();
+  let outcome: QuotaOutcome = "more";
+
+  for (let page = 1; page <= maxPages; page++) {
+    let all: string[] = [];
+    try {
+      const html = await listHtmlFromUrl(page > 1 ? `${base}?page=${page}` : base);
+      all = extractArabamListingHrefs(html, 30);
+    } catch {
+      outcome = fresh.length > 0 ? "satisfied" : "exhausted";
+      break;
+    }
+    const pageNew = all.filter((h) => !seenAll.has(h));
+    pageNew.forEach((h) => seenAll.add(h));
+    if (all.length === 0 || pageNew.length === 0) {
+      outcome = "exhausted";
+      break;
+    }
+
+    const ids = [...new Set(pageNew.map(arabamIdFromHref).filter(Boolean))].map((id) => `arabam-${id}`);
+    const existing = new Set(
+      (await Car.find({ externalId: { $in: ids } }, { externalId: 1 }).lean<Array<{ externalId: string }>>()).map((d) => d.externalId)
+    );
+    for (const href of pageNew) {
+      const id = arabamIdFromHref(href);
+      if (id && !existing.has(`arabam-${id}`)) fresh.push(href);
+    }
+    if (fresh.length >= quota) {
+      outcome = "satisfied";
+      break;
+    }
+    // Sayfa dolmadıysa (20'den az) kaynakta bu modelin son sayfasıdır.
+    if (all.length < 20) {
+      outcome = "exhausted";
+      break;
+    }
+  }
+  return { fresh: fresh.slice(0, quota), seen: seenAll.size, outcome };
+}
+
+/**
+ * Kademeli doldurma: her model için yalnızca [quota] kadar YENİ ilan çekilir (ör. 1 → 5), böylece tur başına bütçe birkaç modele
+ * değil çok modele dağılır. Kota ilanlarını modelin kendi sayfasından (katalog adresi ya da çözülen ad) alır.
+ */
+export async function scrapeArabamForQuotas(
+  targets: QuotaTarget[],
+  onListing: OnListing,
+  maxListings = Number.MAX_SAFE_INTEGER,
+  options: QuotaScrapeOptions = {}
+): Promise<number> {
+  const maxPages = options.maxPages ?? 6;
+  let fetched = 0;
+
+  for (const [index, target] of targets.entries()) {
+    if (fetched >= maxListings) break;
+    reportProgress(`Model taraması: ${target.brand} ${target.model} (hedef +${target.quota}, ${fetched} ilan kaydedildi)`, index + 1, targets.length);
+
+    let base: string | null = target.path ? `https://www.arabam.com/ikinci-el/${target.path}` : null;
+    if (!base) {
+      try {
+        base = await resolveArabamModelBase(target.brand, target.model);
+      } catch {
+        base = null;
+      }
+    }
+    if (!base) {
+      await options.onSegment?.(target, { added: 0, found: 0, outcome: "exhausted" });
+      continue;
+    }
+
+    let result: Awaited<ReturnType<typeof collectFreshArabamHrefs>>;
+    try {
+      result = await collectFreshArabamHrefs(base, Math.min(target.quota, maxListings - fetched), maxPages);
+    } catch {
+      continue;
+    }
+
+    const countActive = () =>
+      Car.countDocuments({ brand: target.brand, model: modelFamilyRegex(target.model, target.brand), status: "active" }).catch(() => undefined);
+    const before = await countActive();
+    const added = result.fresh.length > 0 ? await fetchAndSaveArabamDetails(result.fresh, onListing) : 0;
+    fetched += added;
+    const after = before === undefined ? undefined : await countActive();
+    if (added > 0) reportEvent({ label: `${target.brand} ${target.model}`, before, after, added });
+    await options.onSegment?.(target, { added, found: result.seen, outcome: result.outcome, before, after });
+  }
+
+  return fetched;
+}
+
 export async function scrapeArabamForModels(
   segments: { brand: string; model: string }[],
   perModelPages: number,

@@ -12,7 +12,7 @@ import {
   dodAdapter,
   ikinciyeniAdapter,
   scrapeArabamForBrands,
-  scrapeArabamForModels,
+  scrapeArabamForQuotas,
   scrapeArabamForMarketYears,
   refetchArabamDetails,
   POPULAR_BRANDS,
@@ -31,9 +31,10 @@ import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality
 import { ListingSource } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
-import { modelFamilyKey } from "@/lib/model-family";
+import { modelFamily, modelFamilyKey, modelNameKey } from "@/lib/model-family";
 import { RareModelAttempt } from "@/models/RareModelAttempt";
-import { DAY_MS, familyId, retryDaysFor, selectRareFamilies } from "@/lib/scraper/rare-models";
+import { ArabamCatalog, type ArabamCatalogDoc } from "@/models/ArabamCatalog";
+import { DAY_MS, familyId, planRareLevel, selectRareFamilies, type SegmentCount } from "@/lib/scraper/rare-models";
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
   if (source === "sahibinden") return [sahibindenAdapter];
@@ -519,13 +520,37 @@ export async function runRareModelScrape(
   );
   const nowMs = Date.now();
   const waiting = [...blockedUntil.values()].filter((until) => until > nowMs);
-  const targets = selectRareFamilies(
-    rows.map((r) => ({ brand: r._id?.brand || "", model: r._id?.model || "", count: r.count })),
+
+  // Kaynağın kendi model listesi: bizde hiç ilanı olmayan modeller de sıraya girer (sayıları 0). Yalnızca ad olarak kendi ailesini
+  // veren satırlar alınır (donanım yazımları aileyi bölmesin).
+  const catalogDocs = await ArabamCatalog.find().lean<ArabamCatalogDoc[]>();
+  const catalogSegments: SegmentCount[] = [];
+  for (const doc of catalogDocs) {
+    const brand = normalizeBrand(doc.brand);
+    for (const m of doc.models) {
+      if (modelNameKey(modelFamily(m.name, brand)) !== modelNameKey(m.name)) continue;
+      catalogSegments.push({ brand, model: m.name, count: 0, path: `${doc.category}/${m.slug}` });
+    }
+  }
+
+  const eligible = selectRareFamilies(
+    [...rows.map((r) => ({ brand: r._id?.brand || "", model: r._id?.model || "", count: r.count })), ...catalogSegments],
     threshold,
-    maxSegments,
+    Number.MAX_SAFE_INTEGER,
     blockedUntil,
     nowMs
   );
+  const plan = planRareLevel(eligible, threshold, maxSegments);
+  if (!plan) {
+    return {
+      success: true,
+      message: `Tüm model aileleri ${threshold} ilana ulaştı ya da bekleme süresinde (${waiting.length} aile).`,
+      inserted: 0,
+      updated: 0,
+      sources: [{ source: "arabam", fetched: 0, saved: 0 }],
+    };
+  }
+  const targets = plan.targets;
   const familyKeyOf = new Map(targets.map((t) => [familyId(t.brand, t.model), t.familyKey]));
 
   const counter = createSaveCounter();
@@ -553,12 +578,20 @@ export async function runRareModelScrape(
   let processed = 0;
   const errors: string[] = [];
   try {
-    fetched = await scrapeArabamForModels(targets, perModelPages, onListing, maxListings, {
-      familyCounts: true,
-      onSegment: async (segment, result) => {
+    fetched = await scrapeArabamForQuotas(
+      targets.map((t) => ({ brand: t.brand, model: t.model, quota: t.quota, path: t.path })),
+      onListing,
+      maxListings,
+      {
+        maxPages: Math.min(15, Math.max(perModelPages, Math.ceil(plan.level / 10) + 2)),
+        onSegment: async (segment, result) => {
         const familyKey = familyKeyOf.get(familyId(segment.brand, segment.model));
         if (!familyKey) return;
         processed += 1;
+        // Kademeye ulaşan model beklemez (sıradaki kademede yine aday olur); kaynakta tükenen 14, daha fazlası olan 3 gün sonra denenir.
+        // Hiç ilan eklenemediyse (kapsam dışı araç, ad uyuşmazlığı) ya da eklenenler aile sayısını artırmıyorsa kısır döngüye girmesin diye 14 gün bekletilir.
+        const mismatch = result.added > 0 && result.before !== undefined && result.after !== undefined && result.after - result.before < result.added * 0.5;
+        const retryAfterDays = mismatch || result.added === 0 ? 14 : result.outcome === "satisfied" ? 0 : result.outcome === "exhausted" ? 14 : 3;
         await RareModelAttempt.updateOne(
           { brand: segment.brand, familyKey },
           {
@@ -566,7 +599,7 @@ export async function runRareModelScrape(
               model: segment.model,
               attemptedAt: new Date(),
               found: result.found,
-              retryAfterDays: retryDaysFor(result.found, perModelPages),
+              retryAfterDays,
               added: result.added,
               before: result.before ?? 0,
               after: result.after ?? 0,
@@ -574,8 +607,9 @@ export async function runRareModelScrape(
           },
           { upsert: true }
         ).catch(() => {});
-      },
-    });
+        },
+      }
+    );
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
@@ -591,7 +625,7 @@ export async function runRareModelScrape(
   return {
     success: true,
     message:
-      `Nadir-model taraması: en az ilanlı ${targets.length} model ailesinden ${processed} tanesi tarandı` +
+      `Nadir-model taraması, kademe ${plan.level} ilan: bu kademenin altında ${plan.below} model var, en azdan başlayıp ${targets.length} tanesi seçildi, ${processed} tanesi tarandı` +
       (waiting.length > 0 ? ` (${waiting.length} aile bekleme süresinde: kaynakta yeni ilan çıkmış olabilir diye 3-14 gün sonra yeniden denenir)` : "") +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
     inserted: counts.inserted,

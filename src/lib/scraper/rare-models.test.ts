@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DAY_MS, familyId, retryDaysFor, selectRareFamilies, SOURCE_PAGE_SIZE } from "@/lib/scraper/rare-models";
+import { DAY_MS, familyId, planRareLevel, retryDaysFor, selectRareFamilies, SOURCE_PAGE_SIZE } from "@/lib/scraper/rare-models";
 
 const NOW = Date.UTC(2026, 9, 8);
 
@@ -77,5 +77,39 @@ describe("retryDaysFor", () => {
   it("sayfa dolmadıysa kaynakta olan hepsi çekilmiştir: 14 gün bekler", () => {
     expect(retryDaysFor(0, 1)).toBe(14);
     expect(retryDaysFor(SOURCE_PAGE_SIZE + 5, 2)).toBe(14);
+  });
+});
+
+describe("planRareLevel", () => {
+  const fam = (model: string, count: number) => ({ brand: "Fiat", model, familyKey: model.toLowerCase(), count });
+
+  it("önce en küçük kademeyi doldurur: 5'in altındakiler varken 10'a geçmez", () => {
+    const plan = planRareLevel([fam("A", 0), fam("B", 3), fam("C", 7), fam("D", 40)], 100, 50)!;
+    expect(plan.level).toBe(5);
+    expect(plan.targets.map((t) => [t.model, t.quota])).toEqual([["A", 5], ["B", 2]]);
+    expect(plan.below).toBe(2);
+  });
+
+  it("5'in altında kimse kalmadıysa 10. kademeye geçer ve yalnızca 10'a kadar doldurur (1 → 51 olmaz)", () => {
+    const plan = planRareLevel([fam("C", 7), fam("D", 12), fam("E", 40)], 100, 50)!;
+    expect(plan.level).toBe(10);
+    expect(plan.targets.map((t) => [t.model, t.quota])).toEqual([["C", 3]]);
+  });
+
+  it("tavan kademe listesinin üstündeyse son kademe tavan olur", () => {
+    const plan = planRareLevel([fam("A", 160)], 180, 10)!;
+    expect(plan.level).toBe(180);
+    expect(plan.targets[0].quota).toBe(20);
+  });
+
+  it("tur başına model sayısını sınırlar ama en azdan başlar", () => {
+    const plan = planRareLevel([fam("A", 4), fam("B", 0), fam("C", 2)], 100, 2)!;
+    expect(plan.targets.map((t) => t.model)).toEqual(["B", "C"]);
+    expect(plan.targets).toHaveLength(2);
+    expect(plan.below).toBe(3);
+  });
+
+  it("hepsi tavana ulaştıysa plan yok", () => {
+    expect(planRareLevel([fam("A", 100), fam("B", 250)], 100, 10)).toBeNull();
   });
 });

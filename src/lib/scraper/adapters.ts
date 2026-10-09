@@ -414,8 +414,10 @@ async function fetchAndSaveArabamDetails(
     stats?.attempted.add(href);
     const listingUrl = `https://www.arabam.com${href}`;
     let detail: Awaited<ReturnType<typeof fetchPageHtml>> | undefined;
+    // Var olan ilanı yeniden doğrularken ölü ilanın yönlendiği liste sayfası indirilmez (iki kat istek + ~1 MB boşuna yük).
+    const fetchOptions = { stopAtRedirect: !skipExisting };
     try {
-      detail = await fetchPageHtml(listingUrl);
+      detail = await fetchPageHtml(listingUrl, fetchOptions);
 
       // 429 rate-limit: bekle ve tekrar dene (1 kez)
       if (detail.status === 429) {
@@ -423,7 +425,7 @@ async function fetchAndSaveArabamDetails(
         const waitMs = 15000 + Math.random() * 10000; // 15-25 sn
         console.log(`  [Rate-limit] 429 alındı (${rateLimitHits}. kez), ${Math.round(waitMs / 1000)}sn bekleniyor...`);
         await new Promise(r => setTimeout(r, waitMs));
-        detail = await fetchPageHtml(listingUrl);
+        detail = await fetchPageHtml(listingUrl, fetchOptions);
       }
 
       if (detail.ok) {

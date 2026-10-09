@@ -131,7 +131,7 @@ echo     7  - Nadir MODEL genis   (en az ilanli, daha cok model ailesi)
 echo    20  - Seyrek piyasa emsali (3'ten az ilanli marka/model/yil)
 echo    21  - Son 3 gun ilanlari (en yeni ilanlar)
 echo     2  - Genis Arabam taramasi (tum markalar)
-echo    11  - Arabam Dogrula (eski ilanlarin fiyat/km/aciklama kontrolu; mola 20 dk onerilir)
+echo    11  - Arabam Dogrula (eski ilanlarin fiyat/km/aciklama kontrolu; tur 900 ilan, mola 35 dk onerilir)
 set /p zmod="Tarama numarasi (varsayilan 6): "
 if "%zmod%"=="" set zmod=6
 set /p zilan="Tur basina kac ilan? (varsayilan 1200): "
@@ -285,10 +285,10 @@ echo ====================================================================
 echo.
 set m11ilan=
 set m11mola=
-set /p m11ilan="Tur basina kac ilan? (varsayilan 1200): "
-if "%m11ilan%"=="" set m11ilan=1200
-set /p m11mola="Turlar arasi kac dakika mola? (varsayilan 20): "
-if "%m11mola%"=="" set m11mola=20
+set /p m11ilan="Tur basina kac ilan? (varsayilan 900): "
+if "%m11ilan%"=="" set m11ilan=900
+set /p m11mola="Turlar arasi kac dakika mola? (varsayilan 35): "
+if "%m11mola%"=="" set m11mola=35
 echo.
 npx tsx scripts\sync-arabam.ts 11 --tur-ilan %m11ilan% --mola %m11mola%
 echo.

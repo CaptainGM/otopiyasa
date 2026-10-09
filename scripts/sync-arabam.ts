@@ -35,9 +35,9 @@ const flagNumber = (name: string): number => {
   const i = process.argv.indexOf(name);
   return i > 0 ? Number(process.argv[i + 1]) : NaN;
 };
-/** Tur başına doğrulanacak ilan (varsayılan 1200), turlar arası mola dakikası (varsayılan 20), tur sayısı (0 = bitene kadar). */
-const roundSize = flagNumber("--tur-ilan") > 0 ? flagNumber("--tur-ilan") : 1200;
-const breakMinutes = Number.isFinite(flagNumber("--mola")) && flagNumber("--mola") >= 0 ? flagNumber("--mola") : 20;
+/** Tur başına doğrulanacak ilan (varsayılan 900), turlar arası mola dakikası (varsayılan 35), tur sayısı (0 = bitene kadar). Bu ritim nadir model taramasında (Z) Cloudflare'a takılmadan günlerce çalıştı. */
+const roundSize = flagNumber("--tur-ilan") > 0 ? flagNumber("--tur-ilan") : 900;
+const breakMinutes = Number.isFinite(flagNumber("--mola")) && flagNumber("--mola") >= 0 ? flagNumber("--mola") : 35;
 const maxRounds = flagNumber("--tur") > 0 ? flagNumber("--tur") : 0;
 mkdirSync(path.join(projectRoot, "logs"), { recursive: true });
 const stateFile = path.join(projectRoot, "logs", `sync-state-mod${modeArg}.json`);
@@ -112,7 +112,7 @@ async function main() {
       const saved = JSON.parse(readFileSync(stateFile, "utf8"));
       if (saved && typeof saved.offset === "number" && saved.offset > 0) {
         batchNum = Math.floor(saved.offset / batchSize);
-        console.log(`  🔄 Önceki oturum tespit edildi: ~${saved.offset} ilan taranmıştı. Kaldığı yerden (${batchNum + 1}. parti) devam ediliyor...`);
+        console.log(`  🔄 Önceki oturumda ~${saved.offset.toLocaleString("tr-TR")} ilan kontrol edilmişti (yalnızca sayaç: sıra her partide veritabanından, en uzun süredir kontrol edilmeyen ilandan başlar, başa dönmez). ${batchNum + 1}. partiden devam ediliyor.`);
       }
     } catch {
       // yok say

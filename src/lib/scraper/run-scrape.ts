@@ -1,3 +1,4 @@
+import os from "node:os";
 import mongoose from "mongoose";
 import { Car } from "@/models/Car";
 import {
@@ -138,12 +139,14 @@ export async function saveListing(
     const newPrice = listing.price > 0 ? listing.price : existing.price;
     const priceChanged = existing.price !== newPrice && listing.price > 0;
     const mileageChanged = listing.mileage > 0 && Math.abs(existing.mileage - listing.mileage) > 50;
+    // Açıklama: satıcının notu ilan sayfasından boşlukları sadeleştirilerek okunur (bkz. parseArabamDetailHtml), yani aynı metin her okumada
+    // aynı çıkar; en küçük değişiklik de (aynı uzunlukta "var" → "yok", telefon numarası) değişiklik sayılır. Eskiden uzunluk farkı 5
+    // karakterden azsa görmezden geliniyordu.
     const descChanged = Boolean(
       !detailKept &&
       listing.description &&
       listing.description !== existing.description &&
-      listing.description.length > 20 &&
-      Math.abs(listing.description.length - (existing.description?.length || 0)) > 5
+      listing.description.length > 20
     );
     const damageChanged = Boolean(
       listing.damageParts &&
@@ -930,7 +933,22 @@ type QueueRow = {
  *  3. En uzun süredir doğrulanmamış aktif ilanlar.
  * Son 6 saatte denenmiş (ör. engellenmiş) ilanlar atlanır ki kuyruk takılmasın.
  */
-export async function pickArabamRefreshQueue(limit: number, now = new Date()): Promise<QueueRow[]> {
+export interface QueueClaim {
+  /** Bu makine/süreç: aynı anda çalışan başka bir doğrulayıcı (ör. laptop) bu partiyi alamaz. */
+  by: string;
+  /** Çökme/kapanma durumunda kilidin kendiliğinden düşeceği süre. */
+  leaseMs: number;
+}
+
+/** Bu süreç için kuyruk kilidi kimliği: "makine adı:süreç numarası". */
+export const verifyClaimId = () => `${os.hostname()}:${process.pid}`;
+
+/** Bu süreçte alınmış kuyruk kilitlerini bırakır (parti bitince, Ctrl+C'de). */
+export async function releaseVerifyClaims(by: string): Promise<void> {
+  await Car.updateMany({ verifyClaimBy: by }, { $unset: { verifyClaimUntil: 1, verifyClaimBy: 1 } }, { timestamps: false }).catch(() => {});
+}
+
+export async function pickArabamRefreshQueue(limit: number, now = new Date(), claim?: QueueClaim): Promise<QueueRow[]> {
   const cooldown = new Date(now.getTime() - LIFECYCLE.attemptCooldownMs);
   const picked: QueueRow[] = [];
   const take = async (pool: QueueRow["pool"], conditions: Record<string, unknown>[], sort: Record<string, 1 | -1>, max: number) => {
@@ -939,6 +957,8 @@ export async function pickArabamRefreshQueue(limit: number, now = new Date()): P
       $and: [
         { sourceSite: "arabam", listingUrl: { $nin: ["", null] } },
         { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
+        // Başka bir doğrulayıcının (süresi dolmamış) kilitli ilanlarını alma.
+        { $or: [{ verifyClaimUntil: { $exists: false } }, { verifyClaimUntil: { $lt: now } }] },
         { _id: { $nin: picked.map((p) => p._id) } },
         ...conditions,
       ],
@@ -962,6 +982,13 @@ export async function pickArabamRefreshQueue(limit: number, now = new Date()): P
     Math.ceil(limit * 0.25)
   );
   await take("stale", [{ status: "active" }], { lastVerifiedAt: 1 }, limit - picked.length);
+  if (claim && picked.length > 0) {
+    await Car.updateMany(
+      { _id: { $in: picked.map((p) => p._id) } },
+      { $set: { verifyClaimUntil: new Date(now.getTime() + claim.leaseMs), verifyClaimBy: claim.by } },
+      { timestamps: false }
+    );
+  }
   return picked;
 }
 
@@ -988,30 +1015,36 @@ export async function runPriceRefresh(
   progressTotal?: number,
   options: PriceRefreshOptions = {}
 ): Promise<ScrapeJobResult> {
-  const queue = await pickArabamRefreshQueue(limit);
-  options.onLine?.(`  📋 Bu partinin sırası (${queue.length} ilan): ${describeQueueMix(queueMix(queue))}`);
-  const { result, aliveIds, goneIds, attemptedIds, blockedIds } = await refetchByUrls(
-    queue,
-    "Fiyat taraması",
-    progressOffset,
-    progressTotal,
-    options.onLine
-  );
+  // Parti boyunca bu ilanlar bu süreç adına kilitlenir: başka bir makinede (ör. laptop) aynı anda çalışan doğrulayıcı aynı ilanları almaz.
+  const by = verifyClaimId();
+  const queue = await pickArabamRefreshQueue(limit, new Date(), { by, leaseMs: Math.max(30 * 60_000, limit * 15_000) });
+  try {
+    options.onLine?.(`  📋 Bu partinin sırası (${queue.length} ilan): ${describeQueueMix(queueMix(queue))}`);
+    const { result, aliveIds, goneIds, attemptedIds, blockedIds } = await refetchByUrls(
+      queue,
+      "Fiyat taraması",
+      progressOffset,
+      progressTotal,
+      options.onLine
+    );
 
-  // Yalnızca gerçekten denenenler "denendi" olur (engelle yarıda bırakılan partinin kalanı kuyrukta başta kalır); engellenenler
-  // "blocked" damgası alır ve 6 saat dinlendirilir.
-  const blocked = new Set(blockedIds.map(String));
-  await markVerifyAttempt(attemptedIds.filter((id) => !blocked.has(String(id))));
-  await markVerifyAttempt(blockedIds, new Date(), "blocked");
-  // Yeniden kontrol bayrağını yalnızca KESİN sonuç alınan arşiv kayıtlarında kaldır;
-  // engellenen denemeler bir sonraki turda tekrar sıraya girsin.
-  const decided = new Set([...aliveIds, ...goneIds].map(String));
-  const settledRechecks = queue.filter((d) => d.status === "removed" && decided.has(String(d._id))).map((d) => d._id);
-  if (settledRechecks.length > 0) {
-    await Car.updateMany({ _id: { $in: settledRechecks } }, { $unset: { needsRecheck: 1 } }, { timestamps: false });
+    // Yalnızca gerçekten denenenler "denendi" olur (engelle yarıda bırakılan partinin kalanı kuyrukta başta kalır); engellenenler
+    // "blocked" damgası alır ve 6 saat dinlendirilir.
+    const blocked = new Set(blockedIds.map(String));
+    await markVerifyAttempt(attemptedIds.filter((id) => !blocked.has(String(id))));
+    await markVerifyAttempt(blockedIds, new Date(), "blocked");
+    // Yeniden kontrol bayrağını yalnızca KESİN sonuç alınan arşiv kayıtlarında kaldır;
+    // engellenen denemeler bir sonraki turda tekrar sıraya girsin.
+    const decided = new Set([...aliveIds, ...goneIds].map(String));
+    const settledRechecks = queue.filter((d) => d.status === "removed" && decided.has(String(d._id))).map((d) => d._id);
+    if (settledRechecks.length > 0) {
+      await Car.updateMany({ _id: { $in: settledRechecks } }, { $unset: { needsRecheck: 1 } }, { timestamps: false });
+    }
+
+    return result;
+  } finally {
+    await releaseVerifyClaims(by);
   }
-
-  return result;
 }
 
 

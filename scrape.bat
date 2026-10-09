@@ -131,7 +131,7 @@ echo     7  - Nadir MODEL genis   (en az ilanli, daha cok model ailesi)
 echo    20  - Seyrek piyasa emsali (3'ten az ilanli marka/model/yil)
 echo    21  - Son 3 gun ilanlari (en yeni ilanlar)
 echo     2  - Genis Arabam taramasi (tum markalar)
-echo    11  - Arabam Dogrula (eski ilanlarin fiyat/km/aciklama kontrolu; tur 900 ilan, mola 35 dk onerilir)
+echo    11  - Arabam Dogrula (eski ilanlarin fiyat/km/aciklama kontrolu; 6 sn aralik, tur 600 ilan, mola 15 dk onerilir)
 set /p zmod="Tarama numarasi (varsayilan 6): "
 if "%zmod%"=="" set zmod=6
 set /p zilan="Tur basina kac ilan? (varsayilan 1200): "
@@ -278,19 +278,23 @@ echo   ARABAM TUM ILANLARI DOGRULA VE SENKRONIZE ET
 echo   - Olu/satilan ilanlar tespit edilir ve arsive kaldirilir.
 echo   - Fiyat degisiklikleri kaynakla esitlenir.
 echo   - Harici sunucu / ayri CMD penceresi ACILMAZ, tum islem burada calisir.
+echo   - YAVAS: her ilanda fiyat, km, aciklama, hasar bilgisi karsilastirilir; istekler arasi ~6 sn beklenir.
 echo   - ZAMANLI: her turda belirledigin kadar ilan dogrulanir, sonra mola verilir.
 echo   - Arabam engel verirse (429) parti birakilir, 10-20-40-60 dk kendiliginden dinlenilir ve devam edilir.
 echo   - Istedigin an Ctrl+C ile durdurabilirsin (ilerleme kaydedilir).
 echo ====================================================================
 echo.
+set m11aralik=
 set m11ilan=
 set m11mola=
-set /p m11ilan="Tur basina kac ilan? (varsayilan 900): "
-if "%m11ilan%"=="" set m11ilan=900
-set /p m11mola="Turlar arasi kac dakika mola? (varsayilan 35): "
-if "%m11mola%"=="" set m11mola=35
+set /p m11aralik="Ilan basina kac saniye beklensin? (varsayilan 6): "
+if "%m11aralik%"=="" set m11aralik=6
+set /p m11ilan="Tur basina kac ilan? (varsayilan 600): "
+if "%m11ilan%"=="" set m11ilan=600
+set /p m11mola="Turlar arasi kac dakika mola? (varsayilan 15): "
+if "%m11mola%"=="" set m11mola=15
 echo.
-npx tsx scripts\sync-arabam.ts 11 --tur-ilan %m11ilan% --mola %m11mola%
+npx tsx scripts\sync-arabam.ts 11 --aralik %m11aralik% --tur-ilan %m11ilan% --mola %m11mola%
 echo.
 pause
 goto :eof

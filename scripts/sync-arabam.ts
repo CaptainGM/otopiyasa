@@ -24,20 +24,25 @@ const projectRoot = path.resolve(__dirname, "..");
 // 1. Ortam Değişkenlerini Yükle (.env / .env.local, tırnaklar temizlenir)
 loadEnv(projectRoot);
 
-// Stealth ayarları
-process.env.SCRAPE_MIN_INTERVAL_MS = process.env.SCRAPE_MIN_INTERVAL_MS || "1200";
-
 const modeArg = process.argv[2] || "11";
 const isSingleBatch = modeArg === "8" || modeArg === "800";
-const batchSize = isSingleBatch ? 800 : 250;
+// Yavaş hızda (6 sn/ilan) 250'lik parti ~27 dk sürer; arşivleme ve "denendi" damgası parti sonunda yazıldığı için Ctrl+C çok iş kaybettirirdi.
+const batchSize = isSingleBatch ? 800 : 100;
 
 const flagNumber = (name: string): number => {
   const i = process.argv.indexOf(name);
   return i > 0 ? Number(process.argv[i + 1]) : NaN;
 };
-/** Tur başına doğrulanacak ilan (varsayılan 900), turlar arası mola dakikası (varsayılan 35), tur sayısı (0 = bitene kadar). Bu ritim nadir model taramasında (Z) Cloudflare'a takılmadan günlerce çalıştı. */
-const roundSize = flagNumber("--tur-ilan") > 0 ? flagNumber("--tur-ilan") : 900;
-const breakMinutes = Number.isFinite(flagNumber("--mola")) && flagNumber("--mola") >= 0 ? flagNumber("--mola") : 35;
+
+// İlan başına bekleme (sn): iki istek arasında en az bu kadar (+%13 rastgele) beklenir. Varsayılan 6 sn: nadir model taramasının (~1,1 sn) ve
+// eski ayarın (1,4 sn) çok altında bir hız; bekçi 8 sn ile hiç engel yemiyor. rate-limit.ts bu değeri modül yüklenirken okur, bu yüzden
+// çalışma ortamı değişkeni uygulama modülleri yüklenmeden (aşağıdaki dinamik import'lardan önce) yazılır.
+const intervalSeconds = flagNumber("--aralik") > 0 ? flagNumber("--aralik") : 6;
+process.env.SCRAPE_MIN_INTERVAL_MS = String(Math.round(intervalSeconds * 1000));
+
+/** Tur başına doğrulanacak ilan (varsayılan 600, 6 sn aralıkla ≈ 1 saat), turlar arası mola dakikası (varsayılan 15), tur sayısı (0 = bitene kadar). */
+const roundSize = flagNumber("--tur-ilan") > 0 ? flagNumber("--tur-ilan") : 600;
+const breakMinutes = Number.isFinite(flagNumber("--mola")) && flagNumber("--mola") >= 0 ? flagNumber("--mola") : 15;
 const maxRounds = flagNumber("--tur") > 0 ? flagNumber("--tur") : 0;
 mkdirSync(path.join(projectRoot, "logs"), { recursive: true });
 const stateFile = path.join(projectRoot, "logs", `sync-state-mod${modeArg}.json`);
@@ -64,13 +69,13 @@ async function main() {
   console.log(`  📋 İşlem: Fiyat Eşitleme + Satılanları Arşivleme + Açıklama/Hasar Kontrolü`);
   if (!isSingleBatch) {
     console.log(
-      `  ⏱️ Zamanlı: tur başına ${roundSize.toLocaleString("tr-TR")} ilan, turlar arası ${breakMinutes} dk mola${maxRounds ? `, en çok ${maxRounds} tur` : ""}; engel gelirse kendiliğinden dinlenir.`
+      `  ⏱️ Yavaş ve zamanlı: ilan başına ~${intervalSeconds} sn, tur başına ${roundSize.toLocaleString("tr-TR")} ilan, turlar arası ${breakMinutes} dk mola${maxRounds ? `, en çok ${maxRounds} tur` : ""}; engel gelirse kendiliğinden dinlenir.`
     );
   }
   console.log("");
 
   const { connectDB } = await import("../src/lib/mongodb.js").catch(async () => await import("../src/lib/mongodb"));
-  const { runPriceRefresh, arabamRefreshStatus } = await import("../src/lib/scraper/run-scrape.js").catch(async () => await import("../src/lib/scraper/run-scrape"));
+  const { runPriceRefresh, arabamRefreshStatus, releaseVerifyClaims, verifyClaimId } = await import("../src/lib/scraper/run-scrape.js").catch(async () => await import("../src/lib/scraper/run-scrape"));
   const { ManualScrapeLog } = await import("../src/models/ManualScrapeLog.js").catch(async () => await import("../src/models/ManualScrapeLog"));
   const { judgeBatch, MAX_BLOCK_STREAK } = await import("../src/lib/scraper/verify-rhythm");
   const { setProgressQuiet } = await import("../src/lib/scraper/progress");
@@ -185,6 +190,7 @@ async function main() {
       console.log(`  💾 İlerleme (~${currentOffset.toLocaleString("tr-TR")}. ilan) kaydedildi. Tekrar açtığında buradan devam edecek.`);
     }
     await syncLogToDB("partial");
+    await releaseVerifyClaims(verifyClaimId()); // bu makinenin aldığı ama bitirmediği ilanlar başka doğrulayıcıya açılır
     console.log(`  ✅ Durum veritabanına işlendi. Terminal kapatılabilir.\n`);
     process.exit(0);
   };

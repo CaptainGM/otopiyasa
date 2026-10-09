@@ -51,7 +51,7 @@ describe("markaya özel aileler", () => {
     expect(modelFamily("GLA 200 d", "Mercedes-Benz")).toBe("GLA Serisi");
     expect(modelFamily("Vito Tourer", "Mercedes-Benz")).toBe("Vito");
     expect(modelFamily("GLC 4MATIC", "Mercedes-Benz")).toBe("GLC Serisi");
-    expect(modelFamily("AMG GT 43", "Mercedes-Benz")).toBe("AMG");
+    expect(modelFamily("AMG GT 43", "Mercedes-Benz")).toBe("AMG GT");
     expect(modelFamily("I20,I20N,", "Hyundai")).toBe("I20");
     expect(modelFamily("Grande Punto 1.4")).toBe("Grande Punto");
     expect(modelFamilyKey("X TRAIL 1.6 DCI", "Nissan")).toBe(modelFamilyKey("X-Trail 1.6 dCi", "Nissan"));

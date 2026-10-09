@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useVisibleInterval } from "@/components/useVisibleInterval";
+import { useWideScreen } from "@/components/useWideScreen";
 import { formatRelativeTr } from "@/lib/utils";
 
 interface Probe {
@@ -44,7 +45,7 @@ export function FeatureStatusPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Geniş ekranda sağ kenar boşluğunda hep açık; dar ekranda başlığa tıklayınca açılır (sayfayı aşağı itmesin).
-  const [wide, setWide] = useState(false);
+  const wide = useWideScreen();
   const [expanded, setExpanded] = useState(false);
 
   async function load(force = false) {
@@ -63,11 +64,6 @@ export function FeatureStatusPanel() {
 
   useEffect(() => {
     void load();
-    const query = window.matchMedia("(min-width: 2160px)");
-    const update = () => setWide(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
   }, []);
   // Her yenileme birkaç sorgu çalıştırır; Vercel işlemci kotası için sekme görünürken ve seyrek yenilenir.
   useVisibleInterval(() => load(), 120_000);

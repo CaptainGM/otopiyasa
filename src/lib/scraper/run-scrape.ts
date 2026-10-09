@@ -554,7 +554,9 @@ export async function runRareModelScrape(
   // Bütçe bitene ya da uygun model kalmayana kadar kademe kademe ilerler: 5'in altındakiler 5'e çıkınca aynı tur 10. kademeye geçer.
   // Her taranan model ya kademesine ulaşır ya da bekleme listesine girer, bu yüzden her tur ilerleme sağlar.
   for (let round = 0; round < 40 && fetched < maxListings && !blocked; round++) {
+    // Sayım, sitede görünen (aktif) ilanlar üzerinden: arşivdeki ilanlar bir modeli "yeterli" göstermemeli.
     const rows = await Car.aggregate<{ _id: { brand: string; model: string }; count: number }>([
+      { $match: { status: "active" } },
       { $group: { _id: { brand: "$brand", model: "$model" }, count: { $sum: 1 } } },
     ]);
     const attempts = await RareModelAttempt.find({}, { brand: 1, familyKey: 1, attemptedAt: 1, retryAfterDays: 1 }).lean<

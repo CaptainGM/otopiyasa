@@ -9,6 +9,7 @@ import { AdminCommentsSection } from "@/components/AdminCommentsSection";
 import { DaemonStatsPanel } from "@/components/DaemonStatsPanel";
 import { DailySummaryPanel } from "@/components/DailySummaryPanel";
 import { FeatureStatusPanel } from "@/components/FeatureStatusPanel";
+import { RareModelBoard } from "@/components/RareModelBoard";
 import { RemoveAvatarButton } from "@/components/RemoveAvatarButton";
 import { HomeWatcherPanel } from "@/components/HomeWatcherPanel";
 import { SystemHealthCard } from "@/components/SystemHealthCard";
@@ -340,6 +341,13 @@ export default async function AdminPage() {
     <div className="relative space-y-8 pb-10">
       {/* Site özelliklerinin canlı durumu: geniş ekranda ana içeriğin SAĞINDAKİ boş kenar boşluğunda (kaydırınca yapışık),
           dar ekranda üstte katlanabilir tek satır. */}
+      {/* En az ilanlı modeller: solda boş kenar boşluğunda (geniş ekran), dar ekranda katlanabilir. */}
+      <aside className="min-[2160px]:absolute min-[2160px]:right-full min-[2160px]:top-0 min-[2160px]:mr-5 min-[2160px]:!mt-0 min-[2160px]:h-full min-[2160px]:w-[340px]">
+        <div className="min-[2160px]:sticky min-[2160px]:top-4">
+          <RareModelBoard />
+        </div>
+      </aside>
+
       <aside className="min-[2160px]:absolute min-[2160px]:left-full min-[2160px]:top-0 min-[2160px]:ml-5 min-[2160px]:!mt-0 min-[2160px]:h-full min-[2160px]:w-[340px]">
         <div className="min-[2160px]:sticky min-[2160px]:top-4">
           <FeatureStatusPanel />

@@ -21,15 +21,21 @@ export function reportEvent(event: { label: string; before?: number; after?: num
 }
 
 let progressHook: ((stage: string, current: number, total: number) => void) | null = null;
+let quiet = false;
 
 export function setProgressHook(fn: ((stage: string, current: number, total: number) => void) | null) {
   progressHook = fn;
 }
 
+/** Terminale her ilanda sayaç satırı basma (kendi satırlarını yazan çağıranlar için; dosya ve kanca yine çalışır). */
+export function setProgressQuiet(value: boolean) {
+  quiet = value;
+}
+
 export function reportProgress(stage: string, current: number, total: number) {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;
   const line = `[${new Date().toLocaleTimeString("tr-TR")}] ${stage}: ${current}/${total} (%${pct})`;
-  console.log(`  ${line}`);
+  if (!quiet) console.log(`  ${line}`);
 
   if (progressHook) {
     try {

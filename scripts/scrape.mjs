@@ -264,22 +264,22 @@ async function rotateWarpIP() {
   try {
     const { exec } = await import("node:child_process");
     log("  🔄 [Cloudflare WARP] IP yenileniyor...");
-    await new Promise((resolve) => {
+    const rotated = await new Promise((resolve) => {
       exec(`${WARP_CLI} tunnel rotate-keys`, (err) => {
         if (err) {
           // rotate-keys desteklenmezse disconnect/connect yap
-          exec(`${WARP_CLI} disconnect`, () => {
+          exec(`${WARP_CLI} disconnect`, (disconnectErr) => {
             setTimeout(() => {
-              exec(`${WARP_CLI} connect`, () => resolve());
+              exec(`${WARP_CLI} connect`, (connectErr) => resolve(!disconnectErr && !connectErr));
             }, 1000);
           });
         } else {
-          resolve();
+          resolve(true);
         }
       });
     });
     await new Promise((r) => setTimeout(r, 2500));
-    log("  ✓ [Cloudflare WARP] Yeni temiz IP devrede.");
+    log(rotated ? "  ✓ [Cloudflare WARP] Yeni temiz IP devrede." : "  ⚠ [Cloudflare WARP] bulunamadi ya da çalışmadı: IP yenilenmedi, yalnızca bekleniyor.");
   } catch {
     // WARP yoksa sessizce geç
   }

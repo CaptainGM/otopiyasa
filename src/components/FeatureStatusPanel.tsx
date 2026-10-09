@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useVisibleInterval } from "@/components/useVisibleInterval";
+import { useWideScreen } from "@/components/useWideScreen";
 import { formatRelativeTr } from "@/lib/utils";
 
 interface Probe {
@@ -44,7 +45,7 @@ export function FeatureStatusPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Geniş ekranda sağ kenar boşluğunda hep açık; dar ekranda başlığa tıklayınca açılır (sayfayı aşağı itmesin).
-  const [wide, setWide] = useState(false);
+  const wide = useWideScreen();
   const [expanded, setExpanded] = useState(false);
 
   async function load(force = false) {
@@ -63,11 +64,6 @@ export function FeatureStatusPanel() {
 
   useEffect(() => {
     void load();
-    const query = window.matchMedia("(min-width: 2160px)");
-    const update = () => setWide(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
   }, []);
   // Her yenileme birkaç sorgu çalıştırır; Vercel işlemci kotası için sekme görünürken ve seyrek yenilenir.
   useVisibleInterval(() => load(), 120_000);
@@ -76,7 +72,7 @@ export function FeatureStatusPanel() {
   const open = wide || expanded;
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 shadow-xl sm:p-5 min-[2160px]:max-h-[calc(100vh-2rem)] min-[2160px]:overflow-y-auto">
+    <section className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 shadow-xl sm:p-5">
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"

@@ -63,7 +63,7 @@ export function createSitemapParser(onEntry: (id: string, lastmod: string, url: 
   };
 }
 
-async function streamSitemapFile(url: string, onEntry: (id: string, lastmod: string, url: string) => void): Promise<void> {
+export async function streamSitemapFile(url: string, onEntry: (id: string, lastmod: string, url: string) => void): Promise<void> {
   const res = await fetch(url, {
     headers: { "User-Agent": UA, "Accept-Encoding": "gzip", Accept: "application/xml,text/xml,*/*" },
     signal: AbortSignal.timeout(180_000),
@@ -79,6 +79,14 @@ async function streamSitemapFile(url: string, onEntry: (id: string, lastmod: str
   }
   parser.push(decoder.decode());
   parser.end();
+}
+
+/** Sitemap dizinindeki ilan dosyalarının adresleri; dizin okunamazsa hata fırlatır. */
+export async function listSitemapFiles(): Promise<string[]> {
+  const res = await fetch(INDEX_URL, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) throw new Error(`Sitemap dizini alınamadı (HTTP ${res.status}).`);
+  const text = await res.text();
+  return [...text.matchAll(/<loc>(https:\/\/www\.arabam\.com\/sitemap\/advert_\d+\.xml)<\/loc>/g)].map((m) => m[1]);
 }
 
 /**

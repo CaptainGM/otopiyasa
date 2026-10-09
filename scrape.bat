@@ -45,8 +45,8 @@ echo    16 - Yalnizca Carvak    (Uluslararasi ekspertizli envanter ~300 ilan)
 echo.
 echo  [D] VERITABANI BAKIM ^& SENKRONIZASYON (Mevcut Ilanlari Guncelleme)
 echo   ------------------------------------------------------------------
-echo    11 - Arabam Dogrula     (Tum Arabam ilanlari: fiyat esitle, satilani arsivle,
-echo                             yanlislikla arsivlenenleri geri al; once sitemap)
+echo    11 - Arabam Dogrula     (Tum Arabam ilanlari: fiyat, km, aciklama esitle, satilani arsivle;
+echo                             ZAMANLI: tur tur + mola, engel gelirse kendiliginden dinlenip devam eder)
 echo    8  - Fiyat Taramasi     (En uzun suredir dogrulanmayan 800 Arabam ilani)
 echo    9  - Adres Tamamlama    (Ilcesi eksik ilanlarin adresini doldur - Harita)
 echo    21 - Son 3 Gun Ilanlari (sitemap'ten yalnizca son 3 gunun ilanlari, en yeniden baslar; site taze kalir)
@@ -131,6 +131,7 @@ echo     7  - Nadir MODEL genis   (en az ilanli, daha cok model ailesi)
 echo    20  - Seyrek piyasa emsali (3'ten az ilanli marka/model/yil)
 echo    21  - Son 3 gun ilanlari (en yeni ilanlar)
 echo     2  - Genis Arabam taramasi (tum markalar)
+echo    11  - Arabam Dogrula (eski ilanlarin fiyat/km/aciklama kontrolu; mola 20 dk onerilir)
 set /p zmod="Tarama numarasi (varsayilan 6): "
 if "%zmod%"=="" set zmod=6
 set /p zilan="Tur basina kac ilan? (varsayilan 1200): "
@@ -140,7 +141,14 @@ if "%zmola%"=="" set zmola=60
 set /p ztur="Kac tur? (0 = ben durdurana kadar, varsayilan 0): "
 if "%ztur%"=="" set ztur=0
 echo.
+if "%zmod%"=="11" goto :zamanli11
 node scripts\scrape.mjs %zmod% --tur-ilan %zilan% --mola %zmola% --tur %ztur%
+echo.
+pause
+goto :eof
+
+:zamanli11
+npx tsx scripts\sync-arabam.ts 11 --tur-ilan %zilan% --mola %zmola% --tur %ztur%
 echo.
 pause
 goto :eof
@@ -270,10 +278,19 @@ echo   ARABAM TUM ILANLARI DOGRULA VE SENKRONIZE ET
 echo   - Olu/satilan ilanlar tespit edilir ve arsive kaldirilir.
 echo   - Fiyat degisiklikleri kaynakla esitlenir.
 echo   - Harici sunucu / ayri CMD penceresi ACILMAZ, tum islem burada calisir.
+echo   - ZAMANLI: her turda belirledigin kadar ilan dogrulanir, sonra mola verilir.
+echo   - Arabam engel verirse (429) parti birakilir, 10-20-40-60 dk kendiliginden dinlenilir ve devam edilir.
 echo   - Istedigin an Ctrl+C ile durdurabilirsin (ilerleme kaydedilir).
 echo ====================================================================
 echo.
-npx tsx scripts\sync-arabam.ts 11
+set m11ilan=
+set m11mola=
+set /p m11ilan="Tur basina kac ilan? (varsayilan 1200): "
+if "%m11ilan%"=="" set m11ilan=1200
+set /p m11mola="Turlar arasi kac dakika mola? (varsayilan 20): "
+if "%m11mola%"=="" set m11mola=20
+echo.
+npx tsx scripts\sync-arabam.ts 11 --tur-ilan %m11ilan% --mola %m11mola%
 echo.
 pause
 goto :eof

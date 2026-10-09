@@ -107,3 +107,21 @@ describe("modelFamilyRegex", () => {
     expect(matches("Juke 1.0 DIG-T Platinum", ["Juke 1.5 dCi", "JUKE"])).toEqual(["Juke 1.5 dCi", "JUKE"]);
   });
 });
+
+describe("marka adıyla başlayan model adları", () => {
+  it("DS'in 'Automobiles' eki ve marka öneki ailede sayılmaz", () => {
+    expect(modelFamily("Automobiles 7 Crossback 1.5 BlueHDI Opera", "DS")).toBe("7 Crossback");
+    expect(modelFamily("7 Crossback", "DS")).toBe("7 Crossback");
+    expect(modelFamily("DS 7 Crossback", "DS")).toBe("7 Crossback");
+    expect(modelFamily("Automobiles DS4 1.6 e-HDi D-Sport", "DS")).toBe("DS4");
+    expect(modelFamilyKey("Automobiles 7 Crossback 1.5", "DS")).toBe(modelFamilyKey("7 Crossback", "DS"));
+  });
+
+  it("diğer markalarda baştaki marka adı atılır, tek kelimelik model bozulmaz", () => {
+    expect(modelFamily("Mini Cooper 1.5", "Mini")).toBe("Cooper");
+    expect(modelFamily("Mini Cooper S", "Mini")).toBe("Cooper S");
+    expect(modelFamily("Seat Leon 1.6", "Seat")).toBe("Leon");
+    expect(modelFamily("Mini", "Mini")).toBe("Mini");
+    expect(modelFamily("Corolla 1.6", "Toyota")).toBe("Corolla");
+  });
+});

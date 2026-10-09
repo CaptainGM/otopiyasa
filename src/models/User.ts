@@ -27,6 +27,10 @@ const UserSchema = new Schema(
     emailVerified: { type: Boolean, default: false },
     verifyTokenHash: { type: String, default: null },
     verifyTokenExpires: { type: Date, default: null },
+    // "Doğrulama e-postasını tekrar gönder" hakkı hesap başına en fazla 3 (posta sağlayıcısının günlük kotası sınırlı).
+    verifyResendCount: { type: Number, default: 0 },
+    // Adres değişikliği bilgilendirmesi (scripts/notify-domain-change.ts) gönderildiyse zamanı; ikinci kez gönderilmez.
+    domainNoticeAt: { type: Date, default: null },
   
     accountType: { type: String, enum: ["individual", "business"], default: "individual" },
     businessName: { type: String, default: "" },

@@ -2,6 +2,12 @@ import { Car } from "@/types";
 import { MarketSegmentStats, segmentKey } from "@/lib/market-price";
 import { enrichFeatures } from "@/lib/derive-specs";
 import { withPendingLabels } from "@/lib/scraper/feature-merge";
+import { displayTransmission } from "@/lib/transmission-label";
+
+/** Ekranda "Yarı Otomatik" ile "Otomatik" ayrı gösterilmez (bkz. transmission-label.ts). */
+function withDisplayTransmission<T extends { transmission?: string }>(features: T): T {
+  return features.transmission ? { ...features, transmission: displayTransmission(features.transmission) as string } : features;
+}
 
 export type LeanCarDoc = {
   _id: { toString(): string };
@@ -80,7 +86,7 @@ export function serializeCar(
     damageFlag: doc.damageFlag || false,
     location: doc.location,
   
-    features: withPendingLabels(enrichFeatures(doc.features, doc.title, doc.description), doc),
+    features: withDisplayTransmission(withPendingLabels(enrichFeatures(doc.features, doc.title, doc.description), doc)),
     source: doc.source,
     sourceSite: doc.sourceSite || "demo",
     listingUrl: doc.listingUrl || "",

@@ -47,7 +47,7 @@ class _SellScreenState extends State<SellScreen> {
   bool _pickingImage = false;
 
   static const _fuels = ['Benzin', 'Dizel', 'LPG & Benzin', 'Elektrik', 'Hibrit'];
-  static const _transmissions = ['Manuel', 'Otomatik', 'Yarı Otomatik'];
+  static const _transmissions = ['Manuel', 'Otomatik'];
   static const _bodyTypes = [
     'Sedan', 'Hatchback', 'SUV', 'Station Wagon', 'Coupe',
     'Cabrio', 'MPV', 'Pickup', 'Panelvan', 'Belirtilmemiş',

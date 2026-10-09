@@ -19,7 +19,8 @@ import { brandStorageAliases } from "@/lib/normalize-brand";
 import { cityStorageAliases } from "@/lib/normalize-city";
 import { modelFamilyRegex } from "@/lib/model-family";
 import { normalizeColor } from "@/lib/normalize-color";
-import { transmissionMatch } from "@/lib/vehicle-attrs";
+import { normalizeTransmission, transmissionMatch } from "@/lib/vehicle-attrs";
+import { AUTOMATIC_TRANSMISSION_PATTERN } from "@/lib/transmission-label";
 import { isVehicleClass } from "@/lib/vehicle-scope";
 
 export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
@@ -57,7 +58,14 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   }
   // Mobil "LPG" gönderiyor, kayıtlar "LPG & Benzin"; ikisi de aynı yazıma çevrilir.
   if (filters.fuelType) query["features.fuelType"] = normalizeFuelType(filters.fuelType);
-  if (filters.transmission) query["features.transmission"] = transmissionMatch(filters.transmission);
+  if (filters.transmission) {
+    // Alıcı için "Yarı Otomatik" de otomatiktir (bkz. transmission-label.ts): ikisi de "Otomatik" filtresinde gelir.
+    const kind = normalizeTransmission(filters.transmission);
+    query["features.transmission"] =
+      kind === "Otomatik" || kind === "Yarı Otomatik"
+        ? { $regex: AUTOMATIC_TRANSMISSION_PATTERN, $options: "i" }
+        : transmissionMatch(filters.transmission);
+  }
   // Araç tipi: tipi henüz yazılmamış eski kayıtlar otomobil sayılır.
   if (filters.vehicleClass) {
     query.vehicleClass = filters.vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : filters.vehicleClass;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { displayTransmission } from "@/lib/transmission-label";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
@@ -79,7 +80,7 @@ export async function POST(request: Request) {
       price: c.price,
       mileage: c.mileage,
       fuelType: c.features?.fuelType,
-      transmission: c.features?.transmission,
+      transmission: displayTransmission(c.features?.transmission),
       city: c.city,
       damageFlag: Boolean(c.damageFlag),
     }));

@@ -20,7 +20,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
  
   const [info, setInfo] = useState("");
   const [needsVerification, setNeedsVerification] = useState(false);
-  const [resent, setResent] = useState(false);
+  const [resending, setResending] = useState(false);
+  /** Sunucunun bildirdiği kalan "tekrar gönder" hakkı (hesap başına en fazla 3); henüz bilinmiyorsa null. */
+  const [resendsLeft, setResendsLeft] = useState<number | null>(null);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,6 +67,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       
       if (data.requiresVerification) {
         setInfo(data.message || "Hesabın oluşturuldu. E-postandaki doğrulama bağlantısına tıkla.");
+        // Posta gelmediyse ya da gönderilemediyse kullanıcı çıkmaz sokakta kalmasın: kayıttan hemen sonra "tekrar gönder" görünür.
+        setResendsLeft(typeof data.resendsLeft === "number" ? data.resendsLeft : null);
+        setNeedsVerification(true);
         return;
       }
 
@@ -81,13 +86,27 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       setError("Önce e-posta adresini gir.");
       return;
     }
-    setResent(true);
-    await fetch("/api/auth/resend-verification", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    }).catch(() => {});
-    setInfo("Doğrulama bağlantısı tekrar gönderildi. Gelen kutunu kontrol et.");
+    setResending(true);
+    setError("");
+    try {
+      const response = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (typeof data.resendsLeft === "number") setResendsLeft(data.resendsLeft);
+      if (!response.ok) {
+        setInfo("");
+        setError(data.error || "Doğrulama e-postası gönderilemedi.");
+      } else {
+        setInfo("Doğrulama bağlantısı tekrar gönderildi. Gelen kutunu ve spam klasörünü kontrol et.");
+      }
+    } catch {
+      setError("Sunucuya bağlanılamadı.");
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -169,10 +188,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         <button
           type="button"
           onClick={resendVerification}
-          disabled={resent}
+          disabled={resending || resendsLeft === 0}
           className="btn btn-secondary w-full text-sm"
         >
-          {resent ? "Doğrulama bağlantısı gönderildi" : "Doğrulama e-postasını tekrar gönder"}
+          {resending
+            ? "Gönderiliyor..."
+            : resendsLeft === 0
+              ? "Tekrar gönderme hakkın doldu"
+              : `Doğrulama e-postasını tekrar gönder${resendsLeft !== null ? ` (${resendsLeft} hak kaldı)` : ""}`}
         </button>
       )}
 

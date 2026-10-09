@@ -69,15 +69,15 @@ const MODES = {
   },
   
   6: {
-    name: "Nadir MODEL doldurma (en az ilanli model ailelerinden baslar; denenen aile 3-14 gun beklemeye alinir)",
+    name: "Nadir MODEL doldurma (kademeli: once tum modelleri 5 ilana, sonra 10, 15, 20... cikarir; kaynagin tum modelleri dahil)",
     jobs: [
-      { mode: "rare-model", threshold: 100, perModelPages: 2, maxSegments: 150, maxListings: 3000, label: "Nadir modeller" },
+      { mode: "rare-model", threshold: 100, perModelPages: 2, maxSegments: 300, maxListings: 3000, label: "Nadir modeller" },
     ],
   },
   7: {
-    name: "Nadir MODEL - genis (en az ilanli 400 model ailesi; denenen aile 3-14 gun beklemeye alinir)",
+    name: "Nadir MODEL - genis (kademeli, tur basina 500 modele kadar)",
     jobs: [
-      { mode: "rare-model", threshold: 100, perModelPages: 3, maxSegments: 400, maxListings: 4000, label: "Nadir modeller (genis)" },
+      { mode: "rare-model", threshold: 100, perModelPages: 3, maxSegments: 500, maxListings: 5000, label: "Nadir modeller (genis)" },
     ],
   },
   // Var olan ilanlari yeniden cekip FIYATLARINI gunceller (kaynak siteyle esitler).

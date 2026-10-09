@@ -1,4 +1,5 @@
 import { Car, CarListItem } from "@/types";
+import { displayTransmission } from "@/lib/transmission-label";
 import { withPendingLabels } from "@/lib/scraper/feature-merge";
 
 /** Strip fields the listing row never renders before sending it to a client. */
@@ -46,7 +47,7 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
     features: withPendingLabels(
       {
         fuelType: car.features?.fuelType ?? "Belirtilmemiş",
-        transmission: car.features?.transmission ?? "Belirtilmemiş",
+        transmission: displayTransmission(car.features?.transmission ?? "Belirtilmemiş"),
       },
       car
     ),

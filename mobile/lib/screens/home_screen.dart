@@ -33,7 +33,7 @@ const _vehicleClasses = [
 ];
 
 const _fuelTypes = ['', 'Benzin', 'Dizel', 'LPG', 'Hibrit', 'Elektrik'];
-const _transmissions = ['', 'Manuel', 'Otomatik', 'Yarı Otomatik'];
+const _transmissions = ['', 'Manuel', 'Otomatik'];
 
 // NOT: anahtarlar sunucudaki lib/car-query.ts buildCarSort ile BİREBİR aynı
 // olmalı (alt çizgi, tire değil) — eskiden "price-asc" gibi tireli anahtarlar

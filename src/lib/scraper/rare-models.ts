@@ -16,6 +16,8 @@ export interface SegmentCount {
   brand: string;
   model: string;
   count: number;
+  /** Kaynağın kendi model listesinden ("arazi-suv-pick-up/hyundai-ioniq-5"): model sayfasının kesin adresi. */
+  path?: string;
 }
 
 export interface RareFamilyTarget {
@@ -25,6 +27,40 @@ export interface RareFamilyTarget {
   familyKey: string;
   /** Veritabanında bu ailenin tüm donanımlarındaki toplam ilan sayısı. */
   count: number;
+  /** Kaynağın model sayfası adresi (katalogdan); yoksa ad adrese çevrilir. */
+  path?: string;
+}
+
+/** Kademeler: önce tüm modeller 5 ilana, sonra 10'a, 15'e… çıkarılır; hiçbiri bir turda yüzlerce ilana şişirilmez. */
+export const RARE_LEVELS = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200];
+
+export interface QuotaFamilyTarget extends RareFamilyTarget {
+  /** Bu turda en çok kaç yeni ilan çekilir (kademe − mevcut sayı). */
+  quota: number;
+}
+
+/**
+ * Sıradaki kademeyi seçer: altında modeli kalan en küçük kademe. O kademenin altındaki modeller en azdan başlayarak [maxFamilies]
+ * kadar alınır ve her biri yalnızca kademeye kadar doldurulur. Bekleme listesindeki modeller zaten [eligible] dışındadır.
+ */
+export function planRareLevel(
+  eligible: RareFamilyTarget[],
+  ceiling: number,
+  maxFamilies: number
+): { level: number; targets: QuotaFamilyTarget[]; below: number } | null {
+  const levels = [...RARE_LEVELS.filter((l) => l <= ceiling)];
+  if (levels.length === 0 || levels[levels.length - 1] < ceiling) levels.push(ceiling);
+  for (const level of levels) {
+    const below = eligible.filter((t) => t.count < level).sort((x, y) => x.count - y.count); // sıralı gelir; sağlamlık için yine de en azdan başlar
+    if (below.length > 0) {
+      return {
+        level,
+        below: below.length,
+        targets: below.slice(0, maxFamilies).map((t) => ({ ...t, quota: level - t.count })),
+      };
+    }
+  }
+  return null;
 }
 
 export const familyId = (brand: string, familyKey: string) => `${brand}::${familyKey}`;
@@ -67,9 +103,10 @@ export function selectRareFamilies(
     const id = familyId(brand, familyKey);
     const existing = families.get(id);
     if (!existing) {
-      families.set(id, { brand, model: display, familyKey, count: segment.count, bestTrimCount: segment.count });
+      families.set(id, { brand, model: display, familyKey, count: segment.count, bestTrimCount: segment.count, path: segment.path });
     } else {
       existing.count += segment.count;
+      if (segment.path && !existing.path) existing.path = segment.path;
       // Aranacak ad: en çok ilanı olan yazımın aile adı (kaynağın tanıdığı yazıma en yakını).
       if (segment.count > existing.bestTrimCount) {
         existing.model = display;
@@ -91,5 +128,5 @@ export function selectRareFamilies(
       return `${a.brand} ${a.model}`.localeCompare(`${b.brand} ${b.model}`, "tr");
     })
     .slice(0, maxFamilies)
-    .map(([, family]) => ({ brand: family.brand, model: family.model, familyKey: family.familyKey, count: family.count }));
+    .map(([, family]) => ({ brand: family.brand, model: family.model, familyKey: family.familyKey, count: family.count, path: family.path }));
 }

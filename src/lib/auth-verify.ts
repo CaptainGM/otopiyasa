@@ -5,6 +5,9 @@ import { createHash, randomBytes } from "crypto";
 
 export const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Bir hesap için "doğrulama e-postasını tekrar gönder" hakkı (posta sağlayıcısının günlük kotası sınırlı, boşa harcanmasın). */
+export const MAX_VERIFY_RESENDS = 3;
+
 export function createVerifyToken() {
   const token = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(token).digest("hex");

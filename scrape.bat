@@ -26,8 +26,9 @@ echo    12 - TAM 8 KAYNAK CEKIM (8 Kaynaktan binlerce ilan, en genis havuz!)
 echo.
 echo  [B] FIYAT TAHMIN ^& AI MODELINI GUCLENDIRME (Model Dogrulugu Icin)
 echo   ------------------------------------------------------------------
-echo    6  - Nadir MODEL        (en az ilanli model ailelerinden baslar; denenen aile 3-14 gun bekler)
-echo    7  - Nadir MODEL genis  (en az ilanli 400 model ailesi; denenen aile 3-14 gun bekler)
+echo    6  - Nadir MODEL        (kademeli: once her modeli 5 ilana, sonra 10, 15, 20... cikarir; kaynakta olup bizde hic olmayan modeller dahil)
+echo    7  - Nadir MODEL genis  (ayni kademeli mantik, tur basina 500 modele kadar)
+echo    22 - Marka/Model katalogu (kaynagin kendi model listesini okur; ayri model listesi ve eksik modeller buradan gelir, ~25 dk)
 echo    20 - Seyrek piyasa emsali (Aykiri deger sonrasi 3'ten az marka/model/yil ilani)
 echo    4  - Nadir MARKA        (^<40 ilanli markalari Arabam'da tarar: Alfa, Jeep vb.)
 echo    5  - En Az Markalar     (^<15 ilanli nadir markalari Arabam'da 20 sayfa tarar)
@@ -58,7 +59,7 @@ echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve t
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, Z, K, G, D, N, S, E, 1-21 veya P, varsayilan T): "
+set /p secim="Secimin (T, Z, K, G, D, N, S, E, 1-22 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo
@@ -74,6 +75,7 @@ if "%secim%"=="14" goto :mod11
 if /i "%secim%"=="S" goto :sitemap
 if /i "%secim%"=="N" goto :yeniilan
 if "%secim%"=="21" goto :songun
+if "%secim%"=="22" goto :katalog
 if /i "%secim%"=="E" goto :envanter
 
 rem Sunucu artik scrape.mjs tarafindan ayri pencere acilmadan, bu terminalin arka planinda baslatilir ve kapatilir.
@@ -303,6 +305,39 @@ echo.
 set /p nlimit="Kac yeni ilan eklensin? (Varsayilan 200): "
 if "%nlimit%"=="" set nlimit=200
 npx tsx scripts\arabam-discover.ts %nlimit%
+echo.
+pause
+goto :eof
+
+:katalog
+echo.
+echo ====================================================================
+echo   MARKA / MODEL KATALOGU
+echo   - Kaynagin kendi marka ve model listesi (sayilariyla) okunur; i20 / i20 N / i20 Active ayri model sayilir.
+echo   - Bizde hic ilani olmayan modeller bu listeden bulunur ve Nadir MODEL taramasina (6, 7) girer.
+echo   - Yaklasik 170 istek, 20-30 dk. Bekci bitene kadar bekler. Haftada bir yeterli.
+echo   - Bitince model listesi dosyasi degistiyse kendiliginden commit edilip GitHub'a gonderilir (senin yapacagin bir sey yok).
+echo ====================================================================
+echo.
+npx tsx scripts\model-catalog.ts
+if errorlevel 2 (
+    echo.
+    echo [!] Kaynak hiz siniri koydu, katalog yarim kaldi. Biraz sonra 22'yi tekrar calistir ^(kaldigi yerden devam eder^).
+    goto :katalogson
+)
+rem Model listesi dosyasi degistiyse kendiliginden commit edilir ve gonderilir (site filtresi buradan okur).
+git diff --quiet -- src\lib\model-catalog-data.ts
+if errorlevel 1 (
+    git add src\lib\model-catalog-data.ts
+    git commit -m "model listesi guncellendi" -- src\lib\model-catalog-data.ts
+    git push origin main
+    echo.
+    echo Model listesi degisti: commit edildi ve GitHub'a gonderildi. Site birkac dakika icinde guncellenir.
+) else (
+    echo.
+    echo Model listesi degismedi, commit gerekmedi.
+)
+:katalogson
 echo.
 pause
 goto :eof

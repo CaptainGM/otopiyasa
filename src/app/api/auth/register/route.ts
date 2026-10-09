@@ -9,7 +9,7 @@ import { checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { passwordError } from "@/lib/password-policy";
 import { isDisposableEmail, canonicalEmail } from "@/lib/email-policy";
 import { isMailerConfigured, sendVerifyEmail } from "@/lib/mailer";
-import { createVerifyToken, buildVerifyUrl, VERIFY_TOKEN_TTL_MS } from "@/lib/auth-verify";
+import { createVerifyToken, buildVerifyUrl, VERIFY_TOKEN_TTL_MS, MAX_VERIFY_RESENDS } from "@/lib/auth-verify";
 
 export async function POST(request: Request) {
   try {
@@ -95,16 +95,22 @@ export async function POST(request: Request) {
     if (requireVerification) {
       const appUrl = appBaseUrl();
       const verifyUrl = buildVerifyUrl(appUrl, user.email, verifyToken);
+      let mailSent = true;
       try {
         await sendVerifyEmail(user.email, verifyUrl);
       } catch (err) {
+        mailSent = false;
         console.warn("sendVerifyEmail failed:", err);
       }
-      // Otomatik giriş YAPILMAZ — önce e-posta doğrulanmalı.
+      // Otomatik giriş YAPILMAZ — önce e-posta doğrulanmalı. Gönderim başarısızsa (posta kotası dolu vb.) bunu saklamayız:
+      // kullanıcı "tekrar gönder" ile dener.
       return NextResponse.json({
         requiresVerification: true,
-        message:
-          "Hesabın oluşturuldu. Giriş yapabilmek için e-posta adresine gönderdiğimiz doğrulama bağlantısına tıkla.",
+        mailSent,
+        resendsLeft: MAX_VERIFY_RESENDS,
+        message: mailSent
+          ? "Hesabın oluşturuldu. Giriş yapabilmek için e-posta adresine gönderdiğimiz doğrulama bağlantısına tıkla."
+          : "Hesabın oluşturuldu ama doğrulama e-postası şu an gönderilemedi. Birkaç dakika sonra aşağıdan tekrar göndermeyi dene.",
       });
     }
 

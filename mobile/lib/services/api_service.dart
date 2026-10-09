@@ -1094,6 +1094,26 @@ class ApiService {
   // HESAP
   // ---------------------------------------------------------------------------
 
+  /// Hazır (çizim) avatar seçer; kimlik "lorelei.42" biçimindedir.
+  Future<void> setAvatarPreset(String preset) async {
+    final response = await _http.put(_uri('/api/auth/avatar'), headers: _headers, body: jsonEncode({'preset': preset}));
+    if (response.statusCode != 200) throw Exception(_errorOf(response, 'Profil resmi kaydedilemedi'));
+    currentUser = await me() ?? currentUser;
+  }
+
+  /// Kendi fotoğrafını yükler (data URI). Sunucu denetler; uygunsuzsa hata iletisiyle reddeder.
+  Future<void> uploadAvatarPhoto(String dataUrl) async {
+    final response = await _http.post(_uri('/api/auth/avatar'), headers: _headers, body: jsonEncode({'image': dataUrl}));
+    if (response.statusCode != 200) throw Exception(_errorOf(response, 'Fotoğraf kaydedilemedi'));
+    currentUser = await me() ?? currentUser;
+  }
+
+  Future<void> removeAvatar() async {
+    final response = await _http.delete(_uri('/api/auth/avatar'), headers: _headers);
+    if (response.statusCode != 200) throw Exception(_errorOf(response, 'Profil resmi kaldırılamadı'));
+    currentUser = await me() ?? currentUser;
+  }
+
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,

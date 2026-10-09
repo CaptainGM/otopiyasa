@@ -57,6 +57,17 @@ export async function POST(request: Request) {
       $or: [{ email: email.toLowerCase() }, { canonicalEmail: canonical }],
     });
     if (existing) {
+      // E-postasını hiç doğrulamamış biri tekrar kayıt olmaya çalışıyorsa çıkmaz sokakta kalmasın: doğrulama e-postasını
+      // tekrar gönderebileceği yere yönlendirilir (giriş ekranı da aynı bilgiyi veriyor).
+      if (existing.emailVerified === false) {
+        return NextResponse.json(
+          {
+            error: "Bu e-posta ile bir hesap açılmış ama henüz doğrulanmamış. Aşağıdan doğrulama e-postasını tekrar gönderebilirsin.",
+            needsVerification: true,
+          },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: "Bu e-posta adresi zaten kayıtlı." },
         { status: 409 }

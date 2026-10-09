@@ -72,7 +72,7 @@ export function FeatureStatusPanel() {
   const open = wide || expanded;
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 shadow-xl sm:p-5 min-[2160px]:max-h-[calc(100vh-2rem)] min-[2160px]:overflow-y-auto">
+    <section className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 shadow-xl sm:p-5">
       <div className="flex items-start justify-between gap-2">
         <button
           type="button"

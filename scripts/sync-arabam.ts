@@ -73,6 +73,9 @@ async function main() {
   const { runPriceRefresh, arabamRefreshStatus } = await import("../src/lib/scraper/run-scrape.js").catch(async () => await import("../src/lib/scraper/run-scrape"));
   const { ManualScrapeLog } = await import("../src/models/ManualScrapeLog.js").catch(async () => await import("../src/models/ManualScrapeLog"));
   const { judgeBatch, MAX_BLOCK_STREAK } = await import("../src/lib/scraper/verify-rhythm");
+  const { setProgressQuiet } = await import("../src/lib/scraper/progress");
+  // Her ilan için "2/2 çekiliyor ve kaydediliyor" sayacı yerine ilanın sonucu yazılır (canlı mı, fiyat/km değişti mi, kaldırılmış mı).
+  setProgressQuiet(true);
 
   console.log("  ⏳ Veritabanına (MongoDB Atlas) bağlanılıyor...");
   await connectDB();
@@ -208,7 +211,7 @@ async function main() {
     let result: any = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        result = await runPriceRefresh(batchSize, currentOffset, totalListings);
+        result = await runPriceRefresh(batchSize, currentOffset, totalListings, { onLine: (line: string) => console.log(line) });
         break;
       } catch (err: any) {
         console.warn(`   ⚠️ [Hata / Deneme ${attempt}/3] ${err?.message || err}`);

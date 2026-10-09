@@ -70,7 +70,7 @@ export function RareModelBoard() {
   const catalogAge = data?.catalogAt ? Math.max(0, Math.floor((Date.now() - new Date(data.catalogAt).getTime()) / 86_400_000)) : null;
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 shadow-xl sm:p-5 min-[2160px]:flex min-[2160px]:max-h-[calc(100vh-2rem)] min-[2160px]:flex-col">
+    <section className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 shadow-xl sm:p-5">
       <button
         type="button"
         onClick={() => !wide && setExpanded((v) => !v)}
@@ -86,7 +86,7 @@ export function RareModelBoard() {
 
       {open && (
         <>
-          <div className="mt-3 inline-flex self-start rounded-lg border border-white/10 p-0.5 text-[11px] font-semibold" role="group" aria-label="Liste kapsamı">
+          <div className="mt-3 inline-flex rounded-lg border border-white/10 p-0.5 text-xs font-semibold" role="group" aria-label="Liste kapsamı">
             {(["missing", "all"] as const).map((key) => (
               <button
                 key={key}
@@ -103,27 +103,27 @@ export function RareModelBoard() {
 
           {error && !data && <p className="mt-3 text-sm text-rose-300">Liste alınamadı: {error}</p>}
 
-          <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+          <div className="mt-3">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-[10px] uppercase tracking-wider text-slate-500">
-                  <th className="w-6 pb-1.5 font-bold">#</th>
-                  <th className="pb-1.5 font-bold">Marka / model</th>
-                  <th className="pb-1.5 text-right font-bold">Adet</th>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500">
+                  <th className="w-8 pb-2 font-bold">#</th>
+                  <th className="pb-2 font-bold">Marka / model</th>
+                  <th className="pb-2 text-right font-bold">Adet</th>
                 </tr>
               </thead>
               <tbody className={loading ? "opacity-50" : ""}>
                 {data?.rows.map((row, index) => (
                   <tr key={`${row.brand}-${row.model}`} className="border-t border-white/5 align-top">
-                    <td className="py-1.5 text-[11px] tabular-nums text-slate-600">{firstIndex + index + 1}</td>
-                    <td className="py-1.5 pr-2">
-                      <div className="font-semibold leading-tight text-white">{row.model}</div>
-                      <div className="text-[11px] leading-tight text-slate-500">{row.brand}</div>
-                      {row.note && <div className="mt-0.5 text-[10px] leading-tight text-slate-600">{row.note}</div>}
+                    <td className="py-2.5 text-[13px] tabular-nums text-slate-600">{firstIndex + index + 1}</td>
+                    <td className="py-2.5 pr-3">
+                      <div className="text-base font-bold leading-tight text-white">{row.model}</div>
+                      <div className="mt-0.5 text-[13px] leading-tight text-slate-400">{row.brand}</div>
+                      {row.note && <div className="mt-1 text-xs leading-snug text-slate-500">{row.note}</div>}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums">
-                      <div className={`font-black ${row.count === 0 ? "text-rose-400" : row.count < 5 ? "text-amber-300" : "text-slate-200"}`}>{row.count}</div>
-                      {row.sourceCount !== null && <div className="text-[10px] text-slate-500">kaynakta ~{row.sourceCount.toLocaleString("tr-TR")}</div>}
+                    <td className="whitespace-nowrap py-2.5 pl-1 text-right tabular-nums">
+                      <div className={`text-xl font-black leading-none ${row.count === 0 ? "text-rose-400" : row.count < 5 ? "text-amber-300" : "text-slate-200"}`}>{row.count}</div>
+                      {row.sourceCount !== null && <div className="mt-1 text-xs text-slate-500">kaynakta ~{row.sourceCount.toLocaleString("tr-TR")}</div>}
                     </td>
                   </tr>
                 ))}
@@ -162,7 +162,7 @@ export function RareModelBoard() {
             </div>
           )}
           {data && (
-            <p className="mt-2 text-[10px] leading-snug text-slate-600">
+            <p className="mt-3 text-xs leading-snug text-slate-500">
               Liste 5 dakikada bir tazelenir · {formatRelativeTr(data.updatedAt) || "az önce"}
               {catalogAge !== null && (
                 <>

@@ -353,6 +353,10 @@ export interface DetailFetchStats {
   blocked: Set<string>;
   /** Art arda çok engel gelince kalan ilanlara dokunulmadan parti bitirildi. */
   aborted: boolean;
+  /** Bir ilan engel yüzünden okunamadığında çağrılır (terminal satırı için). */
+  onBlocked?: (href: string) => void;
+  /** Sayfa açıldı ama ilan bilgisi okunamadı (ilan korunur, bir sonraki turda yeniden denenir). */
+  onUnparsed?: (href: string) => void;
 }
 
 export const createDetailFetchStats = (): DetailFetchStats => ({ attempted: new Set(), blocked: new Set(), aborted: false });
@@ -401,6 +405,7 @@ async function fetchAndSaveArabamDetails(
   const noteBlocked = (href: string) => {
     if (!stats) return;
     stats.blocked.add(href);
+    stats.onBlocked?.(href);
     consecutiveBlocked += 1;
     if (consecutiveBlocked >= ABORT_AFTER_CONSECUTIVE_BLOCKS) stats.aborted = true;
   };
@@ -430,6 +435,8 @@ async function fetchAndSaveArabamDetails(
           if (listing) {
             await onListing(enrichListing(listing));
             fetched += 1;
+          } else {
+            stats?.onUnparsed?.(href);
           }
           // Ayrıştırma hatası veya eksik HTML'de ilan silinmez/arşivlenmez, korunur.
         }

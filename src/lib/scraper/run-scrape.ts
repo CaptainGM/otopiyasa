@@ -23,6 +23,7 @@ import {
 import { judgeAttempt, lastSlug, RETRY_DAYS, type AttemptReason } from "@/lib/scraper/model-page";
 import { collectFamilyCandidates, type FamilySlugTarget } from "@/lib/scraper/sitemap-family";
 import { reportEvent, reportProgress } from "@/lib/scraper/progress";
+import { describeQueueMix, formatVerifyLine, titleFromHref, type QueueMix, type SaveDetail } from "@/lib/scraper/verify-line";
 import { normalizeBrand, normalizeBrandModel } from "@/lib/normalize-brand";
 import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
@@ -84,7 +85,7 @@ const SEEN_WRITE_INTERVAL_MS = 60 * 60 * 1000;
  */
 export async function saveListing(
   listing: ScrapedListing,
-  options: { markVerified?: boolean } = {}
+  options: { markVerified?: boolean; onDetail?: (detail: SaveDetail) => void } = {}
 ): Promise<SaveResult> {
   const markVerified = options.markVerified !== false;
   // Kaynaklar marka/model, yakıt ve ili farklı yazıyor ("Mercedes" + "- Benz C 180", "Benzin & LPG",
@@ -189,6 +190,17 @@ export async function saveListing(
       }
       return "unchanged";
     }
+
+    options.onDetail?.({
+      priceFrom: priceChanged ? oldPrice : undefined,
+      priceTo: priceChanged ? newPrice : undefined,
+      mileageFrom: mileageChanged ? existing.mileage : undefined,
+      mileageTo: mileageChanged ? listing.mileage : undefined,
+      descChanged,
+      damageChanged,
+      imagesEnriched,
+      featuresChanged,
+    });
 
     existing.title = listing.title || existing.title;
     existing.brand = listing.brand || existing.brand;
@@ -902,7 +914,14 @@ export async function arabamRefreshStatus(): Promise<{
   return { total, missingDamageParts, needsRecheck, neverVerified };
 }
 
-type QueueRow = { _id: mongoose.Types.ObjectId; listingUrl: string; status?: string };
+type QueueRow = {
+  _id: mongoose.Types.ObjectId;
+  listingUrl: string;
+  status?: string;
+  lastVerifiedAt?: Date;
+  /** Hangi havuzdan geldi: arşivden yeniden kontrol / sitemap'te görünmeyen / en uzun süredir doğrulanmayan. */
+  pool?: "recheck" | "missing" | "stale";
+};
 
 /**
  * Arabam detay taraması için sıradaki ilanlar, önem sırasıyla:
@@ -914,7 +933,7 @@ type QueueRow = { _id: mongoose.Types.ObjectId; listingUrl: string; status?: str
 export async function pickArabamRefreshQueue(limit: number, now = new Date()): Promise<QueueRow[]> {
   const cooldown = new Date(now.getTime() - LIFECYCLE.attemptCooldownMs);
   const picked: QueueRow[] = [];
-  const take = async (conditions: Record<string, unknown>[], sort: Record<string, 1 | -1>, max: number) => {
+  const take = async (pool: QueueRow["pool"], conditions: Record<string, unknown>[], sort: Record<string, 1 | -1>, max: number) => {
     if (max <= 0) return;
     const rows = await Car.find({
       $and: [
@@ -926,13 +945,14 @@ export async function pickArabamRefreshQueue(limit: number, now = new Date()): P
     })
       .sort(sort)
       .limit(max)
-      .select("_id listingUrl status")
+      .select("_id listingUrl status lastVerifiedAt")
       .lean<QueueRow[]>();
-    picked.push(...rows);
+    picked.push(...rows.map((row) => ({ ...row, pool })));
   };
 
-  await take([{ status: "removed" }, { needsRecheck: true }], { removedAt: -1 }, Math.ceil(limit * 0.25));
+  await take("recheck", [{ status: "removed" }, { needsRecheck: true }], { removedAt: -1 }, Math.ceil(limit * 0.25));
   await take(
+    "missing",
     [
       { status: "active" },
       { sitemapMissingSince: { $exists: true } },
@@ -941,13 +961,42 @@ export async function pickArabamRefreshQueue(limit: number, now = new Date()): P
     { lastVerifiedAt: 1 },
     Math.ceil(limit * 0.25)
   );
-  await take([{ status: "active" }], { lastVerifiedAt: 1 }, limit - picked.length);
+  await take("stale", [{ status: "active" }], { lastVerifiedAt: 1 }, limit - picked.length);
   return picked;
 }
 
-export async function runPriceRefresh(limit = 500, progressOffset?: number, progressTotal?: number): Promise<ScrapeJobResult> {
+/** Sıradaki partinin içeriği: kaç ilan hiç doğrulanmamış, kaçı arşivden yeniden kontrol... (terminalde gösterilir). */
+export function queueMix(queue: QueueRow[]): QueueMix {
+  const mix: QueueMix = { recheck: 0, missing: 0, never: 0, stale: 0 };
+  for (const row of queue) {
+    if (row.pool === "recheck") mix.recheck += 1;
+    else if (row.pool === "missing") mix.missing += 1;
+    else if (row.lastVerifiedAt) mix.stale += 1;
+    else mix.never += 1;
+  }
+  return mix;
+}
+
+export interface PriceRefreshOptions {
+  /** Her ilan için okunur bir satır (canlı mı, fiyat/km değişti mi, kaldırılmış mı, engel mi) verilir; verilmezse sessiz çalışır. */
+  onLine?: (line: string) => void;
+}
+
+export async function runPriceRefresh(
+  limit = 500,
+  progressOffset?: number,
+  progressTotal?: number,
+  options: PriceRefreshOptions = {}
+): Promise<ScrapeJobResult> {
   const queue = await pickArabamRefreshQueue(limit);
-  const { result, aliveIds, goneIds, attemptedIds, blockedIds } = await refetchByUrls(queue, "Fiyat taraması", progressOffset, progressTotal);
+  options.onLine?.(`  📋 Bu partinin sırası (${queue.length} ilan): ${describeQueueMix(queueMix(queue))}`);
+  const { result, aliveIds, goneIds, attemptedIds, blockedIds } = await refetchByUrls(
+    queue,
+    "Fiyat taraması",
+    progressOffset,
+    progressTotal,
+    options.onLine
+  );
 
   // Yalnızca gerçekten denenenler "denendi" olur (engelle yarıda bırakılan partinin kalanı kuyrukta başta kalır); engellenenler
   // "blocked" damgası alır ve 6 saat dinlendirilir.
@@ -984,7 +1033,8 @@ async function refetchByUrls(
   docs: { listingUrl: string; _id?: mongoose.Types.ObjectId }[],
   label: string,
   progressOffset?: number,
-  progressTotal?: number
+  progressTotal?: number,
+  onLine?: (line: string) => void
 ): Promise<{
   result: ScrapeJobResult;
   aliveIds: mongoose.Types.ObjectId[];
@@ -1012,7 +1062,13 @@ async function refetchByUrls(
   const { counts } = counter;
   const aliveIds: mongoose.Types.ObjectId[] = [];
   const onListing = async (listing: ScrapedListing) => {
-    counter.add(await saveListing(listing));
+    let detail: SaveDetail | undefined;
+    const result = await saveListing(listing, { onDetail: onLine ? (d) => (detail = d) : undefined });
+    counter.add(result);
+    if (onLine) {
+      const kind = result === "reactivated" ? "reactivated" : result === "updated" ? "changed" : result === "skipped" ? "skipped" : "alive";
+      onLine(formatVerifyLine({ kind, title: listing.title || titleFromHref(listing.listingUrl), detail }));
+    }
     try {
       const id = hrefToId.get(new URL(listing.listingUrl).pathname);
       if (id) aliveIds.push(id);
@@ -1025,11 +1081,16 @@ async function refetchByUrls(
   const onGone = (href: string) => {
     const id = hrefToId.get(href);
     if (id) goneIds.push(id);
+    onLine?.(formatVerifyLine({ kind: "gone", title: titleFromHref(href) }));
   };
 
   let fetched = 0;
   const errors: string[] = [];
   const stats = createDetailFetchStats();
+  if (onLine) {
+    stats.onBlocked = (href) => onLine(formatVerifyLine({ kind: "blocked", title: titleFromHref(href) }));
+    stats.onUnparsed = (href) => onLine(formatVerifyLine({ kind: "unparsed", title: titleFromHref(href) }));
+  }
   try {
     fetched = await refetchArabamDetails(hrefs, onListing, onGone, progressOffset, progressTotal, stats);
   } catch (error) {

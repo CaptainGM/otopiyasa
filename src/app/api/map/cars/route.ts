@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { displayTransmission } from "@/lib/transmission-label";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { clusterKeyFor, buildMapQuery, distanceKm } from "@/lib/map-clusters";
@@ -132,7 +133,7 @@ export async function GET(request: Request) {
           sourceSite: car.sourceSite || "arabam",
           fuelType: car.features?.fuelType || "Bilinmiyor",
           // Bilinmeyen vites "Manuel" diye uydurulmaz (yakıttaki gibi).
-          transmission: car.features?.transmission || "Bilinmiyor",
+          transmission: displayTransmission(car.features?.transmission || "Bilinmiyor"),
           hasDropped,
           dropAmount,
         };

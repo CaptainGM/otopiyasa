@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { displayTransmission } from "@/lib/transmission-label";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Car } from "@/types";
@@ -104,7 +105,7 @@ function ComparePageInner() {
       best: (c) => c.mileage === minMileage,
     },
     { label: "Yakıt", render: (c) => c.features.fuelType },
-    { label: "Vites", render: (c) => c.features.transmission },
+    { label: "Vites", render: (c) => displayTransmission(c.features.transmission) },
     { label: "Kasa", render: (c) => c.features.bodyType },
     { label: "Renk", render: (c) => c.features.color },
     { label: "Motor", render: (c) => (c.features.engineSize ? `${c.features.engineSize} L` : "-") },

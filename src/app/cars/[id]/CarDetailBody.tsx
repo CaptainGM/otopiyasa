@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { displayTransmission } from "@/lib/transmission-label";
 
 import { User } from "@/models/User";
 import { maskName } from "@/lib/form-options";
@@ -157,7 +158,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         f.topSpeed ? { label: "Maksimum hız", value: `${f.topSpeed} km/s` } : null,
         f.acceleration ? { label: "0-100 km/s", value: `${f.acceleration} sn` } : null,
         { label: "Yakıt", value: f.fuelType },
-        { label: "Vites", value: f.transmission },
+        { label: "Vites", value: displayTransmission(f.transmission) },
         f.drivetrain ? { label: "Çekiş", value: f.drivetrain } : null,
         f.avgFuelConsumption ? { label: "Ort. yakıt tüketimi", value: f.avgFuelConsumption } : null,
         f.fuelTank ? { label: "Yakıt deposu", value: f.fuelTank } : null,
@@ -311,7 +312,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           {(() => {
             // Bilinen özellikler etiket; kaynaktan henüz okunmamışlar etiket gibi yan yana durmaz (renk etiketinin
             // yanında "Özellikler doğrulanıyor" anlamsız görünüyordu), hangisinin beklendiğini söyleyen bir satır olur.
-            const known = featureChips([car.features.fuelType, car.features.transmission, car.features.bodyType, car.features.color]).filter(
+            const known = featureChips([car.features.fuelType, displayTransmission(car.features.transmission), car.features.bodyType, car.features.color]).filter(
               (c) => !c.pending
             );
             const pending = (

@@ -305,4 +305,5 @@ export const seedCars = [
 export const brands = [...new Set(seedCars.map((car) => car.brand))].sort();
 // Filtre ve ilan formu tüm yakıtları göstersin (demo verisinde yalnızca üçü vardı: LPG ve hibrit seçilemiyordu).
 export const fuelTypes: string[] = [...FUEL_TYPES];
-export const transmissions = [...new Set(seedCars.map((car) => car.features.transmission))].sort();
+// "Yarı Otomatik" ayrı seçenek değildir: "Otomatik" ikisini de bulur (bkz. transmission-label.ts).
+export const transmissions = [...new Set(seedCars.map((car) => car.features.transmission))].filter((t) => !/^yar[ıi]/i.test(t)).sort();

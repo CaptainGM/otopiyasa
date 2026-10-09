@@ -7,8 +7,11 @@
  * görülünce ısrar edilmez, engel kalkınca kendiliğinden devam edilir.
  */
 export const PACING = {
-  /** İlanlar arası hedef bekleme (sn); ±%25 oynar. */
-  baseGapSeconds: 10,
+  /**
+   * İlanlar arası hedef bekleme (sn); ±%25 oynar. 8 Eki 2026'da 10'dan 8'e indirildi (%25 daha hızlı): son 6 günde günde 2–6 engel
+   * görüldü, hiç uzun mola gerekmedi. Engel artarsa bekleme kendiliğinden uzar ve mola verilir; yine de sık mola görülürse 10'a dön.
+   */
+  baseGapSeconds: 8,
   maxGapSeconds: 40,
   /** İlk engel molası (dk); sonraki her engelde iki katına çıkar. */
   firstPauseMinutes: 15,

@@ -10,7 +10,7 @@
 // Ayrıca ilan sayfası kontrolüne ayrılan sürenin ~0,8'i kadar model liste sayfası gezilir: bir liste sayfası
 // bizdeki birkaç ilanın gerçek vites/yakıt/renk/fiyatını tek istekte verir (bkz. arabam-list-sweep.ts).
 //
-// Cloudflare'a takılmamak için: ilanlar arası ~10 sn (±%25), art arda engelde 15 dk → 30 → 60 → 120 dk mola
+// Cloudflare'a takılmamak için: ilanlar arası ~8 sn (±%25), art arda engelde 15 dk → 30 → 60 → 120 dk mola
 // (bkz. arabam-pacing.ts), engel gidince kendiliğinden devam. Tek kopya çalışır (kilit dosyası).
 //
 //   npx tsx scripts/arabam-bekci.ts                 → sürekli çalış (Görev Zamanlayıcı bunu başlatır)

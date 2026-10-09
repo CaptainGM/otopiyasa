@@ -73,6 +73,7 @@ if "%secim%"=="10" goto :mod11
 if "%secim%"=="14" goto :mod11
 if /i "%secim%"=="S" goto :sitemap
 if /i "%secim%"=="N" goto :yeniilan
+if "%secim%"=="21" goto :songun
 if /i "%secim%"=="E" goto :envanter
 
 rem Sunucu artik scrape.mjs tarafindan ayri pencere acilmadan, bu terminalin arka planinda baslatilir ve kapatilir.
@@ -302,6 +303,24 @@ echo.
 set /p nlimit="Kac yeni ilan eklensin? (Varsayilan 200): "
 if "%nlimit%"=="" set nlimit=200
 npx tsx scripts\arabam-discover.ts %nlimit%
+echo.
+pause
+goto :eof
+
+:songun
+echo.
+echo ====================================================================
+echo   SON 3 GUN ILANLARI (SITEMAP)
+echo   - Sitemap'ten yalnizca son 3 gunun ilanlari, en yeniden baslayarak okunur.
+echo   - Okunan her adayin yaklasik 4'te 3'u yeni ilan olarak eklenir (gerisi arac degil).
+echo   - Hiz: dakikada ~45 aday. Kuyrukta bu aralikta binlerce aday olabilir.
+echo   - Bekci bu tarama bitene kadar kendiliginden bekler.
+echo ====================================================================
+echo.
+set /p sgadet="Kac aday okunsun? (Varsayilan 1000, ~22 dk): "
+if "%sgadet%"=="" set sgadet=1000
+echo.
+node scripts\scrape.mjs 21 --adet %sgadet%
 echo.
 pause
 goto :eof

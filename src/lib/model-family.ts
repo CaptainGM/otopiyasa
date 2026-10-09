@@ -1,4 +1,5 @@
 import { turkishSearchRegex } from "@/lib/utils";
+import { MODEL_EXTENSIONS } from "@/lib/model-catalog-data";
 
 /**
  * MODEL AİLESİ: kaynaklar aynı modeli donanımıyla ("Juke 1.0 DIG-T Platinum"), büyük harfle
@@ -26,7 +27,52 @@ const bare = (token: string) => fold(token).replace(/[^\p{L}\p{N}]/gu, "");
 const SERIES = "Serisi";
 const series = (name: string) => [name, SERIES];
 
-function familyTokens(model?: string | null, brand?: string | null): string[] {
+interface Extension {
+  tokens: string[];
+  /** Harf/rakam dışı karakterleri atılmış, küçük harf, birleşik ("i20n"). */
+  joined: string;
+  bareTokens: string[];
+}
+
+/** Marka → kaynağın ayrı model saydığı adlar (uzun ad önce). Veri: model-catalog-data.ts. */
+const EXTENSIONS_BY_BRAND = new Map<string, Extension[]>(
+  Object.entries(MODEL_EXTENSIONS).map(([brandKey, names]) => [
+    brandKey,
+    names
+      .map((name) => {
+        const tokens = name.split(/\s+/).filter(Boolean);
+        const bareTokens = tokens.map(bare);
+        return { tokens, bareTokens, joined: bareTokens.join("") };
+      })
+      .filter((e) => e.tokens.length > 0)
+      .sort((a, b) => b.tokens.length - a.tokens.length),
+  ])
+);
+
+/** Modelin başı kaynağın ayrı model saydığı bir adla ("i20 N") başlıyorsa o adı döndürür. */
+function matchExtension(tokens: string[], brandKey: string): string[] | null {
+  const list = EXTENSIONS_BY_BRAND.get(brandKey);
+  if (!list) return null;
+  for (const ext of list) {
+    let joined = "";
+    for (let k = 0; k < tokens.length; k++) {
+      joined += bare(tokens[k]);
+      if (joined === ext.joined) return ext.tokens;
+      if (joined.length >= ext.joined.length) break;
+    }
+  }
+  return null;
+}
+
+/** Bu ailenin başını paylaşan ama daha uzun ayrı modeller ("i20" için "N", "Active", "Troy"): sorgu desenlerinde dışarıda bırakılır. */
+function longerExtensions(tokens: string[], brandKey: string): Extension[] {
+  const base = tokens.map(bare);
+  return (EXTENSIONS_BY_BRAND.get(brandKey) || []).filter(
+    (e) => e.bareTokens.length > base.length && base.every((t, i) => e.bareTokens[i] === t)
+  );
+}
+
+function familyTokens(model?: string | null, brand?: string | null, useExtensions = true): string[] {
   const head = (model || "")
     .trim()
     .split(/\d[.,]\d/)[0]
@@ -37,6 +83,9 @@ function familyTokens(model?: string | null, brand?: string | null): string[] {
   if (!tokens.length) return [];
 
   const b = bare(brand || "");
+  // Kaynağın ayrı model saydığı ad ("i20 N", "Ioniq 5"): genel aile kuralından önce bakılır.
+  const extension = useExtensions ? matchExtension(tokens, b) : null;
+  if (extension) return extension;
   const first = bare(tokens[0]);
   const second = tokens[1] ? bare(tokens[1]) : "";
   const isSeriesWord = /^(serisi|series|class|sinifi)$/.test(second);
@@ -69,6 +118,17 @@ function familyTokens(model?: string | null, brand?: string | null): string[] {
   if (i < tokens.length && DISTINCT_SUFFIXES.includes(bare(tokens[i]))) picked.push(tokens[i]);
   return picked;
 }
+
+/** Kaynağın ayrı model listesi OLMADAN genel aile kuralı (veri üretimi için): "i20 N" → "i20". */
+export function genericModelFamily(model?: string | null, brand?: string | null): string {
+  return familyTokens(model, brand, false).join(" ");
+}
+
+/** Bir model adının karşılaştırma anahtarı: aksansız, harf/rakam dışı atılmış küçük harf ("i20 N" → "i20n"). */
+export const modelNameKey = (name?: string | null) => bare(name || "");
+
+/** Marka anahtarı (model-catalog-data.ts ile aynı biçim). */
+export const catalogBrandKey = (brand?: string | null) => bare(brand || "");
 
 /** Filtrede gösterilecek aile adı ("Qashqai 1.3 DIG-T Sky Pack" → "Qashqai"). */
 export function modelFamily(model?: string | null, brand?: string | null): string {
@@ -141,7 +201,10 @@ export function modelFamilyRegex(model: string, brand?: string | null): RegExp {
     body = tokens.map(tokenPattern).join(GAP);
   }
   const endsWithSuffix = DISTINCT_SUFFIXES.includes(bare(tokens[tokens.length - 1]));
-  const excludeSuffix = endsWithSuffix ? "" : `(?![\\s-]*(?:${DISTINCT_SUFFIXES.join("|")})(?![${ALNUM}]))`;
+  // Aynı adla başlayan ama kaynağın ayrı model saydığı kollar ("i20" seçiliyken "i20 N") dışarıda kalır.
+  const longer = longerExtensions(tokens, b).map((e) => e.tokens.slice(tokens.length).map(tokenPattern).join(GAP));
+  const alternatives = [...(endsWithSuffix ? [] : DISTINCT_SUFFIXES), ...longer];
+  const excludeSuffix = alternatives.length ? `(?![\\s.+/-]*(?:${alternatives.join("|")})(?![${ALNUM}]))` : "";
   // Ad bitişik yazılmış motor hacmiyle de bitebilir: "QASHQAI1.6DCI".
   // "Qashqai+2" ayrı araçtır ama "206+" 206 ailesindendir: "+" ancak arkasından rakam gelmiyorsa ad sonu sayılır.
   const end = `(?=$|[^${ALNUM}+]|\\+(?![0-9])|\\d[.,]\\d)`;

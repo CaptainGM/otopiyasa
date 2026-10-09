@@ -21,7 +21,7 @@ describe("planNextStep", () => {
   it("engelden sonra yavaşlar, temiz partilerle yavaş yavaş eski hıza döner", () => {
     const slow = planNextStep(start, { checked: 20, blocked: 1, errors: 0, paused: false });
     expect(slow.reason).toBe("slow-down");
-    expect(slow.gapSeconds).toBeCloseTo(13, 5);
+    expect(slow.gapSeconds).toBeCloseTo(Math.round(PACING.baseGapSeconds * 1.3 * 10) / 10, 5);
     expect(slow.sleepMinutes).toBe(0);
 
     let state = { gapSeconds: slow.gapSeconds, pauseMinutes: slow.pauseMinutes };

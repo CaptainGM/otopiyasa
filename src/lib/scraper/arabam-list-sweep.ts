@@ -42,7 +42,20 @@ export const LIST_SWEEP = {
   /** Tamamı gezilen ya da sayfası bulunamayan aileye bu kadar süre dönülmez. */
   revisitMs: 7 * 24 * 60 * 60 * 1000,
   notFoundRetryMs: 30 * 24 * 60 * 60 * 1000,
+  /** Sayfası açılırken hata veren (art arda yönlendirme, 404…) aileye bu kadar süre dönülmez. */
+  brokenPageRetryMs: 7 * 24 * 60 * 60 * 1000,
+  /** Başka bir hatada (zaman aşımı vb.) kısa süre beklenir; sıra aynı aileye takılıp kalmasın. */
+  errorRetryMs: 6 * 60 * 60 * 1000,
 };
+
+/**
+ * Bir aile sayfası açılamayınca ne kadar bekletileceği. Eskiden hata alan aile bekletilmiyordu: oran puanı en yüksek aile
+ * olarak her turda yeniden seçiliyor, bekçinin liste taraması aynı sayfada takılıp kalıyordu (Tesla Model Y art arda
+ * yönlendirme veriyordu; 8 Eki 2026'da yaklaşık 10 saatte 100'den fazla boş istek).
+ */
+export function skipMsForError(reason: string): number {
+  return /ERR_TOO_MANY_REDIRECTS|HTTP (404|410)\b/i.test(reason) ? LIST_SWEEP.brokenPageRetryMs : LIST_SWEEP.errorRetryMs;
+}
 
 const slug = (text: string) =>
   text
@@ -297,6 +310,15 @@ async function applyFamilyBodyType(family: ArabamListSweepDoc, page: ArabamListP
   return label;
 }
 
+/** Sayfası açılamayan aileyi bekletir (engel değil, sayfaya özgü hata) ki sıra aynı aileye takılmasın. */
+async function deferFamily(key: string, reason: string, now: Date): Promise<void> {
+  const firstLine = reason.split("\n")[0].slice(0, 160);
+  await ArabamListSweep.updateOne(
+    { key },
+    { $set: { skipUntil: new Date(now.getTime() + skipMsForError(reason)), note: `Sayfa açılamadı: ${firstLine}` } }
+  );
+}
+
 export interface ListSweepStepResult {
   /** Bir sayfa çekildi mi (çekilecek uygun aile yoksa false). */
   picked: boolean;
@@ -345,6 +367,7 @@ export async function runListSweepStep(now = new Date()): Promise<ListSweepStepR
       const res = await fetchListPage(`https://www.arabam.com/ikinci-el/${category}/${familySlug}`);
       requests++;
       if (res.kind !== "ok") {
+        if (res.kind === "error") await deferFamily(family.key, res.reason, now);
         return { ...base, picked: true, requests, blocked: res.kind === "blocked", failed: res.kind === "error", message: `${label}: ${res.reason}` };
       }
       const found = matchModelPath(res.page, family.brand, family.model);
@@ -367,6 +390,7 @@ export async function runListSweepStep(now = new Date()): Promise<ListSweepStepR
     const res = await fetchListPage(`https://www.arabam.com/ikinci-el/${path}${pageNo > 1 ? `?page=${pageNo}` : ""}`);
     requests++;
     if (res.kind !== "ok") {
+      if (res.kind === "error") await deferFamily(family.key, res.reason, now);
       return { ...base, picked: true, requests, blocked: res.kind === "blocked", failed: res.kind === "error", message: `${label} s.${pageNo}: ${res.reason}` };
     }
     page = res.page;

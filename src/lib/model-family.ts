@@ -83,6 +83,9 @@ function familyTokens(model?: string | null, brand?: string | null, useExtension
   if (!tokens.length) return [];
 
   const b = bare(brand || "");
+  // Model adı marka adıyla ("DS 7 Crossback", "Mini Cooper") ya da DS'in "Automobiles" ekiyle ("Automobiles 7 Crossback 1.5 BlueHDI")
+  // başlıyorsa baştaki kısım atılır; yoksa DS'in tüm modelleri "Automobiles" ailesinde toplanıyordu.
+  while (tokens.length > 1 && b && (bare(tokens[0]) === b || (b === "ds" && bare(tokens[0]) === "automobiles"))) tokens.shift();
   // Kaynağın ayrı model saydığı ad ("i20 N", "Ioniq 5"): genel aile kuralından önce bakılır.
   const extension = useExtensions ? matchExtension(tokens, b) : null;
   if (extension) return extension;

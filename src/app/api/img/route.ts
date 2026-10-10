@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { clampProxyWidth, proxyHostFor } from "@/lib/image-proxy";
+import { checkImageRateLimit } from "@/lib/image-rate-limit";
 
 export const runtime = "nodejs";
 
@@ -14,8 +15,16 @@ const IMMUTABLE = "public, max-age=31536000, s-maxage=31536000, immutable";
  * İzinli kaynaklardaki fotoğrafı istenen genişliğe küçültüp WebP olarak verir. Yanıt değişmez kabul
  * edilip CDN'de uzun süre saklanır; kaynak/ağ hatasında kısa süreli 502 döner ve istemci özgün
  * adrese düşer.
+ *
+ * Genişlik clampProxyWidth ile 80 px'lik adımlara yuvarlanır: adres CDN'de genişliğe göre
+ * saklandığı için serbest w değerleri önbelleği ıskalatıp her seferinde yeni bir küçültme işi
+ * başlatıyordu. Ayrıca önbelleği bilerek ıskalayan çağırana karşı hafif bir hız kapısı vardır
+ * (bkz. lib/image-rate-limit.ts).
  */
 export async function GET(request: Request) {
+  const limited = checkImageRateLimit(request);
+  if (limited) return limited;
+
   const { searchParams } = new URL(request.url);
   const source = searchParams.get("u") || "";
   const host = proxyHostFor(source);

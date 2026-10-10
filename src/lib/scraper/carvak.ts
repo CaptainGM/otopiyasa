@@ -141,8 +141,9 @@ export async function scrapeCarvakListings(
 
       const year = Number(car.year || car.vehicleModelDate) || new Date().getFullYear();
       const mileage = Number(car.kmNoFormat || car.mileageFromOdometer?.value) || 0;
-      const city = car.regionName || "İstanbul";
-      const coords = cityToCoords(city);
+      const rawCity = car.regionName?.trim() || "";
+      const cityVerified = Boolean(rawCity && cityToCoords(rawCity));
+      const city = cityVerified ? rawCity : "Türkiye";
 
       // Kaynakta yazmayan özellik tahmin edilmez ("Otomatik"/"Benzin" varsayılanı yanlış veri üretiyordu);
       // ilan sayfası okununca (enrich-detail) gerçek değer gelir.
@@ -156,7 +157,8 @@ export async function scrapeCarvakListings(
 
       const listingUrl = car.url || car.offers?.url || CARVAK_URL;
       const gearText = transmission !== "Bilinmiyor" ? ` ${transmission} vites,` : "";
-      const description = `${title} - Carvak Garantili İkinci El. ${city} merkezli,${gearText} ${mileage.toLocaleString("tr-TR")} km.`;
+      const cityText = cityVerified ? ` ${city} merkezli,` : "";
+      const description = `${title} - Carvak Garantili İkinci El.${cityText}${gearText} ${mileage.toLocaleString("tr-TR")} km.`;
 
       const listing: ScrapedListing = {
         externalId: extId,
@@ -170,11 +172,11 @@ export async function scrapeCarvakListings(
         price,
         mileage,
         city,
-        address: `${city} Carvak Merkezi`,
+        cityVerified,
+        address: cityVerified ? `${city} Carvak Merkezi` : undefined,
         description,
         imageUrl: mainImage,
         images: images.length > 0 ? images : undefined,
-        location: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
         sellerType: "Galeriden",
         features: {
           fuelType,

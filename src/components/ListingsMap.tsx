@@ -6,6 +6,7 @@ import type { MapCluster } from "@/lib/map-clusters";
 import { distanceKm, prettyDistrict } from "@/lib/map-clusters";
 import { MapVehicleDrawer } from "@/components/MapVehicleDrawer";
 import { FormattedNumberInput } from "@/components/FormattedNumberInput";
+import { VEHICLE_CLASSES } from "@/lib/vehicle-scope";
 
 const ListingsMapInner = dynamic(() => import("@/components/ListingsMapInner"), {
   ssr: false,
@@ -29,6 +30,7 @@ const RADIUS_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_RADIUS_KM = 25;
 
 export function ListingsMap() {
+  const [vehicleClass, setVehicleClass] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [brandModels, setBrandModels] = useState<Record<string, string[]>>({});
@@ -40,6 +42,7 @@ export function ListingsMap() {
 
   const [clusters, setClusters] = useState<MapCluster[]>([]);
   const [options, setOptions] = useState<Options>({ brands: [], cities: [], fuels: [] });
+  const [totalCount, setTotalCount] = useState(0);
   const [unmapped, setUnmapped] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -56,6 +59,7 @@ export function ListingsMap() {
 
   const filterParams = useCallback(() => {
     const params = new URLSearchParams();
+    if (vehicleClass) params.set("vehicleClass", vehicleClass);
     if (brand) params.set("brand", brand);
     if (brand && model) params.set("model", model);
     if (city) params.set("city", city);
@@ -64,15 +68,17 @@ export function ListingsMap() {
     if (maxPrice) params.set("maxPrice", maxPrice);
     if (discountOnly) params.set("discountOnly", "true");
     return params;
-  }, [brand, model, city, fuel, minPrice, maxPrice, discountOnly]);
+  }, [vehicleClass, brand, model, city, fuel, minPrice, maxPrice, discountOnly]);
 
   // Model listesi ana sayfadaki filtreyle aynı kaynaktan (marka seçilince dolar).
   useEffect(() => {
-    fetch("/api/filters/brand-models?families=1")
+    const params = new URLSearchParams({ families: "1" });
+    if (vehicleClass) params.set("vehicleClass", vehicleClass);
+    fetch(`/api/filters/brand-models?${params}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => (data?.brandFamilies || data?.brandModels) && setBrandModels(data.brandFamilies || data.brandModels))
       .catch(() => {});
-  }, []);
+  }, [vehicleClass]);
 
   const requestId = useRef(0);
   useEffect(() => {
@@ -86,6 +92,7 @@ export function ListingsMap() {
         const data = await res.json();
         if (id !== requestId.current) return;
         setClusters(data.clusters || []);
+        setTotalCount(data.total || 0);
         setUnmapped(data.unmapped || 0);
         if (data.options) setOptions(data.options);
       } catch {
@@ -121,6 +128,7 @@ export function ListingsMap() {
   }
 
   function clearFilters() {
+    setVehicleClass("");
     setBrand("");
     setModel("");
     setCity("");
@@ -130,7 +138,7 @@ export function ListingsMap() {
     setDiscountOnly(false);
   }
 
-  const hasActiveFilters = Boolean(brand || model || city || fuel || minPrice || maxPrice || discountOnly);
+  const hasActiveFilters = Boolean(vehicleClass || brand || model || city || fuel || minPrice || maxPrice || discountOnly);
 
   const withDistance: (MapCluster & { distance: number | null })[] = me
     ? clusters
@@ -146,6 +154,7 @@ export function ListingsMap() {
       : withDistance;
 
   const shownCount = visible.reduce((sum, c) => sum + c.count, 0);
+  const displayCount = nearbyOnly ? shownCount : totalCount;
 
   const hiddenApprox =
     nearbyOnly && me
@@ -166,6 +175,26 @@ export function ListingsMap() {
       {/* Modern Filter Header */}
       <div className="rounded-2xl border border-white/10 bg-[#0a0f18]/80 p-4 shadow-xl backdrop-blur-md space-y-3.5">
         <div className="flex flex-wrap items-end gap-3">
+          <label className="space-y-1 text-xs text-slate-400">
+            <span className="block font-bold uppercase tracking-wider text-[10px]">Araç Tipi</span>
+            <select
+              className={selectCls}
+              value={vehicleClass}
+              onChange={(e) => {
+                setVehicleClass(e.target.value);
+                setBrand("");
+                setModel("");
+                setCity("");
+                setFuel("");
+              }}
+            >
+              <option value="">Tüm Araç Tipleri</option>
+              {VEHICLE_CLASSES.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+
           <label className="space-y-1 text-xs text-slate-400">
             <span className="block font-bold uppercase tracking-wider text-[10px]">Marka</span>
             <select
@@ -278,9 +307,9 @@ export function ListingsMap() {
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span>
-                  <strong className="text-amber-300 font-bold">{shownCount.toLocaleString("tr-TR")}</strong> aktif ilan •{" "}
+                  <strong className="text-amber-300 font-bold">{displayCount.toLocaleString("tr-TR")}</strong> {nearbyOnly ? "yakındaki ilan" : "aktif ilan"} •{" "}
                   <span className="text-slate-300">{visible.length}</span> konum
-                  {unmapped > 0 && ` (${unmapped} ilçe detaysız)`}
+                  {unmapped > 0 && ` (${unmapped} haritada konumlanmadı)`}
                 </span>
               </div>
             )}

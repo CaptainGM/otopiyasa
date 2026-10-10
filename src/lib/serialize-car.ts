@@ -24,7 +24,6 @@ export type LeanCarDoc = {
   imageUrl: string;
   images?: string[];
   damageFlag?: boolean;
-  location?: { lat: number; lng: number };
   features: Car["features"];
   source: string;
   sourceSite?: Car["sourceSite"];
@@ -86,7 +85,6 @@ export function serializeCar(
     imageUrl: doc.imageUrl,
     images: doc.images || [],
     damageFlag: doc.damageFlag || false,
-    location: doc.location,
   
     features: withDisplayTransmission(withPendingLabels(enrichFeatures(doc.features, doc.title, doc.description), doc)),
     source: doc.source,
@@ -146,8 +144,6 @@ export function serializeCarPublic(
     ...car,
     contactPhone: "",
     ownerId: undefined,
-    // Scraper'ların koordinatları il merkezi tahminidir; public yanıt bunları gerçek konum gibi taşımamalı.
-    location: undefined,
     moderationStatus: undefined,
     rejectionReason: "",
     minOffer: 0,

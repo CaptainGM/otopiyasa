@@ -38,6 +38,13 @@ export interface VerifyListingResult {
   listing?: ScrapedListing;
 }
 
+export function statusAfterArchival(
+  status: VerifyListingResult["status"] | "archived",
+  archivedAt?: Date
+): VerifyListingResult["status"] | "archived" {
+  return archivedAt ? "archived" : status;
+}
+
 /**
  * Tek adres üzerinden doğrulanamayan kaynaklar; yalnızca tam envanter senkronuyla
  * (reconcile.ts) doğrulanır:
@@ -63,17 +70,11 @@ const GONE_TEXTS = [
   "böyle bir ilan bulunamadı",
 ];
 
-/**
- * Otokoç, satılan ilanın sayfasını HTTP 200 ile "404 | Sayfa Bulunamadı" (soft 404)
- * olarak döndürüyor; eski doğrulayıcı bunları "canlı" sayıyordu (en eski 40 aktif
- * ilanın 27'si böyleydi, DB'deki 1.657 aktif ilanın yalnızca ~1.250'si sitede).
- * DİKKAT: "404 | Sayfa Bulunamadı" metni CANLI sayfalarda da gömülü (Next.js not-found
- * bileşeni), bu yüzden tek başına ayırt edici değildir. Belirleyici olan, gerçek
- * ilan verisinin (Product/Car ld+json) bulunup bulunmamasıdır.
- */
-export function classifyOtokocHtml(html: string): "live" | "gone" | "unknown" {
+/** An HTTP 200 page without positive listing data is inconclusive, even if it contains a soft-404 string. */
+export function classifyOtokocHtml(html: string): "live" | "unknown" {
   if (/"@type"\s*:\s*"(Product|Car|Vehicle)"/.test(html)) return "live";
-  if (/404 \| Sayfa Bulunamad/.test(html)) return "gone";
+  // The HTTP 200 shell embeds this text on live pages too. Treat it as inconclusive;
+  // only an actual HTTP 404/410 response is strong enough to archive immediately.
   return "unknown";
 }
 
@@ -367,9 +368,6 @@ export async function verifySingleListing(car: {
     }
     if (car.sourceSite === "otokoc") {
       const kind = classifyOtokocHtml(html);
-      if (kind === "gone") {
-        return { status: "gone", statusCode: res.status, finalUrl, reason: "Otokoç ilan sayfası '404 | Sayfa Bulunamadı' döndürüyor (satılmış)." };
-      }
       if (kind === "unknown") {
         return { status: "error", statusCode: res.status, finalUrl, reason: "Otokoç sayfasında ilan verisi bulunamadı (ilan korunur)." };
       }
@@ -600,9 +598,7 @@ export async function sweepAndCleanDeadListings(options: {
     }
   }
   for (const d of details) {
-    if ((d.status === "gone" || d.status === "redirected") && !breaker.some((b) => b.startsWith(`${d.source}:`))) {
-      d.status = "archived";
-    }
+    d.status = statusAfterArchival(d.status, d.archivedAt);
   }
 
   // Normal bitişte ilanları sonraki makinenin bekletmeden almasına izin ver; süreç çökerse lease dolar.

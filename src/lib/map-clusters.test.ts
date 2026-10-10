@@ -11,6 +11,13 @@ describe("buildMapQuery", () => {
     expect(query.price.$gte).toBe(500000);
   });
 
+  it("limits map results to the selected vehicle class", () => {
+    const query = buildMapQuery(new URLSearchParams("vehicleClass=otomobil")) as {
+      vehicleClass: { $in: Array<string | null> };
+    };
+    expect(query.vehicleClass.$in).toEqual(["otomobil", null]);
+  });
+
   it("canonical brand/city filters match stored spelling variants", () => {
     const query = buildMapQuery(new URLSearchParams("brand=KG%20Mobility&city=Elaz%C4%B1%C4%9F")) as {
       brand: { $in: string[] };
@@ -88,8 +95,9 @@ describe("buildClusters", () => {
   });
 
   it("haritalanamayan ilanı sayar, kümeye katmaz", () => {
-    const { clusters, unmapped } = buildClusters([car("Atlantis", "", 1)]);
+    const { clusters, total, unmapped } = buildClusters([car("Atlantis", "", 1)]);
     expect(unmapped).toBe(1);
+    expect(total).toBe(1);
     expect(clusters).toHaveLength(0);
   });
 

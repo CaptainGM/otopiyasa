@@ -119,8 +119,9 @@ export async function scrapeIkinciyeniListings(
 
     const year = Number(item.modelYear) || new Date().getFullYear();
     const mileage = Number(item.kilometer) || 0;
-    const city = item.cityName || "İstanbul";
-    const coords = cityToCoords(city);
+    const rawCity = item.cityName?.trim() || "";
+    const cityVerified = Boolean(rawCity && cityToCoords(rawCity));
+    const city = cityVerified ? rawCity : "Türkiye";
 
     const externalId = `ikinciyeni-${item.vehicleId}`;
     const listingUrl = `${IKINCIYENI_BASE_URL}/araba-al/detay/${item.vehicleId}`;
@@ -129,7 +130,8 @@ export async function scrapeIkinciyeniListings(
     const mainImage = item.imageUrl || item.images?.[0] || "";
     if (!mainImage) continue;
 
-    const description = `${title} - İkinciyeni.com Çelik Motor Kurumsal Ekspertizli 2. El. ${city} merkezli, ${item.gearType || "Bilinmiyor"} vites, ${item.fuelType || "Bilinmiyor"} yakıt.`;
+    const cityText = cityVerified ? ` ${city} merkezli,` : "";
+    const description = `${title} - İkinciyeni.com Çelik Motor Kurumsal Ekspertizli 2. El.${cityText} ${item.gearType || "Bilinmiyor"} vites, ${item.fuelType || "Bilinmiyor"} yakıt.`;
 
     const listing: ScrapedListing = {
       externalId,
@@ -143,13 +145,13 @@ export async function scrapeIkinciyeniListings(
       price,
       mileage,
       city,
-      address: `${city} İkinciyeni Teslimat Merkezi`,
+      cityVerified,
+      address: cityVerified ? `${city} İkinciyeni Teslimat Merkezi` : undefined,
       description,
       imageUrl: mainImage,
       images: item.images && item.images.length > 0 ? item.images : [mainImage],
       damageFlag: Boolean(item.hasDamage),
       sellerType: "Kurumsal",
-      location: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
       features: {
         fuelType: item.fuelType || "Bilinmiyor",
         transmission: item.gearType || "Bilinmiyor",

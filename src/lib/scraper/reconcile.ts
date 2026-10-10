@@ -159,9 +159,13 @@ async function crawlDodInventory(
     .map((k) => k.externalId);
 
   const items = [...fresh, ...returned, ...stale].map((externalId) => ({ externalId, url: byId.get(externalId) as string }));
+  report.detailChecks = items.length;
   await scrapeDodDetails(
     items,
-    onListing,
+    async (listing) => {
+      report.detailAlive = (report.detailAlive || 0) + 1;
+      await onListing(listing);
+    },
     (externalId, reason) => {
       seen.delete(externalId);
       (report.verifiedGone ||= []).push({ externalId, reason });
@@ -268,6 +272,15 @@ export async function reconcileSource(
   };
 
   const summary = `Envanterde ${seen.size + verifiedGoneById.size} ilan (${report.pages} sayfa); yeni ${counts.inserted}, güncellenen ${counts.updated}, arşivden dönen ${counts.reactivated}.`;
+  if (source === "dod" && breakerTripped(report.detailChecks || 0, verifiedGoneById.size, report.detailAlive || 0)) {
+    const goneIds = new Set(verifiedGoneById.keys());
+    const disputed = activeDocs.filter((doc) => goneIds.has(doc.externalId));
+    await markSeenAlive(disputed.map((doc) => doc._id), now);
+    return finish(
+      "breaker",
+      `${summary} DOD detay kontrolünde ${verifiedGoneById.size}/${report.detailChecks || 0} ilan yok göründü; güvenlik freni nedeniyle bu turda arşivleme yapılmadı.`
+    );
+  }
   const incompleteReason = report.error || ((report.unsafeOmissions || 0) > 0 ? report.unsafeOmissions + " kimliksiz/ayırt edilemeyen kart" : "son sayfaya ulaşılamadı");
   if (!report.endedNaturally || report.error || (report.unsafeOmissions || 0) > 0) {
     return finish(

@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { isNonCarBrand, normalizeBrand } from "@/lib/normalize-brand";
+import { cityToCoords } from "@/lib/city-coords";
 import { classFromSourceCategory } from "@/lib/vehicle-scope";
 import { ScrapedListing } from "@/lib/scraper/types";
 import { waitForSlot, withRetry } from "@/lib/scraper/rate-limit";
@@ -429,6 +430,7 @@ export function parseSahibindenHtml(html: string, limit = 12): ScrapedListing[] 
       price: parsePrice(priceText),
       mileage: extractMileage(blockText),
       city: "Türkiye",
+      cityVerified: false,
       description: `${title} - Sahibinden ilanı`,
       imageUrl: imageUrl || "",
       images: images.length ? Array.from(new Set([imageUrl, ...images])) : undefined,
@@ -652,6 +654,10 @@ export function isListingGone(html: string, finalUrl = ""): boolean {
       !/\/ilan\//.test(finalUrl) &&
       /\/(ikinci-el|vasita|arac-arama|satilik-araba)(\/|\?|$)/.test(finalUrl);
     if (isSearchRedirect) return true;
+
+    // A live listing can contain generic "not found" text in a shared shell/footer.
+    // Parsed listing data is stronger evidence than a page-wide text match.
+    if (/\/ilan\//.test(path) && parseArabamDetailHtml(html, finalUrl)) return false;
   }
   const text = (html || "").toLocaleLowerCase("tr-TR");
   return (
@@ -788,6 +794,7 @@ export function parseArabamDetailHtml(
     price,
     mileage: Number(carData.mileageFromOdometer?.value) || 0,
     city,
+    cityVerified: city !== "Türkiye" && Boolean(cityToCoords(city)),
     address,
     description,
     descriptionVerified: sellerNote.length > 20,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BlockStreak, classifyOtokocHtml, classifyRedirect, listingIdFromUrl, sanitizeRefresh } from "./verify-listing";
+import { BlockStreak, classifyOtokocHtml, classifyRedirect, listingIdFromUrl, sanitizeRefresh, statusAfterArchival } from "./verify-listing";
 import type { ScrapedListing } from "./types";
 
 describe("classifyOtokocHtml", () => {
@@ -8,11 +8,22 @@ describe("classifyOtokocHtml", () => {
     const live = `<script type="application/ld+json">{"@type":"Product","name":"Fiat Egea"}</script>${notFoundBoundary}`;
     expect(classifyOtokocHtml(live)).toBe("live");
   });
-  it("ilan verisi yok ve 404 bileşeni gösteriliyorsa satılmıştır (soft 404)", () => {
-    expect(classifyOtokocHtml(`<html><h1>404 | Sayfa Bulunamadı</h1></html>`)).toBe("gone");
+  it("yalnızca gömülü soft-404 metni varsa sonucu belirsiz tutar", () => {
+    expect(classifyOtokocHtml(`<html><h1>404 | Sayfa Bulunamadı</h1></html>`)).toBe("unknown");
+    expect(classifyOtokocHtml(`<html>${notFoundBoundary}</html>`)).toBe("unknown");
   });
   it("ikisi de yoksa belirsizdir, ilan öldürülmez", () => {
     expect(classifyOtokocHtml("<html><body>Bakım çalışması</body></html>")).toBe("unknown");
+  });
+});
+
+describe("statusAfterArchival", () => {
+  it("reports a listing as archived when the database update succeeded", () => {
+    expect(statusAfterArchival("gone", new Date())).toBe("archived");
+  });
+
+  it("keeps a held removal result as gone when no archive happened", () => {
+    expect(statusAfterArchival("gone")).toBe("gone");
   });
 });
 

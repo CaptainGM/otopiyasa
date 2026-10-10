@@ -40,7 +40,6 @@ export interface Car {
   imageUrl: string;
   images?: string[];
   damageFlag?: boolean;
-  location?: { lat: number; lng: number };
   features: CarFeatures;
   source: string;
   sourceSite: ListingSource;

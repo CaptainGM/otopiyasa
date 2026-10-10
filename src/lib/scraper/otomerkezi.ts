@@ -142,11 +142,11 @@ function extractRscVehicles(html: string): RscVehicle[] {
 }
 
 
-function resolvableCity(dealer: string): string {
+function resolvableCity(dealer: string): { city: string; verified: boolean } {
   const cleaned = (dealer || "").trim();
-  if (!cleaned || cleaned === "Merkez") return "İstanbul";
+  if (!cleaned || cleaned === "Merkez") return { city: "Türkiye", verified: false };
   const candidate = titleCase(cleaned);
-  return cityToCoords(candidate) ? candidate : "İstanbul";
+  return cityToCoords(candidate) ? { city: candidate, verified: true } : { city: "Türkiye", verified: false };
 }
 
 function rscVehicleToListing(vehicle: RscVehicle): ScrapedListing | null {
@@ -154,6 +154,7 @@ function rscVehicleToListing(vehicle: RscVehicle): ScrapedListing | null {
 
   const description = vehicle.description || "";
   const dealer = vehicle.dealerLocation || "";
+  const city = resolvableCity(dealer);
   const engineSize = parseFloat((vehicle.specs?.engineSize || "").replace(",", "."));
 
   const externalId = vehicle.slug;
@@ -172,7 +173,8 @@ function rscVehicleToListing(vehicle: RscVehicle): ScrapedListing | null {
     price: vehicle.pricePerDay,
     mileage: vehicle.mileage ?? mileageFromDescription(description),
     
-    city: resolvableCity(dealer),
+    city: city.city,
+    cityVerified: city.verified,
     description,
     imageUrl: vehicle.image || vehicle.images?.[0] || "",
     images: (vehicle.images || []).filter(Boolean),
@@ -272,7 +274,10 @@ function parseOtomerkeziLdJson(html: string): { listings: ScrapedListing[]; unsa
       yearVerified: Number(item.productionDate) > 0,
       price: item.offers.price,
       mileage: mileageFromDescription(description),
-      city: item.offers.seller?.address?.addressLocality || "Türkiye",
+      city: item.offers.seller?.address?.addressLocality && cityToCoords(item.offers.seller.address.addressLocality)
+        ? item.offers.seller.address.addressLocality
+        : "Türkiye",
+      cityVerified: Boolean(item.offers.seller?.address?.addressLocality && cityToCoords(item.offers.seller.address.addressLocality)),
       description,
       imageUrl: item.image?.[0] || "",
       images: item.image?.filter(Boolean),

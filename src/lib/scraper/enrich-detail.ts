@@ -2,7 +2,7 @@ import * as cheerio from "cheerio";
 import { Car } from "@/models/Car";
 import { foldForFilter } from "@/lib/content-filter";
 import type { ScrapedListing } from "@/lib/scraper/types";
-import { classifyOtokocHtml, classifyRedirect } from "@/lib/scraper/verify-listing";
+import { classifyRedirect } from "@/lib/scraper/verify-listing";
 import { archiveListings, breakerTripped } from "@/lib/scraper/listing-lifecycle";
 import { EXTRA_DETAIL_SOURCES, fetchExtraDetail } from "@/lib/scraper/detail-sources";
 import { FUEL_TYPES, normalizeFuelType } from "@/lib/normalize-fuel";
@@ -272,11 +272,8 @@ export async function fetchDetail(source: string, url: string, externalId?: stri
   const html = await res.text();
   const patch = source === "otokoc" ? parseOtokocDetail(html) : parseOtoplusDetail(html);
   if (patch) return { kind: "ok", patch };
-  // 2026-09 ölçümü: okunamayan Otokoç sayfalarının hepsi HTTP 200 ile dönen "Sayfa Bulunamadı"
-  // kabuğuydu (satılmış ilan); eskiden bunlar yalnızca "okunamadı" sayılıp aktif kalıyordu.
-  if (source === "otokoc" && classifyOtokocHtml(html) === "gone") {
-    return { kind: "gone", reason: "ilan sayfası 'Sayfa Bulunamadı' döndürüyor (satılmış)" };
-  }
+  // Otokoç's HTTP 200 soft-404 shell also appears inside live Next.js pages.
+  // Without positive listing data, keep the result inconclusive; inventory reconciliation can confirm absence.
   return { kind: "failed", reason: "ilan verisi bulunamadı" };
 }
 

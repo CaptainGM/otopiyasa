@@ -82,8 +82,13 @@ export function PricePredictionBadge({
             Fiyat analizi
           </p>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            {METHOD_LABELS[prediction.method]} · aynı model/yılda {prediction.sampleSize} aktif ilan
+            {METHOD_LABELS[prediction.method]} · kayıtlı marka/model/yıl grubunda {prediction.sampleSize} aktif ilan
           </p>
+          {prediction.comparables.length > 0 && (
+            <p className="mt-1 text-[0.7rem] text-[var(--muted)]">
+              {prediction.comparables.length} yakın ilan örneği kullanılıyor; alt donanım adları aynı grupta toplanmış olabilir.
+            </p>
+          )}
         </div>
         <span className={`badge !px-2.5 !py-1 !text-xs ${style.chip}`}>
           {band === "suspicious" && <Icon name="warning" size={13} />}

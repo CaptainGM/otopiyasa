@@ -7,14 +7,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// BİLDİRİM SERVİSİ.
 ///
-/// KAPSAM VE SINIRI (dürüst olmak gerekirse):
-/// Uygulama AÇIKKEN ya da arka plandayken sunucu düzenli aralıkla yoklanır ve
-/// yeni okunmamış bildirim varsa telefonda bildirim gösterilir. Uygulama
-/// TAMAMEN KAPALIYKEN bildirim için Firebase Cloud Messaging (FCM) gerekir —
-/// kodu [PushService]'de hazır (bkz. push_service.dart üstündeki kurulum
-/// notu), ama ayrı bir Firebase projesi + `google-services.json` + sunucuda
-/// FCM anahtarı gibi Google hesabı gerektiren adımlar tamamlanana kadar
-/// devre dışı kalır. O tamamlanana kadar bu yoklama yöntemi tek kanal.
+/// KAPSAM: Uygulama AÇIKKEN ya da arka plandayken sunucu düzenli aralıkla yoklanır ve
+/// yeni okunmamış bildirim varsa telefonda bildirim gösterilir. Uygulama TAMAMEN
+/// KAPALIYKEN bildirim [PushService] (FCM) tarafından getirilir; iki kanal da aynı
+/// yerel bildirim kanalını kullanır.
 ///
 /// Bu yaklaşım pil dostu olsun diye 60 saniyede bir yokluyor. Telefonda gösterilen son
 /// bildirimin kimliği cihazda saklanır; yalnızca ondan sonra gelenler gösterilir. Eskiden
@@ -31,6 +27,9 @@ class NotificationService {
   static const _shownKey = 'last_shown_notification_id';
   String? _lastShownId;
 
+  /// Bildirime dokunulduğunda ilgili ilanı açmak için main.dart tarafından bağlanır.
+  void Function(String carId)? onOpenCar;
+
   /// Yeni okunmamış bildirim sayısı değiştiğinde tetiklenir (rozet için).
   final unreadStream = StreamController<int>.broadcast();
 
@@ -38,7 +37,8 @@ class NotificationService {
     if (_ready) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
-    await _plugin.initialize(settings);
+    // Bildirime dokunulduğunda çalışır. İlan kimliği bildirim yükünde taşınır.
+    await _plugin.initialize(settings, onDidReceiveNotificationResponse: _onTap);
 
     // Android 13+ bildirim izni çalışma anında istenir.
     await _plugin
@@ -84,7 +84,7 @@ class NotificationService {
     }
   }
 
-  Future<void> _show(String title, String body) async {
+  Future<void> _show(String title, String body, {String? carId}) async {
     if (!_ready) await init();
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -95,10 +95,23 @@ class NotificationService {
         priority: Priority.high,
       ),
     );
-    await _plugin.show(DateTime.now().millisecondsSinceEpoch ~/ 1000, title, body, details);
+    await _plugin.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      details,
+      // Dokunulduğunda hangi ilanın açılacağını taşır (aşağıdaki _onTap okur).
+      payload: carId,
+    );
+  }
+
+  void _onTap(NotificationResponse response) {
+    final carId = response.payload;
+    if (carId == null || carId.isEmpty) return;
+    onOpenCar?.call(carId);
   }
 
   /// PushService'in (FCM ön plan mesajları) aynı bildirim kanalını kullanması
   /// için dışa açık — iki ayrı bildirim gösterim yolu olmasın diye.
-  Future<void> showRaw(String title, String body) => _show(title, body);
+  Future<void> showRaw(String title, String body, {String? carId}) => _show(title, body, carId: carId);
 }

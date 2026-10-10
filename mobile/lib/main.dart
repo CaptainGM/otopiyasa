@@ -23,6 +23,19 @@ import 'package:otopiyasa/services/data_saver.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/services/push_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/utils/deep_link.dart';
+
+/// Bildirime dokunulduğunda (FCM ya da yerel yoklama) ilanı açabilmek için:
+/// servisler Navigator'a doğrudan erişemez, bu anahtar üzerinden gidilir.
+final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+/// İlan detayını açar. Aynı ilan zaten açıksa üst üste yığılmaması için ada göre
+/// yönlendirme kullanılır.
+void _openCar(String carId) {
+  final navigator = _navigatorKey.currentState;
+  if (navigator == null) return;
+  navigator.push(MaterialPageRoute(builder: (_) => DetailScreen(carId: carId)));
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +72,8 @@ Future<void> _initializeSessionAndNotifications() async {
 Future<void> _startNotifications() async {
   try {
     await NotificationService.instance.init();
+    // Yoklama kanalıyla gelen bildirime dokunmak da ilanı açsın.
+    NotificationService.instance.onOpenCar = _openCar;
     NotificationService.instance.startPolling();
   } catch (error) {
     debugPrint('Bildirimler başlatılamadı: $error');
@@ -66,6 +81,12 @@ Future<void> _startNotifications() async {
 
   try {
     await PushService.instance.init();
+    // FCM kanalı: uygulama açıkken/arkada plandayken gelen bildirime dokunma.
+    PushService.instance.onOpenCar = _openCar;
+    // Uygulama tamamen kapalıyken gelen bildirime dokunulup açıldıysa ilan kimliği
+    // init sırasında saklanmıştı; burada açılır.
+    final pending = PushService.instance.consumePendingCarId();
+    if (pending != null) _openCar(pending);
   } catch (error) {
     debugPrint('Push bildirimleri başlatılamadı: $error');
   }
@@ -81,26 +102,20 @@ class OtoPiyasaApp extends StatelessWidget {
       builder: (context, mode, _) => MaterialApp(
         title: 'OtoPiyasa',
         debugShowCheckedModeBanner: false,
+        navigatorKey: _navigatorKey,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: mode,
         home: const MainShell(),
                 onGenerateRoute: (settings) {
-          final uri = Uri.tryParse(settings.name ?? '');
-          if (uri != null) {
-            final segments = uri.pathSegments;
-            // https://otopiyasa.app/cars/<id> → "/cars/<id>"; otopiyasa://cars/<id> ise yalnızca "/<id>" olarak gelir.
-            final carId = segments.length >= 2 && segments[0] == 'cars'
-                ? segments[1]
-                : segments.length == 1 && RegExp(r'^[0-9a-f]{24}$').hasMatch(segments[0])
-                    ? segments[0]
-                    : null;
-            if (carId != null) {
-              return MaterialPageRoute(
-                builder: (_) => DetailScreen(carId: carId),
-                settings: settings,
-              );
-            }
+          // https://otopiyasa.app/cars/<id> ve otopiyasa://cars/<id> biçimlerinin ikisi de
+          // utils/deep_link.dart içinde çözülür (bildirim dokunuşu da aynı fonksiyonu kullanır).
+          final carId = carIdFromDeepLink(settings.name);
+          if (carId != null) {
+            return MaterialPageRoute(
+              builder: (_) => DetailScreen(carId: carId),
+              settings: settings,
+            );
           }
           return null;
         },

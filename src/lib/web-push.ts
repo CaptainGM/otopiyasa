@@ -2,6 +2,7 @@ import webpush from "web-push";
 import { PushSubscription } from "@/models/PushSubscription";
 import { keepActiveRecipients } from "@/lib/push-sessions";
 import { sendFcmToUsers } from "@/lib/fcm";
+import { absolutePushUrl } from "@/lib/push-url";
 
 let configured = false;
 
@@ -28,15 +29,15 @@ export interface PushPayload {
   url?: string;
 }
 
-
-
 export async function sendPushToUsers(
   userIds: Array<{ toString(): string }>,
   payload: PushPayload
 ): Promise<number> {
+  // Adres mutlaklaştırılır: mobil uygulama göreli yolu açamaz (bkz. lib/push-url.ts).
+  const normalized: PushPayload = { ...payload, url: absolutePushUrl(payload.url) };
   const [webSent, fcmSent] = await Promise.all([
-    sendWebPushToUsers(userIds, payload),
-    sendFcmToUsers(userIds, payload).catch((error) => {
+    sendWebPushToUsers(userIds, normalized),
+    sendFcmToUsers(userIds, normalized).catch((error) => {
       console.error("FCM gönderimi başarısız:", error);
       return 0;
     }),

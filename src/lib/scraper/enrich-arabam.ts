@@ -106,8 +106,21 @@ export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record
 }
 
 /**
+ * Aynı ilan için eşzamanlı tamamlama denemelerini engeller. Uç noktada hız sınırı olmadığı ve
+ * ilan detayı herkese açık olduğu için, kilit olmadan aynı ilanı arka arkaya isteyen bir çağıran
+ * her seferinde kaynağa yeni bir dış istek açtırıyordu (istek çoğaltma).
+ */
+const enrichmentInFlight = new Set<string>();
+
+/**
  * İlan sayfası açıldığında detayı eksik Arabam ilanını tamamlamayı dener. Kullanıcıyı en
  * fazla 600 ms bekletir; kalan iş arka planda biter.
+ *
+ * Denemenin kendisi (başarılı da olsa başarısız da) işaretlenir: aksi hâlde kaynak sayfa
+ * okunamadığında detailCheckedAt hiç yazılmıyor ve aynı ilanın her görüntülenmesi yeni bir dış
+ * istek başlatıyordu. Başarısız deneme ayrıca detailCheckFailedAt ile damgalanır; toplu
+ * tamamlama (runEnrichArabamBatch) bu ilanları yine aday olarak alır, yani "vazgeçildi" değil
+ * "şimdilik ertelendi" demektir.
  */
 export async function enrichArabamCarIfNeeded(carDoc: any): Promise<void> {
   if (!carDoc) return;
@@ -116,20 +129,48 @@ export async function enrichArabamCarIfNeeded(carDoc: any): Promise<void> {
     !carDoc.images || carDoc.images.length <= 1 || !carDoc.description || carDoc.description === carDoc.title;
   if (!isArabam || !needsEnrichment || !carDoc.listingUrl || carDoc.detailCheckedAt) return;
 
+  const key = String(carDoc._id ?? carDoc.listingUrl);
+  if (enrichmentInFlight.has(key)) return;
+  enrichmentInFlight.add(key);
+
   const task = (async () => {
-    const result = await fetchArabamDetail(carDoc.listingUrl, 4000);
-    if (result.kind !== "ok") return;
-    const set = arabamDetailSet(result.listing, carDoc);
-    // Bu istekte gösterilecek belge de güncellensin.
-    for (const [key, value] of Object.entries(set)) {
-      if (key.startsWith("features.")) {
-        carDoc.features = { ...(carDoc.features || {}), [key.slice(9)]: value };
-      } else {
-        carDoc[key] = value;
+    try {
+      const result = await fetchArabamDetail(carDoc.listingUrl, 4000);
+      if (result.kind !== "ok") {
+        await Car.updateOne(
+          { _id: carDoc._id },
+          { $set: { detailCheckedAt: new Date(), detailCheckFailedAt: new Date() } },
+          { timestamps: false }
+        ).exec();
+        return;
       }
+      const set = arabamDetailSet(result.listing, carDoc);
+      // Bu istekte gösterilecek belge de güncellensin.
+      for (const [field, value] of Object.entries(set)) {
+        if (field.startsWith("features.")) {
+          carDoc.features = { ...(carDoc.features || {}), [field.slice(9)]: value };
+        } else {
+          carDoc[field] = value;
+        }
+      }
+      await Car.updateOne(
+        { _id: carDoc._id },
+        { $set: set, $unset: { detailCheckFailedAt: 1 }, ...verifiedAdd(result.listing) },
+        { timestamps: false }
+      ).exec();
+    } catch {
+      // Ağ hatasında da damga vurulur ki aynı ilan istek başına yeniden denenmesin.
+      await Car.updateOne(
+        { _id: carDoc._id },
+        { $set: { detailCheckedAt: new Date(), detailCheckFailedAt: new Date() } },
+        { timestamps: false }
+      )
+        .exec()
+        .catch(() => {});
+    } finally {
+      enrichmentInFlight.delete(key);
     }
-    await Car.updateOne({ _id: carDoc._id }, { $set: set, ...verifiedAdd(result.listing) }, { timestamps: false }).exec();
-  })().catch(() => {});
+  })();
 
   await Promise.race([task, new Promise((resolve) => setTimeout(resolve, 600))]);
 }
@@ -155,6 +196,9 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
         { images: { $size: 1 } },
         { images: { $exists: false } },
         { detailCheckedAt: { $exists: false }, sellerType: { $in: ["", null] } },
+        // Daha önce okunamamış (engel/zaman aşımı) ilanlar: kullanıcı görüntülemesinde
+        // tekrar denenmiyor, bu yüzden toplu tamamlama onları tekrar sıraya alır.
+        { detailCheckFailedAt: { $exists: true } },
       ],
     },
     { _id: 1, title: 1, listingUrl: 1, brand: 1, model: 1, year: 1, price: 1, imageUrl: 1, city: 1, address: 1, features: 1 }

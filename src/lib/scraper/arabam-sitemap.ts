@@ -198,14 +198,19 @@ export async function syncArabamSitemap(options: { log?: (msg: string) => void }
   }
 
   // 2) Bizdeki Arabam kayıtları (yalnızca eşleşenler bellekte tutulur)
+  //
+  // Kayıtlar tek tek imleçle okunur: eskiden Car.find(...).lean() bütün diziyi belleğe alıyordu ve
+  // sitemap 32 dosya boyunca akış halinde işlendiği için bu dizi tüm senkron boyunca (ve aday
+  // kuyruğuyla birlikte) canlı kalıyordu. Motor 360 MB'lık yığın sınırıyla çalışıyor.
   type Row = { _id: Types.ObjectId; externalId: string; status: string; removedAt?: Date; updatedAt?: Date; sitemapMissingSince?: Date };
-  const rows = await Car.find({ sourceSite: "arabam" })
-    .select("_id externalId status removedAt updatedAt sitemapMissingSince")
-    .lean<Row[]>();
   const byId = new Map<string, Row>();
-  for (const r of rows) {
-    const id = String(r.externalId || "").replace(/^arabam-/, "");
-    if (id) byId.set(id, r);
+  const cursor = Car.find({ sourceSite: "arabam" })
+    .select("_id externalId status removedAt updatedAt sitemapMissingSince")
+    .lean<Row[]>()
+    .cursor();
+  for await (const row of cursor) {
+    const id = String(row.externalId || "").replace(/^arabam-/, "");
+    if (id) byId.set(id, row as Row);
   }
 
   // 3) Dosyaları akış olarak oku

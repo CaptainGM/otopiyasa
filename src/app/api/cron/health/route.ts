@@ -9,18 +9,19 @@ export const maxDuration = 60;
  * Günlük sağlık denetimi (Vercel zamanlayıcısı, vercel.json). Sunucu motoru saatte bir aynı denetimi kendisi yapar;
  * bu uç motor çökmüşse de çalışsın diye Vercel'den tetiklenir (bkz. lib/health-check.ts).
  *
- * Yetki: CRON_SECRET tanımlıysa Vercel onu "Authorization: Bearer" ile gönderir ve zorunludur. Tanımlı değilse
- * Vercel zamanlayıcısının çağrısı ya da motorun SCRAPE_RUN_SECRET başlığı kabul edilir. Denetim en kötü ihtimalle
- * yöneticiye günde bir bildirim gönderir; kötüye kullanılacak bir yan etkisi yok.
+ * Yetki (fail-closed): CRON_SECRET tanımlıysa Vercel bu başlığı "Authorization: Bearer" olarak kendisi gönderir ve
+ * zorunludur. Motor da x-scrape-secret ile çağırabilir. Hiçbiri tanımlı değilse uç tamamen kapalıdır.
+ *
+ * Eskiden CRON_SECRET yokken isteğin User-Agent başlığının "vercel-cron" ile başlaması yeterli sayılıyordu; bu
+ * başlık istemci tarafından serbestçe yazılabildiği için herkes denetimi tetikleyip yöneticilere
+ * bildirim/push/e-posta gönderebiliyordu. subscriptions/check ucuyla aynı desene geçildi.
  */
 export async function GET(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const scrapeSecret = process.env.SCRAPE_RUN_SECRET;
   const auth = request.headers.get("authorization") || "";
   const viaSecret = Boolean(scrapeSecret) && request.headers.get("x-scrape-secret") === scrapeSecret;
-  const viaCron = cronSecret
-    ? auth === `Bearer ${cronSecret}`
-    : (request.headers.get("user-agent") || "").startsWith("vercel-cron");
+  const viaCron = Boolean(cronSecret) && auth === `Bearer ${cronSecret}`;
   if (!viaSecret && !viaCron) {
     return NextResponse.json({ error: "Yetkisiz." }, { status: 401 });
   }

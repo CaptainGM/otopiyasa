@@ -148,7 +148,9 @@ async function listPageFromUrl(url: string): Promise<{ html: string; finalUrl: s
   }
   let html = direct.ok ? direct.html : "";
   let finalUrl = direct.finalUrl || url;
-  if (extractArabamListingHrefs(html, 30).length === 0 && !direct.status) {
+  // Doğrudan istek liste bağlantısı vermediyse gerçek tarayıcıyla tekrar denenir. Koşul eskiden
+  // "... && !direct.status" idi; status her zaman sayı olduğu için bu yedek hiç çalışmıyordu.
+  if (extractArabamListingHrefs(html, 30).length === 0) {
     try {
       const page = await fetchPageWithBrowser(url);
       html = page.html;

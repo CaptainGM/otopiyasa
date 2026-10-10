@@ -1,5 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-import { splitSecondsByHour } from "@/lib/home-watcher-status";
+import { groupWatcherEventsByHour, splitSecondsByHour, type WatcherEventHour } from "@/lib/home-watcher-status";
 
 /**
  * Evdeki bilgisayarda arka planda çalışan Arabam bekçisinin (scripts/arabam-bekci.ts) yönetim ekranı için
@@ -62,7 +62,7 @@ export interface HomeWatcherHourDoc {
   batches: number;
   pauses: number;
   pausedMinutes: number;
-  /** Bu saatte ilan kontrol ederek geçen süre (sn); molalar ve bekleme hariç. */
+  /** Bekçinin bu saatte çalıştığı süre; bilgisayar uykusu hariç, hız/yanıt beklemeleri dahil. */
   activeSeconds: number;
   /** Zamanın %10'unda yapılan keşifle bu saatte eklenen yeni ilan sayısı. */
   inserted: number;
@@ -122,40 +122,83 @@ export interface WatcherBatchResult {
   pauseMinutes?: number;
   /** Partinin sürdüğü süre (sn). */
   activeSeconds?: number;
+  /** Saatlik sonuçları doğru kovaya yazmak için her ilan yanıtının gerçekleştiği an. */
+  events?: Array<{
+    checkedAt: Date | string;
+    status: "active" | "archived" | "gone" | "redirected" | "blocked" | "error";
+    archivedAt?: Date | string;
+    updatedAt?: Date | string;
+    updated?: boolean;
+  }>;
+  /** Uyku düşülmüş süreyi gerçek parti aralığına saatlik dağıtmak için. */
+  startedAt?: Date;
 }
 
 /**
- * Bir partinin sonucunu kaydeder. `end` partinin bittiği andır; `result.activeSeconds` uyku düşüldükten sonraki
- * gerçek çalışma süresidir. Sayılar partinin ortasındaki saate, süre ise geçtiği saatlere paylaştırılarak yazılır.
+ * İlan sonuçlarını yanıt anındaki saate yazar; parti/engel bilgisi bitiş saatine gider.
+ * Aktif süre gerçek parti aralığına bölünür; uyku aralığı ayrı yakalanamadığı için saatler arasında eşit hız varsayılır.
  */
 export async function recordWatcherBatch(result: WatcherBatchResult, end = new Date()): Promise<void> {
   try {
+    type MetricHour = WatcherEventHour & { batches?: number; pauses?: number; pausedMinutes?: number };
     const activeMs = Math.max(0, (result.activeSeconds || 0) * 1000);
-    const start = new Date(end.getTime() - activeMs);
-    const { timestamp, dateStr, hour } = turkeyHourOf(new Date((start.getTime() + end.getTime()) / 2));
-    await HomeWatcherHour.findOneAndUpdate(
-      { watcherId: HOME_WATCHER_ID, timestamp },
-      {
-        $setOnInsert: { dateStr, hour },
-        $inc: {
-          checked: result.checked,
-          alive: result.alive,
-          archived: result.archived,
-          updated: result.updated || 0,
-          blocked: result.blocked,
-          uncertain: result.uncertain,
-          batches: 1,
-          pauses: result.pauseMinutes ? 1 : 0,
-          pausedMinutes: result.pauseMinutes || 0,
-        },
-      },
-      { upsert: true }
+    const start = result.startedAt || new Date(end.getTime() - activeMs);
+    const hasEvents = Boolean(result.events?.length);
+    const eventsByHour = new Map<number, MetricHour>(
+      groupWatcherEventsByHour(result.events || []).map((bucket) => [bucket.timestamp.getTime(), bucket])
     );
+
+    const endSlot = turkeyHourOf(end);
+    const completionBucket = eventsByHour.get(endSlot.timestamp.getTime()) || {
+      timestamp: endSlot.timestamp,
+      dateStr: endSlot.dateStr,
+      hour: endSlot.hour,
+      checked: 0,
+      alive: 0,
+      archived: 0,
+      updated: 0,
+      blocked: 0,
+      uncertain: 0,
+    };
+    completionBucket.checked += hasEvents ? 0 : result.checked;
+    completionBucket.alive += hasEvents ? 0 : result.alive;
+    completionBucket.archived += hasEvents ? 0 : result.archived;
+    completionBucket.updated += hasEvents ? 0 : result.updated || 0;
+    completionBucket.blocked += hasEvents ? 0 : result.blocked;
+    completionBucket.uncertain += hasEvents ? 0 : result.uncertain;
+    completionBucket.batches = (completionBucket.batches || 0) + 1;
+    completionBucket.pauses = (completionBucket.pauses || 0) + (result.pauseMinutes ? 1 : 0);
+    completionBucket.pausedMinutes = (completionBucket.pausedMinutes || 0) + (result.pauseMinutes || 0);
+    eventsByHour.set(endSlot.timestamp.getTime(), completionBucket);
+
+    for (const bucket of eventsByHour.values()) {
+      await HomeWatcherHour.findOneAndUpdate(
+        { watcherId: HOME_WATCHER_ID, timestamp: bucket.timestamp },
+        {
+          $setOnInsert: { dateStr: bucket.dateStr, hour: bucket.hour },
+          $inc: {
+            checked: bucket.checked,
+            alive: bucket.alive,
+            archived: bucket.archived,
+            updated: bucket.updated,
+            blocked: bucket.blocked,
+            uncertain: bucket.uncertain,
+            batches: bucket.batches || 0,
+            pauses: bucket.pauses || 0,
+            pausedMinutes: bucket.pausedMinutes || 0,
+          },
+        },
+        { upsert: true }
+      );
+    }
+
+    const elapsedMs = Math.max(0, end.getTime() - start.getTime());
+    const scale = elapsedMs > 0 ? activeMs / elapsedMs : 0;
     for (const part of splitSecondsByHour(start, end)) {
       const slot = turkeyHourOf(part.at);
       await HomeWatcherHour.findOneAndUpdate(
         { watcherId: HOME_WATCHER_ID, timestamp: slot.timestamp },
-        { $setOnInsert: { dateStr: slot.dateStr, hour: slot.hour }, $inc: { activeSeconds: Math.round(part.seconds) } },
+        { $setOnInsert: { dateStr: slot.dateStr, hour: slot.hour }, $inc: { activeSeconds: part.seconds * scale } },
         { upsert: true }
       );
     }

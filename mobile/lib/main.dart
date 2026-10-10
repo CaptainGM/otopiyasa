@@ -29,11 +29,28 @@ import 'package:otopiyasa/utils/deep_link.dart';
 /// servisler Navigator'a doğrudan erişemez, bu anahtar üzerinden gidilir.
 final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
-/// İlan detayını açar. Aynı ilan zaten açıksa üst üste yığılmaması için ada göre
-/// yönlendirme kullanılır.
+/// Aynı ilanın çok kısa süre içinde iki kez açılmasını engeller.
+///
+/// İki ayrı yol aynı dokunuşu bildirebiliyor: FCM'in `onMessageOpenedApp` akışı ile
+/// `getInitialMessage()` (uygulama tamamen kapalıyken açılan bildirim) aynı mesajı verebilir;
+/// ayrıca yerel bildirimin dokunma geri çağrısı uygulama öne gelirken tekrar tetiklenebilir.
+/// Bu olmadan kullanıcı aynı ilanı üst üste iki kez açılmış görüyordu.
+final Map<String, int> _recentlyOpened = {};
+const _duplicateOpenWindowMs = 2000;
+
+/// İlan detayını açar (aynı ilan kısa süre içinde tekrar istenirse yok sayılır).
 void _openCar(String carId) {
   final navigator = _navigatorKey.currentState;
   if (navigator == null) return;
+  final now = DateTime.now().millisecondsSinceEpoch;
+  final last = _recentlyOpened[carId];
+  if (last != null && now - last < _duplicateOpenWindowMs) return;
+  _recentlyOpened[carId] = now;
+  // Sözlük sınırsız büyümesin: yalnızca son 32 ilan izlenir.
+  if (_recentlyOpened.length > 32) {
+    final oldest = _recentlyOpened.entries.reduce((a, b) => a.value <= b.value ? a : b);
+    _recentlyOpened.remove(oldest.key);
+  }
   navigator.push(MaterialPageRoute(builder: (_) => DetailScreen(carId: carId)));
 }
 

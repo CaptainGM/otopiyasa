@@ -7,6 +7,7 @@ type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> 
   _id: string | { toString(): string };
   brand?: string;
   model?: string;
+  vehicleClass?: string;
   imageUrl?: string;
   images?: string[];
   damageFlag?: boolean;
@@ -33,6 +34,7 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
     title: car.title,
     brand: car.brand,
     model: car.model,
+    vehicleClass: car.vehicleClass || "otomobil",
     year: car.year,
     price: car.price,
     mileage: car.mileage,

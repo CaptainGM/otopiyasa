@@ -19,11 +19,28 @@ const fold = (value: string) =>
 export function normalizeTransmission(raw?: string | null): "Manuel" | "Otomatik" | "Yarı Otomatik" | null {
   const v = fold(raw || "");
   if (!v || v === "bilinmiyor" || v === "belirtilmemis") return null;
+  // DCT/DSG/EDC gibi çift kavramalı şanzımanlar otomatik vites olarak gruplanır;
+  // bazı kaynaklar aynı aracı "yarı otomatik" diye sınıflandırıyor.
+  if (/dsg|dct|edc|powershift|s tronic/.test(v)) return "Otomatik";
   if (/yari|semi/.test(v)) return "Yarı Otomatik";
   if (/manuel|manual|duz/.test(v)) return "Manuel";
   // Tiptronik, Multitronic, DSG, CVT, Steptronic... hepsi otomatik şanzımandır.
   if (/otomatik|automatic|tiptronic|tiptronik|multitronic|multitronik|steptronic|steptronik|dsg|cvt|edc|powershift|s tronic|dct/.test(v)) return "Otomatik";
   return null;
+}
+
+/** Chery Tiggo 7 Pro'nun Türkiye'de listelenen otomatik sürümlerinde kaynaklar DCT'yi iki adla yazıyor. */
+export function normalizeVehicleTransmission(
+  raw?: string | null,
+  vehicle?: { brand?: string | null; model?: string | null; title?: string | null }
+): "Manuel" | "Otomatik" | "Yarı Otomatik" | null {
+  const normalized = normalizeTransmission(raw);
+  const foldText = (value?: string | null) => fold(value || "");
+  const identity = `${foldText(vehicle?.brand)} ${foldText(vehicle?.model)} ${foldText(vehicle?.title)}`;
+  if (/\bchery\b/.test(identity) && /tiggo\s*7\s*pro/.test(identity) && normalized === "Yarı Otomatik") {
+    return "Otomatik";
+  }
+  return normalized;
 }
 
 /**
@@ -32,7 +49,7 @@ export function normalizeTransmission(raw?: string | null): "Manuel" | "Otomatik
  */
 export function transmissionMatch(label: string): string | { $regex: string; $options: string } {
   const key = normalizeTransmission(label);
-  if (key === "Otomatik") return { $regex: "^(otomatik|tiptronik|tiptronic|multitronik|multitronic|steptronik|steptronic)$", $options: "i" };
+  if (key === "Otomatik") return { $regex: "^(otomatik|automatic|yarı otomatik|tiptronik|tiptronic|multitronik|multitronic|steptronik|steptronic|cvt|dct|dsg|edc|powershift|s tronic)$", $options: "i" };
   if (key === "Manuel") return { $regex: "^(manuel|düz)$", $options: "i" };
   if (key === "Yarı Otomatik") return { $regex: "^yarı otomatik$", $options: "i" };
   return label;

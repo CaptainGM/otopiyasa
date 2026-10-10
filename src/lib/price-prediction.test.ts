@@ -3,6 +3,7 @@ import {
   fitLinear,
   derivePainted,
   tryPredict,
+  predictFromTiers,
   carAge,
   annualDepreciation,
   median,
@@ -158,6 +159,26 @@ describe("tryPredict (log-fiyat + yaş + donanım regresyonu)", () => {
     expect(p.lowerBound!).toBeGreaterThan(0);
     expect(p.lowerBound!).toBeLessThanOrEqual(p.predictedPrice);
     expect(p.upperBound!).toBeGreaterThanOrEqual(p.predictedPrice);
+  });
+});
+
+describe("emsal sayısı", () => {
+  it("marka regresyon havuzunu aynı-model emsal sayısı diye göstermez", async () => {
+    const brandRows = Array.from({ length: 14 }, (_, i) => {
+      const age = i + 1;
+      return row(CY - age, 10000 * age, Math.round(2_000_000 * Math.pow(0.88, age)));
+    });
+    const prediction = await predictFromTiers(
+      { segment: [], brand: async () => brandRows, global: async () => [] },
+      { year: CY - 3, mileage: 30000, damaged: 0, painted: 0 },
+      [],
+      undefined,
+      1
+    );
+
+    expect(prediction.method).toBe("brand");
+    expect(prediction.sampleSize).toBe(1);
+    expect(prediction.trainingSampleSize).toBe(brandRows.length);
   });
 });
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-/// İlanın km başına yakıt maliyeti: resmi ortalama tüketim × ilanın ilindeki güncel pompa fiyatı
+/// İlanın km başına yakıt maliyeti: ilan, emsal veya tahmini tüketim × ilindeki güncel pompa fiyatı
 /// (web'deki FuelCostCard ile aynı veri, bkz. src/lib/fuel-cost.ts).
 class FuelCostCard extends StatelessWidget {
   const FuelCostCard({super.key, required this.cost});
@@ -9,7 +9,10 @@ class FuelCostCard extends StatelessWidget {
   final Map<String, dynamic> cost;
 
   static String _tl(num value, [int digits = 2]) =>
-      NumberFormat.decimalPatternDigits(locale: 'tr_TR', decimalDigits: digits).format(value);
+      NumberFormat.decimalPatternDigits(
+        locale: 'tr_TR',
+        decimalDigits: digits,
+      ).format(value);
 
   @override
   Widget build(BuildContext context) {
@@ -23,17 +26,26 @@ class FuelCostCard extends StatelessWidget {
     final ratingText = cost['ratingText']?.toString();
     final note = cost['note']?.toString();
     // Tüketim ilandan değilse (aynı model ya da sınıf ortalaması) nereden alındığı yazılır.
-    final fromEstimate = cost['consumptionSource'] != 'ilan';
-    final date = DateTime.tryParse(cost['priceDate']?.toString() ?? '')?.toLocal();
-    final dateText = date == null ? '' : DateFormat('d MMMM HH:mm', 'tr_TR').format(date);
+    final consumptionSource = cost['consumptionSource']?.toString();
+    final consumptionLabel = consumptionSource == 'ilan'
+        ? 'İlan sayfasındaki ortalama tüketim'
+        : consumptionSource == 'model'
+        ? 'Emsal araçların tüketim medyanı'
+        : 'Tahmini ortalama tüketim';
+    final date = DateTime.tryParse(
+      cost['priceDate']?.toString() ?? '',
+    )?.toLocal();
+    final dateText = date == null
+        ? ''
+        : DateFormat('d MMMM HH:mm', 'tr_TR').format(date);
     final plug = cost['plugIn'] as Map<String, dynamic>?;
     final electric = cost['electric'] as Map<String, dynamic>?;
 
     final accent = rating == 'low'
         ? const Color(0xFF34D399)
         : rating == 'high'
-            ? const Color(0xFFFB923C)
-            : Colors.white24;
+        ? const Color(0xFFFB923C)
+        : Colors.white24;
 
     return Container(
       width: double.infinity,
@@ -46,10 +58,15 @@ class FuelCostCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Yakıt maliyeti', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          const Text(
+            'Yakıt maliyeti',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          ),
           const SizedBox(height: 2),
           Text(
-            electric != null ? 'Tahmini elektrik tarifesi' : '${cost['place'] ?? ''} pompa fiyatı · ${cost['priceSource'] ?? ''} · $dateText',
+            electric != null
+                ? 'Tahmini elektrik tarifesi'
+                : '${cost['place'] ?? ''} pompa fiyatı · ${cost['priceSource'] ?? ''} · $dateText',
             style: const TextStyle(fontSize: 11, color: Colors.white54),
           ),
           const SizedBox(height: 8),
@@ -58,39 +75,78 @@ class FuelCostCard extends StatelessWidget {
             spacing: 16,
             runSpacing: 4,
             children: [
-              Text.rich(TextSpan(children: [
+              Text.rich(
                 TextSpan(
-                  text: '${_tl(perKm)} ₺',
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFFF5B942)),
+                  children: [
+                    TextSpan(
+                      text: '${_tl(perKm)} ₺',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFFF5B942),
+                      ),
+                    ),
+                    TextSpan(
+                      text: plug != null || electric != null
+                          ? ' / km (evde şarjla)'
+                          : ' / km',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white60,
+                      ),
+                    ),
+                  ],
                 ),
-                TextSpan(text: plug != null || electric != null ? ' / km (evde şarjla)' : ' / km', style: const TextStyle(fontSize: 13, color: Colors.white60)),
-              ])),
-              Text('100 km: ${_tl(per100, 0)} ₺', style: const TextStyle(fontSize: 13)),
+              ),
+              Text(
+                '100 km: ${_tl(per100, 0)} ₺',
+                style: const TextStyle(fontSize: 13),
+              ),
               if (petrol100 != null)
-                Text('Benzinle 100 km: ${_tl(petrol100, 0)} ₺', style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                Text(
+                  'Benzinle 100 km: ${_tl(petrol100, 0)} ₺',
+                  style: const TextStyle(fontSize: 12, color: Colors.white60),
+                ),
             ],
           ),
-          if (electric != null) ..._electricLines(electric, per100, note)
-          else if (plug != null) ..._plugInLines(plug, consumption, priceFuel, pricePerLiter, note)
+          if (electric != null)
+            ..._electricLines(electric, per100, note)
+          else if (plug != null)
+            ..._plugInLines(
+              plug,
+              consumption,
+              priceFuel,
+              pricePerLiter,
+              note,
+              consumptionLabel,
+              cost['consumptionNote']?.toString(),
+            )
           else ...[
-          const SizedBox(height: 8),
-          Text(
-            'Resmi ortalama tüketim ${_tl(consumption, 1)} lt/100 km'
-            '${fromEstimate ? ' (${cost['consumptionNote'] ?? 'aynı modelin resmi değeri'})' : ''} × $priceFuel ${_tl(pricePerLiter)} ₺/lt'
-            '${priceFuel == 'LPG' ? ' (LPG\'de tüketim ~%20 fazla hesaplandı)' : ''}.',
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
-          ),
-          if (ratingText != null && ratingText.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
-              ratingText,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: accent),
+              '$consumptionLabel ${_tl(consumption, 1)} lt/100 km'
+              '${cost['consumptionNote'] != null ? ' (${cost['consumptionNote']})' : ''} × $priceFuel ${_tl(pricePerLiter)} ₺/lt'
+              '${priceFuel == 'LPG' ? ' (LPG\'de tüketim ~%20 fazla hesaplandı)' : ''}.',
+              style: const TextStyle(fontSize: 11, color: Colors.white54),
             ),
-          ],
-          if (note != null && note.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(note, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-          ],
+            if (ratingText != null && ratingText.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                ratingText,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: accent,
+                ),
+              ),
+            ],
+            if (note != null && note.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                note,
+                style: const TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+            ],
           ],
         ],
       ),
@@ -98,7 +154,11 @@ class FuelCostCard extends StatelessWidget {
   }
 
   /// Elektrikli araç: ilanda kWh yok, sınıfına göre tipik değerle tahmin (bkz. src/lib/fuel-cost.ts, electric).
-  List<Widget> _electricLines(Map<String, dynamic> electric, num per100, String? note) {
+  List<Widget> _electricLines(
+    Map<String, dynamic> electric,
+    num per100,
+    String? note,
+  ) {
     final publicKm = (electric['perKmPublicCharge'] as num?) ?? 0;
     final kwh = (electric['kwhPer100'] as num?) ?? 0;
     final home = (electric['homePricePerKwh'] as num?) ?? 0;
@@ -106,10 +166,16 @@ class FuelCostCard extends StatelessWidget {
     return [
       const SizedBox(height: 8),
       Text.rich(
-        TextSpan(style: const TextStyle(fontSize: 13), children: [
-          const TextSpan(text: 'Halka açık şarjla '),
-          TextSpan(text: '${_tl(publicKm)} ₺/km', style: const TextStyle(fontWeight: FontWeight.w700)),
-        ]),
+        TextSpan(
+          style: const TextStyle(fontSize: 13),
+          children: [
+            const TextSpan(text: 'Halka açık şarjla '),
+            TextSpan(
+              text: '${_tl(publicKm)} ₺/km',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
       ),
       const SizedBox(height: 6),
       Text(
@@ -125,7 +191,15 @@ class FuelCostCard extends StatelessWidget {
   }
 
   /// Şarjlı hibrit: benzin + elektrik dökümü ve diğer senaryolar (bkz. src/lib/fuel-cost.ts, plugIn).
-  List<Widget> _plugInLines(Map<String, dynamic> plug, num consumption, String priceFuel, num pricePerLiter, String? note) {
+  List<Widget> _plugInLines(
+    Map<String, dynamic> plug,
+    num consumption,
+    String priceFuel,
+    num pricePerLiter,
+    String? note,
+    String consumptionLabel,
+    String? consumptionNote,
+  ) {
     final publicKm = plug['perKmPublicCharge'] as num?;
     final emptyKm = plug['perKmEmptyBattery'] as num?;
     final fuel100 = (plug['fuelPer100Km'] as num?) ?? 0;
@@ -136,18 +210,27 @@ class FuelCostCard extends StatelessWidget {
     return [
       const SizedBox(height: 8),
       Text.rich(
-        TextSpan(style: const TextStyle(fontSize: 13), children: [
-          const TextSpan(text: 'Halka açık şarjla '),
-          TextSpan(text: '${_tl(publicKm ?? 0)} ₺/km', style: const TextStyle(fontWeight: FontWeight.w700)),
-          if (emptyKm != null) ...[
-            const TextSpan(text: ' · Şarj bitince benzinli gibi '),
-            TextSpan(text: '${_tl(emptyKm)} ₺/km', style: const TextStyle(fontWeight: FontWeight.w700)),
+        TextSpan(
+          style: const TextStyle(fontSize: 13),
+          children: [
+            const TextSpan(text: 'Halka açık şarjla '),
+            TextSpan(
+              text: '${_tl(publicKm ?? 0)} ₺/km',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            if (emptyKm != null) ...[
+              const TextSpan(text: ' · Şarj bitince benzinli gibi '),
+              TextSpan(
+                text: '${_tl(emptyKm)} ₺/km',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ],
           ],
-        ]),
+        ),
       ),
       const SizedBox(height: 6),
       Text(
-        'Benzin: resmi ${_tl(consumption, 1)} lt/100 km × $priceFuel ${_tl(pricePerLiter)} ₺/lt = ${_tl(fuel100, 0)} ₺. '
+        'Benzin: $consumptionLabel ${_tl(consumption, 1)} lt/100 km${consumptionNote == null ? '' : ' ($consumptionNote)'} × $priceFuel ${_tl(pricePerLiter)} ₺/lt = ${_tl(fuel100, 0)} ₺. '
         'Elektrik: ${kwh.toStringAsFixed(0)} kWh/100 km × ${_tl(home, 1)} ₺/kWh (ev) = ${_tl(electric100, 0)} ₺. '
         'Halka açık AC şarj ~${_tl(pub, 1)} ₺/kWh alındı.',
         style: const TextStyle(fontSize: 11, color: Colors.white54),

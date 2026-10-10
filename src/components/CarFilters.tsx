@@ -40,11 +40,16 @@ export function CarFilters({
       : COLORS.map((color) => ({ color, count: 0 }));
 
   const [discountOnly, setDiscountOnly] = useState(searchParams.get("discountOnly") === "true");
+  const [excludeOutliers, setExcludeOutliers] = useState(searchParams.get("excludeOutliers") === "true");
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(searchParams.toString());
+    // Filtreyi uygulayınca ilk sayfaya dön; keşfet akışının tohumu/dilimi arama sonuçlarına taşınmasın.
+    for (const key of ["page", "seed", "slot", "b", "compact"]) params.delete(key);
+    const formKeys = ["q", "brand", "model", "city", "color", "yearMin", "yearMax", "priceMin", "priceMax", "fuelType", "transmission", "vehicleClass", "sort", "discountOnly", "firsat"];
+    formKeys.forEach((key) => params.delete(key));
 
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string" && value.trim()) {
@@ -68,6 +73,16 @@ export function CarFilters({
     router.push(`/?${params.toString()}`);
   }
 
+  function toggleOutliers() {
+    const next = !excludeOutliers;
+    setExcludeOutliers(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set("excludeOutliers", "true");
+    else params.delete("excludeOutliers");
+    params.delete("page");
+    router.push(`/?${params.toString()}`);
+  }
+
   return (
     <form onSubmit={handleSubmit} className="card space-y-4 p-3 sm:p-5 md:p-6">
       {discountOnly && <input type="hidden" name="discountOnly" value="true" />}
@@ -78,15 +93,26 @@ export function CarFilters({
           <h2 className="font-display text-lg font-semibold">Aradığın aracı daralt</h2>
         </div>
 
-        <button
-          type="button"
-          onClick={toggleDiscount}
-          aria-pressed={discountOnly}
-          className={`chip ${discountOnly ? "chip-active" : ""}`}
-        >
-          <Icon name="trendDown" size={15} />
-          Fiyatı düşenler
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={toggleOutliers}
+            aria-pressed={excludeOutliers}
+            className={`chip ${excludeOutliers ? "chip-active" : ""}`}
+            title="Son piyasa taramasında model ailesine göre aykırı bulunan fiyatları gizler"
+          >
+            Aykırı fiyatları gizle
+          </button>
+          <button
+            type="button"
+            onClick={toggleDiscount}
+            aria-pressed={discountOnly}
+            className={`chip ${discountOnly ? "chip-active" : ""}`}
+          >
+            <Icon name="trendDown" size={15} />
+            Fiyatı düşenler
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">

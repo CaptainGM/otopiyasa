@@ -139,6 +139,7 @@ export async function scrapeIkinciyeniListings(
       brand,
       model: rawModel,
       year,
+      yearVerified: Number(item.modelYear) > 0,
       price,
       mileage,
       city,

@@ -38,11 +38,16 @@ class NotificationService {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
     // Bildirime dokunulduğunda çalışır. İlan kimliği bildirim yükünde taşınır.
-    await _plugin.initialize(settings, onDidReceiveNotificationResponse: _onTap);
+    await _plugin.initialize(
+      settings: settings,
+      onDidReceiveNotificationResponse: _onTap,
+    );
 
     // Android 13+ bildirim izni çalışma anında istenir.
     await _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
 
     _ready = true;
@@ -64,7 +69,9 @@ class NotificationService {
   Future<void> _check() async {
     if (!_api.isLoggedIn) return;
     // Arka planda yoklama yapılmaz (anlık bildirimleri FCM getirir); uygulamaya dönülünce zamanlayıcı devam eder.
-    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return;
+    }
     try {
       final items = await _api.fetchNotifications();
       final unread = items.where((n) => !n.read).toList();
@@ -96,10 +103,10 @@ class NotificationService {
       ),
     );
     await _plugin.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      title,
-      body,
-      details,
+      id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title: title,
+      body: body,
+      notificationDetails: details,
       // Dokunulduğunda hangi ilanın açılacağını taşır (aşağıdaki _onTap okur).
       payload: carId,
     );
@@ -113,5 +120,6 @@ class NotificationService {
 
   /// PushService'in (FCM ön plan mesajları) aynı bildirim kanalını kullanması
   /// için dışa açık — iki ayrı bildirim gösterim yolu olmasın diye.
-  Future<void> showRaw(String title, String body, {String? carId}) => _show(title, body, carId: carId);
+  Future<void> showRaw(String title, String body, {String? carId}) =>
+      _show(title, body, carId: carId);
 }

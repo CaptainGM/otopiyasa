@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeWatcher, estimateRemaining, fillDayHours, formatActiveTime, splitSecondsByHour, summarizeDays, WATCHER_STALE_MS } from "./home-watcher-status";
+import { describeWatcher, estimateRemaining, fillDayHours, formatActiveTime, groupWatcherEventsByHour, splitSecondsByHour, summarizeDays, WATCHER_STALE_MS } from "./home-watcher-status";
 import { turkeyHourOf } from "@/models/HomeWatcher";
 
 const now = new Date("2026-10-03T12:00:00Z").getTime();
@@ -138,6 +138,30 @@ describe("splitSecondsByHour", () => {
   it("süresi sıfır olan partiden parça çıkmaz", () => {
     const at = new Date("2026-10-05T10:00:00Z");
     expect(splitSecondsByHour(at, at)).toEqual([]);
+  });
+});
+
+describe("groupWatcherEventsByHour", () => {
+  it("kontrolü, arşivlemeyi ve güncellemeyi gerçekleştiği Türkiye saatine yazar", () => {
+    const buckets = groupWatcherEventsByHour([
+      {
+        checkedAt: "2026-10-03T20:59:59.000Z",
+        status: "archived",
+        archivedAt: "2026-10-03T21:00:01.000Z",
+      },
+      {
+        checkedAt: "2026-10-03T21:01:00.000Z",
+        status: "active",
+        updated: true,
+        updatedAt: "2026-10-03T21:02:00.000Z",
+      },
+      { checkedAt: "2026-10-03T21:03:00.000Z", status: "blocked" },
+    ]);
+
+    expect(buckets.map((bucket) => [bucket.dateStr, bucket.hour, bucket.checked, bucket.alive, bucket.archived, bucket.updated, bucket.blocked])).toEqual([
+      ["03.10.2026", 23, 1, 0, 0, 0, 0],
+      ["04.10.2026", 0, 2, 1, 1, 1, 1],
+    ]);
   });
 });
 

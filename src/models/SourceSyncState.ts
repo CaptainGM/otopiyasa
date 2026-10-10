@@ -22,6 +22,9 @@ export interface SourceSyncStateDoc {
   archived?: number;
   markedMissing?: number;
   durationMs?: number;
+  /** Dağıtık kilit: iki bekçi aynı kaynağın tam envanterini aynı anda işlemesin. */
+  leaseUntil?: Date;
+  leaseOwner?: string;
 }
 
 const SourceSyncStateSchema = new Schema<SourceSyncStateDoc>(
@@ -39,6 +42,8 @@ const SourceSyncStateSchema = new Schema<SourceSyncStateDoc>(
     archived: Number,
     markedMissing: Number,
     durationMs: Number,
+    leaseUntil: Date,
+    leaseOwner: String,
   },
   { timestamps: true }
 );

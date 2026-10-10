@@ -58,7 +58,7 @@ describe("computeFuelCost", () => {
     expect(cost.petrolPer100Km).toBeCloseTo(6 * 86.28, 2);
   });
 
-  it("ilanda tüketim yoksa aynı model ve motorun resmi değerini kullanır", () => {
+  it("ilanda tüketim yoksa aynı model ve motorun emsal medyanını kullanır", () => {
     const cost = computeFuelCost({ brand: "Renault", model: "Clio", city: "İstanbul", features: { fuelType: "Benzin", engineSize: 1.0 } }, prices, stats)!;
     expect(cost.consumption).toBe(5.2);
     expect(cost.consumptionSource).toBe("model");
@@ -71,13 +71,13 @@ describe("computeFuelCost", () => {
       stats
     )!;
     expect(cost.consumption).toBe(5.8);
-    expect(cost.consumptionNote).toBe("aynı model ve motordaki 3 ilanın resmi değeri");
+    expect(cost.consumptionNote).toBe("aynı model ve motordaki 3 ilanın kaynak değerlerinin medyanı (emsal)");
   });
 
   it("motor eşleşmezse aynı modelin değerine düşer ve bunu söyler", () => {
     const cost = computeFuelCost({ brand: "Nissan", model: "Qashqai", title: "Nissan Qashqai 1.6 dCi", features: { fuelType: "Dizel" } }, prices, stats)!;
     expect(cost.consumption).toBe(4.1);
-    expect(cost.consumptionNote).toBe("aynı modeldeki 3 ilanın resmi değeri");
+    expect(cost.consumptionNote).toBe("aynı modeldeki 3 ilanın kaynak değerlerinin medyanı (emsal)");
   });
 
   it("model verisi yoksa sınıf ortalamasını tahmin diye yazar", () => {

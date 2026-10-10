@@ -1,6 +1,6 @@
 import { Car } from "@/models/Car";
 import { buildCarQuery, parseCarFilters } from "@/lib/car-query";
-import { getMarketMap } from "@/lib/market-price";
+import { getMarketMap, segmentKey } from "@/lib/market-price";
 import type { ChatCard } from "@/lib/chatbot";
 
 /**
@@ -19,6 +19,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 export interface PickInput {
   price: number;
   year: number;
+  vehicleClass?: string;
   mileage: number;
   damageFlag?: boolean;
   marketAvg?: number;
@@ -60,6 +61,7 @@ interface Candidate {
   price: number;
   mileage: number;
   city: string;
+  vehicleClass?: string;
   imageUrl?: string;
   damageFlag?: boolean;
   features?: { bodyType?: string };
@@ -78,7 +80,7 @@ export async function pickTopCars(href: string, limit = PICK_LIMIT): Promise<{ c
     Car.find({ ...query, rand: { $gte: start } })
       .sort({ rand: 1 })
       .limit(CANDIDATE_LIMIT)
-      .select("title brand model year price mileage city imageUrl damageFlag features.bodyType")
+      .select("title brand model year vehicleClass price mileage city imageUrl damageFlag features.bodyType")
       .lean<Candidate[]>(),
     Car.countDocuments(query),
   ]);
@@ -86,7 +88,7 @@ export async function pickTopCars(href: string, limit = PICK_LIMIT): Promise<{ c
 
   const prices = candidates.map((c) => c.price).filter((p) => p > 0).sort((a, b) => a - b);
   const poolMedian = prices[Math.floor(prices.length / 2)] || 0;
-  const market = await getMarketMap(candidates.map((c) => ({ brand: c.brand, model: c.model, year: c.year })));
+  const market = await getMarketMap(candidates.map((c) => ({ brand: c.brand, model: c.model, year: c.year, vehicleClass: c.vehicleClass })));
   const seen = new Set<string>();
   const perModel = new Map<string, number>();
   const ranked = candidates
@@ -94,7 +96,7 @@ export async function pickTopCars(href: string, limit = PICK_LIMIT): Promise<{ c
     .filter((c) => c.price > 0 && (c.mileage || 0) <= 400_000 && !/taks[iİı]/i.test(c.title))
     .filter((c) => wantsCommercial || !COMMERCIAL.test(`${c.features?.bodyType || ""} ${c.model} ${c.title}`))
     .map((c) => {
-      const stat = market.get(`${c.brand}::${c.model}::${c.year}`);
+      const stat = market.get(segmentKey(c.brand, c.model, c.year, c.vehicleClass));
       return { car: c, ...scorePick({ ...c, marketAvg: stat?.avgPrice, marketCount: stat?.listingCount, poolMedian }) };
     })
     .sort((a, b) => b.score - a.score)

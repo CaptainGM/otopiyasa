@@ -87,6 +87,10 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
     query["market.deal"] = true;
   }
 
+  if (filters.excludeOutliers) {
+    query["market.outlier"] = { $ne: true };
+  }
+
   if (filters.discountOnly) {
     (query.$and ||= []).push({
       $expr: {
@@ -304,6 +308,7 @@ export function parseCarFilters(searchParams: URLSearchParams): CarFilters {
     fuelType: searchParams.get("fuelType") || undefined,
     transmission: searchParams.get("transmission") || undefined,
     vehicleClass: isVehicleClass(searchParams.get("vehicleClass")) ? (searchParams.get("vehicleClass") as string) : undefined,
+    excludeOutliers: searchParams.get("excludeOutliers") === "true",
     discountOnly: searchParams.get("discountOnly") === "true",
     deals: searchParams.get("firsat") === "1",
     // Fırsat listesi kendi sırasıyla gelir (karışık akış değil): en çok piyasa altında olan önce.

@@ -303,17 +303,17 @@ export function PricePredictorForm() {
                   confidenceScore = Math.min(98, 90 + Math.round((sampleCount - 30) / 10));
                   confidenceTitle = `%${confidenceScore} Yüksek Piyasa Güveni`;
                   badgeClass = "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
-                  confidenceText = `Veritabanımızda bu segmentte ${sampleCount} aktif ilan incelendi. Fiyat sapması çok düşüktür (±%4). Aracın adil piyasa karşılığı ${formatPrice(result.lowerBound || result.predictedPrice * 0.95)} – ${formatPrice(result.upperBound || result.predictedPrice * 1.05)} aralığında öngörülmektedir.`;
+                  confidenceText = `Aynı marka, model ve yılda ${sampleCount} aktif ilan bulundu. Geniş regresyon havuzuyla birlikte aracın adil piyasa karşılığı ${formatPrice(result.lowerBound || result.predictedPrice * 0.95)} – ${formatPrice(result.upperBound || result.predictedPrice * 1.05)} aralığında öngörülmektedir.`;
                 } else if (sampleCount >= 8) {
                   confidenceScore = Math.min(88, 72 + Math.round((sampleCount - 8) * 0.8));
                   confidenceTitle = `%${confidenceScore} Orta Güvenilirlik`;
                   badgeClass = "bg-amber-500/15 text-amber-300 border-amber-500/30";
-                  confidenceText = `${sampleCount} emsal araç verisi incelendi. Araçtaki donanım paketleri (Sunroof, Hayalet Ekran, Deri Koltuk vb.) ve lokal boyalar fiyatta ±%7 ile %9 arasında esneme payı oluşturabilir.`;
+                  confidenceText = `Aynı marka, model ve yılda ${sampleCount} aktif ilan var. Araçtaki donanım paketleri (Sunroof, Hayalet Ekran, Deri Koltuk vb.) ve lokal boyalar fiyatta ±%7 ile %9 arasında esneme payı oluşturabilir.`;
                 } else {
                   confidenceScore = 55;
                   confidenceTitle = "Nadir Segment Uyarısı";
                   badgeClass = "bg-sky-500/15 text-sky-300 border-sky-500/30";
-                  confidenceText = `Piyasada bu segmentte sadece ${sampleCount} ilan bulundu. Nadir seri olduğu için fiyatlar satıcı inisiyatifine ve kondisyona göre ${result.comparableRange ? `${formatPrice(result.comparableRange.min)} – ${formatPrice(result.comparableRange.max)}` : "geniş bir aralıkta"} seyredebilir.`;
+                  confidenceText = `Aynı marka, model ve yılda ${sampleCount} aktif ilan bulundu. Nadir seri olduğu için fiyatlar satıcı inisiyatifine ve kondisyona göre ${result.comparableRange ? `${formatPrice(result.comparableRange.min)} – ${formatPrice(result.comparableRange.max)}` : "geniş bir aralıkta"} seyredebilir.`;
                 }
 
                 return (
@@ -334,7 +334,7 @@ export function PricePredictorForm() {
                       {confidenceText}
                     </p>
                     <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-1.5 border-t border-white/5 flex-wrap">
-                      <span>{sampleCount} İlan Verisi</span>
+                      <span>{sampleCount} aynı model/yıl ilanı</span>
                       <span>{METHOD_LABELS[result.method]}</span>
                       {result.r2 !== null && <span>Doğruluk Skoru: R² ≈ {result.r2.toFixed(2)}</span>}
                       {result.outliersRemoved ? <span>{result.outliersRemoved} Aykırı İlan Elendi</span> : null}

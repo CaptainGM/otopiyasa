@@ -1,5 +1,8 @@
 import type { Types } from "mongoose";
+import { randomUUID } from "crypto";
 import { Car } from "@/models/Car";
+import { ScrapeThrottle } from "@/models/ScrapeThrottle";
+import { isPlausibleScrapedPrice } from "@/lib/scraper/price-guard";
 import {
   fetchPageWithBrowser,
   isCloudflareChallenge,
@@ -113,19 +116,96 @@ export const ARABAM_PAGE_GAP_MS = { min: 1500, spread: 900 };
 export function setArabamPageGap(minMs: number, spreadMs: number): void {
   ARABAM_PAGE_GAP_MS.min = Math.max(0, minMs);
   ARABAM_PAGE_GAP_MS.spread = Math.max(0, spreadMs);
+  arabamGapConfigWrite = ScrapeThrottle.updateOne(
+    { key: ARABAM_RATE_GATE },
+    {
+      $set: {
+        configuredGapMs: ARABAM_PAGE_GAP_MS.min + ARABAM_PAGE_GAP_MS.spread / 2,
+        configUntil: new Date(Date.now() + 30 * 60_000),
+      },
+      $setOnInsert: { key: ARABAM_RATE_GATE },
+    },
+    { upsert: true, timestamps: false }
+  )
+    .catch(async (error) => {
+      if (!isDuplicateKeyError(error)) throw error;
+      await ScrapeThrottle.updateOne(
+        { key: ARABAM_RATE_GATE },
+        {
+          $set: {
+            configuredGapMs: ARABAM_PAGE_GAP_MS.min + ARABAM_PAGE_GAP_MS.spread / 2,
+            configUntil: new Date(Date.now() + 30 * 60_000),
+          },
+        },
+        { timestamps: false }
+      );
+    })
+    .then(() => undefined);
 }
 
-let arabamGate: Promise<void> = Promise.resolve();
+const ARABAM_RATE_GATE = "arabam";
+let arabamRateGateReady: Promise<void> | null = null;
+let arabamGapConfigWrite: Promise<void> = Promise.resolve();
 
-/** Sıra beklenir; sonraki çağrı en az min..min+spread ms sonra başlar (işçi sayısından bağımsız). */
+function isDuplicateKeyError(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error && error.code === 11000;
+}
+
+async function ensureArabamRateGate(): Promise<void> {
+  if (!arabamRateGateReady) {
+    arabamRateGateReady = ScrapeThrottle.updateOne(
+      { key: ARABAM_RATE_GATE },
+      { $setOnInsert: { key: ARABAM_RATE_GATE } },
+      { upsert: true, timestamps: false }
+    )
+      .then(() => undefined)
+      .catch((error) => {
+        // Başka bir süreç aynı anda upsert etmiş olabilir; unique anahtar aynı kapıyı kullanır.
+        if (isDuplicateKeyError(error)) return;
+        arabamRateGateReady = null;
+        throw error;
+      });
+  }
+  await arabamRateGateReady;
+}
+
+/** Mongo lease makes the request gap shared by multiple machines using the same database. */
 export async function waitForArabamTurn(): Promise<void> {
-  const previous = arabamGate;
-  let release!: () => void;
-  arabamGate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await previous;
-  setTimeout(release, ARABAM_PAGE_GAP_MS.min + Math.random() * ARABAM_PAGE_GAP_MS.spread);
+  await arabamGapConfigWrite;
+  await ensureArabamRateGate();
+  const configured = await ScrapeThrottle.findOne({ key: ARABAM_RATE_GATE, configUntil: { $gt: new Date() } })
+    .select("configuredGapMs")
+    .lean<{ configuredGapMs?: number } | null>();
+  const localGapMs = ARABAM_PAGE_GAP_MS.min + Math.random() * ARABAM_PAGE_GAP_MS.spread;
+  const gapMs = Math.max(localGapMs, configured?.configuredGapMs || 0);
+
+  while (true) {
+    const now = new Date();
+    const leaseUntil = new Date(now.getTime() + gapMs);
+    const gate = await ScrapeThrottle.findOneAndUpdate(
+      {
+        key: ARABAM_RATE_GATE,
+        $or: [
+          { nextAllowedAt: { $exists: false } },
+          { nextAllowedAt: null },
+          { nextAllowedAt: { $lte: now } },
+        ],
+      },
+      { $set: { nextAllowedAt: leaseUntil } },
+      { new: true, upsert: false, timestamps: false }
+    )
+      .select("nextAllowedAt")
+      .lean<{ nextAllowedAt?: Date } | null>();
+
+    if (gate) return;
+
+    const current = await ScrapeThrottle.findOne({ key: ARABAM_RATE_GATE })
+      .select("nextAllowedAt")
+      .lean<{ nextAllowedAt?: Date } | null>();
+    const until = current?.nextAllowedAt ? new Date(current.nextAllowedAt).getTime() : Date.now();
+    const waitMs = Math.max(50, Math.min(until - Date.now(), 30_000));
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
 }
 
 /**
@@ -315,15 +395,21 @@ export async function verifySingleListing(car: {
 export function sanitizeRefresh(listing: ScrapedListing, oldPrice?: number): ScrapedListing {
   const out: ScrapedListing = { ...listing };
   if (/- Arabam ilanı$/.test(out.description || "")) out.description = "";
-  if (!(out.price > 0)) {
-    out.price = 0;
-  } else if (oldPrice && oldPrice > 0 && (out.price < oldPrice * 0.2 || out.price > oldPrice * 5)) {
-    out.price = 0;
-  }
+  if (!isPlausibleScrapedPrice(oldPrice, out.price)) out.price = 0;
   return out;
 }
 
-type SweepDetail = { id: string; title: string; source: string; status: string; reason: string };
+type SweepDetail = {
+  id: string;
+  title: string;
+  source: string;
+  status: VerifyListingResult["status"] | "archived";
+  reason: string;
+  checkedAt: Date;
+  archivedAt?: Date;
+  updatedAt?: Date;
+  updated?: boolean;
+};
 
 /**
  * Sıradaki (en uzun süredir doğrulanmamış) ilanları kaynaklarında tek tek
@@ -367,24 +453,29 @@ export async function sweepAndCleanDeadListings(options: {
     SCRAPED_SOURCE_FILTER,
     sourceFilter,
     { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
+    { $or: [{ verifyClaimUntil: { $exists: false } }, { verifyClaimUntil: null }, { verifyClaimUntil: { $lt: now } }] },
   ];
-  // Önce kullanıcıların açtığı ve son kontrolü eski ilanlar (bkz. requestPriorityVerify), sonra en eskiler.
-  const priority = await Car.find({ $and: [...baseFilter, { verifyPriorityAt: { $exists: true } }] })
-    .sort({ verifyPriorityAt: 1 })
-    .limit(limit)
-    .select("_id title sourceSite listingUrl externalId price")
-    .maxTimeMS(8000)
-    .lean<Candidate[]>();
-  const rest =
-    priority.length < limit
-      ? await Car.find({ $and: [...baseFilter, { _id: { $nin: priority.map((c) => c._id) } }] })
-          .sort({ lastVerifiedAt: 1 })
-          .limit(limit - priority.length)
-          .select("_id title sourceSite listingUrl externalId price")
-          .maxTimeMS(8000)
-          .lean<Candidate[]>()
-      : [];
-  const candidates = [...priority, ...rest];
+  const claimBy = `${process.pid}:${randomUUID()}`;
+  const claimUntil = new Date(now.getTime() + Math.max(2 * 60_000, (options.maxDurationMs ?? 5 * 60_000) + 60_000));
+  const candidates: Candidate[] = [];
+  const claimNext = async (extra: Record<string, unknown>, sort: Record<string, 1 | -1>, max: number) => {
+    while (candidates.length < max) {
+      const candidate = await Car.findOneAndUpdate(
+        { $and: [...baseFilter, extra, { _id: { $nin: candidates.map((row) => row._id) } }] },
+        { $set: { verifyClaimUntil: claimUntil, verifyClaimBy: claimBy } },
+        { sort: { ...sort, _id: 1 }, new: true, timestamps: false }
+      )
+        .select("_id title sourceSite listingUrl externalId price")
+        .maxTimeMS(8000)
+        .lean<Candidate | null>();
+      if (!candidate) break;
+      candidates.push(candidate);
+    }
+  };
+
+  // Önce kullanıcıların açtığı ilanlar, sonra en eskiler. Her satır bulma ve kilitleme atomiktir.
+  await claimNext({ verifyPriorityAt: { $exists: true } }, { verifyPriorityAt: 1 }, limit);
+  await claimNext({}, { lastVerifiedAt: 1 }, limit);
 
   const details: SweepDetail[] = [];
   if (candidates.length === 0) return { checked: 0, archived: 0, active: 0, updated: 0, errors: 0, breaker: [], pausedSources: [], details };
@@ -393,6 +484,7 @@ export async function sweepAndCleanDeadListings(options: {
   const attemptedIds: Types.ObjectId[] = [];
   const attemptedByStatus = new Map<"blocked" | "error", Types.ObjectId[]>();
   const refreshListings: ScrapedListing[] = [];
+  const refreshDetailByExternalId = new Map<string, SweepDetail>();
   const oldPrices = new Map<string, number>();
   const goneBySource = new Map<string, Array<{ id: Types.ObjectId; reason: string }>>();
   const checkedBySource = new Map<string, number>();
@@ -429,11 +521,20 @@ export async function sweepAndCleanDeadListings(options: {
           blockNotes.push(`${source}: art arda engel geldi (${result.reason.slice(0, 60)}); bu çalıştırmada ara verildi`);
         }
         checkedBySource.set(source, (checkedBySource.get(source) || 0) + 1);
+        const detail: SweepDetail = {
+          id: String(item._id),
+          title: item.title,
+          source,
+          status: result.status,
+          reason: result.reason,
+          checkedAt: new Date(),
+        };
         if (result.status === "active") {
           aliveIds.push(item._id);
           aliveBySource.set(source, (aliveBySource.get(source) || 0) + 1);
           if (result.listing) {
             refreshListings.push(result.listing);
+            refreshDetailByExternalId.set(result.listing.externalId, detail);
             if (item.price) oldPrices.set(result.listing.externalId, item.price);
           }
         } else if (result.status === "gone" || result.status === "redirected") {
@@ -446,7 +547,7 @@ export async function sweepAndCleanDeadListings(options: {
           attemptedByStatus.set(kind, [...(attemptedByStatus.get(kind) || []), item._id]);
           errorCount++;
         }
-        details.push({ id: String(item._id), title: item.title, source, status: result.status, reason: result.reason });
+        details.push(detail);
         processed++;
         options.onProgress?.(processed, candidates.length, [...goneBySource.values()].reduce((s, l) => s + l.length, 0));
       }
@@ -463,7 +564,14 @@ export async function sweepAndCleanDeadListings(options: {
     for (const listing of refreshListings) {
       try {
         const saved = await saveListing(sanitizeRefresh(listing, oldPrices.get(listing.externalId)), { markVerified: true });
-        if (saved === "updated" || saved === "reactivated") updatedCount++;
+        if (saved === "updated" || saved === "reactivated") {
+          updatedCount++;
+          const detail = refreshDetailByExternalId.get(listing.externalId);
+          if (detail) {
+            detail.updated = true;
+            detail.updatedAt = new Date();
+          }
+        }
       } catch {
         // ayrıştırılan veri kaydedilemezse canlı/tarih bilgisi yine de yukarıda işlendi
       }
@@ -482,7 +590,13 @@ export async function sweepAndCleanDeadListings(options: {
       continue;
     }
     for (const g of gone) {
-      archivedCount += await archiveListings([g.id], `${source}: ${g.reason}`, now);
+      const archivedAt = new Date();
+      const archived = await archiveListings([g.id], `${source}: ${g.reason}`, archivedAt);
+      archivedCount += archived;
+      if (archived > 0) {
+        const detail = details.find((row) => row.id === String(g.id));
+        if (detail) detail.archivedAt = archivedAt;
+      }
     }
   }
   for (const d of details) {
@@ -490,6 +604,13 @@ export async function sweepAndCleanDeadListings(options: {
       d.status = "archived";
     }
   }
+
+  // Normal bitişte ilanları sonraki makinenin bekletmeden almasına izin ver; süreç çökerse lease dolar.
+  await Car.updateMany(
+    { verifyClaimBy: claimBy },
+    { $unset: { verifyClaimUntil: 1, verifyClaimBy: 1 } },
+    { timestamps: false }
+  );
 
   return {
     checked: processed,

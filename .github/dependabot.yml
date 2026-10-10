@@ -1,6 +1,4 @@
-# Paket güncellemeleri: haftada bir, küçük ve ara sürümler tek istekte toplanır. CI (tip, lint, test, Flutter
-# analiz/test) geçerse .github/workflows/dependabot-auto-merge.yml isteği kendiliğinden birleştirir. Büyük (major)
-# sürümler kod değişikliği isteyebileceği için önerilmez.
+# Paket güncellemeleri: uyumlu küçük güncellemeler birlikte, bağlı paketler ayrı gruplarda yükseltilir.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -30,11 +28,21 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      - dependency-name: "connectivity_plus"
+        versions: ["7.3.2"]
+      - dependency-name: "flutter_local_notifications"
+        versions: [">=23.0.0-dev.0 <23.0.0"]
     groups:
       flutter-kucuk-guncellemeler:
         patterns: ["*"]
+        exclude-patterns: ["flutter_local_notifications", "connectivity_plus", "flutter_map", "latlong2", "proj4dart", "firebase_core", "firebase_messaging"]
         update-types: ["minor", "patch"]
-
+      flutter-firebase:
+        patterns: ["firebase_core", "firebase_messaging"]
+        update-types: ["minor", "patch"]
+      flutter-harita:
+        patterns: ["flutter_map", "latlong2", "proj4dart"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

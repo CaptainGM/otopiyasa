@@ -18,6 +18,8 @@ const CarFeaturesSchema = new Schema(
     horsepower: Number,
     drivetrain: String,
     avgFuelConsumption: String,
+    /** listing: kaynakta yer alan değer; model-median: aynı motor/yakıt/model ilanlarının medyanı. */
+    avgFuelConsumptionSource: { type: String, enum: ["listing", "model-median"] },
     fuelTank: String,
     topSpeed: Number,
     acceleration: Number,
@@ -172,6 +174,9 @@ const CarSchema = new Schema(
           /** Hesaplandığı andaki fiyat (fiyat değişince yeniden hesaplanır). */
           fp: Number,
           fairAt: Date,
+          /** Son fiyat özeti güncellemesinde model ailesi medyanından aykırı olduğu saptandı mı? */
+          outlier: Boolean,
+          outlierAt: Date,
         },
         { _id: false }
       ),

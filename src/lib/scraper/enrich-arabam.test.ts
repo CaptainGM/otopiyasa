@@ -23,4 +23,19 @@ describe("arabamDetailSet", () => {
     expect(set["features.fuelType"]).toBeUndefined();
     expect(set["features.transmission"]).toBeUndefined();
   });
+
+  it("mevcut açıklama, galeri ve hasar alanlarını küçültmez", () => {
+    const set = arabamDetailSet(
+      { ...listing({}), description: "Bu araç için satıcının yazdığı uzun ve doğrulanmış açıklama.", images: ["a", "b", "c"], damageParts: [{ name: "Kaput", state: "Boyalı" }, { name: "Kapı", state: "Değişen" }] } as ScrapedListing,
+      {
+        _id: "x",
+        description: "Bu araç için satıcının yazdığı uzun ve doğrulanmış açıklama.",
+        images: ["a", "b", "c"],
+        damageParts: [{ name: "Kaput", state: "Boyalı" }, { name: "Kapı", state: "Değişen" }],
+      }
+    );
+    expect(set.description).toBeUndefined();
+    expect(set.images).toBeUndefined();
+    expect(set.damageParts).toBeUndefined();
+  });
 });

@@ -16,7 +16,8 @@
     "reconcile": "npx tsx scripts/reconcile-sources.ts",
     "arabam-sitemap": "npx tsx scripts/arabam-sitemap.ts",
     "arabam-discover": "npx tsx scripts/arabam-discover.ts",
-    "backfill-feed-ranks": "npx tsx scripts/backfill-feed-ranks.ts"
+    "backfill-feed-ranks": "npx tsx scripts/backfill-feed-ranks.ts",
+    "backfill-consumption": "npx tsx scripts/backfill-consumption.ts"
   },
   "dependencies": {
     "@dicebear/core": "^9.4.3",

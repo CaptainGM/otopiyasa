@@ -62,8 +62,9 @@ describe("inventoryLooksTrustworthy", () => {
   it("aktiflerin yarısından fazlası kayıp görünüyorsa güvenmez", () => {
     expect(inventoryLooksTrustworthy(100, 60, 60).ok).toBe(false);
   });
-  it("çok az aktif ilan varken oran kontrolü uygulanmaz", () => {
-    expect(inventoryLooksTrustworthy(5, 3, 3).ok).toBe(true);
+  it("küçük envanterde de görünmeyenlerin yarıdan fazlası varsa güvenmez", () => {
+    expect(inventoryLooksTrustworthy(5, 3, 3).ok).toBe(false);
+    expect(inventoryLooksTrustworthy(5, 4, 1).ok).toBe(true);
   });
 });
 

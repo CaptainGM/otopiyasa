@@ -63,9 +63,11 @@ export async function POST(request: Request) {
       try {
         const durationSeconds = Math.round((Date.now() - startTime) / 100) / 10;
         const scannedCount =
-          result.sources?.reduce((acc: number, s: any) => acc + (s.fetched || 0), 0) ||
-          (result.inserted || 0) + (result.updated || 0) ||
-          (typeof result.scanned === "number" ? result.scanned : 0);
+          typeof result.scanned === "number"
+            ? result.scanned
+            : Array.isArray(result.sources)
+              ? result.sources.reduce((acc: number, s: any) => acc + (s.fetched || 0), 0)
+              : (result.inserted || 0) + (result.updated || 0);
 
         const bySourceMap: Record<string, { fetched: number; saved: number; inserted?: number; updated?: number }> = {};
         if (Array.isArray(result.sources)) {

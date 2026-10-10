@@ -16,6 +16,7 @@ export async function POST(request: Request) {
     const year = Number(body.year);
     const mileage = Number(body.mileage);
     const title = typeof body.title === "string" ? body.title.trim() : undefined;
+    const vehicleClass = typeof body.vehicleClass === "string" ? body.vehicleClass : undefined;
     const condition: Condition =
       body.condition === "damaged" || body.condition === "painted"
         ? body.condition
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
     }
 
     await connectDB();
-    const result = await predictPrice(brand, model, year, mileage, condition, title);
+    const result = await predictPrice(brand, model, year, mileage, condition, title, { vehicleClass });
 
     return NextResponse.json(result);
   } catch (error) {

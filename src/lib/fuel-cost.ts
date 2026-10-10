@@ -3,10 +3,10 @@ import { pricesForCity, type FuelPrices } from "@/lib/fuel-prices";
 import { modelFamilyKey } from "@/lib/model-family";
 
 /**
- * YAKIT MALİYETİ: aracın resmi (katalog) ortalama tüketimi × ilanın ilindeki güncel pompa fiyatı.
+ * YAKIT MALİYETİ: ilanda yayımlanan ortalama tüketim veya emsal/tahmini tüketim × ilanın ilindeki güncel pompa fiyatı.
  *
  * Tüketim ilandaki "Ort. Yakıt Tüketimi" alanından (lt/100 km) okunur; yoksa aynı marka, model ve
- * motor hacmindeki (yoksa aynı modeldeki) diğer ilanların resmi değerinin medyanı kullanılır
+ * motor hacmindeki (yoksa aynı modeldeki) diğer ilanların kaynakta yayımlanmış değerlerinin medyanı kullanılır
  * (en az 3 örnek; model adı ve motor hacmi kaynaktan bağımsız eşleştirilir, bkz. baseModel). O da
  * yoksa aynı sınıftaki (kasa + yakıt) araçların medyanı "tahmini" diye etiketlenerek kullanılır
  * (en az 20 örnek). Elektrikli araçlarda kaynaklar kWh vermediği için sınıfına göre tipik kWh
@@ -251,12 +251,12 @@ export interface FuelCostInput {
   model?: string;
   title?: string;
   city?: string;
-  features?: { fuelType?: string; bodyType?: string; engineSize?: number | null; horsepower?: number | null; avgFuelConsumption?: string | null };
+  features?: { fuelType?: string; bodyType?: string; engineSize?: number | null; horsepower?: number | null; avgFuelConsumption?: string | null; avgFuelConsumptionSource?: "listing" | "model-median" };
 }
 
 export interface FuelCost {
   fuelType: string;
-  /** Resmi ortalama tüketim, lt/100 km (LPG'li araçta benzin değeri). */
+  /** Hesapta kullanılan ortalama tüketim, lt/100 km (ilana ait, emsal medyanı veya tahmin). */
   consumption: number;
   consumptionSource: "ilan" | "model" | "sinif";
   /** Tüketim ilandan değilse nereden alındığı (kartlarda gösterilir). */
@@ -343,19 +343,26 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
   if (fuel === "Elektrik") return computeElectricCost(car, prices);
   if (!["Benzin", "Dizel", "LPG & Benzin", "Hibrit"].includes(fuel)) return null;
 
-  let consumptionSource: FuelCost["consumptionSource"] = "ilan";
+  let consumptionSource: FuelCost["consumptionSource"] = car.features?.avgFuelConsumptionSource === "model-median" ? "model" : "ilan";
   let consumptionNote: string | undefined;
+  if (consumption !== null && consumptionSource === "model") {
+    const engine = engineOf({ model: car.model, title: car.title, engineSize: car.features?.engineSize });
+    const byEngine = engine ? stats.model[modelKey(car.brand, car.model, fuel, engine)] : undefined;
+    const byModel = stats.model[modelKey(car.brand, car.model, fuel)];
+    const source = byEngine && byEngine.count >= MIN_MODEL_SAMPLES ? byEngine : byModel;
+    if (source) consumptionNote = `aynı model${byEngine === source ? " ve motordaki" : "deki"} ${source.count} ilanın kaynak değerlerinin medyanı (emsal)`;
+  }
   if (consumption === null) {
     const engine = engineOf({ model: car.model, title: car.title, engineSize: car.features?.engineSize });
     const byEngine = engine ? stats.model[modelKey(car.brand, car.model, fuel, engine)] : undefined;
     const byModel = stats.model[modelKey(car.brand, car.model, fuel)];
     if (byEngine && byEngine.count >= MIN_MODEL_SAMPLES) {
       consumption = byEngine.median;
-      consumptionNote = `aynı model ve motordaki ${byEngine.count} ilanın resmi değeri`;
+      consumptionNote = `aynı model ve motordaki ${byEngine.count} ilanın kaynak değerlerinin medyanı (emsal)`;
       consumptionSource = "model";
     } else if (byModel && byModel.count >= MIN_MODEL_SAMPLES) {
       consumption = byModel.median;
-      consumptionNote = `aynı modeldeki ${byModel.count} ilanın resmi değeri`;
+      consumptionNote = `aynı modeldeki ${byModel.count} ilanın kaynak değerlerinin medyanı (emsal)`;
       consumptionSource = "model";
     } else {
       // Model için yeterli örnek yok. Başlığında şarjlı hibrit yazan araçta tahmin yanıltır (1 lt'ye karşı 5 lt), orada göstermeyiz.
@@ -439,7 +446,7 @@ export function computeFuelCost(car: FuelCostInput, prices: FuelPrices, stats: C
       electricityReviewed: ELECTRICITY.reviewed,
     };
     result.note =
-      "Şarjlı hibrit: resmi tüketim bataryanın şarjlı olduğunu varsayar. İlanda elektrik tüketimi yok; " +
+      "Şarjlı hibritte benzin tüketimi, batarya şarjlı kabul edilen kullanım varsayımına dayanır. İlanda elektrik tüketimi yok; " +
       `${ELECTRICITY.kwhPer100Km} kWh/100 km tipik değeriyle elektrik maliyeti eklendi.`;
     return result;
   }

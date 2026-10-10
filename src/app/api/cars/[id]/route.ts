@@ -17,11 +17,12 @@ import { resolvePlacement } from "@/lib/district-coords";
 import { liveFairValue } from "@/lib/market-fair";
 
 /** Fiyat dağılımı için segment fiyatları: önce marka+model, az ise yalnız marka (web detay sayfasıyla aynı mantık). */
-async function loadSegmentPrices(brand: string, model: string): Promise<{ label: string; prices: number[] }> {
-  return cached(`segment-prices:${brand}:${model}`, CACHE_TTL.long, async () => {
-    const mm = (await Car.find({ brand, model, status: "active" }, { price: 1 }).limit(200).lean()).map((doc) => doc.price as number);
+async function loadSegmentPrices(brand: string, model: string, vehicleClass?: string): Promise<{ label: string; prices: number[] }> {
+  const classFilter = vehicleClass ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass } : {};
+  return cached(`segment-prices:${brand}:${model}:${vehicleClass || "all"}`, CACHE_TTL.long, async () => {
+    const mm = (await Car.find({ brand, model, ...classFilter, status: "active" }, { price: 1 }).limit(200).lean()).map((doc) => doc.price as number);
     if (mm.length >= 5) return { label: `${brand} ${model}`, prices: mm };
-    const b = (await Car.find({ brand, status: "active" }, { price: 1 }).limit(200).lean()).map((doc) => doc.price as number);
+    const b = (await Car.find({ brand, ...classFilter, status: "active" }, { price: 1 }).limit(200).lean()).map((doc) => doc.price as number);
     return { label: brand, prices: b };
   });
 }
@@ -74,21 +75,21 @@ export async function GET(
     }
 
     const [marketMap, favoriteCount, segment, similarCars, live] = await Promise.all([
-      getMarketMap([{ brand: carDoc.brand, model: carDoc.model, year: carDoc.year }]),
+      getMarketMap([{ brand: carDoc.brand, model: carDoc.model, year: carDoc.year, vehicleClass: carDoc.vehicleClass }]),
       cached(`car-fav-count:${carDoc._id}`, CACHE_TTL.short, () => User.countDocuments({ favorites: carDoc._id })),
       cached(`segment:${carDoc.brand}|${carDoc.model}`, CACHE_TTL.medium, () =>
-        loadSegmentPrices(carDoc.brand, carDoc.model)
+        loadSegmentPrices(carDoc.brand, carDoc.model, carDoc.vehicleClass || "otomobil")
       ),
       cached(
         `similar:${carDoc.brand}|${carDoc.model}|${Math.round(carDoc.price / 100000)}|${carDoc.title.slice(0, 30)}`,
         CACHE_TTL.medium,
-        () => getSimilarCars(carDoc._id.toString(), carDoc.brand, carDoc.model, carDoc.price, 50, carDoc.title, carDoc.year, carDoc.mileage)
+        () => getSimilarCars(carDoc._id.toString(), carDoc.brand, carDoc.model, carDoc.price, 50, carDoc.title, carDoc.year, carDoc.mileage, undefined, carDoc.vehicleClass)
       ),
       // Web ilan sayfasıyla aynı adil değer (mobildeki gösterge ve fiyat analizi kartı bunu kullanır).
       liveFairValue(carDoc).catch(() => null),
     ]);
     const market = marketMap.get(
-      segmentKey(carDoc.brand, carDoc.model, carDoc.year)
+      segmentKey(carDoc.brand, carDoc.model, carDoc.year, carDoc.vehicleClass)
     );
     // Public detail requests must not reveal a seller's phone, owner id,
     // moderation metadata, or private minimum offer threshold.
@@ -96,10 +97,8 @@ export async function GET(
       ? serializeCar(carDoc, market)
       : serializeCarPublic(carDoc, market);
 
-    // Haritadaki konum: kayıtlı koordinat, yoksa web ilan sayfasıyla aynı ilçe/il merkezi hesabı.
-    const mapPlacement = car.location?.lat
-      ? { lat: car.location.lat, lng: car.location.lng, level: "exact" as const }
-      : resolvePlacement(car.city || "", car.address, 0, car.description);
+    // Scraper'ların location alanı şehir merkezidir; satıcının tam konumu gibi gösterilmemeli.
+    const mapPlacement = resolvePlacement(car.city || "", car.address, 0, car.description);
 
     return NextResponse.json(
       {

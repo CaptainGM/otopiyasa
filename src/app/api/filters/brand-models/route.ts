@@ -13,8 +13,10 @@ const LIST_CACHE = { "Cache-Control": "public, s-maxage=3600, stale-while-revali
 export async function GET(request: Request) {
   try {
     await connectDB();
-    const options = await getBrandModelOptions();
-    if (new URL(request.url).searchParams.get("families") === "1") {
+    const params = new URL(request.url).searchParams;
+    const vehicleClass = params.get("vehicleClass") || undefined;
+    const options = await getBrandModelOptions(vehicleClass);
+    if (params.get("families") === "1") {
       return NextResponse.json({ brands: options.brands, brandFamilies: options.brandFamilies }, { headers: LIST_CACHE });
     }
     return NextResponse.json(options, { headers: LIST_CACHE });

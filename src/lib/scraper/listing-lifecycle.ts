@@ -41,10 +41,10 @@ export const LIFECYCLE = {
    */
   arabamBreakerMinAlive: 3,
   /** Tam envanter taraması aktif ilanların en az bu oranını bulmalı; yoksa tarama şüphelidir. */
-  minCrawlCoverage: 0.5,
+  minCrawlCoverage: 0.6,
   /** Envanterde görünmeyen ilan oranı bunu aşarsa arşivleme yapılmaz. */
-  maxMissingRatio: 0.5,
-  /** Oranlara dayalı güvenlik kontrolleri bu kadar ilandan azsa uygulanmaz. */
+  maxMissingRatio: 0.4,
+  /** Eski tanım; küçük envanterlerde de oran frenleri çalışır. */
   ratioMinActive: 10,
   /** Arşivlenen ilanda tutulan fotoğraf sayısı: fiyat geri bildirimi için yeter, DB'yi şişirmez. */
   archivedImageLimit: 6,
@@ -96,7 +96,7 @@ export function inventoryLooksTrustworthy(activeCount: number, seenCount: number
   reason?: string;
 } {
   if (seenCount === 0) return { ok: false, reason: "Taramada hiç ilan bulunamadı." };
-  if (activeCount < LIFECYCLE.ratioMinActive) return { ok: true };
+  if (activeCount <= 0) return { ok: true };
   if (seenCount < activeCount * LIFECYCLE.minCrawlCoverage) {
     return { ok: false, reason: `Tarama yalnızca ${seenCount} ilan buldu (DB'de ${activeCount} aktif).` };
   }

@@ -14,4 +14,4 @@ export function displayTransmission<T extends string | null | undefined>(raw: T)
 }
 
 /** "Otomatik" ya da "Yarı Otomatik" seçilince bulunacak ham değerler (Mongo desen metni). */
-export const AUTOMATIC_TRANSMISSION_PATTERN = "^(otomatik|yarı otomatik|tiptronik|tiptronic|multitronik|multitronic|steptronik|steptronic)$";
+export const AUTOMATIC_TRANSMISSION_PATTERN = "^(otomatik|automatic|yarı otomatik|tiptronik|tiptronic|multitronik|multitronic|steptronik|steptronic|cvt|dct|dsg|edc|powershift|s tronic)$";

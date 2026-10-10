@@ -155,6 +155,20 @@ export async function recordHourlyMetric({
   diagnostics?: any;
 }) {
   try {
+    const knownSources = new Set([
+      "arabam",
+      "otomerkezi",
+      "vavacars",
+      "otoplus",
+      "carvak",
+      "otokoc",
+      "dod",
+      "ikinciyeni",
+    ]);
+    if (!knownSources.has(source)) {
+      console.error(`[ScrapeMetric] Bilinmeyen kaynak metriği yazılmadı: ${source}`);
+      return;
+    }
     const now = new Date();
     // Türkiye saati (UTC+3 Europe/Istanbul)
     const trParts = new Intl.DateTimeFormat("tr-TR", {
@@ -179,19 +193,6 @@ export async function recordHourlyMetric({
     // Saatin başlangıç noktası (Türkiye saatine denk gelen UTC anı)
     const timestamp = new Date(Date.UTC(year, parseInt(month, 10) - 1, parseInt(day, 10), hour - 3, 0, 0, 0));
 
-    const safeSource = [
-      "arabam",
-      "otomerkezi",
-      "vavacars",
-      "otoplus",
-      "carvak",
-      "otokoc",
-      "dod",
-      "ikinciyeni",
-    ].includes(source)
-      ? source
-      : "arabam";
-
     const setFields: Record<string, any> = { dateStr, hourRange, lastUpdated: new Date() };
     if (diagnostics) {
       setFields.diagnostics = diagnostics;
@@ -206,10 +207,10 @@ export async function recordHourlyMetric({
           inserted: Math.max(0, inserted),
           updated: Math.max(0, updated),
           deleted: Math.max(0, deleted),
-          [`bySource.${safeSource}.scanned`]: Math.max(0, scanned),
-          [`bySource.${safeSource}.inserted`]: Math.max(0, inserted),
-          [`bySource.${safeSource}.updated`]: Math.max(0, updated),
-          [`bySource.${safeSource}.deleted`]: Math.max(0, deleted),
+          [`bySource.${source}.scanned`]: Math.max(0, scanned),
+          [`bySource.${source}.inserted`]: Math.max(0, inserted),
+          [`bySource.${source}.updated`]: Math.max(0, updated),
+          [`bySource.${source}.deleted`]: Math.max(0, deleted),
         },
       },
       { upsert: true, new: true }

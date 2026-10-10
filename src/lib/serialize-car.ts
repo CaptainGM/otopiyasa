@@ -15,6 +15,7 @@ export type LeanCarDoc = {
   brand: string;
   model: string;
   year: number;
+  vehicleClass?: string;
   price: number;
   mileage: number;
   city: string;
@@ -48,7 +49,7 @@ export type LeanCarDoc = {
   verifiedFeatures?: string[];
   featuresVerifiedAt?: Date;
   /** Saatlik piyasa anlık görüntüsü (bkz. lib/market-snapshot.ts). */
-  market?: { avg?: number; count?: number; scope?: string; fair?: number; fairN?: number } | null;
+  market?: { avg?: number; count?: number; scope?: string; fair?: number; fairN?: number; outlier?: boolean } | null;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -76,6 +77,7 @@ export function serializeCar(
     brand: doc.brand,
     model: doc.model,
     year: doc.year,
+    vehicleClass: doc.vehicleClass || "otomobil",
     price: doc.price,
     mileage: doc.mileage,
     city: doc.city,
@@ -144,6 +146,8 @@ export function serializeCarPublic(
     ...car,
     contactPhone: "",
     ownerId: undefined,
+    // Scraper'ların koordinatları il merkezi tahminidir; public yanıt bunları gerçek konum gibi taşımamalı.
+    location: undefined,
     moderationStatus: undefined,
     rejectionReason: "",
     minOffer: 0,
@@ -194,7 +198,7 @@ export function attachMarketToCars(
 ) {
   const { forList = true, publicView = true } = options;
   return docs.map((doc) => {
-    const market = marketMap.get(segmentKey(doc.brand, doc.model, doc.year));
+    const market = marketMap.get(segmentKey(doc.brand, doc.model, doc.year, doc.vehicleClass));
     if (publicView) {
       return forList ? serializeCarPublicForList(doc, market) : serializeCarPublic(doc, market);
     }

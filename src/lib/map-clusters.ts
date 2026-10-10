@@ -137,6 +137,8 @@ export function buildMapQuery(params: URLSearchParams): Record<string, unknown> 
     ];
   }
 
+  if (params.get("excludeOutliers") === "true") query["market.outlier"] = { $ne: true };
+
   return query;
 }
 

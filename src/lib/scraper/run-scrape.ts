@@ -1,4 +1,5 @@
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { Car } from "@/models/Car";
 import {
@@ -30,11 +31,12 @@ import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { checkSubscriptions } from "@/lib/subscriptions";
 import { ScrapeAdapter, ScrapeJobResult, ScrapedListing, OnListing } from "@/lib/scraper/types";
 import { LIFECYCLE, archiveListings, breakerTripped, markVerifyAttempt } from "@/lib/scraper/listing-lifecycle";
-import { fetchDetailPatch, isDetailSource, mergeDetailIntoListing } from "@/lib/scraper/enrich-detail";
+import { fetchDetailPatch, isDetailSource, mergeDetailIntoListing, shouldReplaceDetailDescription } from "@/lib/scraper/enrich-detail";
 import { isPermanentRemoval, knownFeatureUpdates, PLATFORM_SCOPE_REASON } from "@/lib/scraper/feature-merge";
 import { outOfScopeReason, vehicleClassOf } from "@/lib/vehicle-scope";
 import { fuelWithTitleHint } from "@/lib/normalize-fuel";
 import { normalizeCity } from "@/lib/normalize-city";
+import { normalizeVehicleTransmission } from "@/lib/vehicle-attrs";
 import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
 import { ListingSource } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
@@ -95,13 +97,49 @@ export async function saveListing(
     ...listing,
     ...normalizeBrandModel(listing.brand, listing.model),
     city: listing.city ? normalizeCity(listing.city) : listing.city,
-    features: { ...listing.features, fuelType: fuelWithTitleHint(listing.features?.fuelType, listing.title, listing.model) },
+    features: {
+      ...listing.features,
+      fuelType: fuelWithTitleHint(listing.features?.fuelType, listing.title, listing.model),
+      transmission:
+        normalizeVehicleTransmission(listing.features?.transmission, {
+          brand: listing.brand,
+          model: listing.model,
+          title: listing.title,
+        }) || listing.features?.transmission,
+    },
   };
   const now = new Date();
-  const existing = await Car.findOne({
+  const isPlaceholder = (value?: string | null) => {
+    const normalized = (value || "").trim().toLocaleLowerCase("tr-TR").replace(/ı/g, "i");
+    return !normalized || ["bilinmiyor", "belirtilmemis", "model", "-", "n/a"].includes(normalized);
+  };
+  const currentYear = new Date().getFullYear();
+  const hasValidYear = Number.isInteger(listing.year) && listing.year >= 1950 && listing.year <= currentYear + 1;
+  let existing = await Car.findOne({
     sourceSite: listing.sourceSite,
     externalId: listing.externalId,
   });
+  let existingByAlias = false;
+  if (listing.identityAliases?.length) {
+    const aliases = await Car.find({
+      sourceSite: listing.sourceSite,
+      externalId: { $in: listing.identityAliases },
+    })
+      .select("_id externalId listingUrl")
+      .limit(10)
+      .lean<Array<{ _id: unknown; externalId: string; listingUrl?: string }>>();
+    if (!existing && aliases.length > 0) {
+      existing = await Car.findById(aliases[0]._id);
+      existingByAlias = Boolean(existing);
+    } else if (existing) {
+      const duplicateIds = aliases
+        .filter((alias) => alias.listingUrl === listing.listingUrl)
+        .map((alias) => alias._id);
+      if (duplicateIds.length > 0) {
+        await archiveListings(duplicateIds as any[], listing.sourceSite + ": kaynak kimliği eşlendi; yinelenen kayıt", now);
+      }
+    }
+  }
 
   // Platform kapsamı (bkz. vehicle-scope.ts): ATV/UTV, deniz/hava aracı, kiralık ve araç olmayan ilanlar hiçbir
   // kaynaktan eklenmez; daha önce eklenmişse arşive alınır. Kapsamdaki her ilanın bir araç tipi vardır.
@@ -144,20 +182,24 @@ export async function saveListing(
     // karakterden azsa görmezden geliniyordu.
     const descChanged = Boolean(
       !detailKept &&
-      listing.description &&
+      listing.descriptionVerified === true &&
       listing.description !== existing.description &&
-      listing.description.length > 20
+      listing.description.length > 20 &&
+      shouldReplaceDetailDescription(existing.description, listing.description)
     );
     const damageChanged = Boolean(
       listing.damageParts &&
       listing.damageParts.length > 0 &&
+      listing.damageParts.length >= (existing.damageParts?.length ?? 0) &&
       JSON.stringify(listing.damageParts) !== JSON.stringify(existing.damageParts)
     );
     const imagesEnriched = Boolean(
       hasImages(listing) &&
-      (!existing.images || existing.images.length === 0 || ((listing.images?.length || 0) > (existing.images?.length || 0) && (existing.images?.length || 0) <= 1))
+      (listing.images?.length || 0) >= (existing.images?.length || 0) &&
+      JSON.stringify(listing.images) !== JSON.stringify(existing.images || [])
     );
     const statusReactivated = existing.status === "removed" && listing.price > 0;
+    const identityChanged = existingByAlias && existing.externalId !== listing.externalId;
     // Kaynak adres formatını değiştirdiğinde (ör. VavaCars → tr.vava.cars) kayıt kendini onarsın.
     const urlChanged = Boolean(listing.listingUrl && listing.listingUrl !== existing.listingUrl);
 
@@ -178,7 +220,7 @@ export async function saveListing(
 
     const hasAnyChange =
       priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged ||
-      featuresChanged || needsVerifyFlag || classChanged;
+      featuresChanged || needsVerifyFlag || classChanged || identityChanged;
 
     // GERÇEKTE HİÇBİR ŞEY DEĞİŞMEDİYSE içerik yazılmaz (updatedAt oynamaz);
     // yalnızca "canlı görüldü" bilgisi seyrek olarak işlenir.
@@ -205,15 +247,24 @@ export async function saveListing(
       featuresChanged,
     });
 
-    existing.title = listing.title || existing.title;
-    existing.brand = listing.brand || existing.brand;
-    existing.model = listing.model || existing.model;
-    if (listing.year > 0) existing.year = listing.year;
+    if (!isPlaceholder(listing.title) && !/^bilinmiyor(?:\s|$)|^model(?:\s|$)/i.test(listing.title.trim())) existing.title = listing.title;
+    if (!isPlaceholder(listing.brand)) existing.brand = listing.brand;
+    if (!isPlaceholder(listing.model)) existing.model = listing.model;
+    if (identityChanged) existing.externalId = listing.externalId;
+    if (hasValidYear && listing.yearVerified !== false) existing.year = listing.year;
     existing.price = newPrice;
     if (listing.mileage > 0) existing.mileage = listing.mileage;
-    existing.city = listing.city || existing.city;
+    if (!isPlaceholder(listing.city) && listing.city !== "Türkiye") existing.city = listing.city;
     if (listing.address) existing.address = listing.address;
-    if (listing.description && !detailKept) existing.description = listing.description;
+    if (
+      listing.descriptionVerified === true &&
+      listing.description &&
+      listing.description.length > 20 &&
+      !detailKept &&
+      shouldReplaceDetailDescription(existing.description, listing.description)
+    ) {
+      existing.description = listing.description;
+    }
 
     // Galeri hiçbir zaman küçülmez: liste sayfası tek fotoğraf verirken ilan sayfasından gelen galeri korunur.
     if (hasImages(listing) && (listing.images as string[]).length >= (existing.images?.length ?? 0)) {
@@ -222,7 +273,11 @@ export async function saveListing(
     }
     if (listing.damageFlag !== undefined && !detailKept) existing.damageFlag = listing.damageFlag;
 
-    if (listing.damageParts && listing.damageParts.length > 0) {
+    if (
+      listing.damageParts &&
+      listing.damageParts.length > 0 &&
+      listing.damageParts.length >= (existing.damageParts?.length ?? 0)
+    ) {
       existing.damageParts = listing.damageParts;
     }
     if (listing.location) existing.location = listing.location;
@@ -235,6 +290,7 @@ export async function saveListing(
           if (value !== undefined && value !== null && value !== "") existing.set(`features.${key}`, value);
         }
       }
+      if (listing.features.avgFuelConsumption) existing.set("features.avgFuelConsumptionSource", "listing");
     }
     existing.listingUrl = listing.listingUrl || existing.listingUrl;
     existing.source = listing.sourceSite;
@@ -287,13 +343,23 @@ export async function saveListing(
       }
     }
 
-    await existing.save();
+    try {
+      await existing.save();
+    } catch (error) {
+      // Kimlik alias'ı başka bir paralel iş aynı anda kanonikleştirdiyse parti durmasın.
+      if ((error as { code?: number })?.code === 11000) return "unchanged";
+      throw error;
+    }
     return statusReactivated ? "reactivated" : "updated";
   }
 
   if (!(listing.price > 0)) {
     return "skipped";
   }
+  if (isPlaceholder(listing.brand) || isPlaceholder(listing.model) || isPlaceholder(listing.title)) return "skipped";
+  // Kaynakta yıl bulunamadığında bazı adaptörler güncel yılı yalnızca placeholder olarak verir. Böyle bir
+  // kayıt eklenmesin; mevcut araçta ise yukarıdaki doğrulanmış yıl korunur.
+  if (!hasValidYear || listing.yearVerified === false) return "skipped";
 
   // Yeni Otokoç/Otoplus ilanı: liste sayfası tek fotoğraf ve şablon açıklama verir; galeri,
   // teknik bilgi ve tramer için ilan sayfası da okunur. Okunamazsa ilan yine eklenir ve
@@ -319,17 +385,27 @@ export async function saveListing(
     return "skipped";
   }
 
-  await Car.create({
-    ...toCreate,
-    source: listing.sourceSite,
-    priceHistory: [{ price: listing.price, recordedAt: now }],
-    lastVerifiedAt: now,
-    lastVerifyAttemptAt: now,
-    detailCheckedAt,
-    featuresVerifiedAt: (listing.confirmedFeatures?.length ?? 0) > 0 ? now : undefined,
-    verifiedFeatures: listing.confirmedFeatures?.length ? listing.confirmedFeatures : undefined,
-    vehicleClass,
-  });
+  try {
+    await Car.create({
+      ...toCreate,
+      features: {
+        ...toCreate.features,
+        ...(toCreate.features.avgFuelConsumption ? { avgFuelConsumptionSource: "listing" as const } : {}),
+      },
+      source: listing.sourceSite,
+      priceHistory: [{ price: listing.price, recordedAt: now }],
+      lastVerifiedAt: now,
+      lastVerifyAttemptAt: now,
+      detailCheckedAt,
+      featuresVerifiedAt: (listing.confirmedFeatures?.length ?? 0) > 0 ? now : undefined,
+      verifiedFeatures: listing.confirmedFeatures?.length ? listing.confirmedFeatures : undefined,
+      vehicleClass,
+    });
+  } catch (error) {
+    // Aynı ilan iki eşzamanlı taramada görünürse unique index yarışı işi tüm partiyle düşürmesin.
+    if ((error as { code?: number })?.code === 11000) return "unchanged";
+    throw error;
+  }
   return "inserted";
 }
 
@@ -799,7 +875,7 @@ export async function runSparseMarketSegmentScrape(
   maxListings = 500
 ): Promise<ScrapeJobResult> {
   const groups = await Car.aggregate<{
-    _id: { brand: string; model: string; year: number };
+    _id: { brand: string; model: string; year: number; vehicleClass: string };
     prices: number[];
   }>([
     {
@@ -812,7 +888,7 @@ export async function runSparseMarketSegmentScrape(
     },
     {
       $group: {
-        _id: { brand: "$brand", model: "$model", year: "$year" },
+        _id: { brand: "$brand", model: "$model", year: "$year", vehicleClass: { $ifNull: ["$vehicleClass", "otomobil"] } },
         prices: { $push: "$price" },
       },
     },
@@ -837,19 +913,20 @@ export async function runSparseMarketSegmentScrape(
 
   // Arama model AİLESİ sayfasında yapılır ("toyota-corolla" + yıl filtresi). Eskiden donanım adıyla
   // ("toyota-corolla-1-6-vision") arandığı için sayfa çözülmüyor ve çoğu segment için hiç ilan gelmiyordu.
-  const familyTargets = new Map<string, { brand: string; model: string; years: Set<number> }>();
+  const familyTargets = new Map<string, { brand: string; model: string; vehicleClass: string; years: Set<number> }>();
   const allowedSegmentKeys = new Set<string>();
-  const segmentsForInvalidation: Array<{ brand: string; model: string; year: number }> = [];
+  const segmentsForInvalidation: Array<{ brand: string; model: string; year: number; vehicleClass: string }> = [];
   for (const segment of sparseSegments) {
-    const targetKey = `${segment.brand}::${segment.familyKey}`;
+    const targetKey = `${segment.brand}::${segment.vehicleClass}::${segment.familyKey}`;
     const existing = familyTargets.get(targetKey) || {
       brand: segment.brand,
       model: segment.model,
+      vehicleClass: segment.vehicleClass,
       years: new Set<number>(),
     };
     existing.years.add(segment.year);
     familyTargets.set(targetKey, existing);
-    allowedSegmentKeys.add(`${segment.brand}::${segment.familyKey}::${segment.year}`);
+    allowedSegmentKeys.add(`${segment.brand}::${segment.vehicleClass}::${segment.familyKey}::${segment.year}`);
     segmentsForInvalidation.push(segment);
   }
 
@@ -859,7 +936,8 @@ export async function runSparseMarketSegmentScrape(
   const onListing = async (listing: ScrapedListing) => {
     const normalized = normalizeBrandModel(listing.brand, listing.model);
     const familyKey = modelFamilyKey(normalized.model, normalized.brand);
-    if (!allowedSegmentKeys.has(`${normalized.brand}::${familyKey}::${listing.year}`)) return;
+    const vehicleClass = vehicleClassOf({ brand: normalized.brand, model: normalized.model, title: listing.title, bodyType: listing.features?.bodyType, sourceCategory: listing.sourceCategory });
+    if (!allowedSegmentKeys.has(`${normalized.brand}::${vehicleClass}::${familyKey}::${listing.year}`)) return;
     const result = await saveListing(listing);
     counter.add(result);
     if (result !== "skipped" && sampleVehicles.length < 20) {
@@ -953,33 +1031,57 @@ export interface QueueClaim {
 export const verifyClaimId = () => `${os.hostname()}:${process.pid}`;
 
 /** Bu süreçte alınmış kuyruk kilitlerini bırakır (parti bitince, Ctrl+C'de). */
-export async function releaseVerifyClaims(by: string): Promise<void> {
-  await Car.updateMany({ verifyClaimBy: by }, { $unset: { verifyClaimUntil: 1, verifyClaimBy: 1 } }, { timestamps: false }).catch(() => {});
+export async function releaseVerifyClaims(by: string, processClaims = false): Promise<void> {
+  const ownerFilter = processClaims
+    ? { $regex: `^${by.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?::|$)` }
+    : by;
+  await Car.updateMany({ verifyClaimBy: ownerFilter }, { $unset: { verifyClaimUntil: 1, verifyClaimBy: 1 } }, { timestamps: false }).catch(() => {});
 }
 
 export async function pickArabamRefreshQueue(limit: number, now = new Date(), claim?: QueueClaim): Promise<QueueRow[]> {
+  const targetLimit = Math.max(0, Math.min(10_000, Math.floor(Number.isFinite(limit) ? limit : 0)));
+  if (targetLimit === 0) return [];
   const cooldown = new Date(now.getTime() - LIFECYCLE.attemptCooldownMs);
   const picked: QueueRow[] = [];
   const take = async (pool: QueueRow["pool"], conditions: Record<string, unknown>[], sort: Record<string, 1 | -1>, max: number) => {
     if (max <= 0) return;
-    const rows = await Car.find({
-      $and: [
-        { sourceSite: "arabam", listingUrl: { $nin: ["", null] } },
-        { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
-        // Başka bir doğrulayıcının (süresi dolmamış) kilitli ilanlarını alma.
-        { $or: [{ verifyClaimUntil: { $exists: false } }, { verifyClaimUntil: { $lt: now } }] },
-        { _id: { $nin: picked.map((p) => p._id) } },
-        ...conditions,
-      ],
-    })
-      .sort(sort)
-      .limit(max)
-      .select("_id listingUrl status lastVerifiedAt")
-      .lean<QueueRow[]>();
-    picked.push(...rows.map((row) => ({ ...row, pool })));
+    const queueSort = { ...sort, _id: 1 as const };
+    while (picked.filter((row) => row.pool === pool).length < max) {
+      const filter = {
+        $and: [
+          { sourceSite: "arabam", listingUrl: { $nin: ["", null] } },
+          { $or: [{ lastVerifyAttemptAt: { $exists: false } }, { lastVerifyAttemptAt: { $lt: cooldown } }] },
+          // Başka bir doğrulayıcının (süresi dolmamış) kilitli ilanlarını alma.
+          { $or: [{ verifyClaimUntil: { $exists: false } }, { verifyClaimUntil: null }, { verifyClaimUntil: { $lt: now } }] },
+          { _id: { $nin: picked.map((row) => row._id) } },
+          ...conditions,
+        ],
+      };
+      let row: QueueRow | null;
+      if (claim) {
+        // Sıralı bulma ve kilitleme tek MongoDB işleminde: iki süreç aynı adayı okuyup
+        // birbirinin lease'ini ezemez. Kilit yarışını kaybeden süreç sonraki adaya geçer.
+        row = await Car.findOneAndUpdate(
+          filter,
+          { $set: { verifyClaimUntil: new Date(now.getTime() + claim.leaseMs), verifyClaimBy: claim.by } },
+          { sort: queueSort, new: true, timestamps: false }
+        )
+          .select("_id listingUrl status lastVerifiedAt")
+          .lean<QueueRow | null>();
+      } else {
+        const rows = await Car.find(filter)
+          .sort(queueSort)
+          .limit(1)
+          .select("_id listingUrl status lastVerifiedAt")
+          .lean<QueueRow[]>();
+        row = rows[0] || null;
+      }
+      if (!row) break;
+      picked.push({ ...row, pool });
+    }
   };
 
-  await take("recheck", [{ status: "removed" }, { needsRecheck: true }], { removedAt: -1 }, Math.ceil(limit * 0.25));
+  await take("recheck", [{ status: "removed" }, { needsRecheck: true }], { removedAt: -1 }, Math.min(targetLimit, Math.ceil(targetLimit * 0.25)));
   await take(
     "missing",
     [
@@ -988,16 +1090,9 @@ export async function pickArabamRefreshQueue(limit: number, now = new Date(), cl
       { $expr: { $lt: [{ $ifNull: ["$lastVerifiedAt", new Date(0)] }, "$sitemapMissingSince"] } },
     ],
     { lastVerifiedAt: 1 },
-    Math.ceil(limit * 0.25)
+    Math.min(targetLimit - picked.length, Math.ceil(targetLimit * 0.25))
   );
-  await take("stale", [{ status: "active" }], { lastVerifiedAt: 1 }, limit - picked.length);
-  if (claim && picked.length > 0) {
-    await Car.updateMany(
-      { _id: { $in: picked.map((p) => p._id) } },
-      { $set: { verifyClaimUntil: new Date(now.getTime() + claim.leaseMs), verifyClaimBy: claim.by } },
-      { timestamps: false }
-    );
-  }
+  await take("stale", [{ status: "active" }], { lastVerifiedAt: 1 }, targetLimit - picked.length);
   return picked;
 }
 
@@ -1025,7 +1120,7 @@ export async function runPriceRefresh(
   options: PriceRefreshOptions = {}
 ): Promise<ScrapeJobResult> {
   // Parti boyunca bu ilanlar bu süreç adına kilitlenir: başka bir makinede (ör. laptop) aynı anda çalışan doğrulayıcı aynı ilanları almaz.
-  const by = verifyClaimId();
+  const by = `${verifyClaimId()}:${randomUUID()}`;
   const queue = await pickArabamRefreshQueue(limit, new Date(), { by, leaseMs: Math.max(30 * 60_000, limit * 15_000) });
   try {
     options.onLine?.(`  📋 Bu partinin sırası (${queue.length} ilan): ${describeQueueMix(queueMix(queue))}`);

@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     }
 
     const { lists, meta, available, unavailable } = await loadFavorites(authUser.userId);
-    const marketMap = await getMarketMap(available.map((car) => ({ brand: car.brand, model: car.model, year: car.year })));
+    const marketMap = await getMarketMap(available.map((car) => ({ brand: car.brand, model: car.model, year: car.year, vehicleClass: car.vehicleClass })));
     // unavailable: yayından kalkmış/satılmış favoriler için yalnızca başlık+küçük fotoğraf (ayrıntı yok).
     return NextResponse.json(
       { favorites: attachMarketToCars(available, marketMap), unavailable, lists, meta },

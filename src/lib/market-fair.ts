@@ -78,6 +78,7 @@ type FairCandidate = DealInput & {
   _id: unknown;
   brand: string;
   model: string;
+  vehicleClass?: string;
   market?: { fairAt?: Date; fp?: number } | null;
 };
 
@@ -98,7 +99,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
       { $expr: { $ne: ["$market.fp", "$price"] } },
     ],
   })
-    .select("brand model year mileage price damageFlag paintChange title description market.fairAt market.fp")
+    .select("brand model year mileage price vehicleClass damageFlag paintChange title description market.fairAt market.fp")
     // Sıralama yok: Atlas sıralamayı bellekte (32 MB) yapıyor, açıklamalarla birlikte 27 bin ilan sığmıyordu.
     // Sıra önemsiz: bu turda kalanlar bir sonraki saatte seçilir.
     .limit(limit)
@@ -128,6 +129,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
         try {
           const prediction = await predictPrice(car.brand, car.model, car.year, car.mileage, conditionOf(car), car.title, {
             modelFromDb: true,
+            vehicleClass: car.vehicleClass || "otomobil",
           });
           fields = fairFields(car, prediction.predictedPrice, prediction.sampleSize);
         } catch {
@@ -172,6 +174,7 @@ interface LiveFairInput extends DealInput {
   _id: unknown;
   brand: string;
   model: string;
+  vehicleClass?: string;
   status?: string;
   market?: { fair?: number; fp?: number } | null;
 }
@@ -186,7 +189,7 @@ export async function liveFairValue(car: LiveFairInput) {
   const prediction = await cached(
     `predict:${car.brand}|${car.model}|${car.year}|${Math.round(car.mileage / 20000)}|${condition}|${(car.title ?? "").slice(0, 30)}`,
     CACHE_TTL.medium,
-    () => predictPrice(car.brand, car.model, car.year, car.mileage, condition, car.title)
+    () => predictPrice(car.brand, car.model, car.year, car.mileage, condition, car.title, { vehicleClass: car.vehicleClass || "otomobil" })
   );
   const fields = prediction.sampleSize >= MIN_MARKET_COMPARABLES
     ? fairFields(car, prediction.predictedPrice, prediction.sampleSize)

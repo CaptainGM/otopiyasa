@@ -2,18 +2,24 @@ import { ListingSource } from "@/types";
 
 export interface ScrapedListing {
   externalId: string;
+  /** Önceki kaynak kimlikleri; mevcut kaydı güvenle eşleyip yeni kimliğe taşımak için. */
+  identityAliases?: string[];
   sourceSite: ListingSource;
   listingUrl: string;
   title: string;
   brand: string;
   model: string;
   year: number;
+  /** false: kaynak bu yıl değerini vermedi, parser yalnızca geçici tahmin üretti. */
+  yearVerified?: boolean;
   price: number;
   mileage: number;
   city: string;
   
   address?: string;
   description: string;
+  /** true ise kaynak sayfasındaki gerçek satıcı açıklaması; şablon metinler mevcut açıklamayı ezmez. */
+  descriptionVerified?: boolean;
   imageUrl: string;
   images?: string[];
   damageFlag?: boolean;
@@ -39,6 +45,7 @@ export interface ScrapedListing {
     horsepower?: number;
     drivetrain?: string;
     avgFuelConsumption?: string;
+    avgFuelConsumptionSource?: "listing" | "model-median";
     fuelTank?: string;
     topSpeed?: number;
     acceleration?: number;
@@ -63,10 +70,16 @@ export interface CrawlReport {
   error?: string;
   /** Kaynağın kendi bildirdiği toplam (biliniyorsa). */
   expectedTotal?: number;
+  /** Detay uç noktası 404/410 ile doğruladığı ilanlar; sitemap geç güncellense de yok kanıtıdır. */
+  verifiedGone?: Array<{ externalId: string; reason: string }>;
+  /** Kaynak listede görülen, ancak eksik/şüpheli verisi nedeniyle yazılmayan ilan kimlikleri. */
+  observedIds?: Set<string>;
+  /** Kimliği çıkarılamayan kartlar: bu taramada hiçbir eski ilanı arşivleme. */
+  unsafeOmissions?: number;
 }
 
 export function newCrawlReport(): CrawlReport {
-  return { pages: 0, endedNaturally: false };
+  return { pages: 0, endedNaturally: false, observedIds: new Set<string>() };
 }
 
 export interface ScrapeAdapter {

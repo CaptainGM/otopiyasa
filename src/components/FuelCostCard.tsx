@@ -2,7 +2,7 @@ import type { FuelCost } from "@/lib/fuel-cost";
 
 const tl = (n: number, digits = 2) => n.toLocaleString("tr-TR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-/** İlanın km başına yakıt maliyeti: resmi tüketim × ilanın ilindeki güncel pompa fiyatı (şarjlı hibritte elektrik de eklenir). */
+/** İlanın km başına yakıt maliyeti: ilan, emsal veya tahmini tüketim × ilindeki güncel pompa fiyatı. */
 export function FuelCostCard({ cost }: { cost: FuelCost }) {
   const tone =
     cost.rating === "low"
@@ -20,6 +20,11 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
   });
   const plug = cost.plugIn;
   const electric = cost.electric;
+  const consumptionLabel = cost.consumptionSource === "ilan"
+    ? "İlan sayfasındaki ortalama tüketim"
+    : cost.consumptionSource === "model"
+      ? "Emsal araçların tüketim medyanı"
+      : "Tahmini ortalama tüketim";
 
   return (
     <section className={`rounded-2xl border p-4 ${tone}`} aria-label="Yakıt maliyeti">
@@ -63,7 +68,8 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
             )}
           </p>
           <p className="mt-2 text-xs text-slate-400">
-            Benzin: resmi {cost.consumption.toLocaleString("tr-TR")} lt/100 km × {cost.priceFuel} {tl(cost.pricePerLiter)} ₺/lt ={" "}
+            Benzin: {consumptionLabel.toLocaleLowerCase("tr-TR")} {cost.consumption.toLocaleString("tr-TR")} lt/100 km
+            {cost.consumptionNote ? ` (${cost.consumptionNote})` : ""} × {cost.priceFuel} {tl(cost.pricePerLiter)} ₺/lt ={" "}
             {tl(plug.fuelPer100Km, 0)} ₺. Elektrik: {plug.electricKwhPer100} kWh/100 km × {tl(plug.homePricePerKwh, 1)} ₺/kWh (ev) ={" "}
             {tl(plug.electricPer100Km, 0)} ₺. Halka açık AC şarj ~{tl(plug.publicPricePerKwh, 1)} ₺/kWh alındı.
           </p>
@@ -74,8 +80,8 @@ export function FuelCostCard({ cost }: { cost: FuelCost }) {
       ) : (
         <>
           <p className="mt-2 text-xs text-slate-400">
-            Resmi ortalama tüketim {cost.consumption.toLocaleString("tr-TR")} lt/100 km
-            {cost.consumptionSource !== "ilan" ? ` (${cost.consumptionNote || "aynı modelin resmi değeri"})` : ""} × {cost.priceFuel}{" "}
+            {consumptionLabel} {cost.consumption.toLocaleString("tr-TR")} lt/100 km
+            {cost.consumptionNote ? ` (${cost.consumptionNote})` : ""} × {cost.priceFuel}{" "}
             {tl(cost.pricePerLiter)} ₺/lt
             {cost.priceFuel === "LPG" ? " (LPG'de tüketim ~%20 fazla hesaplandı)" : ""}.
           </p>

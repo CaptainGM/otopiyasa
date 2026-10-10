@@ -24,6 +24,9 @@ class MarketGauge extends StatelessWidget {
         return c.fair;
       case MarketBand.pricey:
         return c.pricey;
+      case MarketBand.invalid:
+        // Olası veri hatası: renkli bir "pahalı" uyarısı yerine nötr gri.
+        return c.faint;
     }
   }
 

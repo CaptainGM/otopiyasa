@@ -1,6 +1,7 @@
 import type { Types } from "mongoose";
 import { Car } from "@/models/Car";
 import { SourceSyncState } from "@/models/SourceSyncState";
+import { randomUUID } from "crypto";
 import { enrichListing } from "@/lib/scraper/adapters";
 import { createSaveCounter, saveListing } from "@/lib/scraper/run-scrape";
 import { scrapeVavaCarsListings } from "@/lib/scraper/vavacars";
@@ -12,6 +13,7 @@ import { dodExternalIdFromUrl, fetchDodCarUrls, scrapeDodDetails } from "@/lib/s
 import { verifySingleListing } from "@/lib/scraper/verify-listing";
 import {
   archiveListings,
+  breakerTripped,
   inventoryLooksTrustworthy,
   markSeenAlive,
   recordMissing,
@@ -74,6 +76,23 @@ export interface ReconcileResult {
   durationMs: number;
 }
 
+const RECONCILE_LEASE_MS = 2 * 60 * 60 * 1000;
+
+async function claimReconcileLease(source: ReconcileSource, now: Date): Promise<string | null> {
+  const owner = String(process.pid) + ":" + randomUUID();
+  try {
+    const state = await SourceSyncState.findOneAndUpdate(
+      { source, $or: [{ leaseUntil: { $exists: false } }, { leaseUntil: null }, { leaseUntil: { $lt: now } }] },
+      { $set: { leaseUntil: new Date(now.getTime() + RECONCILE_LEASE_MS), leaseOwner: owner }, $setOnInsert: { source } },
+      { upsert: true, new: true }
+    ).select("leaseOwner").lean<{ leaseOwner?: string }>();
+    return state?.leaseOwner === owner ? owner : null;
+  } catch (error) {
+    if ((error as { code?: number })?.code === 11000) return null;
+    throw error;
+  }
+}
+
 async function crawlInventory(
   source: ReconcileSource,
   onListing: (listing: ScrapedListing) => Promise<void>,
@@ -124,19 +143,36 @@ async function crawlDodInventory(
   for (const id of byId.keys()) seen.add(id);
 
   const known = await Car.find({ sourceSite: "dod", externalId: { $in: [...byId.keys()] } })
-    .select("externalId status lastVerifiedAt")
-    .lean<Array<{ externalId: string; status: string; lastVerifiedAt?: Date }>>();
+    .select("externalId status lastVerifiedAt lastVerifyAttemptAt")
+    .lean<Array<{ externalId: string; status: string; lastVerifiedAt?: Date; lastVerifyAttemptAt?: Date }>>();
   const knownIds = new Set(known.map((k) => k.externalId));
   const fresh = [...byId.keys()].filter((id) => !knownIds.has(id)).slice(0, DOD_NEW_LIMIT);
   const returned = known.filter((k) => k.status === "removed").slice(0, DOD_NEW_LIMIT).map((k) => k.externalId);
   const stale = known
     .filter((k) => k.status === "active")
-    .sort((a, b) => (a.lastVerifiedAt ? +new Date(a.lastVerifiedAt) : 0) - (b.lastVerifiedAt ? +new Date(b.lastVerifiedAt) : 0))
+    .sort((a, b) => {
+      const aAt = a.lastVerifyAttemptAt || a.lastVerifiedAt;
+      const bAt = b.lastVerifyAttemptAt || b.lastVerifiedAt;
+      return (aAt ? +new Date(aAt) : 0) - (bAt ? +new Date(bAt) : 0);
+    })
     .slice(0, DOD_REFRESH_LIMIT)
     .map((k) => k.externalId);
 
   const items = [...fresh, ...returned, ...stale].map((externalId) => ({ externalId, url: byId.get(externalId) as string }));
-  await scrapeDodDetails(items, onListing);
+  await scrapeDodDetails(
+    items,
+    onListing,
+    (externalId, reason) => {
+      seen.delete(externalId);
+      (report.verifiedGone ||= []).push({ externalId, reason });
+    },
+    (externalId) =>
+      Car.updateOne(
+        { sourceSite: "dod", externalId, status: "active" },
+        { $set: { lastVerifyAttemptAt: new Date() } },
+        { timestamps: false }
+      ).then(() => undefined)
+  );
 }
 
 export async function reconcileSource(
@@ -149,13 +185,30 @@ export async function reconcileSource(
   const report = newCrawlReport();
   const seen = new Set<string>();
   const counter = createSaveCounter();
+  const leaseOwner = await claimReconcileLease(source, now);
+  if (!leaseOwner) {
+    return {
+      source,
+      status: "incomplete",
+      message: "Bu kaynağın envanter taraması başka bir süreçte sürüyor; bu tur atlandı.",
+      seen: 0,
+      inserted: 0,
+      updated: 0,
+      reactivated: 0,
+      archived: 0,
+      markedMissing: 0,
+      durationMs: Date.now() - started,
+    };
+  }
 
-  log(`🔎 [${source.toUpperCase()}] Tam envanter taraması başladı...`);
   try {
+    log("🔎 [" + source.toUpperCase() + "] Tam envanter taraması başladı...");
+    try {
     await crawlInventory(
       source,
       async (listing) => {
         seen.add(listing.externalId);
+        listing.identityAliases?.forEach((alias) => seen.add(alias));
         counter.add(await saveListing(listing, { markVerified: false }));
       },
       report,
@@ -164,18 +217,20 @@ export async function reconcileSource(
   } catch (err) {
     report.error = err instanceof Error ? err.message : String(err);
   }
+  for (const externalId of report.observedIds || []) seen.add(externalId);
 
   const activeDocs = await Car.find({ sourceSite: source, status: "active" })
-    .select("_id externalId listingUrl sourceSite missingSince missingChecks")
-    .lean<Array<{ _id: Types.ObjectId; externalId: string; listingUrl: string; sourceSite: string; missingSince?: Date; missingChecks?: number }>>();
+    .select("_id externalId listingUrl sourceSite missingSince missingChecks lastVerifyAttemptAt lastVerifiedAt")
+    .lean<Array<{ _id: Types.ObjectId; externalId: string; listingUrl: string; sourceSite: string; missingSince?: Date; missingChecks?: number; lastVerifyAttemptAt?: Date; lastVerifiedAt?: Date }>>();
 
   // Görülen ilanlar tarama yarıda kalsa bile "canlı teyit edildi" sayılır.
   await markSeenAlive(activeDocs.filter((d) => seen.has(d.externalId)).map((d) => d._id), now);
 
   const { counts } = counter;
+  const verifiedGoneById = new Map((report.verifiedGone || []).map((entry) => [entry.externalId, entry.reason]));
   const base = {
     source,
-    seen: seen.size,
+    seen: seen.size + verifiedGoneById.size,
     inserted: counts.inserted,
     updated: counts.updated,
     reactivated: counts.reactivated,
@@ -188,7 +243,7 @@ export async function reconcileSource(
   ): Promise<ReconcileResult> => {
     const result: ReconcileResult = { ...base, status, message, archived, markedMissing, durationMs: Date.now() - started };
     await SourceSyncState.findOneAndUpdate(
-      { source },
+      { source, leaseOwner },
       {
         $set: {
           lastRunAt: now,
@@ -204,42 +259,71 @@ export async function reconcileSource(
           markedMissing,
           durationMs: result.durationMs,
         },
+        $unset: { leaseUntil: 1, leaseOwner: 1 },
       },
-      { upsert: true }
+      { upsert: false }
     ).catch(() => {});
     log(`${status === "ok" ? "✅" : "⚠️"} [${source.toUpperCase()}] ${message}`);
     return result;
   };
 
-  const summary = `Envanterde ${seen.size} ilan (${report.pages} sayfa); yeni ${counts.inserted}, güncellenen ${counts.updated}, arşivden dönen ${counts.reactivated}.`;
-  if (!report.endedNaturally || report.error) {
+  const summary = `Envanterde ${seen.size + verifiedGoneById.size} ilan (${report.pages} sayfa); yeni ${counts.inserted}, güncellenen ${counts.updated}, arşivden dönen ${counts.reactivated}.`;
+  const incompleteReason = report.error || ((report.unsafeOmissions || 0) > 0 ? report.unsafeOmissions + " kimliksiz/ayırt edilemeyen kart" : "son sayfaya ulaşılamadı");
+  if (!report.endedNaturally || report.error || (report.unsafeOmissions || 0) > 0) {
     return finish(
       "incomplete",
-      `${summary} Tarama tamamlanamadı (${report.error || "son sayfaya ulaşılamadı"}); kaynakta yok kararı verilmedi.`
+      summary + " Tarama güvenli biçimde tamamlanmadı (" + incompleteReason + "); kaynakta yok kararı verilmedi."
     );
   }
 
-  const notSeen = activeDocs.filter((d) => !seen.has(d.externalId));
-  const trust = inventoryLooksTrustworthy(activeDocs.length, seen.size, notSeen.length);
+  const notSeen = activeDocs
+    .filter((d) => !seen.has(d.externalId) && !verifiedGoneById.has(d.externalId))
+    .sort((a, b) => {
+      const aAt = a.lastVerifyAttemptAt || a.lastVerifiedAt;
+      const bAt = b.lastVerifyAttemptAt || b.lastVerifiedAt;
+      return (aAt ? +new Date(aAt) : 0) - (bAt ? +new Date(bAt) : 0);
+    });
+  const trust = inventoryLooksTrustworthy(activeDocs.length, seen.size + verifiedGoneById.size, notSeen.length);
   if (!trust.ok) {
     return finish("breaker", `${summary} Güvenlik freni: ${trust.reason}`);
   }
 
   // Detay sayfası anlamlı kaynaklarda kayıp ilanın kendi sayfasına da bak:
   // 404 ya da ilan numarası kaybolan yönlendirme → güçlü kanıt, hemen arşiv.
-  const strongGone: Array<{ id: Types.ObjectId; reason: string }> = [];
+  const strongGone: Array<{ id: Types.ObjectId; reason: string }> = activeDocs.flatMap((doc) => {
+    const reason = verifiedGoneById.get(doc.externalId);
+    return reason ? [{ id: doc._id, reason: "DOD: " + reason }] : [];
+  });
+  const confirmedAlive: Types.ObjectId[] = [];
+  let probeChecked = 0;
+  let probeAlive = 0;
   const weak = [...notSeen];
   if (PROBE_SOURCES.has(source) && notSeen.length > 0) {
     const toProbe = notSeen.slice(0, PROBE_LIMITS[source] ?? 40);
     for (const doc of toProbe) {
       const result = await verifySingleListing(doc);
+      probeChecked++;
       if (result.status === "gone" || result.status === "redirected") {
         strongGone.push({ id: doc._id, reason: result.reason });
+        weak.splice(weak.indexOf(doc), 1);
+      } else if (result.status === "active") {
+        probeAlive++;
+        confirmedAlive.push(doc._id);
         weak.splice(weak.indexOf(doc), 1);
       }
       await new Promise((r) => setTimeout(r, 800));
     }
   }
+
+  if (strongGone.length > 0 && breakerTripped(probeChecked, strongGone.length, probeAlive)) {
+    for (const gone of strongGone) {
+      const doc = notSeen.find((candidate) => candidate._id.equals(gone.id));
+      if (doc && !weak.includes(doc)) weak.push(doc);
+    }
+    strongGone.length = 0;
+    log("[" + source.toUpperCase() + "] İlan sayfası doğrulama freni devrede; kaldırılma sonuçları bu turda beklemeye alındı.");
+  }
+  await markSeenAlive(confirmedAlive, now);
 
   let archived = 0;
   for (const g of strongGone) {
@@ -254,6 +338,13 @@ export async function reconcileSource(
     archived,
     missing.marked
   );
+  } finally {
+    await SourceSyncState.updateOne(
+      { source, leaseOwner },
+      { $unset: { leaseUntil: 1, leaseOwner: 1 } },
+      { timestamps: false }
+    ).catch(() => {});
+  }
 }
 
 /** Sırası gelmiş (en çok gecikmiş) kaynak; yoksa null. */

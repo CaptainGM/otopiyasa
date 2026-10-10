@@ -23,6 +23,7 @@ import { Car } from "@/models/Car";
 import { modelFamilyRegex } from "@/lib/model-family";
 import { isRealListPage, isRequestedModelPage, lastSlug, type QuotaOutcome } from "@/lib/scraper/model-page";
 import { isPermanentRemoval } from "@/lib/scraper/feature-merge";
+import { normalizeVehicleTransmission } from "@/lib/vehicle-attrs";
 
 export type { QuotaOutcome } from "@/lib/scraper/model-page";
 
@@ -57,8 +58,17 @@ async function mapPool<T>(
 
 export function enrichListing(listing: ScrapedListing): ScrapedListing {
   const resolvedCover = resolveCarImage(listing.brand, listing.features.bodyType, listing.imageUrl);
+  const transmission = normalizeVehicleTransmission(listing.features.transmission, {
+    brand: listing.brand,
+    model: listing.model,
+    title: listing.title,
+  });
   return {
     ...listing,
+    features: {
+      ...listing.features,
+      ...(transmission ? { transmission } : {}),
+    },
     imageUrl: resolvedCover,
     images: Array.from(
       new Set([resolvedCover, ...(listing.images || []).filter(Boolean)])

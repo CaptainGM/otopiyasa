@@ -101,8 +101,7 @@ export async function scrapeVavaCarsListings(
 
     if (skipExisting) {
       const externalIds = itemsToProcess
-        .map((it) => (it.vehiclePurchaseId ? `vavacars-${it.vehiclePurchaseId}` : null))
-        .filter((id): id is string => !!id);
+        .flatMap((it) => [it.id, it.vehiclePurchaseId?.toString()].filter((id): id is string => !!id).map((id) => `vavacars-${id}`));
 
       if (externalIds.length > 0) {
         const existing = new Set(
@@ -114,8 +113,8 @@ export async function scrapeVavaCarsListings(
         );
 
         itemsToProcess = itemsToProcess.filter((it) => {
-          const id = it.vehiclePurchaseId ? `vavacars-${it.vehiclePurchaseId}` : null;
-          return !id || !existing.has(id);
+          const ids = [it.id, it.vehiclePurchaseId?.toString()].filter((id): id is string => !!id).map((id) => `vavacars-${id}`);
+          return !ids.some((id) => existing.has(id));
         });
       }
     }
@@ -123,6 +122,15 @@ export async function scrapeVavaCarsListings(
     for (const item of itemsToProcess) {
       if (fetched >= limit) break;
 
+      const purchaseId = item.vehiclePurchaseId;
+      const externalId = item.id ? `vavacars-${item.id}` : purchaseId ? `vavacars-${purchaseId}` : "";
+      const identityAliases = purchaseId && externalId !== `vavacars-${purchaseId}` ? [`vavacars-${purchaseId}`] : undefined;
+      if (!externalId) {
+        if (report) report.unsafeOmissions = (report.unsafeOmissions || 0) + 1;
+        continue;
+      }
+      report?.observedIds?.add(externalId);
+      identityAliases?.forEach((id) => report?.observedIds?.add(id));
       const rawBrand = (item.make || "").trim();
       const rawModel = (item.model || "").trim();
       const brand = normalizeBrand(rawBrand);
@@ -131,8 +139,6 @@ export async function scrapeVavaCarsListings(
       const price = Number(item.price) || 0;
       if (price < 50000) continue; // Mantıksız veya sıfır fiyatları ele
 
-      const purchaseId = item.vehiclePurchaseId;
-      const externalId = purchaseId ? `vavacars-${purchaseId}` : `vavacars-${item.id}`;
       const listingUrl = vavaListingUrl(item);
 
       const year = Number(item.year) || new Date().getFullYear();
@@ -153,12 +159,14 @@ export async function scrapeVavaCarsListings(
 
       const listing: ScrapedListing = {
         externalId,
+        identityAliases,
         sourceSite: "vavacars",
         listingUrl,
         title,
         brand,
         model: rawModel,
         year,
+        yearVerified: Number(item.year) > 0,
         price,
         mileage,
         city,

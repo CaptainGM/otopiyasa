@@ -1,11 +1,13 @@
 import { marketPosition, type MarketBand } from "@/lib/market-position";
 
-/** Bant renkleri: şüpheli ucuz kırmızı (uyarı), ucuz yeşil, adil mavi, pahalı mercan. */
+/** Bant renkleri: şüpheli ucuz kırmızı (uyarı), ucuz yeşil, adil mavi, pahalı mercan, veri hatası gri. */
 export const BAND_COLOR: Record<MarketBand, string> = {
   suspicious: "var(--danger)",
   cheap: "var(--cheap)",
   fair: "var(--fair)",
   pricey: "var(--pricey)",
+  // Olası veri hatası: renkli bir "pahalı" uyarısı yerine nötr gri (kullanıcıyı yanlış yönlendirmesin).
+  invalid: "var(--faint)",
 };
 
 /**

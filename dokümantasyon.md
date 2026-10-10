@@ -39,7 +39,7 @@ ve her ilan orijinal kaynağına bağlantı verir.
 | UI kütüphanesi | React 19 | Bileşen tabanlı arayüz |
 | Stil | Tailwind CSS v4 | Utility-first CSS, açık/koyu tema |
 | Veritabanı | MongoDB + Mongoose | Doküman tabanlı veri modeli (araç, kullanıcı, teklif, vb.) |
-| Barındırma (DB) | MongoDB Atlas (M0, ücretsiz katman, Frankfurt) | Canlı veritabanı |
+| Barındırma (DB) | MongoDB Atlas Flex (5 GB, ücretsiz katman, Frankfurt) | Canlı veritabanı |
 | Kimlik doğrulama | JWT (`jose`) + `bcryptjs` + httpOnly cookie | Oturum yönetimi, şifre hash'leme |
 | Grafik | Recharts | Fiyat geçmişi, histogram, trend grafikleri |
 | Harita | Leaflet + react-leaflet | İlan konumları, il/ilçe bazlı pinler |
@@ -48,7 +48,7 @@ ve her ilan orijinal kaynağına bağlantı verir.
 | Tarayıcı bildirimi | `web-push` (VAPID) | Sekme kapalıyken bile tarayıcı bildirimi |
 | Mobil bildirim | `firebase-admin` (FCM) | Uygulama tamamen kapalıyken Android bildirimi |
 | Yapay zeka | Google Gemini API (`gemini-flash-lite-latest`) | Chatbot, ilan/fotoğraf denetimi, karşılaştırma özeti |
-| Test | Vitest | Birim testleri (373 test / 44 dosya) |
+| Test | Vitest | Birim testleri (845 test / 103 dosya) |
 | Deploy | Vercel | Web + API sunucusuz barındırma |
 | Domain | Namecheap (GitHub Student Pack) | `otopiyasa.app` |
 
@@ -262,10 +262,18 @@ yazılmıştır (yoklama tabanlı bildirim her koşulda çalışır).
 
 ## 8. Test & Kalite
 
-- **373 birim testi / 44 test dosyası** (Vitest) — scraper parser'ları, ilan yaşam döngüsü ve arşiv kuralları, doğrulama sınıflandırıcıları, regresyon/istatistik yardımcıları, güvenlik yardımcıları, chatbot niyet ayrıştırma vb.
-- **Flutter test** — model/birim testleri, `flutter analyze` ile statik analiz.
-- **TypeScript** — `tsc --noEmit` ile tüm proje tip güvenliği.
-- **CI** — henüz kurulu değil (planlanan: her push'ta tip kontrolü + Vitest + Flutter analyze/test).
+- **845 birim testi / 103 test dosyası** (Vitest) — scraper parser'ları, ilan yaşam döngüsü ve arşiv kuralları, doğrulama sınıflandırıcıları, regresyon/istatistik yardımcıları, güvenlik yardımcıları, chatbot niyet ayrıştırma vb.
+- **Flutter test** — saf birim testleri (9 dosya: kart görsel adresi, hasar metni, veri tasarrufu, derin bağlantı, zorunlu güncelleme eşiği, cihaz mimarisi, göreli zaman), `flutter analyze` ile statik analiz. Bu testler yerel makinede çalıştırılamadı (Flutter SDK takıldı); doğrulama CI'da yapılır.
+- **TypeScript** — `tsc --noEmit` ile tüm proje tip güvenliği (sıfır hata).
+- **Lint** — `eslint` 0 hata; kurulum yalnızca uyarı üretir (ağırlıklı `no-explicit-any`, kazıyıcı ayrıştırıcılarında).
+- **CI** — `.github/workflows/ci.yml` kurulu ve etkin: her `main` push'unda ve her PR'da
+  `tsc --noEmit` + `eslint` + Vitest (web işi) ile `flutter analyze` + `flutter test` (mobil işi)
+  çalışır. Ayrıca `.github/workflows/mobile-release.yml` her `mobile/**` push'unda APK derleyip
+  GitHub Release olarak yayınlar (sürüm kodu otomatik artar, imza SHA-256'ya karşı doğrulanır).
+  Kırılan koşular (11 Ekim 2026 ölçümü): CI iş akışında toplam 5 başarısız koşu var — 3'ü hâlâ
+  açık olan Dependabot Flutter paket güncelleme PR'ında (mobil işi gerçekten başarısız), 2'si
+  `main` dalında **iptal edilmiş** koşular (5 Ekim, test başarısızlığı değil). Son `main`
+  koşuları yeşildir.
 
 ---
 
@@ -273,22 +281,24 @@ yazılmıştır (yoklama tabanlı bildirim her koşulda çalışır).
 
 | Metrik | Sayı |
 |---|---|
-| Next.js sayfası | 21 |
-| API route'u | 50 |
-| React bileşeni | 70 |
-| `src/lib` iş mantığı modülü | 67 |
-| Mongoose veri modeli | 11 |
-| Birim testi | 319 (37 dosya) |
-| Flutter dosyası | 36 (16 ekran) |
+| Next.js sayfası | 25 |
+| API route'u | 91 |
+| React bileşeni | 105 |
+| `src/lib` iş mantığı modülü | 152 |
+| Mongoose veri modeli | 27 |
+| Birim testi | 845 (103 dosya) |
+| Web kod satırı (ts/tsx) | ~54.200 |
+| Flutter dosyası | 65 (23 ekran) |
+| Mobil kod satırı (dart) | ~19.100 |
 
 ---
 
 ## 10. Deploy & Altyapı Özeti
 
 - **Web/API**: Vercel, `fra1` (Frankfurt) bölgesi — MongoDB Atlas ile aynı bölge (gecikmeyi azaltmak için).
-- **Veritabanı**: MongoDB Atlas M0 (ücretsiz katman, 512MB), Frankfurt.
+- **Veritabanı**: MongoDB Atlas Flex (5 GB), Frankfurt.
 - **Domain**: `otopiyasa.app` (Namecheap, GitHub Student Pack üzerinden alındı).
-- **Kaynak kontrol**: özel (private) GitHub deposu, CI etkin.
+- **Kaynak kontrol**: herkese açık (public) GitHub deposu; CI etkin (bkz. Bölüm 8).
 - **Yerel geliştirme**: `start.bat` ile tek tıkla sunucu, `scrape.bat` ile tek tıkla veri toplama.
 
 ---
@@ -305,7 +315,7 @@ kararlardır**:
 - **Detaylı harita hassasiyeti sınırlı** — ilçe düzeyinde koordinat yalnızca İstanbul ve İzmir için elle girildi; diğer illerde il merkezine gruplanır (uydurma dağıtım yapılmaz, dürüst gösterim tercih edildi).
 - **Üst hız/0-100/güvenlik donanımı kataloğu boş** — veri alanları modelde hazır ama güvenilir/ücretsiz bir Türkiye-pazarı veri kaynağı bulunamadığı için doldurulmadı.
 - **Arabam bulut ortamından otomatik taranamıyor** — Cloudflare koruması nedeniyle Arabam yalnızca Türkiye ev IP'sinden ve gerçek tarayıcıyla taranabiliyor; diğer 7 kaynak tam otonom (bkz. Bölüm 5).
-- **Tek, ücretsiz katman veritabanı** — MongoDB Atlas M0 (512MB); büyük ölçekte yükseltme gerekecek bir mimari sınır olarak biliniyor.
+- **Tek, ücretsiz katman veritabanı** — MongoDB Atlas Flex (5 GB); büyük ölçekte yükseltme gerekecek bir mimari sınır olarak biliniyor.
 - **Mobil kapalıyken bildirim (FCM)** — kod tarafı tam hazır; sunucu tarafı Firebase servis hesabı anahtarının canlıya eklenmesi bu oturumda tamamlanıyor (bkz. proje ilerleme notları).
 
 ---

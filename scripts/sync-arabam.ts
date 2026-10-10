@@ -190,7 +190,7 @@ async function main() {
       console.log(`  💾 İlerleme (~${currentOffset.toLocaleString("tr-TR")}. ilan) kaydedildi. Tekrar açtığında buradan devam edecek.`);
     }
     await syncLogToDB("partial");
-    await releaseVerifyClaims(verifyClaimId()); // bu makinenin aldığı ama bitirmediği ilanlar başka doğrulayıcıya açılır
+    await releaseVerifyClaims(verifyClaimId(), true); // bu makinenin aldığı ama bitirmediği ilanlar başka doğrulayıcıya açılır
     console.log(`  ✅ Durum veritabanına işlendi. Terminal kapatılabilir.\n`);
     process.exit(0);
   };

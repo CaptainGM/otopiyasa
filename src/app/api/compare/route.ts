@@ -31,11 +31,11 @@ export async function GET(request: Request) {
 
     const excludedListingIds = docs.map((car) => new Types.ObjectId(car._id.toString()));
     const marketMap = await getMarketMap(
-      docs.map((c) => ({ brand: c.brand, model: c.model, year: c.year })),
+      docs.map((c) => ({ brand: c.brand, model: c.model, year: c.year, vehicleClass: c.vehicleClass })),
       excludedListingIds
     );
     const serialized = docs.map((d) =>
-      serializeCarPublic(d, marketMap.get(segmentKey(d.brand, d.model, d.year)))
+      serializeCarPublic(d, marketMap.get(segmentKey(d.brand, d.model, d.year, d.vehicleClass)))
     );
 
     // Sonuçları kullanıcının verdiği ID sırasına göre diz (sütun sırası sabit kalsın)

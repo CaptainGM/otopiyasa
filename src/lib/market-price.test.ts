@@ -34,7 +34,7 @@ describe("piyasa ortalaması örnek sayısı", () => {
       { brand: "Mazda", model: "B2500", year: 1998, prices },
       { brand: "Honda", model: "CR-V", year: 2011, prices: [900_000, 1_000_000, 1_100_000, 20_000_000] },
     ])).toEqual([
-      { brand: "Mazda", model: "B2500", familyKey: "b2500", year: 1998, hiddenListings: 3, listingCount: 2 },
+      { brand: "Mazda", model: "B2500", familyKey: "b2500", year: 1998, vehicleClass: "otomobil", hiddenListings: 3, listingCount: 2 },
     ]);
   });
 
@@ -47,7 +47,7 @@ describe("piyasa ortalaması örnek sayısı", () => {
     ]);
     // Corolla 2015 ailesinde 3 emsal var: ortalaması gösterilir, taranmaz.
     expect(result).toEqual([
-      { brand: "Nissan", model: "Juke", familyKey: "juke", year: 2021, hiddenListings: 1, listingCount: 1 },
+      { brand: "Nissan", model: "Juke", familyKey: "juke", year: 2021, vehicleClass: "otomobil", hiddenListings: 1, listingCount: 1 },
     ]);
   });
 
@@ -68,7 +68,7 @@ describe("piyasa ortalaması örnek sayısı", () => {
 
     expect(aggregate).toHaveBeenCalledOnce();
     expect(aggregate.mock.calls[0][0][0].$match._id.$nin).toEqual([excluded]);
-    expect(result.get("Toyota::Corolla::2020")).toMatchObject({
+    expect(result.get("Toyota::Corolla::2020::otomobil")).toMatchObject({
       avgPrice: 1_000_000,
       listingCount: 3,
       scope: "model",
@@ -84,8 +84,10 @@ describe("piyasa ortalaması örnek sayısı", () => {
 
     const result = await getMarketMap([{ brand: "Toyota", model: "Corolla 1.6 Vision", year: 2015 }], [new Types.ObjectId()]);
 
-    expect(aggregate.mock.calls[0][0][0].$match.$or).toEqual([{ brand: "Toyota", year: 2015 }]);
-    expect(result.get("Toyota::Corolla 1.6 Vision::2015")).toMatchObject({
+    expect(aggregate.mock.calls[0][0][0].$match.$or).toEqual([
+      { brand: "Toyota", year: 2015, $or: [{ vehicleClass: "otomobil" }, { vehicleClass: { $exists: false } }] },
+    ]);
+    expect(result.get("Toyota::Corolla 1.6 Vision::2015::otomobil")).toMatchObject({
       avgPrice: 720_000,
       listingCount: 3,
       scope: "family",
@@ -98,7 +100,7 @@ describe("piyasa ortalaması örnek sayısı", () => {
       { _id: { brand: "Mazda", model: "B2500", year: 1998 }, prices: [400_000, 420_000], listingCount: 2 },
     ]);
     const result = await getMarketMap([{ brand: "Mazda", model: "B2500", year: 1998 }], [new Types.ObjectId()]);
-    expect(result.get("Mazda::B2500::1998")).toMatchObject({ avgPrice: 0, listingCount: 2 });
+    expect(result.get("Mazda::B2500::1998::otomobil")).toMatchObject({ avgPrice: 0, listingCount: 2 });
   });
 });
 

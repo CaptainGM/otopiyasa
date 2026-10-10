@@ -142,8 +142,12 @@ export async function scrapeOtoplusListings(
 
       const idMatch = (v.url || "").match(/(\d+)$/);
       // Kimliksiz kayıt her taramada yeni bir ilan gibi eklenirdi (Date.now() kimliği) → atla.
-      if (!idMatch) continue;
+      if (!idMatch) {
+        if (report) report.unsafeOmissions = (report.unsafeOmissions || 0) + 1;
+        continue;
+      }
       const extId = `otoplus-${idMatch[1]}`;
+      report?.observedIds?.add(extId);
       const rawBrand = v.brand?.name || v.manufacturer?.name || "";
       const brand = normalizeBrand(rawBrand);
       if (!brand || isNonCarBrand(brand)) continue;
@@ -179,6 +183,7 @@ export async function scrapeOtoplusListings(
         brand,
         model,
         year,
+        yearVerified: Number(v.vehicleModelDate || v.productionDate) > 0,
         price,
         mileage,
         city,

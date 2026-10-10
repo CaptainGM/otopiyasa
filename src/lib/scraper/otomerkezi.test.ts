@@ -77,7 +77,8 @@ describe("parseOtomerkeziListHtml (RSC payload)", () => {
 
     expect(listings).toHaveLength(1);
     const listing = listings[0];
-    expect(listing.externalId).toBe("2022-renault-express-2384");
+    expect(listing.externalId).toBe("2022-renault-express");
+    expect(listing.identityAliases).toEqual(["2022-renault-express-2384"]);
     expect(listing.brand).toBe("Renault");
     expect(listing.model).toBe("Express");
     expect(listing.price).toBe(689000);
@@ -135,6 +136,15 @@ describe("parseOtomerkeziListHtml", () => {
     expect(listing.city).toBe("İstanbul");
     expect(listing.features.fuelType).toBe("Benzin");
     expect(listing.features.transmission).toBe("Otomatik");
+    expect(listing.identityAliases).toBeUndefined();
+  });
+
+  it("eski fotoğraf kimliğini slug kimliğine geçiş için alias olarak saklar", () => {
+    const withPhotoId = JSON.parse(JSON.stringify(sampleItem));
+    withPhotoId.item.image = ["https://asset.otomerkezi.net/car-photo/98765_main.jpeg"];
+    const listing = parseOtomerkeziListHtml(pageWith([withPhotoId]))[0];
+    expect(listing.externalId).toBe("2023-volkswagen-polo");
+    expect(listing.identityAliases).toEqual(["2023-volkswagen-polo-98765"]);
   });
 
   it("fiyatı olmayan öğeleri atlar", () => {

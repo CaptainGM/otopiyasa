@@ -156,16 +156,19 @@ function rscVehicleToListing(vehicle: RscVehicle): ScrapedListing | null {
   const dealer = vehicle.dealerLocation || "";
   const engineSize = parseFloat((vehicle.specs?.engineSize || "").replace(",", "."));
 
-  const externalId = vehicle.id ? `${vehicle.slug}-${vehicle.id}` : vehicle.slug;
+  const externalId = vehicle.slug;
+  const legacyId = vehicle.id ? `${vehicle.slug}-${vehicle.id}` : undefined;
 
   return {
     externalId,
+    identityAliases: legacyId ? [legacyId] : undefined,
     sourceSite: "otomerkezi",
     listingUrl: `https://www.otomerkezi.net/ikinci-el/araba/${vehicle.slug}`,
     title: titleFromDescription(description, vehicle.name || vehicle.model || ""),
     brand: normalizeBrand(vehicle.brand || "Bilinmiyor"),
     model: titleCase(vehicle.model || "Model"),
     year: vehicle.year || new Date().getFullYear() - 3,
+    yearVerified: Number(vehicle.year) > 0,
     price: vehicle.pricePerDay,
     mileage: vehicle.mileage ?? mileageFromDescription(description),
     
@@ -197,16 +200,20 @@ export function isOtomerkeziEmptyInventory(html: string): boolean {
 }
 
 export function parseOtomerkeziListHtml(html: string): ScrapedListing[] {
+  return parseOtomerkeziListPage(html).listings;
+}
 
-  const rscListings = extractRscVehicles(html)
-    .map(rscVehicleToListing)
-    .filter((listing): listing is ScrapedListing => listing !== null);
-  if (rscListings.length > 0) return rscListings;
+function parseOtomerkeziListPage(html: string): { listings: ScrapedListing[]; unsafeOmissions: number } {
+  const vehicles = extractRscVehicles(html);
+  if (vehicles.length > 0) {
+    const listings = vehicles.map(rscVehicleToListing).filter((listing): listing is ScrapedListing => listing !== null);
+    return { listings, unsafeOmissions: vehicles.length - listings.length };
+  }
 
   return parseOtomerkeziLdJson(html);
 }
 
-function parseOtomerkeziLdJson(html: string): ScrapedListing[] {
+function parseOtomerkeziLdJson(html: string): { listings: ScrapedListing[]; unsafeOmissions: number } {
   const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
 
   let items: { url?: string; item?: LdItem }[] = [];
@@ -223,13 +230,20 @@ function parseOtomerkeziLdJson(html: string): ScrapedListing[] {
   }
 
   const listings: ScrapedListing[] = [];
+  let unsafeOmissions = 0;
   for (const entry of items) {
     const item = entry.item;
     const url = item?.url || entry.url;
-    if (!item || !url || !item.offers?.price) continue;
+    if (!item || !url || !item.offers?.price) {
+      unsafeOmissions++;
+      continue;
+    }
 
     const slug = url.split("/").filter(Boolean).pop();
-    if (!slug) continue;
+    if (!slug) {
+      unsafeOmissions++;
+      continue;
+    }
 
     const rawBrand = item.brand?.name || "Bilinmiyor";
     const rawModel = item.model || "";
@@ -243,16 +257,19 @@ function parseOtomerkeziLdJson(html: string): ScrapedListing[] {
       const match = item.image[0].match(/\/(\d{3,8})_/);
       if (match) photoId = match[1];
     }
-    const externalId = photoId ? `${slug}-${photoId}` : slug;
+    const externalId = slug;
+    const legacyId = photoId ? `${slug}-${photoId}` : undefined;
 
     listings.push({
       externalId,
+      identityAliases: legacyId ? [legacyId] : undefined,
       sourceSite: "otomerkezi",
       listingUrl: url,
       title: titleFromDescription(description, item.name || rawModel),
       brand: normalizeBrand(rawBrand),
       model: titleCase(modelWithoutBrand || rawModel || "Model"),
       year: Number(item.productionDate) || new Date().getFullYear() - 3,
+      yearVerified: Number(item.productionDate) > 0,
       price: item.offers.price,
       mileage: mileageFromDescription(description),
       city: item.offers.seller?.address?.addressLocality || "Türkiye",
@@ -271,7 +288,7 @@ function parseOtomerkeziLdJson(html: string): ScrapedListing[] {
     });
   }
 
-  return listings;
+  return { listings, unsafeOmissions };
 }
 
 export async function scrapeOtomerkeziListings(
@@ -299,7 +316,11 @@ export async function scrapeOtomerkeziListings(
     }
     if (report) report.pages += 1;
 
-    const pageListings = parseOtomerkeziListHtml(result.html);
+    const parsedPage = parseOtomerkeziListPage(result.html);
+    const pageListings = parsedPage.listings;
+    if (report && parsedPage.unsafeOmissions > 0) {
+      report.unsafeOmissions = (report.unsafeOmissions || 0) + parsedPage.unsafeOmissions;
+    }
     if (pageListings.length === 0) {
       if (page === 1 && isOtomerkeziEmptyInventory(result.html)) {
         // Kaynak şu an hiç ilan göstermiyor. "Tamamlandı" sayılmaz: kaynakta var olan ilanlar toplu "kayıp" işaretlenmesin,

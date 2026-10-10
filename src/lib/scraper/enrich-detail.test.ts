@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyTramer, mergeDetailIntoListing, parseOtokocDetail, parseOtoplusDetail, shouldReplaceFuel } from "./enrich-detail";
+import { classifyTramer, mergeDetailIntoListing, parseOtokocDetail, parseOtoplusDetail, shouldReplaceDetailDescription, shouldReplaceFuel } from "./enrich-detail";
 import type { ScrapedListing } from "./types";
 
 const otokocHtml = (opts: { tramer?: string; paint?: string; images?: string[]; fuel?: string; volume?: string } = {}) => {
@@ -149,6 +149,23 @@ describe("mergeDetailIntoListing", () => {
   it("daha az fotoğraf gelirse mevcut galeriyi küçültmez", () => {
     const merged = mergeDetailIntoListing({ ...base, images: ["a", "b", "c"] }, { images: ["a"] });
     expect(merged.images).toEqual(["a", "b", "c"]);
+  });
+
+  it("kısa açıklama ve hasar listesi mevcut detaydan daha zayıfsa korur", () => {
+    const merged = mergeDetailIntoListing(
+      { ...base, description: "Satıcının araç hakkındaki uzun açıklaması ve önemli bilgiler.", damageParts: [{ name: "Kaput", state: "Boyalı" }, { name: "Kapı", state: "Değişen" }] },
+      { description: "Araç iyi.", damageParts: [{ name: "Kaput", state: "Boyalı" }] }
+    );
+    expect(merged.description).toBe("Satıcının araç hakkındaki uzun açıklaması ve önemli bilgiler.");
+    expect(merged.damageParts).toHaveLength(2);
+  });
+});
+
+describe("shouldReplaceDetailDescription", () => {
+  it("boş açıklamayı doldurur ama belirgin kısalmada kayıtlı metni korur", () => {
+    expect(shouldReplaceDetailDescription("", "Yeni açıklama")).toBe(true);
+    expect(shouldReplaceDetailDescription("Bu daha uzun açıklama", "Kısa")).toBe(false);
+    expect(shouldReplaceDetailDescription("Önceki açıklama", "Yeni açıklama")).toBe(true);
   });
 });
 

@@ -14,11 +14,14 @@ export interface BrandModelOptions {
 }
 
 /** Web'deki marka+model filtresi ve mobil `/api/filters/brand-models` uç noktası ortak kaynağı kullansın diye çıkarıldı. */
-export async function getBrandModelOptions(): Promise<BrandModelOptions> {
-  return cached("filters:brandModels:v5", CACHE_TTL.long, async () => {
+export async function getBrandModelOptions(vehicleClass?: string | null): Promise<BrandModelOptions> {
+  const classFilter = vehicleClass
+    ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass }
+    : {};
+  return cached(`filters:brandModels:v6:${vehicleClass || "all"}`, CACHE_TTL.long, async () => {
     await connectDB();
     const rows = await Car.aggregate<{ _id: string; models: string[] }>([
-      { $match: { ...PUBLIC_LISTING_FILTER, model: { $exists: true, $ne: "" } } },
+      { $match: { ...PUBLIC_LISTING_FILTER, ...classFilter, model: { $exists: true, $ne: "" } } },
       { $group: { _id: "$brand", models: { $addToSet: "$model" } } },
     ]);
     const brandModels: Record<string, string[]> = {};

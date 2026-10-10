@@ -31,7 +31,7 @@ export default async function FavoritesPage() {
     meta = result.meta;
     if (result.available.length > 0) {
       const marketMap = await getMarketMap(
-        result.available.map((car) => ({ brand: car.brand, model: car.model, year: car.year }))
+        result.available.map((car) => ({ brand: car.brand, model: car.model, year: car.year, vehicleClass: car.vehicleClass }))
       );
       favorites = attachMarketToCars(result.available, marketMap);
     }

@@ -13,7 +13,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     if (!Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Araç bulunamadı." }, { status: 404 });
     await connectDB();
     const car = await Car.findById(id)
-      .select("brand model title city features.fuelType features.bodyType features.engineSize features.avgFuelConsumption")
+      .select("brand model title city features.fuelType features.bodyType features.engineSize features.avgFuelConsumption features.avgFuelConsumptionSource")
       .lean<FuelCostInput | null>();
     if (!car) return NextResponse.json({ error: "Araç bulunamadı." }, { status: 404 });
     // Herkes için aynı; pompa fiyatı saatlik yenilendiği için 1 saat CDN'de.

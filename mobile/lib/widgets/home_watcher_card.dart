@@ -522,7 +522,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          _tile('Kontrol', _n(today['checked'])),
+                          _tile('Deneme', _n(today['checked'])),
                           const SizedBox(width: 6),
                           _tile('Canlı', _n(today['alive']), color: _emerald),
                           const SizedBox(width: 6),

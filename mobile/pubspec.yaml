@@ -35,22 +35,22 @@ dependencies:
   intl: ^0.20.2
   shared_preferences: ^2.5.5
   fl_chart: ^1.2.0
-  url_launcher: ^6.3.2
+  url_launcher: ^6.3.3
   # İlan verirken fotoğraf seçmek için (galeri/kamera)
   image_picker: ^1.1.2
   # Seçilen fotoğrafı yüklemeden önce küçültmek için — web tarafı da 1280px'e
   # indirip data: URI olarak gönderiyor, mobil aynı biçimi kullanmalı.
-  image: ^4.2.0
+  image: ^4.10.2
   # Harita — OpenStreetMap tabanlı, API anahtarı GEREKTİRMEZ (Google Maps
   # aksine). Web tarafı da aynı Carto döşemelerini kullanıyor.
-  flutter_map: ^7.0.2
-  latlong2: ^0.9.1
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
   # Yerel bildirim: teklif/soru geldiğinde uygulama açıkken/arka plandayken
   # bildirim düşürür. (Uygulama tamamen kapalıyken bildirim için Firebase
   # Cloud Messaging gerekir — ayrı bir hesap/kurulum işi.)
-  flutter_local_notifications: ^18.0.1
-  firebase_core: ^4.12.1
-  firebase_messaging: ^16.4.3
+  flutter_local_notifications: ^22.3.1
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
   # İlan paylaşma (WhatsApp vb.) — web'deki ShareButton'ın karşılığı.
   share_plus: ^11.0.0
   # "Yakınımdaki ilanlar" için cihaz konumu — Google Maps'in aksine API

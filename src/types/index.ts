@@ -10,6 +10,7 @@ export interface CarFeatures {
   
   drivetrain?: string; 
   avgFuelConsumption?: string; 
+  avgFuelConsumptionSource?: "listing" | "model-median";
   fuelTank?: string; 
 
   topSpeed?: number; 
@@ -56,6 +57,7 @@ export interface Car {
   rejectionReason?: string;
 
   status?: "active" | "sold" | "removed";
+  vehicleClass?: string;
   /** Kaynağa gidilip ilanın yayında olduğunun son teyit edildiği an. */
   lastVerifiedAt?: string;
   /** Kaynaktan kaldırıldığı tespit edilip arşive taşındığı an. */
@@ -90,6 +92,7 @@ export type CarListItem = Pick<
   | "price"
   | "mileage"
   | "city"
+  | "vehicleClass"
   | "imageUrl"
   | "damageFlag"
   | "sourceSite"
@@ -131,6 +134,8 @@ export interface CarFilters {
   transmission?: string;
   /** Araç tipi (bkz. lib/vehicle-scope.ts VEHICLE_CLASSES). */
   vehicleClass?: string;
+  /** Yalnızca olağan dışı fiyatı olduğu daha önce doğrulanmış ilanları gizle. */
+  excludeOutliers?: boolean;
   sort?: "mixed" | "price_asc" | "price_desc" | "year_desc" | "newest" | "views" | "deal";
   discountOnly?: boolean;
   /** Yalnızca "Haftanın fırsatları" ölçütündeki ilanlar (bkz. lib/market-fair.ts isDealCandidate). */

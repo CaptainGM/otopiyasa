@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { DiscoveryCandidate } from "@/models/DiscoveryCandidate";
 import { Car } from "@/models/Car";
 import { enrichListing, fetchArabamByHrefs } from "@/lib/scraper/adapters";
@@ -28,7 +29,8 @@ export interface DiscoveryResult {
 }
 
 async function runPacedBrowserDiscovery(
-  batch: Array<{ _id: unknown; externalId: string; url: string; attempts: number }>
+  batch: Array<{ _id: unknown; externalId: string; url: string; attempts: number }>,
+  claimBy: string
 ): Promise<DiscoveryResult> {
   let picked = 0;
   let inserted = 0;
@@ -40,7 +42,7 @@ async function runPacedBrowserDiscovery(
     const externalId = `arabam-${candidate.externalId}`;
     const alreadySaved = await Car.exists({ sourceSite: "arabam", externalId });
     if (alreadySaved) {
-      await DiscoveryCandidate.deleteOne({ _id: candidate._id });
+      await DiscoveryCandidate.deleteOne({ _id: candidate._id, claimBy });
       continue;
     }
 
@@ -53,11 +55,11 @@ async function runPacedBrowserDiscovery(
       failed++;
       const attempts = candidate.attempts + 1;
       if (attempts >= MAX_ATTEMPTS) {
-        await DiscoveryCandidate.deleteOne({ _id: candidate._id });
+        await DiscoveryCandidate.deleteOne({ _id: candidate._id, claimBy });
         dropped++;
       } else {
         await DiscoveryCandidate.updateOne(
-          { _id: candidate._id },
+          { _id: candidate._id, claimBy },
           { $set: { attempts, lastAttemptAt: new Date() } }
         );
       }
@@ -72,7 +74,7 @@ async function runPacedBrowserDiscovery(
     }
 
     if (page.status === 404 || page.status === 410 || isListingGone(page.html, page.finalUrl)) {
-      await DiscoveryCandidate.deleteOne({ _id: candidate._id });
+      await DiscoveryCandidate.deleteOne({ _id: candidate._id, claimBy });
       dropped++;
       continue;
     }
@@ -82,11 +84,11 @@ async function runPacedBrowserDiscovery(
       failed++;
       const attempts = candidate.attempts + 1;
       if (attempts >= MAX_ATTEMPTS) {
-        await DiscoveryCandidate.deleteOne({ _id: candidate._id });
+        await DiscoveryCandidate.deleteOne({ _id: candidate._id, claimBy });
         dropped++;
       } else {
         await DiscoveryCandidate.updateOne(
-          { _id: candidate._id },
+          { _id: candidate._id, claimBy },
           { $set: { attempts, lastAttemptAt: new Date() } }
         );
       }
@@ -97,17 +99,17 @@ async function runPacedBrowserDiscovery(
       const result = await saveListing(enrichListing(listing));
       const saved = await Car.exists({ sourceSite: "arabam", externalId: listing.externalId });
       if (saved) {
-        await DiscoveryCandidate.deleteOne({ _id: candidate._id });
+        await DiscoveryCandidate.deleteOne({ _id: candidate._id, claimBy });
         if (result === "inserted") inserted++;
       } else {
         failed++;
         const attempts = candidate.attempts + 1;
         if (attempts >= MAX_ATTEMPTS) {
-          await DiscoveryCandidate.deleteOne({ _id: candidate._id });
+          await DiscoveryCandidate.deleteOne({ _id: candidate._id, claimBy });
           dropped++;
         } else {
           await DiscoveryCandidate.updateOne(
-            { _id: candidate._id },
+            { _id: candidate._id, claimBy },
             { $set: { attempts, lastAttemptAt: new Date() } }
           );
         }
@@ -116,11 +118,11 @@ async function runPacedBrowserDiscovery(
       failed++;
       const attempts = candidate.attempts + 1;
       if (attempts >= MAX_ATTEMPTS) {
-        await DiscoveryCandidate.deleteOne({ _id: candidate._id });
+        await DiscoveryCandidate.deleteOne({ _id: candidate._id, claimBy });
         dropped++;
       } else {
         await DiscoveryCandidate.updateOne(
-          { _id: candidate._id },
+          { _id: candidate._id, claimBy },
           { $set: { attempts, lastAttemptAt: new Date() } }
         );
       }
@@ -224,48 +226,75 @@ export async function runSitemapDiscovery(
   options: { safeForWatcher?: boolean; sinceDays?: number } = {}
 ): Promise<DiscoveryResult> {
   const recentOnly = options.sinceDays && options.sinceDays > 0 ? { lastmod: { $gte: lastmodCutoff(options.sinceDays) } } : {};
-  const batch = await DiscoveryCandidate.find({ source: "arabam", attempts: { $lt: MAX_ATTEMPTS }, ...recentOnly })
-    .sort({ numericId: -1 })
-    .limit(limit)
-    .lean<Array<{ _id: unknown; externalId: string; url: string; attempts: number }>>();
+  const batchLimit = Math.max(0, Math.min(100, Math.floor(Number.isFinite(limit) ? limit : 40)));
+  if (batchLimit === 0) {
+    const remaining = await DiscoveryCandidate.countDocuments({ source: "arabam", attempts: { $lt: MAX_ATTEMPTS }, ...recentOnly });
+    return { picked: 0, inserted: 0, dropped: 0, remaining, message: "Keşif adedi sıfır; kuyruk değiştirilmedi." };
+  }
+  const now = new Date();
+  const claimBy = `${process.pid}:${randomUUID()}`;
+  const leaseMs = Math.max(2 * 60 * 60 * 1000, batchLimit * 60 * 1000);
+  const batch: Array<{ _id: unknown; externalId: string; url: string; attempts: number }> = [];
+  while (batch.length < batchLimit) {
+    const candidate = await DiscoveryCandidate.findOneAndUpdate(
+      {
+        source: "arabam",
+        attempts: { $lt: MAX_ATTEMPTS },
+        ...recentOnly,
+        $or: [{ claimUntil: { $exists: false } }, { claimUntil: null }, { claimUntil: { $lt: now } }],
+      },
+      { $set: { claimUntil: new Date(now.getTime() + leaseMs), claimBy } },
+      { sort: { numericId: -1, _id: 1 }, new: true, timestamps: false }
+    )
+      .select("_id externalId url attempts")
+      .lean<{ _id: unknown; externalId: string; url: string; attempts: number } | null>();
+    if (!candidate) break;
+    batch.push(candidate);
+  }
 
   if (batch.length === 0) {
-    return { picked: 0, inserted: 0, dropped: 0, remaining: 0, message: "Keşif kuyruğu boş." };
+    const remaining = await DiscoveryCandidate.countDocuments({ source: "arabam", attempts: { $lt: MAX_ATTEMPTS }, ...recentOnly });
+    return { picked: 0, inserted: 0, dropped: 0, remaining, message: remaining ? "Keşif kuyruğu başka bir işlem tarafından alındı." : "Keşif kuyruğu boş." };
   }
 
-  if (options.safeForWatcher) {
-    return runPacedBrowserDiscovery(batch);
+  try {
+    if (options.safeForWatcher) return await runPacedBrowserDiscovery(batch, claimBy);
+
+    const hrefs = batch.map((c) => hrefFromUrl(c.url)).filter((h): h is string => !!h);
+    const counter = createSaveCounter();
+    await fetchArabamByHrefs(hrefs, async (listing) => {
+      counter.add(await saveListing(listing));
+    });
+
+    // Kaydedilenler (artık DB'de olanlar) kuyruktan çıkar; olmayanlar bir deneme daha harcar.
+    const ids = batch.map((c) => `arabam-${c.externalId}`);
+    const present = new Set(
+      (await Car.find({ sourceSite: "arabam", externalId: { $in: ids } }).select("externalId").lean<Array<{ externalId: string }>>()).map(
+        (c) => c.externalId
+      )
+    );
+    const done = batch.filter((c) => present.has(`arabam-${c.externalId}`)).map((c) => c._id);
+    const failed = batch.filter((c) => !present.has(`arabam-${c.externalId}`)).map((c) => c._id);
+
+    if (done.length > 0) await DiscoveryCandidate.deleteMany({ _id: { $in: done }, claimBy });
+    if (failed.length > 0) {
+      await DiscoveryCandidate.updateMany(
+        { _id: { $in: failed }, claimBy },
+        { $inc: { attempts: 1 }, $set: { lastAttemptAt: new Date() } }
+      );
+    }
+    // Son denemesini de harcayanlar (araç değil / kaldırılmış) kuyruktan atılır.
+    const dropped = (await DiscoveryCandidate.deleteMany({ source: "arabam", attempts: { $gte: MAX_ATTEMPTS }, claimBy })).deletedCount || 0;
+    const remaining = await DiscoveryCandidate.countDocuments({ source: "arabam", attempts: { $lt: MAX_ATTEMPTS } });
+
+    return {
+      picked: batch.length,
+      inserted: counter.counts.inserted,
+      dropped,
+      remaining,
+      message: `Sitemap keşfi: ${batch.length} aday okundu, ${counter.counts.inserted} yeni ilan eklendi, ${dropped} aday elendi; kuyrukta ${remaining} aday kaldı.`,
+    };
+  } finally {
+    await DiscoveryCandidate.updateMany({ claimBy }, { $unset: { claimUntil: 1, claimBy: 1 } }, { timestamps: false }).catch(() => {});
   }
-
-  const hrefs = batch.map((c) => hrefFromUrl(c.url)).filter((h): h is string => !!h);
-  const counter = createSaveCounter();
-  await fetchArabamByHrefs(hrefs, async (listing) => {
-    counter.add(await saveListing(listing));
-  });
-
-  // Kaydedilenler (artık DB'de olanlar) kuyruktan çıkar; olmayanlar bir deneme daha harcar.
-  const ids = batch.map((c) => `arabam-${c.externalId}`);
-  const present = new Set(
-    (await Car.find({ sourceSite: "arabam", externalId: { $in: ids } }).select("externalId").lean<Array<{ externalId: string }>>()).map(
-      (c) => c.externalId
-    )
-  );
-  const done = batch.filter((c) => present.has(`arabam-${c.externalId}`)).map((c) => c._id);
-  const failed = batch.filter((c) => !present.has(`arabam-${c.externalId}`)).map((c) => c._id);
-
-  if (done.length > 0) await DiscoveryCandidate.deleteMany({ _id: { $in: done } });
-  if (failed.length > 0) {
-    await DiscoveryCandidate.updateMany({ _id: { $in: failed } }, { $inc: { attempts: 1 }, $set: { lastAttemptAt: new Date() } });
-  }
-  // Son denemesini de harcayanlar (araç değil / kaldırılmış) kuyruktan atılır.
-  const dropped = (await DiscoveryCandidate.deleteMany({ source: "arabam", attempts: { $gte: MAX_ATTEMPTS } })).deletedCount || 0;
-  const remaining = await DiscoveryCandidate.countDocuments({ source: "arabam", attempts: { $lt: MAX_ATTEMPTS } });
-
-  return {
-    picked: batch.length,
-    inserted: counter.counts.inserted,
-    dropped,
-    remaining,
-    message: `Sitemap keşfi: ${batch.length} aday okundu, ${counter.counts.inserted} yeni ilan eklendi, ${dropped} aday elendi; kuyrukta ${remaining} aday kaldı.`,
-  };
 }

@@ -81,7 +81,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
     // (aksi hâlde her sayfa geçişinde 8000 araç üzerinde 3 ağır sorgu koşuyordu).
     let brandModelData: { brands: string[]; brandFamilies: Record<string, string[]> };
     [brandModelData, cityOptions, colorOptions] = await Promise.all([
-      getBrandModelOptions(),
+      getBrandModelOptions(filters.vehicleClass),
       cached("home:cities", CACHE_TTL.medium, async () =>
         [...new Set(((await Car.distinct("city", PUBLIC_LISTING_FILTER)) as string[])
           .filter((c) => c && c !== "Türkiye")
@@ -127,7 +127,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
     !!filters.priceMax ||
     !!filters.fuelType ||
     !!filters.transmission ||
-    !!filters.deals;
+    !!filters.deals ||
+    filters.excludeOutliers ||
+    filters.discountOnly;
   // Fırsatlar, en çok bakılanlar, yakındakiler araç tipine göre süzülmüyor: tip seçilince gizlenir.
   const showStrips = !hasAnyFilter && !filters.vehicleClass;
 
@@ -145,7 +147,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
   if (filters.priceMin) clearQueryParams.set("priceMin", String(filters.priceMin));
   if (filters.priceMax) clearQueryParams.set("priceMax", String(filters.priceMax));
   if (filters.sort && filters.sort !== "mixed") clearQueryParams.set("sort", filters.sort);
-  if (filters.deals) clearQueryParams.set("discountOnly", "true");
+  if (filters.deals) clearQueryParams.set("firsat", "1");
+  if (filters.discountOnly) clearQueryParams.set("discountOnly", "true");
+  if (filters.excludeOutliers) clearQueryParams.set("excludeOutliers", "true");
   const clearQueryHref = clearQueryParams.size > 0 ? `/?${clearQueryParams.toString()}` : "/";
 
   const board = boardData;

@@ -70,6 +70,7 @@ class _MapScreenState extends State<MapScreen> {
   int? _minPrice;
   int? _maxPrice;
   bool _discountOnly = false;
+  bool _excludeOutliers = false;
 
   /// Bu yakınlığın altında ilçeler il bazında toplanır.
   static const double _districtZoom = 7.0;
@@ -86,28 +87,47 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _load();
-    _api.fetchBrandModels().then((data) {
-      final raw = (data['brandFamilies'] ?? data['brandModels']) as Map<String, dynamic>? ?? {};
-      if (!mounted) return;
-      setState(() {
-        _brandModels = raw.map((k, v) => MapEntry(k, (v as List<dynamic>).map((e) => e.toString()).toList()));
-      });
-    }).catchError((_) {});
+    _api
+        .fetchBrandModels()
+        .then((data) {
+          final raw =
+              (data['brandFamilies'] ?? data['brandModels'])
+                  as Map<String, dynamic>? ??
+              {};
+          if (!mounted) return;
+          setState(() {
+            _brandModels = raw.map(
+              (k, v) => MapEntry(
+                k,
+                (v as List<dynamic>).map((e) => e.toString()).toList(),
+              ),
+            );
+          });
+        })
+        .catchError((_) {});
   }
 
   bool get _hasActiveFilters =>
-      _brand != null || _model != null || _city != null || _fuel != null || _minPrice != null || _maxPrice != null || _discountOnly;
+      _brand != null ||
+      _model != null ||
+      _city != null ||
+      _fuel != null ||
+      _minPrice != null ||
+      _maxPrice != null ||
+      _discountOnly ||
+      _excludeOutliers;
 
   /// Bölge listesine de aynı filtreler gider; yoksa filtreli haritada tıklanan bölge filtresiz ilanları gösterirdi.
   Map<String, String> get _filterParams => {
-        'brand': ?_brand,
-        if (_brand != null && _model != null) 'model': _model!,
-        'city': ?_city,
-        'fuel': ?_fuel,
-        if (_minPrice != null) 'minPrice': '$_minPrice',
-        if (_maxPrice != null) 'maxPrice': '$_maxPrice',
-        if (_discountOnly) 'discountOnly': 'true',
-      };
+    'brand': ?_brand,
+    if (_brand != null && _model != null) 'model': _model!,
+    'city': ?_city,
+    'fuel': ?_fuel,
+    if (_minPrice != null) 'minPrice': '$_minPrice',
+    if (_maxPrice != null) 'maxPrice': '$_maxPrice',
+    if (_discountOnly) 'discountOnly': 'true',
+    if (_excludeOutliers) 'excludeOutliers': 'true',
+  };
 
   Future<void> _load() async {
     setState(() {
@@ -123,12 +143,17 @@ class _MapScreenState extends State<MapScreen> {
         minPrice: _minPrice,
         maxPrice: _maxPrice,
         discountOnly: _discountOnly,
+        excludeOutliers: _excludeOutliers,
       );
       if (!mounted) return;
       final options = data['options'] as Map<String, dynamic>? ?? {};
-      List<String> list(String key) => (options[key] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+      List<String> list(String key) => (options[key] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList();
       setState(() {
-        _clusters = (data['clusters'] as List<dynamic>? ?? []).whereType<Map<String, dynamic>>().toList();
+        _clusters = (data['clusters'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .toList();
         _brandOptions = list('brands');
         _cityOptions = list('cities');
         _fuelOptions = list('fuels');
@@ -153,20 +178,27 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   List<_Spot> _districtSpots() => _clusters.map((c) {
-        final count = (c['count'] as num?)?.toInt() ?? 0;
-        final provinceOnly = c['level'] == 'province' && (c['district']?.toString().isEmpty ?? true);
-        // districtLabel: sunucunun verdiği Türkçe yazılış ("Çerkezköy"); eski sunucuda yoksa ham ad.
-        final districtName = (c['districtLabel'] ?? c['district'])?.toString() ?? '';
-        return _Spot(
-          point: LatLng((c['lat'] as num?)?.toDouble() ?? 0, (c['lng'] as num?)?.toDouble() ?? 0),
-          count: count,
-          minPrice: (c['minPrice'] as num?)?.toInt() ?? 0,
-          label: districtName.isNotEmpty ? districtName : '${c['city']} (il geneli)',
-          key: c['key']?.toString() ?? '',
-          summary: false,
-          provinceOnly: provinceOnly,
-        );
-      }).toList();
+    final count = (c['count'] as num?)?.toInt() ?? 0;
+    final provinceOnly =
+        c['level'] == 'province' && (c['district']?.toString().isEmpty ?? true);
+    // districtLabel: sunucunun verdiği Türkçe yazılış ("Çerkezköy"); eski sunucuda yoksa ham ad.
+    final districtName =
+        (c['districtLabel'] ?? c['district'])?.toString() ?? '';
+    return _Spot(
+      point: LatLng(
+        (c['lat'] as num?)?.toDouble() ?? 0,
+        (c['lng'] as num?)?.toDouble() ?? 0,
+      ),
+      count: count,
+      minPrice: (c['minPrice'] as num?)?.toInt() ?? 0,
+      label: districtName.isNotEmpty
+          ? districtName
+          : '${c['city']} (il geneli)',
+      key: c['key']?.toString() ?? '',
+      summary: false,
+      provinceOnly: provinceOnly,
+    );
+  }).toList();
 
   /// İlçe kümelerini il bazında birleştirir (konum: ilan sayısına göre ağırlıklı ortalama).
   List<_Spot> _provinceSpots() {
@@ -181,7 +213,9 @@ class _MapScreenState extends State<MapScreen> {
       acc[2] += ((c['lng'] as num?)?.toDouble() ?? 0) * count;
       final price = (c['minPrice'] as num?)?.toInt() ?? 0;
       final current = minPrices[city] ?? 0;
-      if (price > 0 && (current == 0 || price < current)) minPrices[city] = price;
+      if (price > 0 && (current == 0 || price < current)) {
+        minPrices[city] = price;
+      }
     }
     return byCity.entries.where((e) => e.value[0] > 0).map((e) {
       final count = e.value[0];
@@ -202,7 +236,8 @@ class _MapScreenState extends State<MapScreen> {
   /// sonuç kaydırmada değişmez.
   List<Marker> _buildMarkers(MapCamera camera) {
     final summary = camera.zoom < _districtZoom;
-    final spots = (summary ? _provinceSpots() : _districtSpots())..sort((a, b) => b.count.compareTo(a.count));
+    final spots = (summary ? _provinceSpots() : _districtSpots())
+      ..sort((a, b) => b.count.compareTo(a.count));
     final size = summary ? _provinceSize : _districtSize;
     final placed = <Rect>[];
     final full = <Marker>[];
@@ -216,11 +251,14 @@ class _MapScreenState extends State<MapScreen> {
       Offset(-size.width * 0.75, 0),
     ];
     for (final spot in spots) {
-      final p = camera.latLngToScreenPoint(spot.point);
-      final origin = Offset(p.x, p.y);
+      final origin = camera.latLngToScreenOffset(spot.point);
       Offset? chosen;
       for (final o in offsets) {
-        final rect = Rect.fromCenter(center: origin + o, width: size.width + 6, height: size.height + 6);
+        final rect = Rect.fromCenter(
+          center: origin + o,
+          width: size.width + 6,
+          height: size.height + 6,
+        );
         if (!placed.any((r) => r.overlaps(rect))) {
           placed.add(rect);
           chosen = o;
@@ -233,7 +271,7 @@ class _MapScreenState extends State<MapScreen> {
       }
       final at = chosen == Offset.zero
           ? spot.point
-          : camera.pointToLatLng(math.Point(origin.dx + chosen.dx, origin.dy + chosen.dy));
+          : camera.screenOffsetToLatLng(origin + chosen);
       if (chosen != Offset.zero) dots.add(_dotMarker(spot, camera.zoom));
       full.add(summary ? _provinceMarker(spot, at) : _districtMarker(spot, at));
     }
@@ -253,7 +291,9 @@ class _MapScreenState extends State<MapScreen> {
       _mapController.move(me, 11);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
       }
     } finally {
       if (mounted) setState(() => _locating = false);
@@ -308,15 +348,30 @@ class _MapScreenState extends State<MapScreen> {
             color: const Color(0xF00A0F18),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: color, width: 1.5),
-            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 6)],
+            boxShadow: [
+              BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 6),
+            ],
           ),
           child: FittedBox(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(spot.label, style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700)),
-                Text('${_money.format(spot.count)} ilan',
-                    style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w900)),
+                Text(
+                  spot.label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '${_money.format(spot.count)} ilan',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: color,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ],
             ),
           ),
@@ -346,16 +401,38 @@ class _MapScreenState extends State<MapScreen> {
             color: const Color(0xF00A0F18),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: color, width: 1.5),
-            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 2))],
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: FittedBox(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(spot.label, style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700)),
-                Text('${_money.format(spot.count)} ilan',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: color)),
-                Text("${_shortPrice(spot.minPrice)} ₺'den", style: const TextStyle(fontSize: 9, color: Colors.white54)),
+                Text(
+                  spot.label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '${_money.format(spot.count)} ilan',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  "${_shortPrice(spot.minPrice)} ₺'den",
+                  style: const TextStyle(fontSize: 9, color: Colors.white54),
+                ),
               ],
             ),
           ),
@@ -365,7 +442,8 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   /// OSM karolarını gri tonlayıp ters çevirir: uygulamanın koyu temasına uyan sade altlık.
-  Widget _darkTile(BuildContext context, Widget tileWidget, TileImage tile) => ColorFiltered(
+  Widget _darkTile(BuildContext context, Widget tileWidget, TileImage tile) =>
+      ColorFiltered(
         colorFilter: const ColorFilter.matrix(<double>[
           -0.17, -0.57, -0.06, 0, 225, //
           -0.17, -0.57, -0.06, 0, 228,
@@ -400,7 +478,10 @@ class _MapScreenState extends State<MapScreen> {
               children: [
                 Text(_error!),
                 const SizedBox(height: 12),
-                FilledButton(onPressed: _load, child: const Text('Tekrar Dene')),
+                FilledButton(
+                  onPressed: _load,
+                  child: const Text('Tekrar Dene'),
+                ),
               ],
             ),
           ),
@@ -408,7 +489,10 @@ class _MapScreenState extends State<MapScreen> {
       );
     }
 
-    final total = _clusters.fold<int>(0, (sum, c) => sum + ((c['count'] as num?)?.toInt() ?? 0));
+    final total = _clusters.fold<int>(
+      0,
+      (sum, c) => sum + ((c['count'] as num?)?.toInt() ?? 0),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -427,13 +511,16 @@ class _MapScreenState extends State<MapScreen> {
                   _minPrice = null;
                   _maxPrice = null;
                   _discountOnly = false;
+                  _excludeOutliers = false;
                 });
                 _load();
               },
             ),
           IconButton(
             tooltip: 'Filtrele',
-            icon: Icon(_hasActiveFilters ? Icons.filter_alt : Icons.filter_alt_outlined),
+            icon: Icon(
+              _hasActiveFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
+            ),
             onPressed: _openFilters,
           ),
         ],
@@ -445,21 +532,35 @@ class _MapScreenState extends State<MapScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (_loading)
-                  const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5))
+                  const SizedBox(
+                    width: 10,
+                    height: 10,
+                    child: CircularProgressIndicator(strokeWidth: 1.5),
+                  )
                 else
                   Container(
                     width: 6,
                     height: 6,
-                    decoration: const BoxDecoration(color: Color(0xFF10B981), shape: BoxShape.circle),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF10B981),
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 const SizedBox(width: 6),
                 Text(
                   '${_money.format(total)} aktif ilan • ${_clusters.length} bölge',
-                  style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 if (_discountOnly) ...[
                   const SizedBox(width: 8),
-                  const Text('• İndirimli', style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B))),
+                  const Text(
+                    '• İndirimli',
+                    style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B)),
+                  ),
                 ],
               ],
             ),
@@ -477,7 +578,9 @@ class _MapScreenState extends State<MapScreen> {
               maxZoom: 16.0,
               // İki parmakla yakınlaştırma/uzaklaştırma, sürükleme ve çift dokunma açık; döndürme kapalı (iki
               // parmakla yakınlaştırırken harita istemeden dönüyordu).
-              interactionOptions: InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
+              interactionOptions: InteractionOptions(
+                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+              ),
             ),
             children: [
               // Carto'nun ücretsiz karoları artık API anahtarı istiyor ("API KEY REQUIRED" karosu
@@ -489,26 +592,40 @@ class _MapScreenState extends State<MapScreen> {
                 tileBuilder: _darkTile,
               ),
               // Kamera değiştikçe (yakınlaştırma) çakışma ayıklaması yeniden hesaplanır.
-              Builder(builder: (context) => MarkerLayer(markers: _buildMarkers(MapCamera.of(context)))),
+              Builder(
+                builder: (context) =>
+                    MarkerLayer(markers: _buildMarkers(MapCamera.of(context))),
+              ),
               if (_me != null)
-                MarkerLayer(markers: [
-                  Marker(
-                    point: _me!,
-                    width: 26,
-                    height: 26,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF3B82F6),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: const [BoxShadow(color: Color(0x663B82F6), blurRadius: 0, spreadRadius: 6)],
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _me!,
+                      width: 26,
+                      height: 26,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3B82F6),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x663B82F6),
+                              blurRadius: 0,
+                              spreadRadius: 6,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ]),
+                  ],
+                ),
               // OSM karo kullanım koşulu: kaynak belirtilmeli.
               const SimpleAttributionWidget(
-                source: Text('OpenStreetMap katkıcıları', style: TextStyle(fontSize: 10, color: Colors.white70)),
+                source: Text(
+                  'OpenStreetMap katkıcıları',
+                  style: TextStyle(fontSize: 10, color: Colors.white70),
+                ),
                 backgroundColor: Color(0x99000000),
               ),
             ],
@@ -520,7 +637,10 @@ class _MapScreenState extends State<MapScreen> {
               heroTag: 'reset_map',
               onPressed: () => _zoomInto(_turkeyCenter, _turkeyZoom),
               icon: const Text('🇹🇷', style: TextStyle(fontSize: 14)),
-              label: const Text('Tüm Türkiye', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              label: const Text(
+                'Tüm Türkiye',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
               backgroundColor: const Color(0xF00E1626),
               foregroundColor: Colors.white,
               elevation: 4,
@@ -536,7 +656,14 @@ class _MapScreenState extends State<MapScreen> {
               backgroundColor: const Color(0xF00E1626),
               foregroundColor: Colors.white,
               child: _locating
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.my_location, size: 20),
             ),
           ),
@@ -576,6 +703,7 @@ class _MapScreenState extends State<MapScreen> {
     var city = _city;
     var fuel = _fuel;
     var discountOnly = _discountOnly;
+    var excludeOutliers = _excludeOutliers;
     final minCtrl = TextEditingController(text: _minPrice?.toString() ?? '');
     final maxCtrl = TextEditingController(text: _maxPrice?.toString() ?? '');
     int? parsePrice(String s) {
@@ -587,12 +715,21 @@ class _MapScreenState extends State<MapScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF0F172A),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) => Padding(
-        padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+        ),
         child: StatefulBuilder(
           builder: (context, setSheetState) {
-            final models = brand == null ? const <String>[] : (_brandModels[brand] ?? const <String>[]);
+            final models = brand == null
+                ? const <String>[]
+                : (_brandModels[brand] ?? const <String>[]);
             return SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -601,19 +738,53 @@ class _MapScreenState extends State<MapScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Haritayı Filtrele',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white)),
-                      IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: () => Navigator.pop(context)),
+                      const Text(
+                        'Haritayı Filtrele',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white54),
+                        onPressed: () => Navigator.pop(context),
+                      ),
                     ],
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Fiyatı Düşenler', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    subtitle: const Text('Sadece indirimli fırsat araçları göster',
-                        style: TextStyle(fontSize: 12, color: Colors.white54)),
+                    title: const Text(
+                      'Fiyatı Düşenler',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Sadece indirimli fırsat araçları göster',
+                      style: TextStyle(fontSize: 12, color: Colors.white54),
+                    ),
                     value: discountOnly,
                     activeThumbColor: const Color(0xFFF59E0B),
                     onChanged: (v) => setSheetState(() => discountOnly = v),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Aykırı fiyatları gizle',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Model ailesine göre olağan dışı bulunan fiyatlar',
+                      style: TextStyle(fontSize: 12, color: Colors.white54),
+                    ),
+                    value: excludeOutliers,
+                    activeThumbColor: const Color(0xFFF59E0B),
+                    onChanged: (v) => setSheetState(() => excludeOutliers = v),
                   ),
                   const Divider(color: Colors.white10),
                   const SizedBox(height: 8),
@@ -622,8 +793,13 @@ class _MapScreenState extends State<MapScreen> {
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Marka'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('Tüm Markalar')),
-                      ..._brandOptions.map((b) => DropdownMenuItem(value: b, child: Text(b))),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Tüm Markalar'),
+                      ),
+                      ..._brandOptions.map(
+                        (b) => DropdownMenuItem(value: b, child: Text(b)),
+                      ),
                     ],
                     onChanged: (v) => setSheetState(() {
                       brand = v;
@@ -635,12 +811,24 @@ class _MapScreenState extends State<MapScreen> {
                     key: ValueKey('model-$brand'),
                     initialValue: models.contains(model) ? model : null,
                     isExpanded: true,
-                    decoration: InputDecoration(labelText: 'Model', enabled: models.isNotEmpty),
+                    decoration: InputDecoration(
+                      labelText: 'Model',
+                      enabled: models.isNotEmpty,
+                    ),
                     items: [
-                      DropdownMenuItem(value: null, child: Text(brand == null ? 'Önce marka seçin' : 'Tüm Modeller')),
-                      ...models.map((m) => DropdownMenuItem(value: m, child: Text(m))),
+                      DropdownMenuItem(
+                        value: null,
+                        child: Text(
+                          brand == null ? 'Önce marka seçin' : 'Tüm Modeller',
+                        ),
+                      ),
+                      ...models.map(
+                        (m) => DropdownMenuItem(value: m, child: Text(m)),
+                      ),
                     ],
-                    onChanged: models.isEmpty ? null : (v) => setSheetState(() => model = v),
+                    onChanged: models.isEmpty
+                        ? null
+                        : (v) => setSheetState(() => model = v),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
@@ -648,8 +836,13 @@ class _MapScreenState extends State<MapScreen> {
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Şehir'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('Tüm Şehirler')),
-                      ..._cityOptions.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Tüm Şehirler'),
+                      ),
+                      ..._cityOptions.map(
+                        (c) => DropdownMenuItem(value: c, child: Text(c)),
+                      ),
                     ],
                     onChanged: (v) => setSheetState(() => city = v),
                   ),
@@ -659,8 +852,13 @@ class _MapScreenState extends State<MapScreen> {
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Yakıt'),
                     items: [
-                      const DropdownMenuItem(value: null, child: Text('Tüm Yakıtlar')),
-                      ..._fuelOptions.map((f) => DropdownMenuItem(value: f, child: Text(f))),
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Tüm Yakıtlar'),
+                      ),
+                      ..._fuelOptions.map(
+                        (f) => DropdownMenuItem(value: f, child: Text(f)),
+                      ),
                     ],
                     onChanged: (v) => setSheetState(() => fuel = v),
                   ),
@@ -671,7 +869,10 @@ class _MapScreenState extends State<MapScreen> {
                         child: TextField(
                           controller: minCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Min fiyat (₺)', hintText: '0'),
+                          decoration: const InputDecoration(
+                            labelText: 'Min fiyat (₺)',
+                            hintText: '0',
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -679,7 +880,10 @@ class _MapScreenState extends State<MapScreen> {
                         child: TextField(
                           controller: maxCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Maks fiyat (₺)', hintText: 'Sınırsız'),
+                          decoration: const InputDecoration(
+                            labelText: 'Maks fiyat (₺)',
+                            hintText: 'Sınırsız',
+                          ),
                         ),
                       ),
                     ],
@@ -699,10 +903,14 @@ class _MapScreenState extends State<MapScreen> {
                           _minPrice = parsePrice(minCtrl.text);
                           _maxPrice = parsePrice(maxCtrl.text);
                           _discountOnly = discountOnly;
+                          _excludeOutliers = excludeOutliers;
                         });
                         _load();
                       },
-                      child: const Text('Filtreleri Uygula', style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'Filtreleri Uygula',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
                 ],
@@ -714,7 +922,12 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  void _showClusterCars(String label, String clusterKey, int count, int minPrice) {
+  void _showClusterCars(
+    String label,
+    String clusterKey,
+    int count,
+    int minPrice,
+  ) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -744,7 +957,10 @@ class _MapScreenState extends State<MapScreen> {
 
                 // Sheet Header
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 8,
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -771,10 +987,17 @@ class _MapScreenState extends State<MapScreen> {
                                 ),
                               ),
                               if (minPrice > 0) ...[
-                                const Text(' • ', style: TextStyle(color: Colors.white38)),
+                                const Text(
+                                  ' • ',
+                                  style: TextStyle(color: Colors.white38),
+                                ),
                                 Text(
                                   '${_money.format(minPrice)} ₺\'den',
-                                  style: const TextStyle(fontSize: 12, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF10B981),
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ],
                             ],
@@ -793,7 +1016,10 @@ class _MapScreenState extends State<MapScreen> {
                 // Vehicle List
                 Expanded(
                   child: FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _api.fetchMapCars(key: clusterKey, filters: _filterParams),
+                    future: _api.fetchMapCars(
+                      key: clusterKey,
+                      filters: _filterParams,
+                    ),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return const Center(child: CircularProgressIndicator());
@@ -821,21 +1047,28 @@ class _MapScreenState extends State<MapScreen> {
 
                       return ListView.separated(
                         controller: scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         itemCount: items.length,
-                        separatorBuilder: (context, i) => const SizedBox(height: 10),
+                        separatorBuilder: (context, i) =>
+                            const SizedBox(height: 10),
                         itemBuilder: (context, index) {
                           final car = items[index];
                           final id = car['_id']?.toString() ?? '';
                           final title = car['title']?.toString() ?? '';
                           final year = car['year']?.toString() ?? '';
-                          final mileage = (car['mileage'] as num?)?.toInt() ?? 0;
+                          final mileage =
+                              (car['mileage'] as num?)?.toInt() ?? 0;
                           final price = (car['price'] as num?)?.toInt() ?? 0;
                           final fuel = car['fuelType']?.toString() ?? '';
-                          final transmission = car['transmission']?.toString() ?? '';
+                          final transmission =
+                              car['transmission']?.toString() ?? '';
                           final imgUrl = car['imageUrl']?.toString() ?? '';
                           final hasDropped = car['hasDropped'] == true;
-                          final dropAmount = (car['dropAmount'] as num?)?.toInt() ?? 0;
+                          final dropAmount =
+                              (car['dropAmount'] as num?)?.toInt() ?? 0;
 
                           return InkWell(
                             onTap: () {
@@ -852,7 +1085,9 @@ class _MapScreenState extends State<MapScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1E293B).withValues(alpha: 0.6),
+                                color: const Color(
+                                  0xFF1E293B,
+                                ).withValues(alpha: 0.6),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(color: Colors.white10),
                               ),
@@ -869,12 +1104,23 @@ class _MapScreenState extends State<MapScreen> {
                                           ? Image.network(
                                               imgUrl,
                                               fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) => const Center(
-                                                child: Icon(Icons.directions_car, color: Colors.white38),
-                                              ),
+                                              errorBuilder:
+                                                  (
+                                                    context,
+                                                    error,
+                                                    stackTrace,
+                                                  ) => const Center(
+                                                    child: Icon(
+                                                      Icons.directions_car,
+                                                      color: Colors.white38,
+                                                    ),
+                                                  ),
                                             )
                                           : const Center(
-                                              child: Icon(Icons.directions_car, color: Colors.white38),
+                                              child: Icon(
+                                                Icons.directions_car,
+                                                color: Colors.white38,
+                                              ),
                                             ),
                                     ),
                                   ),
@@ -883,7 +1129,8 @@ class _MapScreenState extends State<MapScreen> {
                                   // Info
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           title,
@@ -898,25 +1145,35 @@ class _MapScreenState extends State<MapScreen> {
                                         const SizedBox(height: 3),
                                         Text(
                                           '$year • ${_money.format(mileage)} km • $fuel',
-                                          style: const TextStyle(fontSize: 11, color: Colors.white60),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.white60,
+                                          ),
                                         ),
                                         Text(
                                           transmission,
-                                          style: const TextStyle(fontSize: 10, color: Colors.white38),
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white38,
+                                          ),
                                         ),
                                         const SizedBox(height: 6),
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
                                           children: [
                                             Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
-                                                if (hasDropped && dropAmount > 0)
+                                                if (hasDropped &&
+                                                    dropAmount > 0)
                                                   Text(
                                                     '↓ ${_money.format(dropAmount)} ₺ indirim',
                                                     style: const TextStyle(
                                                       fontSize: 9,
-                                                      fontWeight: FontWeight.bold,
+                                                      fontWeight:
+                                                          FontWeight.bold,
                                                       color: Color(0xFF10B981),
                                                     ),
                                                   ),
@@ -930,7 +1187,11 @@ class _MapScreenState extends State<MapScreen> {
                                                 ),
                                               ],
                                             ),
-                                            const Icon(Icons.chevron_right, color: Colors.white38, size: 18),
+                                            const Icon(
+                                              Icons.chevron_right,
+                                              color: Colors.white38,
+                                              size: 18,
+                                            ),
                                           ],
                                         ),
                                       ],

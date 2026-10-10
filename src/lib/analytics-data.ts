@@ -2,7 +2,7 @@ import { buildBrandSummariesFromGroups } from "@/lib/brand-summaries";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { MARKET_LISTING_FILTER as PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { mergeCategoryStats, normalizeBodyType, normalizeTransmission, trustedFeatureFilter } from "@/lib/vehicle-attrs";
+import { mergeCategoryStats, normalizeBodyType, normalizeTransmission, normalizeVehicleTransmission, trustedFeatureFilter } from "@/lib/vehicle-attrs";
 
 /** Analiz sayfasının verisi (web: app/analytics/page.tsx, mobil: /api/analytics/overview). */
 /**
@@ -76,7 +76,7 @@ export const getAnalyticsData = async () => {
       // Vites Türü Dağılımı
       Car.aggregate([
         { $match: { $and: [PUBLIC_LISTING_FILTER, trustedFeatureFilter("transmission"), { "features.transmission": { $exists: true, $ne: "" } }] } },
-        { $group: { _id: "$features.transmission", count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
+        { $group: { _id: { value: "$features.transmission", brand: "$brand", model: "$model" }, count: { $sum: 1 }, avgPrice: { $avg: "$price" } } },
       ]),
 
       // Bütçe Segmentleri
@@ -145,7 +145,14 @@ export const getAnalyticsData = async () => {
       sharePct: Math.round(((f.count || 0) / totalFuelCount) * 100),
     }));
 
-    const transmissionStats = (!featureBases.transmission.gated ? mergeCategoryStats(transRaw, normalizeTransmission, 3) : []).map((t) => ({
+    const transmissionRows = transRaw.map((row: any) => ({
+      _id:
+        normalizeVehicleTransmission(row._id.value, { brand: row._id.brand, model: row._id.model }) ||
+        row._id.value,
+      count: row.count,
+      avgPrice: row.avgPrice,
+    }));
+    const transmissionStats = (!featureBases.transmission.gated ? mergeCategoryStats(transmissionRows, normalizeTransmission, 3) : []).map((t) => ({
       transmission: t.label,
       count: t.count,
       avgPrice: t.avgPrice,

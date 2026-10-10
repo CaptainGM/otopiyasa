@@ -226,6 +226,7 @@ class ApiService {
     // Araç tipi: otomobil | suv-pickup | minivan-panelvan | ticari | motosiklet | karavan (bkz. src/lib/vehicle-scope.ts)
     String? vehicleClass,
     bool discountOnly = false,
+    bool excludeOutliers = false,
     int page = 1,
     int limit = 24,
     // "Keşfet" dilimi ve dönemi (bkz. home_screen.dart _pickFeedSlot); aynı yenilemenin sayfaları aynısını kullanır.
@@ -245,6 +246,7 @@ class ApiService {
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (vehicleClass != null && vehicleClass.isNotEmpty) 'vehicleClass': vehicleClass,
         if (discountOnly) 'discountOnly': 'true',
+        if (excludeOutliers) 'excludeOutliers': 'true',
         'page': '$page',
         'limit': '$limit',
         'compact': '1',
@@ -287,9 +289,12 @@ class ApiService {
 
   /// Marka seçilince o markanın gerçek modelleriyle dolan filtre listesi —
   /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
-  Future<Map<String, dynamic>> fetchBrandModels() async {
+  Future<Map<String, dynamic>> fetchBrandModels({String? vehicleClass}) async {
     final response = await _http.get(
-      _uri('/api/filters/brand-models', {'families': '1'}),
+      _uri('/api/filters/brand-models', {
+        'families': '1',
+        if (vehicleClass != null && vehicleClass.isNotEmpty) 'vehicleClass': vehicleClass,
+      }),
       headers: _headers,
     );
     if (response.statusCode != 200) {
@@ -1331,6 +1336,7 @@ class ApiService {
     int? minPrice,
     int? maxPrice,
     bool discountOnly = false,
+    bool excludeOutliers = false,
   }) async {
     final response = await _http.get(
       _uri('/api/map', {
@@ -1341,6 +1347,7 @@ class ApiService {
         if (minPrice != null && minPrice > 0) 'minPrice': '$minPrice',
         if (maxPrice != null && maxPrice > 0) 'maxPrice': '$maxPrice',
         if (discountOnly) 'discountOnly': 'true',
+        if (excludeOutliers) 'excludeOutliers': 'true',
       }),
       headers: _headers,
     );

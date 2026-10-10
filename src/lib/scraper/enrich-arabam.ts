@@ -1,9 +1,10 @@
 import { Car } from "@/models/Car";
 import { isCloudflareChallenge, isListingGone, parseArabamDetailHtml } from "@/lib/scraper/browser-scrape";
 import { archiveListings } from "@/lib/scraper/listing-lifecycle";
-import { isUnknownValue, shouldReplaceFuel } from "@/lib/scraper/enrich-detail";
+import { isUnknownValue, shouldReplaceDetailDescription, shouldReplaceFuel } from "@/lib/scraper/enrich-detail";
 import type { ScrapedListing } from "@/lib/scraper/types";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { isPlausibleScrapedPrice } from "@/lib/scraper/price-guard";
 
 /**
  * Arabam ilan sayfasından galeri, satıcı açıklaması, parça bazlı hasar ve teknik bilgiyi
@@ -52,6 +53,9 @@ type StoredCar = {
   price?: number;
   city?: string;
   address?: string;
+  images?: string[];
+  description?: string;
+  damageParts?: { name: string; state: string }[];
   features?: { color?: string; bodyType?: string; fuelType?: string; transmission?: string };
 };
 
@@ -64,7 +68,8 @@ function verifiedAdd(listing: ScrapedListing) {
 /** Ayrıştırılan ilandan DB'ye yazılacak alanlar (yalnızca gerçekten bilinenler). */
 export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record<string, unknown> {
   // Satıcı açıklama yazmamışsa ayrıştırıcı "<başlık> - Arabam ilanı" döndürür; mevcut metni ezmesin.
-  const description = listing.description && !/- Arabam ilanı$/.test(listing.description) ? listing.description : "";
+  const candidateDescription = listing.description && !/- Arabam ilanı$/.test(listing.description) ? listing.description : "";
+  const description = candidateDescription.length > 20 && shouldReplaceDetailDescription(car.description, candidateDescription) ? candidateDescription : "";
   const f = car.features || {};
   const fill = (key: "color" | "bodyType" | "fuelType" | "transmission", value?: string) =>
     value && !isUnknownValue(value) && isUnknownValue(f[key]) ? { [`features.${key}`]: value } : {};
@@ -72,9 +77,15 @@ export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record
   const confirmed = new Set(listing.confirmedFeatures || []);
 
   return {
-    ...(listing.images && listing.images.length > 0 ? { images: listing.images, imageUrl: listing.images[0] } : {}),
+    ...(listing.images && listing.images.length > 0 && listing.images.length >= (car.images?.length ?? 0) &&
+      JSON.stringify(listing.images) !== JSON.stringify(car.images || [])
+      ? { images: listing.images, imageUrl: listing.images[0] }
+      : {}),
     ...(description ? { description } : {}),
-    ...(listing.damageParts && listing.damageParts.length > 0 ? { damageParts: listing.damageParts } : {}),
+    ...(listing.damageParts && listing.damageParts.length > 0 && listing.damageParts.length >= (car.damageParts?.length ?? 0) &&
+      JSON.stringify(listing.damageParts) !== JSON.stringify(car.damageParts || [])
+      ? { damageParts: listing.damageParts }
+      : {}),
     ...(listing.damageFlag !== undefined ? { damageFlag: listing.damageFlag } : {}),
     ...(listing.paintChange ? { paintChange: listing.paintChange } : {}),
     ...(listing.sellerType ? { sellerType: listing.sellerType } : {}),
@@ -186,24 +197,33 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
   deleted: number;
   sampleVehicles: any[];
 }> {
+  const now = new Date();
+  const retryFailedBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const batchLimit = Math.max(1, Math.min(250, Math.floor(Number.isFinite(limit) ? limit : 25)));
   const candidates = await Car.find(
     {
       sourceSite: "arabam",
       status: "active",
       listingUrl: { $exists: true },
-      $or: [
-        { images: { $size: 0 } },
-        { images: { $size: 1 } },
-        { images: { $exists: false } },
-        { detailCheckedAt: { $exists: false }, sellerType: { $in: ["", null] } },
-        // Daha önce okunamamış (engel/zaman aşımı) ilanlar: kullanıcı görüntülemesinde
-        // tekrar denenmiyor, bu yüzden toplu tamamlama onları tekrar sıraya alır.
-        { detailCheckFailedAt: { $exists: true } },
+      $and: [
+        { $or: [{ detailCheckFailedAt: { $exists: false } }, { detailCheckFailedAt: { $lt: retryFailedBefore } }] },
+        {
+          $or: [
+            { images: { $size: 0 } },
+            { images: { $size: 1 } },
+            { images: { $exists: false } },
+            { detailCheckedAt: { $exists: false }, sellerType: { $in: ["", null] } },
+            // Engel/zaman aşımı alanları bir gün sonra yeniden sıraya girer; her yönetim turunda
+            // aynı ilk ilanları tekrar denememek için aşağıda en eski deneme önce seçilir.
+            { detailCheckFailedAt: { $lt: retryFailedBefore } },
+          ],
+        },
       ],
     },
-    { _id: 1, title: 1, listingUrl: 1, brand: 1, model: 1, year: 1, price: 1, imageUrl: 1, city: 1, address: 1, features: 1 }
+    { _id: 1, title: 1, listingUrl: 1, brand: 1, model: 1, year: 1, price: 1, imageUrl: 1, images: 1, description: 1, damageParts: 1, city: 1, address: 1, features: 1 }
   )
-    .limit(limit)
+    .sort({ detailCheckFailedAt: 1, detailCheckedAt: 1, createdAt: 1, _id: 1 })
+    .limit(batchLimit)
     .lean<any[]>();
 
   if (candidates.length === 0) {
@@ -229,7 +249,7 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
       deleted += await archiveListings([car._id], `arabam: ${result.reason}`);
     } else if (result.kind === "ok") {
       const listing = result.listing;
-      const priceChanged = listing.price > 0 && listing.price !== car.price;
+      const priceChanged = listing.price !== car.price && isPlausibleScrapedPrice(car.price, listing.price);
       await Car.updateOne(
         { _id: car._id },
         {
@@ -239,8 +259,9 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
             ...(priceChanged ? { price: listing.price } : {}),
             lastVerifiedAt: new Date(),
             lastVerifyAttemptAt: new Date(),
+            detailCheckedAt: new Date(),
           },
-          $unset: { missingSince: 1, missingChecks: 1 },
+          $unset: { missingSince: 1, missingChecks: 1, detailCheckFailedAt: 1 },
           ...verifiedAdd(listing),
         },
         { timestamps: priceChanged }
@@ -252,13 +273,20 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
           brand: car.brand || "Bilinmiyor",
           model: car.model || "Bilinmiyor",
           year: car.year || 0,
-          price: listing.price || car.price || 0,
+          price: priceChanged ? listing.price : car.price || 0,
           source: "arabam",
           title: car.title || `${car.brand} ${car.model}`,
           imageUrl: listing.images?.[0] || car.imageUrl || "",
           listingUrl: car.listingUrl,
         });
       }
+    } else {
+      const attemptedAt = new Date();
+      await Car.updateOne(
+        { _id: car._id },
+        { $set: { detailCheckFailedAt: attemptedAt, lastVerifyAttemptAt: attemptedAt } },
+        { timestamps: false }
+      );
     }
     await new Promise((r) => setTimeout(r, 600));
   }

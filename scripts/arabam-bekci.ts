@@ -276,7 +276,7 @@ async function main() {
 
       state = { gapSeconds: plan.gapSeconds, pauseMinutes: plan.pauseMinutes };
 
-      // Yönetim ekranı için saatlik kayıt: parti iki saate yayıldıysa orta noktasındaki saate yazılır.
+      // İlan sonuçları kendi yanıt saatine, parti/engel özeti tamamlandığı saate yazılır.
       if (res.checked > 0 || plan.reason === "blocked-pause") {
         await recordWatcherBatch(
           {
@@ -288,6 +288,14 @@ async function main() {
             uncertain: Math.max(0, res.errors - blocked),
             pauseMinutes: plan.reason === "blocked-pause" ? plan.sleepMinutes : 0,
             activeSeconds: batchActiveMs / 1000,
+            startedAt: new Date(batchStarted),
+            events: res.details.map((detail) => ({
+              checkedAt: detail.checkedAt,
+              status: detail.status as "active" | "archived" | "gone" | "redirected" | "blocked" | "error",
+              archivedAt: detail.archivedAt,
+              updatedAt: detail.updatedAt,
+              updated: detail.updated,
+            })),
           },
           new Date()
         );

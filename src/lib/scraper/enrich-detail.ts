@@ -65,11 +65,15 @@ export function shouldReplaceFuel(current?: string | null, next?: string | null)
   return !(existing === "LPG & Benzin" && proposed === "Benzin");
 }
 
-/** Liste sayfası rengi küçük harfle veriyor ("beyaz"); ilan sayfasındaki yazımı ("Beyaz") tercih et. */
-const sameIgnoringCase = (a?: string | null, b?: string | null) =>
-  !!a && !!b && a.trim().toLocaleLowerCase("tr-TR") === b.trim().toLocaleLowerCase("tr-TR");
-const shouldReplaceColor = (current?: string | null, next?: string | null) =>
-  isUnknownValue(current) || sameIgnoringCase(current, next);
+/** Detay yenilemesi açıklamayı boşaltmamalı veya bariz biçimde kısaltmamalı. */
+export function shouldReplaceDetailDescription(current?: string | null, next?: string | null): boolean {
+  const incoming = (next || "").trim();
+  if (!incoming) return false;
+  const existing = (current || "").trim();
+  if (incoming === existing) return false;
+  if (!existing) return true;
+  return incoming.length >= existing.length * 0.8;
+}
 
 function ldJsonBlocks(html: string): any[] {
   const $ = cheerio.load(html);
@@ -302,16 +306,23 @@ export function mergeDetailIntoListing(listing: ScrapedListing, patch: DetailPat
   if (patch.horsepower && !features.horsepower) features.horsepower = patch.horsepower;
   if (patch.avgFuelConsumption && !features.avgFuelConsumption) features.avgFuelConsumption = patch.avgFuelConsumption;
 
-  const images = patch.images && patch.images.length > (listing.images?.length ?? 0) ? patch.images : listing.images;
+  const images = patch.images && patch.images.length >= (listing.images?.length ?? 0) ? patch.images : listing.images;
+  const description = shouldReplaceDetailDescription(listing.description, patch.description)
+    ? patch.description || listing.description
+    : listing.description;
   return {
     ...listing,
     confirmedFeatures: [...new Set([...(listing.confirmedFeatures || []), ...confirmed])],
     images,
     imageUrl: images?.[0] || listing.imageUrl,
-    description: patch.description || listing.description,
+    description,
+    descriptionVerified: Boolean(description) && (Boolean(patch.description) || listing.descriptionVerified),
     paintChange: patch.paintChange ?? listing.paintChange,
     damageFlag: patch.damageFlag ?? listing.damageFlag,
-    damageParts: patch.damageParts?.length ? patch.damageParts : listing.damageParts,
+    damageParts:
+      patch.damageParts?.length && patch.damageParts.length >= (listing.damageParts?.length ?? 0)
+        ? patch.damageParts
+        : listing.damageParts,
     features,
   };
 }
@@ -336,6 +347,7 @@ export async function runDetailBackfill(
 ): Promise<BackfillResult> {
   const now = new Date();
   const retryBefore = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const failureRetryBefore = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const sources = options.source ? [options.source] : [...DETAIL_SOURCES];
 
   // ids verilirse (eksik detay taraması) sıra seçimi atlanır, yalnızca o ilanlar işlenir.
@@ -347,22 +359,25 @@ export async function runDetailBackfill(
           status: "active",
           listingUrl: { $nin: ["", null] },
           $or: [
-            { detailCheckedAt: { $exists: false } },
+            { detailCheckedAt: { $exists: false }, detailCheckFailedAt: { $exists: false } },
+            { detailCheckFailedAt: { $lt: failureRetryBefore } },
             { "images.1": { $exists: false }, detailCheckedAt: { $lt: retryBefore } },
           ],
         }
   )
-    .sort({ detailCheckedAt: 1, createdAt: -1 })
+    .sort({ detailCheckFailedAt: 1, detailCheckedAt: 1, createdAt: -1 })
     .limit(limit)
-    .select("_id sourceSite listingUrl externalId title images description features detailCheckedAt")
+          .select("_id sourceSite listingUrl externalId title images description damageParts features detailCheckedAt detailCheckFailedAt")
     .lean<
       Array<{
         _id: unknown;
         sourceSite: string;
         listingUrl: string;
         detailCheckedAt?: Date;
+        detailCheckFailedAt?: Date;
         images?: string[];
         description?: string;
+        damageParts?: { name: string; state: string }[];
         externalId?: string;
         title?: string;
         features?: { color?: string; bodyType?: string; fuelType?: string; transmission?: string; engineSize?: number; horsepower?: number; avgFuelConsumption?: string };
@@ -386,7 +401,14 @@ export async function runDetailBackfill(
     perSource.set(doc.sourceSite, stats);
 
     const patch = outcome.kind === "ok" ? outcome.patch : null;
-    const set: Record<string, unknown> = { detailCheckedAt: now };
+    const set: Record<string, unknown> = {};
+    const unset: Record<string, 1> = {};
+    if (outcome.kind === "ok") {
+      set.detailCheckedAt = now;
+      unset.detailCheckFailedAt = 1;
+    } else {
+      set.detailCheckFailedAt = now;
+    }
     const verified: string[] = [];
     if (patch) {
       const f = doc.features || {};
@@ -396,14 +418,17 @@ export async function runDetailBackfill(
         set.imageUrl = patch.images[0];
         result.imagesAdded += patch.images.length - currentCount;
       }
-      if (patch.description) set.description = patch.description;
+      if (shouldReplaceDetailDescription(doc.description, patch.description)) set.description = patch.description;
       const detailFeatures = detailFeatureValues(patch);
       for (const [key, value] of Object.entries(knownFeatureUpdates(detailFeatures, f))) set[`features.${key}`] = value;
       for (const key of Object.keys(detailFeatures)) if (!isUnknownFeature(detailFeatures[key])) verified.push(key);
       if (patch.engineSize && !f.engineSize) set["features.engineSize"] = patch.engineSize;
       if (patch.horsepower && !f.horsepower) set["features.horsepower"] = patch.horsepower;
-      if (patch.avgFuelConsumption && !f.avgFuelConsumption) set["features.avgFuelConsumption"] = patch.avgFuelConsumption;
-      if (patch.damageParts?.length) set.damageParts = patch.damageParts;
+      if (patch.avgFuelConsumption && !f.avgFuelConsumption) {
+        set["features.avgFuelConsumption"] = patch.avgFuelConsumption;
+        set["features.avgFuelConsumptionSource"] = "listing";
+      }
+      if (patch.damageParts?.length && patch.damageParts.length >= (doc.damageParts?.length ?? 0)) set.damageParts = patch.damageParts;
       if (patch.paintChange !== undefined) set.paintChange = patch.paintChange;
       if (patch.damageFlag !== undefined) set.damageFlag = patch.damageFlag;
       result.enriched++;
@@ -416,14 +441,14 @@ export async function runDetailBackfill(
     // Daha önce de okunmuş (ilk deneme sayılmaz) ve galerisi bu okumadan sonra da tek fotoğraf kalan
     // ilan "eksik" sayılır; arşive alma aşağıda, parti ölçeğindeki güvenlik freninden sonra yapılır.
     const finalImages = (set.images as string[] | undefined) ?? doc.images;
-    if (doc.detailCheckedAt && outcome.kind !== "gone" && lacksGallery(doc.sourceSite, finalImages)) {
+    if (doc.detailCheckedAt && outcome.kind === "ok" && lacksGallery(doc.sourceSite, finalImages)) {
       stats.incomplete.push(doc._id);
     }
 
     // updatedAt'e dokunulmaz: detay tamamlamak ilanın "son değişikliği" değildir.
     await Car.updateOne(
       { _id: doc._id },
-      { $set: set, ...(verified.length ? { $addToSet: { verifiedFeatures: { $each: verified } } } : {}) },
+      { $set: set, $unset: unset, ...(verified.length ? { $addToSet: { verifiedFeatures: { $each: verified } } } : {}) },
       { timestamps: false }
     );
     await new Promise((r) => setTimeout(r, options.delayMs ?? 700));

@@ -82,7 +82,7 @@ export function PricePredictionBadge({
             Fiyat analizi
           </p>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            {METHOD_LABELS[prediction.method]} · {prediction.sampleSize} emsal araç
+            {METHOD_LABELS[prediction.method]} · aynı model/yılda {prediction.sampleSize} aktif ilan
           </p>
         </div>
         <span className={`badge !px-2.5 !py-1 !text-xs ${style.chip}`}>

@@ -10,5 +10,6 @@ export const PUBLIC_LISTING_FILTER = {
  */
 export const MARKET_LISTING_FILTER = {
   ...PUBLIC_LISTING_FILTER,
-  vehicleClass: { $in: ["otomobil", "suv-pickup", "minivan-panelvan"] },
+  // Araç tipi alanı eklenmeden önceki ilanlar otomobildir; null/$in bunları da kapsar.
+  vehicleClass: { $in: ["otomobil", "suv-pickup", "minivan-panelvan", null] },
 } as const;

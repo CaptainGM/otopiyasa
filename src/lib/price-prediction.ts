@@ -46,6 +46,8 @@ export interface PricePrediction {
   
   method: "segment" | "brand+model" | "brand" | "global" | "average";
   sampleSize: number;
+  /** Daha geniş regresyon havuzu (marka/genel); emsal sayısı değildir. */
+  trainingSampleSize?: number;
   r2: number | null;
  
   outliersRemoved?: number;
@@ -391,7 +393,7 @@ async function loadTier(
   /** Arşiv için daha dar bir eşleşme (başlık regex'i arşivde pahalı bir tarama olduğundan atlanır). */
   archiveIdentity: Record<string, unknown> = identity
 ): Promise<TrainingRow[]> {
-  const active = await loadTrainingRows({ ...identity, status: { $ne: "removed" } }, activeLimit);
+  const active = await loadTrainingRows({ ...identity, status: "active" }, activeLimit);
   if (active.length >= skipArchiveAbove) return active;
   return [...active, ...(await loadArchivedRows(archiveIdentity, archiveLimit))];
 }
@@ -410,21 +412,24 @@ async function loadComparables(
   year: number,
   mileage: number,
   limit = 5,
-  title?: string
+  title?: string,
+  vehicleClass?: string
 ): Promise<ComparableCar[]> {
-  const docs = await memo(`cmp:${brand}|${model}`, () => fetchComparableDocs(brand, model));
+  const classFilter = vehicleClass ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass } : {};
+  const docs = await memo(`cmp:${brand}|${model}|${vehicleClass || "all"}`, () => fetchComparableDocs(brand, model, classFilter));
   if (docs.length === 0) return [];
   return rankComparables(docs, brand, model, year, mileage, limit, title);
 }
 
 type ComparableDoc = { _id: { toString(): string }; title: string; brand: string; model: string; year: number; mileage: number; price: number };
 
-async function fetchComparableDocs(brand: string, model: string): Promise<ComparableDoc[]> {
+async function fetchComparableDocs(brand: string, model: string, classFilter: Record<string, unknown> = {}): Promise<ComparableDoc[]> {
   // 1. Önce indeksli doğrudan eşleşme (5ms - Atlas M0 dostu)
   // Kullanıcıya gösterilen benzer ilanlar: yalnızca herkese açık (aktif + onaylı) olanlar.
   let docs = await Car.find({
     brand,
     model,
+    ...classFilter,
     ...PUBLIC_LISTING_FILTER,
   })
     .sort({ createdAt: -1 })
@@ -436,6 +441,7 @@ async function fetchComparableDocs(brand: string, model: string): Promise<Compar
   if (docs.length < 5) {
     docs = await Car.find({
       brand: { $regex: turkishSearchRegex(brand), $options: "i" },
+      ...classFilter,
       ...PUBLIC_LISTING_FILTER,
       $or: [
         { model: { $regex: turkishSearchRegex(model), $options: "i" } },
@@ -520,23 +526,26 @@ const norm = (s: string) => s.toLocaleLowerCase("tr-TR").trim();
 
 
 
-export async function resolveModel(brand: string, model: string): Promise<string> {
-  return memo(`resolve:${brand}|${model}`, () => resolveModelUncached(brand, model));
+export async function resolveModel(brand: string, model: string, vehicleClass?: string): Promise<string> {
+  return memo(`resolve:${brand}|${model}|${vehicleClass || "all"}`, () => resolveModelUncached(brand, model, vehicleClass));
 }
 
-async function resolveModelUncached(brand: string, model: string): Promise<string> {
+async function resolveModelUncached(brand: string, model: string, vehicleClass?: string): Promise<string> {
   const input = model.trim();
   if (!input) return model;
+  const classFilter = vehicleClass ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass } : {};
 
   // İndeksli kontrol: Marka ve model zaten DB'de tam eşleşiyorsa distinct taramasına hiç girme (2ms)
   const exists = await Car.exists({
     brand: { $regex: `^${turkishSearchRegex(brand)}$`, $options: "i" },
     model: { $regex: `^${turkishSearchRegex(input)}$`, $options: "i" },
+    ...classFilter,
   });
   if (exists) return input;
 
   const models = (await Car.distinct("model", {
     brand: { $regex: turkishSearchRegex(brand), $options: "i" },
+    ...classFilter,
   })) as string[];
   if (models.length === 0) return input;
 
@@ -565,23 +574,30 @@ export async function predictPrice(
   condition: Condition = "clean",
   title?: string,
   /** Model adı veritabanından geliyorsa (toplu adil değer hesabı) yazım düzeltme sorgusu atlanır. */
-  options: { modelFromDb?: boolean } = {}
+  options: { modelFromDb?: boolean; vehicleClass?: string } = {}
 ): Promise<PricePrediction> {
-  const resolvedModel = options.modelFromDb ? model : await resolveModel(brand, model);
+  const resolvedModel = options.modelFromDb ? model : await resolveModel(brand, model, options.vehicleClass);
   const matchedModel = norm(resolvedModel) !== norm(model) ? resolvedModel : undefined;
+  const vehicleClassFilter = options.vehicleClass
+    ? { vehicleClass: options.vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : options.vehicleClass }
+    : {};
 
   const { damaged, painted } = conditionFlags(condition);
   const input: FeatureInput = { year, mileage, damaged, painted };
 
   // 1. Önce doğrudan indeksli segment sorgusu (~5ms): aktif ilanlar + yaşa göre ağırlıklı arşiv.
-  let segmentRows = await memo(`seg:${brand}|${resolvedModel}`, () => loadTier({ brand, model: resolvedModel }, 200, 100, SEGMENT_SKIP_ARCHIVE_ABOVE));
+  let segmentRows = await memo(`seg:${brand}|${resolvedModel}|${options.vehicleClass || "all"}`, () => loadTier({ brand, model: resolvedModel, ...vehicleClassFilter }, 200, 100, SEGMENT_SKIP_ARCHIVE_ABOVE));
+  const activeSegmentCount = await memo(`segcount:${brand}|${resolvedModel}|${year}|${options.vehicleClass || "all"}`, () =>
+    Car.countDocuments({ brand, model: resolvedModel, year, ...PUBLIC_LISTING_FILTER, ...vehicleClassFilter })
+  );
 
   // Yeterli örnek yoksa geniş regex sorgusuyla destekle
   if (effectiveSampleSize(segmentRows) < MIN_SAMPLE_FOR_REGRESSION) {
-    segmentRows = await memo(`segrx:${brand}|${resolvedModel}`, () =>
+    segmentRows = await memo(`segrx:${brand}|${resolvedModel}|${options.vehicleClass || "all"}`, () =>
       loadTier(
         {
           brand: { $regex: turkishSearchRegex(brand), $options: "i" },
+          ...vehicleClassFilter,
           $or: [
             { model: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } },
             { title: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } },
@@ -590,21 +606,22 @@ export async function predictPrice(
         200,
         100,
         SEGMENT_SKIP_ARCHIVE_ABOVE,
-        { brand: { $regex: turkishSearchRegex(brand), $options: "i" }, model: { $regex: turkishSearchRegex(resolvedModel), $options: "i" } }
+        { brand: { $regex: turkishSearchRegex(brand), $options: "i" }, model: { $regex: turkishSearchRegex(resolvedModel), $options: "i" }, ...vehicleClassFilter }
       )
     );
   }
 
-  const comparables = await loadComparables(brand, resolvedModel, year, mileage, 5, title);
+  const comparables = await loadComparables(brand, resolvedModel, year, mileage, 5, title, options.vehicleClass);
   const finalPrediction = await predictFromTiers(
     {
       segment: segmentRows,
-      brand: () => memo(`brand:${brand}`, () => loadTier({ brand: { $regex: turkishSearchRegex(brand), $options: "i" } }, 500, 250)),
-      global: () => memo("global", () => loadTier({}, 1000, 300)),
+      brand: () => memo(`brand:${brand}|${options.vehicleClass || "all"}`, () => loadTier({ brand: { $regex: turkishSearchRegex(brand), $options: "i" }, ...vehicleClassFilter }, 500, 250)),
+      global: () => memo(`global:${options.vehicleClass || "all"}`, () => loadTier(vehicleClassFilter, 1000, 300)),
     },
     input,
     comparables,
-    matchedModel
+    matchedModel,
+    activeSegmentCount
   );
 
   return anchorToClosePeers(finalPrediction, comparables, year, mileage, condition);
@@ -627,10 +644,12 @@ export async function predictFromTiers(
   tiers: PredictionTiers,
   input: FeatureInput,
   comparables: ComparableCar[],
-  matchedModel?: string
+  matchedModel?: string,
+  activeSegmentCount?: number
 ): Promise<PricePrediction> {
   const segmentRows = tiers.segment;
   const activeSegment = segmentRows.filter((r) => !r.archived);
+  const comparableSegmentSize = activeSegmentCount ?? activeSegment.length;
   const comparableRange =
     comparables.length > 0
       ? {
@@ -644,7 +663,7 @@ export async function predictFromTiers(
   const extra = {
     matchedModel,
     annualDepreciationPct,
-    segmentSize: activeSegment.length,
+    segmentSize: comparableSegmentSize,
     comparableRange,
   };
 
@@ -659,8 +678,16 @@ export async function predictFromTiers(
     };
   };
 
+  // sampleSize kullanıcıya gösterilen aynı marka/model/yıl emsal sayısıdır. Daha geniş marka/genel
+  // regresyon havuzu yalnızca trainingSampleSize alanında tutulur.
+  const publish = (prediction: PricePrediction): PricePrediction => ({
+    ...prediction,
+    ...extra,
+    sampleSize: comparableSegmentSize,
+    trainingSampleSize: prediction.sampleSize,
+  });
   const attempt = tryPredict(segmentRows, withSegmentSpecs(segmentRows), "segment", comparables);
-  if (attempt) return { ...attempt, ...extra };
+  if (attempt) return publish(attempt);
 
   const brandRows = await tiers.brand();
   const brandAttempt = tryPredict(
@@ -669,7 +696,7 @@ export async function predictFromTiers(
     "brand",
     comparables
   );
-  if (brandAttempt) return { ...applyModelOffset(brandAttempt, segmentRows), ...extra };
+  if (brandAttempt) return publish(applyModelOffset(brandAttempt, segmentRows));
 
   const globalRows = await tiers.global();
   const globalAttempt = tryPredict(
@@ -678,7 +705,7 @@ export async function predictFromTiers(
     "global",
     comparables
   );
-  if (globalAttempt) return { ...applyModelOffset(globalAttempt, segmentRows), ...extra };
+  if (globalAttempt) return publish(applyModelOffset(globalAttempt, segmentRows));
 
   const activeGlobal = globalRows.filter((r) => !r.archived);
   const pool = activeGlobal.length > 0 ? activeGlobal : globalRows;
@@ -686,7 +713,8 @@ export async function predictFromTiers(
   return {
     predictedPrice: Math.round(fallbackAvg),
     method: "average",
-    sampleSize: pool.length,
+    sampleSize: comparableSegmentSize,
+    trainingSampleSize: pool.length,
     r2: null,
     comparables,
     ...extra,

@@ -117,12 +117,16 @@ export async function scrapeCarvakListings(
 
       const carId = car.id || car.sku;
       // Kimliksiz kayıt her taramada yeni ilan gibi eklenirdi → atla.
-      if (!carId) continue;
+      if (!carId) {
+        if (report) report.unsafeOmissions = (report.unsafeOmissions || 0) + 1;
+        continue;
+      }
       const extId = `carvak-${carId}`;
+      report?.observedIds?.add(extId);
       const rawBrand = (car.make || car.brand?.name || "").trim();
       const rawModel = (car.model || "").trim();
       const brand = normalizeBrand(rawBrand);
-      if (!brand || isNonCarBrand(brand)) continue;
+      if (!brand || brand === "Bilinmiyor" || isNonCarBrand(brand)) continue;
 
       const title = (car.name || `${brand} ${rawModel} ${car.trim || ""}`).trim();
       let price = 0;
@@ -162,6 +166,7 @@ export async function scrapeCarvakListings(
         brand,
         model: rawModel || brand,
         year,
+        yearVerified: Number(car.year || car.vehicleModelDate) > 0,
         price,
         mileage,
         city,

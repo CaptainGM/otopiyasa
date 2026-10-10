@@ -14,6 +14,8 @@ export interface DiscoveryCandidateDoc {
   lastmod?: string;
   attempts: number;
   lastAttemptAt?: Date;
+  claimUntil?: Date;
+  claimBy?: string;
 }
 
 const DiscoveryCandidateSchema = new Schema<DiscoveryCandidateDoc>(
@@ -26,6 +28,8 @@ const DiscoveryCandidateSchema = new Schema<DiscoveryCandidateDoc>(
     lastmod: String,
     attempts: { type: Number, default: 0 },
     lastAttemptAt: Date,
+    claimUntil: Date,
+    claimBy: String,
   },
   { timestamps: true }
 );

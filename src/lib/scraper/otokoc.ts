@@ -79,6 +79,7 @@ export async function scrapeOtokocListings(
       make: string;
       model: string;
       year: number;
+      yearVerified: boolean;
       price: number;
       mileage: number;
       fuel: string;
@@ -93,7 +94,10 @@ export async function scrapeOtokocListings(
     articles.each((_, el) => {
       const $el = $(el);
       const id = $el.attr("data-id") || "";
-      if (!id) return;
+      if (!id) {
+        if (report) report.unsafeOmissions = (report.unsafeOmissions || 0) + 1;
+        return;
+      }
 
       const make = $el.attr("data-make") || "";
       const model = $el.attr("data-model") || "";
@@ -151,6 +155,7 @@ export async function scrapeOtokocListings(
         make,
         model,
         year,
+        yearVerified: Number($el.attr("data-year")) > 0,
         price,
         mileage,
         fuel,
@@ -183,12 +188,13 @@ export async function scrapeOtokocListings(
     for (const item of itemsToProcess) {
       if (fetched >= limit) break;
 
+      const externalId = "otokoc-" + item.id;
+      report?.observedIds?.add(externalId);
       const brand = normalizeBrand(item.make);
       if (!brand || isNonCarBrand(brand)) continue;
 
       if (item.price < 50000) continue;
 
-      const externalId = `otokoc-${item.id}`;
       const listingUrl = item.href.startsWith("http")
         ? item.href
         : `${OTOKOC_BASE_URL}${item.href}`;

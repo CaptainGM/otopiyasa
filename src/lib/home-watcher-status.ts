@@ -111,6 +111,73 @@ export function splitSecondsByHour(start: Date, end: Date): Array<{ at: Date; se
   return parts;
 }
 
+export interface WatcherEventLike {
+  checkedAt: Date | string;
+  status: "active" | "archived" | "gone" | "redirected" | "blocked" | "error";
+  archivedAt?: Date | string;
+  updatedAt?: Date | string;
+  updated?: boolean;
+}
+
+export interface WatcherEventHour {
+  timestamp: Date;
+  dateStr: string;
+  hour: number;
+  checked: number;
+  alive: number;
+  archived: number;
+  updated: number;
+  blocked: number;
+  uncertain: number;
+}
+
+/** Sonuçları kontrol anına, arşiv ve güncellemeleri gerçekten yazıldıkları saate dağıtır. */
+export function groupWatcherEventsByHour(events: WatcherEventLike[]): WatcherEventHour[] {
+  const buckets = new Map<number, WatcherEventHour>();
+  const bucketFor = (value: Date | string) => {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return null;
+    const shifted = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+    const hour = shifted.getUTCHours();
+    const timestamp = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate(), hour - 3));
+    const key = timestamp.getTime();
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = {
+        timestamp,
+        dateStr: `${String(shifted.getUTCDate()).padStart(2, "0")}.${String(shifted.getUTCMonth() + 1).padStart(2, "0")}.${shifted.getUTCFullYear()}`,
+        hour,
+        checked: 0,
+        alive: 0,
+        archived: 0,
+        updated: 0,
+        blocked: 0,
+        uncertain: 0,
+      };
+      buckets.set(key, bucket);
+    }
+    return bucket;
+  };
+
+  for (const event of events) {
+    const checked = bucketFor(event.checkedAt);
+    if (!checked) continue;
+    checked.checked++;
+    if (event.status === "active") checked.alive++;
+    if (event.status === "blocked") checked.blocked++;
+    if (event.status === "error") checked.uncertain++;
+    if (event.status === "archived") {
+      const archived = bucketFor(event.archivedAt || event.checkedAt);
+      if (archived) archived.archived++;
+    }
+    if (event.updated) {
+      const updated = bucketFor(event.updatedAt || event.checkedAt);
+      if (updated) updated.updated++;
+    }
+  }
+  return [...buckets.values()].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+}
+
 export interface DaySummary {
   dateStr: string;
   checked: number;
@@ -119,7 +186,7 @@ export interface DaySummary {
   blocked: number;
   /** Engel dışındaki belirsiz sonuçlar (zaman aşımı vb.). */
   uncertain: number;
-  /** Bekçinin o gün ilan kontrol ederek geçirdiği süre (sn); molalar ve bekleme hariç. */
+  /** Bekçinin çalıştığı süre; bilgisayar uykusu hariç, hız/yanıt beklemeleri dahil. */
   activeSeconds: number;
   pausedMinutes: number;
   /** Keşifle eklenen yeni ilan. */

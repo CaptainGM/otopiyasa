@@ -44,6 +44,21 @@ export function dodExternalIdFromUrl(url: string): string | null {
   return match ? `dod-${match[1]}` : null;
 }
 
+/** DOD ilanı farklı bir içerik sayfasına yönlendiyse URL'deki ilan numarası kaybolur. */
+export function dodRedirectLostListingId(originalUrl: string, finalUrl: string): boolean {
+  const externalId = dodExternalIdFromUrl(originalUrl);
+  if (!externalId || !finalUrl || finalUrl === originalUrl) return false;
+  try {
+    const original = new URL(originalUrl);
+    const final = new URL(finalUrl);
+    if (final.hostname !== original.hostname && final.hostname.replace(/^www\./, "") !== original.hostname.replace(/^www\./, "")) return false;
+    if (final.pathname === "/" || /challenge|captcha/i.test(final.pathname)) return false;
+    return !final.pathname.includes(externalId.slice("dod-".length));
+  } catch {
+    return false;
+  }
+}
+
 let cachedDodUrls: string[] = [];
 let lastDodSitemapFetch = 0;
 
@@ -81,7 +96,9 @@ export async function fetchDodCarUrls(): Promise<string[]> {
 /** Verilen DOD araç sayfalarını açıp ilan verisine çevirir. */
 export async function scrapeDodDetails(
   items: Array<{ url: string; externalId: string }>,
-  onListing: (listing: ScrapedListing) => Promise<void>
+  onListing: (listing: ScrapedListing) => Promise<void>,
+  onGone?: (externalId: string, reason: string) => Promise<void> | void,
+  onAttempt?: (externalId: string) => Promise<void> | void
 ): Promise<number> {
   let fetched = 0;
 
@@ -90,6 +107,7 @@ export async function scrapeDodDetails(
     reportProgress("DOD araçları taranıyor", i + 1, items.length);
 
     try {
+      await onAttempt?.(item.externalId);
       const res = await fetch(item.url, {
         headers: {
           "User-Agent": MOBILE_UA,
@@ -99,8 +117,17 @@ export async function scrapeDodDetails(
         signal: AbortSignal.timeout(10000),
       });
 
+      if (res.status === 404 || res.status === 410) {
+        await onGone?.(item.externalId, "HTTP " + res.status);
+        continue;
+      }
       if (!res.ok) continue;
       const html = await res.text();
+
+      if (dodRedirectLostListingId(item.url, res.url)) {
+        await onGone?.(item.externalId, "İlan numarası farklı sayfaya yönlendirmede kayboldu");
+        continue;
+      }
 
       // JSON-LD Car şemasını yakala
       const ldMatches = [...html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)];
@@ -182,6 +209,7 @@ export async function scrapeDodDetails(
         brand,
         model: rawModel,
         year,
+        yearVerified: Boolean(yearMatch),
         price,
         mileage,
         city,

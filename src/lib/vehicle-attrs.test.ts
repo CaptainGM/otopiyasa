@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { automaticPremiumPct, mergeCategoryStats, normalizeBodyType, normalizeTransmission, transmissionMatch } from "./vehicle-attrs";
+import { automaticPremiumPct, mergeCategoryStats, normalizeBodyType, normalizeTransmission, normalizeVehicleTransmission, transmissionMatch } from "./vehicle-attrs";
 
 describe("normalizeTransmission", () => {
   it("kaynak yazımlarını ortak yazıma çevirir", () => {
@@ -9,12 +9,35 @@ describe("normalizeTransmission", () => {
     expect(normalizeTransmission("Tiptronik")).toBe("Otomatik");
     expect(normalizeTransmission("Multitronic")).toBe("Otomatik");
     expect(normalizeTransmission("Yarı Otomatik")).toBe("Yarı Otomatik");
+    expect(normalizeTransmission("Yarı Otomatik DCT")).toBe("Otomatik");
+    expect(normalizeTransmission("7 ileri DCT")).toBe("Otomatik");
   });
 
   it("bilinmeyeni sayılmaz", () => {
     expect(normalizeTransmission("Bilinmiyor")).toBeNull();
     expect(normalizeTransmission("")).toBeNull();
     expect(normalizeTransmission(undefined)).toBeNull();
+  });
+});
+
+describe("normalizeVehicleTransmission", () => {
+  it("Chery Tiggo 7 Pro için yarı otomatik yazımını otomatikte birleştirir", () => {
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Chery", model: "Tiggo 7 Pro" })).toBe("Otomatik");
+    expect(normalizeVehicleTransmission("Otomatik", { brand: "CHERY", title: "Tiggo 7 Pro 1.6 TGDI" })).toBe("Otomatik");
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Chery", model: "Tiggo 8 Pro" })).toBe("Yarı Otomatik");
+  });
+});
+
+describe("transmissionMatch", () => {
+  it("otomatik filtresinde yarı otomatik ve yaygın şanzıman adlarını da bulur", () => {
+    const match = transmissionMatch("Otomatik");
+    expect(typeof match).toBe("object");
+    if (typeof match === "object") {
+      const regex = new RegExp(match.$regex, match.$options);
+      expect(regex.test("Yarı Otomatik")).toBe(true);
+      expect(regex.test("CVT")).toBe(true);
+      expect(regex.test("DCT")).toBe(true);
+    }
   });
 });
 
@@ -92,8 +115,11 @@ describe("transmissionMatch", () => {
     expect(re.test("Otomatik")).toBe(true);
     expect(re.test("Tiptronik")).toBe(true);
     expect(re.test("Multitronic")).toBe(true);
+    expect(re.test("DCT")).toBe(true);
+    expect(re.test("DSG")).toBe(true);
+    expect(re.test("Yarı Otomatik")).toBe(true);
     expect(re.test("Manuel")).toBe(false);
-    expect(re.test("Yarı Otomatik")).toBe(false);
+    expect(re.test("Manuel")).toBe(false);
   });
 
   it("Manuel filtresi Düz'ü de kapsar", () => {

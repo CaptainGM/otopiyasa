@@ -57,14 +57,16 @@ function isStaleCheck(lastChecked?: string | Date | null): boolean {
 /** Fiyat dağılımı için segment fiyatları: önce marka+model, az ise yalnız marka. */
 async function loadSegmentPrices(
   brand: string,
-  model: string
+  model: string,
+  vehicleClass?: string
 ): Promise<{ label: string; prices: number[] }> {
+  const classFilter = vehicleClass ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass } : {};
   const mm = (
-    await Car.find({ brand, model, ...PUBLIC_LISTING_FILTER }, { price: 1 }).lean()
+    await Car.find({ brand, model, ...classFilter, ...PUBLIC_LISTING_FILTER }, { price: 1 }).lean()
   ).map((doc) => doc.price as number);
   if (mm.length >= 5) return { label: `${brand} ${model}`, prices: mm };
   const b = (
-    await Car.find({ brand, ...PUBLIC_LISTING_FILTER }, { price: 1 }).lean()
+    await Car.find({ brand, ...classFilter, ...PUBLIC_LISTING_FILTER }, { price: 1 }).lean()
   ).map((doc) => doc.price as number);
   return { label: brand, prices: b };
 }
@@ -82,9 +84,9 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   // Tek ölçü: üstteki gösterge, fiyat analizi ve listelerdeki kart aynı adil değere bakar (bkz. lib/market-fair.ts;
   // anlık sonuç kayıttan farklıysa ilanın üstüne yazılır).
   const [marketMap, { prediction, fields: fair }, segment, favoriteCount, fuelCost] = await Promise.all([
-    getMarketMap([{ brand, model, year }]),
+    getMarketMap([{ brand, model, year, vehicleClass: carDoc.vehicleClass }]),
     liveFairValue(carDoc),
-    cached(`segment:${brand}|${model}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model)),
+    cached(`segment:${brand}|${model}|${carDoc.vehicleClass || "otomobil"}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model, carDoc.vehicleClass)),
     User.countDocuments({ favorites: carDoc._id }),
     // Yakıt maliyeti hesaplanamazsa (fiyat kaynağına ulaşılamadı, tüketim bilinmiyor) kart gösterilmez.
     getFuelCostForCar(carDoc).catch(() => null),
@@ -94,19 +96,17 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const similarCars = await cached(
     `similar:${brand}|${model}|${Math.round(targetPrice / 50000)}|${carDoc.title.slice(0, 30)}`,
     CACHE_TTL.medium,
-    () => getSimilarCars(carDoc._id.toString(), brand, model, price, 12, carDoc.title, carDoc.year, carDoc.mileage, targetPrice)
+    () => getSimilarCars(carDoc._id.toString(), brand, model, price, 12, carDoc.title, carDoc.year, carDoc.mileage, targetPrice, carDoc.vehicleClass)
   );
 
-  const market = marketMap.get(segmentKey(brand, model, year));
+  const market = marketMap.get(segmentKey(brand, model, year, carDoc.vehicleClass));
   const car = serializeCar(carDoc, market);
 
   // Hiç yeniden doğrulanmamış ilanda son kontrol, ilanın kaynakta ilk görüldüğü andır.
   const lastChecked = car.lastVerifiedAt || car.createdAt;
-  // Derlenen ilanların çoğunda kayıtlı koordinat yok; harita ve "yakınımdaki" ekranlarıyla aynı
-  // yaklaşık konum (ilçe, yoksa il merkezi) şehir/adres/açıklamadan hesaplanır.
-  const mapPoint: { lat: number; lng: number; level: "exact" | "district" | "province" } | null = car.location?.lat
-    ? { lat: car.location.lat, lng: car.location.lng, level: "exact" }
-    : resolvePlacement(car.city || "", car.address, 0, car.description);
+  // Kaydedilmiş scraper koordinatları il merkezidir; tam konum sayılmaz. Adres varsa ilçe,
+  // yoksa il merkezi tahmini gösterilir.
+  const mapPoint = resolvePlacement(car.city || "", car.address, 0, car.description);
 
   /**
    * Üye ilanına özel veriler: ilanı veren kişinin adı ve gelen teklif sayısı.
@@ -489,11 +489,9 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
                 lng={mapPoint.lng}
                 zoom={mapPoint.level === "province" ? 9 : mapPoint.level === "district" ? 12 : 14}
                 note={
-                  mapPoint.level === "exact"
-                    ? undefined
-                    : mapPoint.level === "district"
-                      ? "Yaklaşık konum: ilçe merkezi"
-                      : "Yaklaşık konum: il merkezi"
+                  mapPoint.level === "district"
+                    ? "Yaklaşık konum: ilçe merkezi"
+                    : "Yaklaşık konum: il merkezi"
                 }
               />
             </div>

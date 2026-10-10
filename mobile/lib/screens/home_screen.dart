@@ -99,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _sort = 'mixed';
   String _vehicleClass = '';
   bool _discountOnly = false;
+  bool _excludeOutliers = false;
 
   List<String> _brands = _fallbackBrands;
   Map<String, List<String>> _brandModels = {};
@@ -112,7 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _model.isNotEmpty ||
       _fuelType.isNotEmpty ||
       _transmission.isNotEmpty ||
-      _discountOnly;
+      _discountOnly ||
+      _excludeOutliers ||
+      _vehicleClass.isNotEmpty;
 
   @override
   void initState() {
@@ -129,9 +132,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Web'deki CarFilters ile aynı kaynaktan (gerçek DB markaları + o markanın
   /// modelleri) filtre panelini doldurur. Başarısız olursa dar yedek listede
   /// kalınır — filtre çalışmaya devam eder, sadece kapsamı sınırlı.
-  Future<void> _loadBrandOptions() async {
+  Future<void> _loadBrandOptions({String? vehicleClass}) async {
     try {
-      final data = await _api.fetchBrandModels();
+      final data = await _api.fetchBrandModels(vehicleClass: vehicleClass);
       final brands = (data['brands'] as List<dynamic>? ?? []).cast<String>();
       // Model aileleri ("Juke" tüm Juke donanımlarını bulur); eski sunucuda tam model listesi.
       final rawModels = (data['brandFamilies'] ?? data['brandModels']) as Map<String, dynamic>? ?? {};
@@ -142,6 +145,12 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _brands = ['', ...brands];
         _brandModels = brandModels;
+        if (_brand.isNotEmpty && !brandModels.containsKey(_brand)) {
+          _brand = '';
+          _model = '';
+        } else if (_model.isNotEmpty && !(brandModels[_brand] ?? const <String>[]).contains(_model)) {
+          _model = '';
+        }
       });
     } catch (_) {
       // Sessizce yedek listede kal.
@@ -191,6 +200,7 @@ class _HomeScreenState extends State<HomeScreen> {
         sort: _sort,
         vehicleClass: _vehicleClass,
         discountOnly: _discountOnly,
+        excludeOutliers: _excludeOutliers,
         page: nextPage,
         slot: _isFeed ? _feedSlot : null,
         bucket: _isFeed ? _feedBucket : null,
@@ -254,6 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int get _filterCount =>
       [_brand, _model, _fuelType, _transmission].where((v) => v.isNotEmpty).length +
       (_discountOnly ? 1 : 0) +
+      (_excludeOutliers ? 1 : 0) +
       (_sort != 'mixed' ? 1 : 0);
 
   Widget _filterButton() {
@@ -305,6 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (_vehicleClass == entry.$1) return;
                 HapticFeedback.selectionClick();
                 setState(() => _vehicleClass = entry.$1);
+                _loadBrandOptions(vehicleClass: entry.$1);
                 _loadCars(reset: true);
               },
             ),
@@ -421,6 +433,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       _loadCars(reset: true);
                     },
                   ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _excludeOutliers,
+                    activeThumbColor: AppTheme.accent,
+                    title: const Text('Aykırı fiyatları gizle', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      'Model ailesine göre olağan dışı bulunan fiyatlar',
+                      style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
+                    ),
+                    onChanged: (value) {
+                      refresh(() => _excludeOutliers = value);
+                      _loadCars(reset: true);
+                    },
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -436,6 +462,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     _transmission = '';
                                     _sort = 'mixed';
                                     _discountOnly = false;
+                                    _excludeOutliers = false;
                                   });
                                   _loadCars(reset: true);
                                 },

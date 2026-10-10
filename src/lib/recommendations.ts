@@ -10,7 +10,7 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 async function toSerializedCars(docs: unknown[]): Promise<CarType[]> {
   const leanDocs = docs.filter(isLeanCarDoc);
   const marketMap = await getMarketMap(
-    leanDocs.map((car) => ({ brand: car.brand, model: car.model, year: car.year }))
+    leanDocs.map((car) => ({ brand: car.brand, model: car.model, year: car.year, vehicleClass: car.vehicleClass }))
   );
   return attachMarketToCars(leanDocs, marketMap);
 }
@@ -110,10 +110,15 @@ export async function getSimilarCars(
   title?: string,
   year?: number,
   mileage?: number,
-  targetPrice?: number
+  targetPrice?: number,
+  vehicleClass?: string
 ): Promise<CarType[]> {
+  const classFilter = vehicleClass
+    ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass }
+    : {};
   const sameModel = await Car.find({
     ...PUBLIC_LISTING_FILTER,
+    ...classFilter,
     brand,
     model,
     _id: { $ne: carId },
@@ -124,20 +129,8 @@ export async function getSimilarCars(
     .lean();
 
   let pool: LeanCarDoc[] = (sameModel as unknown[]).filter(isLeanCarDoc);
-
-  if (pool.length < limit) {
-    const sameBrand = await Car.find({
-      ...PUBLIC_LISTING_FILTER,
-      brand,
-      model: { $ne: model },
-      _id: { $ne: carId },
-    })
-      .sort({ createdAt: -1 })
-      .limit(30)
-      .slice("images", 4)
-      .lean();
-    pool = [...pool, ...(sameBrand as unknown[]).filter(isLeanCarDoc)];
-  }
+  // Benzer ilanlar başka gövde/model ailesinden araçlarla doldurulmaz. Aksi hâlde 911 GT3 RS
+  // sayfasında Cayenne ve Macan çıkabiliyor; az emsal varsa daha kısa liste göstermek daha doğru.
 
   // %100 Jenerik alt-model, gövde tipi ve paket eşleşmesi
   const targetTokens = extractVehicleTokens(title || "", brand, model);

@@ -10,6 +10,7 @@
  * "Güncellenen" (fiyat/bilgi değişen) yalnızca sütunlarca bildirilir; veritabanında günlük karşılığı tutulmadığı için Toplam'da
  * sütunların toplamıdır.
  */
+import { getTurkeyDateStr } from "@/lib/utils";
 
 export const SUMMARY_SOURCES = ["arabam", "otokoc", "dod", "otoplus", "otomerkezi", "carvak", "vavacars", "ikinciyeni"] as const;
 
@@ -37,6 +38,30 @@ export function turkeyDayStart(now: Date = new Date()): Date {
   const shifted = new Date(now.getTime() + TR_OFFSET_MS);
   return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - TR_OFFSET_MS);
 }
+
+/** GG.AA.YYYY metnini Türkiye günü başlangıcına çevirir; biçim geçersizse null. */
+export function turkeyDayStartFromStr(dateStr: string): Date | null {
+  const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(dateStr.trim());
+  if (!match) return null;
+  const [, day, month, year] = match;
+  const asUtcMidnight = Date.UTC(Number(year), Number(month) - 1, Number(day));
+  const parsed = new Date(asUtcMidnight);
+  // 31.02 gibi taşan tarihleri reddet (Date bunları sonraki aya kaydırır).
+  if (parsed.getUTCMonth() !== Number(month) - 1 || parsed.getUTCDate() !== Number(day)) return null;
+  return new Date(asUtcMidnight - TR_OFFSET_MS);
+}
+
+/** Bugünden geriye doğru [days] günün GG.AA.YYYY listesi (en yeni önce). */
+export function turkeyDayList(days: number, now: Date = new Date()): string[] {
+  const list: string[] = [];
+  for (let i = 0; i < days; i++) {
+    list.push(getTurkeyDateStr(turkeyDayStart(new Date(now.getTime() - i * 24 * 60 * 60 * 1000))));
+  }
+  return list;
+}
+
+/** Gün filtresinin en geriye gidebildiği gün sayısı (gün gün tablo için). */
+export const SUMMARY_RANGE_DAYS = 14;
 
 interface HourlySourceStat {
   inserted?: number;

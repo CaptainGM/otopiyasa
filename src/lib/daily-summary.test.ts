@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildDailySummary, daemonBySource, emptyDelta, manualBySource, turkeyDayStart, watcherDelta } from "@/lib/daily-summary";
+import {
+  buildDailySummary,
+  daemonBySource,
+  emptyDelta,
+  manualBySource,
+  turkeyDayList,
+  turkeyDayStart,
+  turkeyDayStartFromStr,
+  watcherDelta,
+} from "@/lib/daily-summary";
 
 describe("turkeyDayStart", () => {
   it("Türkiye gününün başlangıcını (UTC+3) verir", () => {
@@ -10,6 +19,39 @@ describe("turkeyDayStart", () => {
     // 21:30 UTC = 00:30 Türkiye saati, 9 Ekim
     expect(turkeyDayStart(new Date("2026-10-08T21:30:00Z")).toISOString()).toBe("2026-10-08T21:00:00.000Z");
     expect(turkeyDayStart(new Date("2026-10-08T20:59:59Z")).toISOString()).toBe("2026-10-07T21:00:00.000Z");
+  });
+});
+
+describe("turkeyDayStartFromStr", () => {
+  it("GG.AA.YYYY metnini Türkiye gün başlangıcına çevirir", () => {
+    // 9 Ekim 2026 Türkiye saati 00:00 = 8 Ekim 21:00 UTC
+    expect(turkeyDayStartFromStr("09.10.2026")?.toISOString()).toBe("2026-10-08T21:00:00.000Z");
+  });
+
+  it("geçersiz ya da taşan tarihleri reddeder", () => {
+    expect(turkeyDayStartFromStr("31.02.2026")).toBeNull(); // Şubat 31 yok
+    expect(turkeyDayStartFromStr("2026-10-09")).toBeNull();
+    expect(turkeyDayStartFromStr("9.10.2026")).toBeNull();
+    expect(turkeyDayStartFromStr("")).toBeNull();
+    expect(turkeyDayStartFromStr("../../etc/passwd")).toBeNull();
+  });
+
+  it("31 Aralık ve 1 Ocak sınırında yıl kaymaz", () => {
+    expect(turkeyDayStartFromStr("31.12.2026")?.toISOString()).toBe("2026-12-30T21:00:00.000Z");
+    expect(turkeyDayStartFromStr("01.01.2027")?.toISOString()).toBe("2026-12-31T21:00:00.000Z");
+  });
+});
+
+describe("turkeyDayList", () => {
+  it("bugünden geriye istenen sayıda günü, en yeni önce listeler", () => {
+    // 8 Ekim 2026 22:00 UTC = 9 Ekim 01:00 Türkiye
+    const now = new Date("2026-10-08T22:00:00Z");
+    expect(turkeyDayList(3, now)).toEqual(["09.10.2026", "08.10.2026", "07.10.2026"]);
+  });
+
+  it("ay sınırını doğru geçer", () => {
+    const now = new Date("2026-11-01T10:00:00Z"); // Türkiye 1 Kasım
+    expect(turkeyDayList(2, now)).toEqual(["01.11.2026", "31.10.2026"]);
   });
 });
 

@@ -63,6 +63,11 @@ class MarketBadge extends StatelessWidget {
         description = 'Model yılı, kilometresi ve hasar durumu benzer araçlara göre %$pct daha yüksek fiyatlı.';
       case MarketBand.fair:
         description = 'Fiyat, model yılı, kilometresi ve hasar durumuna göre hesaplanan adil piyasa değeriyle uyumlu.';
+      case MarketBand.invalid:
+        // Ortalamanın kat be kat üstündeki fiyatta yüzde anlamsız olur ("%74453 pahalı"): bunun
+        // bir veri hatası olduğu söylenir, kullanıcı yanlış yönlendirilmez.
+        description =
+            'Bu ilanın fiyatı benzer araçların ortalamasının kat be kat üzerinde; kaynakta yanlış girilmiş olabilir. Piyasa karşılaştırması güvenilir değil.';
     }
     final avg = car.marketAvgPrice;
     final avgCount = car.marketListingCount ?? 0;

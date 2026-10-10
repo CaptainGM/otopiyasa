@@ -111,9 +111,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
     dbError = true;
   }
 
-  // Arama/filtre aktifken tanıtım (hero) ve "Haftanın fırsatları" gizlenir;
-  // bunlar yalnızca boş Keşfet görünümünde çıkar. Metin araması (q) ayrıca
-  // filtre panelini de gizler → sadece sonuçlar görünür.
+  // Arama/filtre aktifken tanıtım (hero) ve "Haftanın fırsatları" şeritleri gizlenir;
+  // bunlar yalnızca boş Keşfet görünümünde çıkar. Filtre paneli HER durumda açıktır
+  // (arama yapıp ardından marka/yıl/fiyat ile daraltmak mümkün olsun diye).
   const hasQuery = !!filters.q?.trim();
   const hasAnyFilter =
     hasQuery ||
@@ -130,6 +130,23 @@ export default async function HomePage({ searchParams }: HomeProps) {
     !!filters.deals;
   // Fırsatlar, en çok bakılanlar, yakındakiler araç tipine göre süzülmüyor: tip seçilince gizlenir.
   const showStrips = !hasAnyFilter && !filters.vehicleClass;
+
+  // "Aramayı temizle": yalnızca arama terimini (ve sayfa numarasını) kaldırır, diğer filtreler kalır.
+  const clearQueryParams = new URLSearchParams();
+  if (filters.brand) clearQueryParams.set("brand", filters.brand);
+  if (filters.model) clearQueryParams.set("model", filters.model);
+  if (filters.city) clearQueryParams.set("city", filters.city);
+  if (filters.color) clearQueryParams.set("color", filters.color);
+  if (filters.fuelType) clearQueryParams.set("fuelType", filters.fuelType);
+  if (filters.transmission) clearQueryParams.set("transmission", filters.transmission);
+  if (filters.vehicleClass) clearQueryParams.set("vehicleClass", filters.vehicleClass);
+  if (filters.yearMin) clearQueryParams.set("yearMin", String(filters.yearMin));
+  if (filters.yearMax) clearQueryParams.set("yearMax", String(filters.yearMax));
+  if (filters.priceMin) clearQueryParams.set("priceMin", String(filters.priceMin));
+  if (filters.priceMax) clearQueryParams.set("priceMax", String(filters.priceMax));
+  if (filters.sort && filters.sort !== "mixed") clearQueryParams.set("sort", filters.sort);
+  if (filters.deals) clearQueryParams.set("discountOnly", "true");
+  const clearQueryHref = clearQueryParams.size > 0 ? `/?${clearQueryParams.toString()}` : "/";
 
   const board = boardData;
   const activeClass = filters.vehicleClass;
@@ -248,26 +265,20 @@ export default async function HomePage({ searchParams }: HomeProps) {
         </div>
       )}
 
-      {hasQuery ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[var(--muted)]">
-            <span className="text-[var(--text)]">&ldquo;{filters.q}&rdquo;</span> için arama sonuçları
-          </p>
-          <Link href="/" className="btn btn-secondary text-sm">
-            <Icon name="close" size={15} />
-            Aramayı temizle
-          </Link>
-        </div>
-      ) : (
-        <Suspense fallback={<div className="card p-5 text-[var(--muted)]">Filtreler yükleniyor...</div>}>
-          <CarFilters
-            availableBrands={brandOptions}
-            availableCities={cityOptions}
-            availableColors={colorOptions}
-            brandModels={brandModelOptions}
-          />
-        </Suspense>
-      )}
+      {/*
+        Filtre paneli arama yapıldığında da AÇIK kalır: kullanıcı önce arama yapıp sonra marka/yıl/fiyat
+        ile daraltmak istiyor. Eskiden q doluyken panel tamamen gizlenip yerine "Aramayı temizle"
+        konuyordu; arama yapan kullanıcı hiçbir filtre göremiyordu (arama terimi ve diğer filtreler
+        birlikte çalışabildiği hâlde).
+      */}
+      <Suspense fallback={<div className="card p-5 text-[var(--muted)]">Filtreler yükleniyor...</div>}>
+        <CarFilters
+          availableBrands={brandOptions}
+          availableCities={cityOptions}
+          availableColors={colorOptions}
+          brandModels={brandModelOptions}
+        />
+      </Suspense>
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -278,6 +289,18 @@ export default async function HomePage({ searchParams }: HomeProps) {
             <h2 className="font-display text-2xl font-semibold">
               {listHeading} <span className="num text-lg font-normal text-[var(--muted)]">{total.toLocaleString("tr-TR")}</span>
             </h2>
+            {hasQuery && (
+              <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
+                <span>
+                  <span className="text-[var(--text)]">&ldquo;{filters.q}&rdquo;</span> için arama sonuçları
+                </span>
+                {/* Yalnızca arama terimini kaldırır; marka/yıl/fiyat gibi diğer filtreler korunur. */}
+                <Link href={clearQueryHref} className="chip">
+                  <Icon name="close" size={13} />
+                  Aramayı temizle
+                </Link>
+              </p>
+            )}
           </div>
           <div className="segmented" role="group" aria-label="Görünüm">
             <span aria-current="true">

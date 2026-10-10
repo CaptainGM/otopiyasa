@@ -23,8 +23,11 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 loadEnv(projectRoot);
 
 process.env.DISABLE_ZENROWS = "true";
-process.env.SCRAPE_CONCURRENCY = process.env.SCRAPE_CONCURRENCY || "2";
-process.env.SCRAPE_MIN_INTERVAL_MS = process.env.SCRAPE_MIN_INTERVAL_MS || "900";
+// loadEnv() yukarıda çağrıldığı için .env'de tanımlı değerler ÖNCE gelir; varsayılan yalnızca
+// hiçbir yerde tanımlı değilse yazılır. Eskiden burada koşulsuz `process.env.X || "900"` vardı:
+// .env okunduktan SONRA çalıştığı için dosyadaki değeri her zaman eziyordu.
+process.env.SCRAPE_CONCURRENCY ??= "2";
+process.env.SCRAPE_MIN_INTERVAL_MS ??= "900";
 
 // Arabam, veri merkezi / yurtdışı IP'lerine Cloudflare doğrulaması gösteriyor.
 // Bulut sunucuda kapalı; evdeki makinede EXCLUDE_ARABAM=false ile açılır.

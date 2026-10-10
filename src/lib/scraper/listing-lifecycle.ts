@@ -156,7 +156,13 @@ export type VerifyAttemptStatus = "blocked" | "error" | "gone-held";
 
 /**
  * İlanları piyasa arşivine taşır. Silmez: fiyat, km, hasar ve fiyat geçmişi
- * fiyat tahmini/ortalama için saklanır; yalnızca fotoğraf listesi kısaltılır.
+ * fiyat tahmini/ortalama için saklanır; yalnızca fotoğraf listesi ilk
+ * [LIFECYCLE.archivedImageLimit] kareye kısaltılır (yedek kopya tutulmaz).
+ *
+ * Kısaltma geri dönüşsüz DEĞİLDİR: ilan envanterde yeniden görünüp geri açıldığında detay
+ * okuyucu galeriyi kaynaktan yeniden doldurur. Kaynak okunamazsa ya da ilan bir daha
+ * yayına girmezse kalan kareler kalıcı olarak kaybolur; bu yüzden liste kısaltılırken
+ * kartta gösterilen ilk fotoğraf korunur.
  */
 export async function archiveListings(ids: Id[], reason: string, now = new Date()): Promise<number> {
   if (ids.length === 0) return 0;

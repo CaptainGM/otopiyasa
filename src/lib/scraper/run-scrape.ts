@@ -560,11 +560,16 @@ async function fillUnavailableFromSitemap(
   catalogSlugs: string[],
   onListing: OnListing
 ): Promise<{ added: number; families: number }> {
-  const known = new Set(
-    (await Car.find({ sourceSite: "arabam" }, { externalId: 1 }).lean<Array<{ externalId?: string }>>())
-      .map((d) => String(d.externalId || "").replace(/^arabam-/, ""))
-      .filter(Boolean)
-  );
+  // Bizdeki ilan numaraları imleçle okunur: bütün kayıtları tek dizide toplamak, site haritası
+  // okunurken (2-3 dk) gereksiz bellek baskısı yaratıyordu.
+  const known = new Set<string>();
+  const idCursor = Car.find({ sourceSite: "arabam" }, { externalId: 1 })
+    .lean<Array<{ externalId?: string }>>()
+    .cursor();
+  for await (const doc of idCursor) {
+    const id = String(doc.externalId || "").replace(/^arabam-/, "");
+    if (id) known.add(id);
+  }
   const candidates = await collectFamilyCandidates(targets, catalogSlugs, known, (done, total, entries) =>
     reportProgress(`Site haritası okunuyor (${done}/${total} dosya, ${entries.toLocaleString("tr-TR")} adres)`, done, total)
   );
@@ -661,7 +666,9 @@ export async function runRareModelScrape(
     const rows = await Car.aggregate<{ _id: { brand: string; model: string }; count: number }>([
       { $match: { status: "active" } },
       { $group: { _id: { brand: "$brand", model: "$model" }, count: { $sum: 1 } } },
-    ]);
+      // 40 tura kadar her turda çalışır; koleksiyon büyüdükçe $group 100 MB'lık bellek sınırına
+      // takılmasın diye diske taşmaya izin verilir.
+    ]).option({ allowDiskUse: true });
     const attempts = await RareModelAttempt.find({}, { brand: 1, familyKey: 1, attemptedAt: 1, retryAfterDays: 1 }).lean<
       Array<{ brand: string; familyKey: string; attemptedAt: Date; retryAfterDays?: number }>
     >();
@@ -809,7 +816,9 @@ export async function runSparseMarketSegmentScrape(
         prices: { $push: "$price" },
       },
     },
-  ]);
+    // Fiyatları dizi olarak topladığı için $group burada daha çok bellek ister (bkz. aynı
+    // gerekçe runRareModelScrape): sınır yerine diske taşma tercih edilir.
+  ]).option({ allowDiskUse: true });
 
   const sparseSegments = selectSparseMarketSegments(
     groups.map((group) => ({ ...group._id, prices: group.prices || [] })),

@@ -262,10 +262,16 @@ yazılmıştır (yoklama tabanlı bildirim her koşulda çalışır).
 
 ## 8. Test & Kalite
 
-- **373 birim testi / 44 test dosyası** (Vitest) — scraper parser'ları, ilan yaşam döngüsü ve arşiv kuralları, doğrulama sınıflandırıcıları, regresyon/istatistik yardımcıları, güvenlik yardımcıları, chatbot niyet ayrıştırma vb.
-- **Flutter test** — model/birim testleri, `flutter analyze` ile statik analiz.
-- **TypeScript** — `tsc --noEmit` ile tüm proje tip güvenliği.
-- **CI** — henüz kurulu değil (planlanan: her push'ta tip kontrolü + Vitest + Flutter analyze/test).
+- **836 birim testi / 103 test dosyası** (Vitest) — scraper parser'ları, ilan yaşam döngüsü ve arşiv kuralları, doğrulama sınıflandırıcıları, regresyon/istatistik yardımcıları, güvenlik yardımcıları, chatbot niyet ayrıştırma vb.
+- **Flutter test** — model/birim testleri (5 → 9 dosya: kart görsel adresi, hasar metni, veri tasarrufu, derin bağlantı, zorunlu güncelleme eşiği, göreli zaman), `flutter analyze` ile statik analiz.
+- **TypeScript** — `tsc --noEmit` ile tüm proje tip güvenliği (sıfır hata).
+- **Lint** — `eslint` 0 hata; kurulum yalnızca uyarı üretir (ağırlıklı `no-explicit-any`, kazıyıcı ayrıştırıcılarında).
+- **CI** — `.github/workflows/ci.yml` kurulu ve etkin: her `main` push'unda ve her PR'da
+  `tsc --noEmit` + `eslint` + Vitest (web işi) ile `flutter analyze` + `flutter test` (mobil işi)
+  çalışır. Ayrıca `.github/workflows/mobile-release.yml` her `mobile/**` push'unda APK derleyip
+  GitHub Release olarak yayınlar (sürüm kodu otomatik artar, imza SHA-256'ya karşı doğrulanır).
+  Ölçüm (9 Ekim 2026): CI toplam 216 koşu — 211 başarılı, 5 başarısız; başarısızların tamamı
+  Dependabot'un Flutter paket güncelleme PR'ında (mobil işi), `main` dalında kırmızı koşu yok.
 
 ---
 
@@ -273,22 +279,24 @@ yazılmıştır (yoklama tabanlı bildirim her koşulda çalışır).
 
 | Metrik | Sayı |
 |---|---|
-| Next.js sayfası | 21 |
-| API route'u | 50 |
-| React bileşeni | 70 |
-| `src/lib` iş mantığı modülü | 67 |
-| Mongoose veri modeli | 11 |
-| Birim testi | 319 (37 dosya) |
-| Flutter dosyası | 36 (16 ekran) |
+| Next.js sayfası | 25 |
+| API route'u | 91 |
+| React bileşeni | 105 |
+| `src/lib` iş mantığı modülü | 152 |
+| Mongoose veri modeli | 27 |
+| Birim testi | 836 (103 dosya) |
+| Web kod satırı (ts/tsx) | ~54.200 |
+| Flutter dosyası | 65 (23 ekran) |
+| Mobil kod satırı (dart) | ~19.100 |
 
 ---
 
 ## 10. Deploy & Altyapı Özeti
 
 - **Web/API**: Vercel, `fra1` (Frankfurt) bölgesi — MongoDB Atlas ile aynı bölge (gecikmeyi azaltmak için).
-- **Veritabanı**: MongoDB Atlas M0 (ücretsiz katman, 512MB), Frankfurt.
+- **Veritabanı**: MongoDB Atlas Flex (5 GB), Frankfurt.
 - **Domain**: `otopiyasa.app` (Namecheap, GitHub Student Pack üzerinden alındı).
-- **Kaynak kontrol**: özel (private) GitHub deposu, CI etkin.
+- **Kaynak kontrol**: herkese açık (public) GitHub deposu; CI etkin (bkz. Bölüm 8).
 - **Yerel geliştirme**: `start.bat` ile tek tıkla sunucu, `scrape.bat` ile tek tıkla veri toplama.
 
 ---

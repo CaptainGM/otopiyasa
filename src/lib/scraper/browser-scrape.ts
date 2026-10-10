@@ -146,7 +146,16 @@ export async function getArabamSessionCookies(): Promise<string> {
   return arabamSessionCookies;
 }
 
-export async function fetchPageHtml(url: string) {
+export interface FetchPageOptions {
+  /**
+   * Yönlendirmeyi izleme: kaldırılmış bir Arabam ilanı model/kategori sayfasına yönleniyor; o sayfa (~1 MB, 20 ilanlı liste) boşuna
+   * indiriliyordu. Doğrulamada her ölü ilan iki istek + büyük bir indirme demekti, yani isteklerin dörtte biri gereksiz yüktü. Yönlenilen
+   * adres `finalUrl` olarak döner (html boş); aynı ilanın yeni adresine yönleniyorsa normal izlenir.
+   */
+  stopAtRedirect?: boolean;
+}
+
+export async function fetchPageHtml(url: string, options: FetchPageOptions = {}) {
   const hostname = new URL(url).hostname;
   await waitForSlot(hostname);
 
@@ -179,6 +188,7 @@ export async function fetchPageHtml(url: string) {
         fetch(url, {
           headers,
           cache: "no-store",
+          redirect: options.stopAtRedirect ? "manual" : "follow",
           // Zaman aşımı olmayan istek 7/24 daemon'u sonsuza kadar kilitleyebiliyordu.
           signal: AbortSignal.timeout(20000),
         }),
@@ -191,6 +201,22 @@ export async function fetchPageHtml(url: string) {
       if (zen && zen.ok) return zen;
     }
     throw err;
+  }
+
+  if (options.stopAtRedirect && response.status >= 300 && response.status < 400) {
+    let target = "";
+    try {
+      const location = response.headers.get("location");
+      if (location) target = new URL(location, url).toString();
+    } catch {
+      target = "";
+    }
+    if (target) {
+      // Aynı ilanın yeni adresi (başlığı değişmiş): normal izlenir. Kategori/arama ya da ana sayfaya yönleniyorsa ilan sayfası
+      // artık yoktur; hedef sayfa indirilmez, adresi yeter (bkz. isListingGone).
+      if (/\/ilan\//.test(new URL(target).pathname)) return fetchPageHtml(target);
+      return { ok: true, status: response.status, html: "", finalUrl: target };
+    }
   }
 
   if (response.status === 429 || response.status === 403) {

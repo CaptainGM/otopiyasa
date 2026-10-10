@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { ApiRateLimit } from "@/models/ApiRateLimit";
 
-function clientIp(request: Request) {
+export function clientIp(request: Request) {
   const realIp = request.headers.get("x-real-ip")?.trim();
   if (realIp) return realIp;
 

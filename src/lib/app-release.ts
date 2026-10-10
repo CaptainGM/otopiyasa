@@ -33,7 +33,15 @@ export function parseRelease(release: {
 }): AppVersion | null {
   const body = release.body ?? "";
   const code = Number(/versionCode\s*[:=]\s*(\d+)/i.exec(body)?.[1]);
-  const apk = release.assets?.find((a) => a.name.toLowerCase().endsWith(".apk"));
+
+  // Yayın artık üç paket içeriyor: mimariye göre bölünmüş iki paket (~23 MB) ve tüm mimarileri
+  // kapsayan evrensel paket (~65 MB). Otomatik güncelleme HERKESE aynı adresi verdiği için
+  // evrensel paket seçilir: eski/yeni bütün telefonlara kurulabilir. Bölünmüş paketler, cihazın
+  // mimarisini bilen bir istemci kendi kendine seçebilsin diye yayında durur (yeni kurulumlar).
+  // Sıralamaya güvenilmez (GitHub varlıkları ada göre döner ve "app-..." önce gelir).
+  const apk =
+    release.assets?.find((a) => a.name.toLowerCase() === "otopiyasa-release.apk") ??
+    release.assets?.find((a) => a.name.toLowerCase().endsWith(".apk"));
   if (!Number.isFinite(code) || code <= 0 || !apk) return null;
   const changelog = body
     .replace(/<!--[\s\S]*?-->/g, "")

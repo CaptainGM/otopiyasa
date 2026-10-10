@@ -39,4 +39,20 @@ describe("parseRelease", () => {
       else process.env.APP_MIN_VERSION_CODE = previous;
     }
   });
+
+  it("bölünmüş paketler varken evrensel paketi seçer (her telefona kurulabilir)", () => {
+    // Yayın artık app-arm64-v8a / app-armeabi-v7a (küçük) ve otopiyasa-release (evrensel)
+    // paketlerini birlikte içeriyor. GitHub varlıkları ada göre döndüğü için "ilk .apk"
+    // seçilseydi yalnızca arm64 cihazlara kurulabilen paket dağıtılırdı.
+    const arm64 = {
+      name: "app-arm64-v8a-release.apk",
+      browser_download_url: "https://example.com/app-arm64-v8a-release.apk",
+    };
+    const parsed = parseRelease({
+      tag_name: "v1.0.16",
+      body: "<!-- versionCode: 17 -->",
+      assets: [arm64, asset],
+    });
+    expect(parsed?.apkUrl).toBe(asset.browser_download_url);
+  });
 });

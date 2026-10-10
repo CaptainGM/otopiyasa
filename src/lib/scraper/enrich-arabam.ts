@@ -90,8 +90,8 @@ export function arabamDetailSet(listing: ScrapedListing, car: StoredCar): Record
     ...(listing.paintChange ? { paintChange: listing.paintChange } : {}),
     ...(listing.sellerType ? { sellerType: listing.sellerType } : {}),
     ...(listing.listingDate ? { listingDate: listing.listingDate } : {}),
-    ...(listing.city && !car.city ? { city: listing.city } : {}),
-    ...(listing.address && !car.address ? { address: listing.address } : {}),
+    ...(listing.cityVerified === true && listing.city && listing.city !== "Türkiye" && !car.city ? { city: listing.city } : {}),
+    ...(listing.cityVerified === true && listing.address && !car.address ? { address: listing.address } : {}),
     ...fill("color", x.color),
     // Sayfada AÇIKÇA yazan kasa tipi, listeden tahmin edilenin ("Sedan"/"SUV" anahtar kelime tahmini) yerine geçer.
     ...(confirmed.has("bodyType") && x.bodyType && !isUnknownValue(x.bodyType) ? { "features.bodyType": x.bodyType } : fill("bodyType", x.bodyType)),

@@ -21,6 +21,7 @@ interface DodCarSchema {
   offers?: {
     price?: string | number;
     url?: string;
+    seller?: { address?: { addressLocality?: string; addressRegion?: string } };
   };
 }
 
@@ -181,25 +182,17 @@ export async function scrapeDodDetails(
       if (/S[\s-]?tronic|\bDSG\b|\bEDC\b|Otomatik/i.test(desc)) transmission = "Otomatik";
       else if (/\bManuel\b/i.test(desc)) transmission = "Manuel";
 
-      // Şehir tespiti
-      let city = "İstanbul";
-      const cityMatches = [
-        "İstanbul", "Ankara", "İzmir", "Bursa", "Antalya", "Adana", "Konya",
-        "Gaziantep", "Kocaeli", "Mersin", "Eskişehir", "Samsun", "Denizli", "Kayseri"
-      ];
-      for (const c of cityMatches) {
-        if (html.includes(c)) {
-          city = c;
-          break;
-        }
-      }
-      const coords = cityToCoords(city);
+      // Use the structured seller location only; scanning the whole page can pick up a footer city.
+      const rawCity = carData.offers?.seller?.address?.addressLocality?.trim() || "";
+      const cityVerified = Boolean(rawCity && cityToCoords(rawCity));
+      const city = cityVerified ? rawCity : "Türkiye";
 
       const title = `${brand} ${rawModel} ${year} ${mileage.toLocaleString("tr-TR")} km`.trim();
       const specText = [transmission !== "Bilinmiyor" ? `${transmission} vites` : "", fuelType !== "Bilinmiyor" ? `${fuelType} yakıt` : ""]
         .filter(Boolean)
         .join(", ");
-      const description = `${title} - DOD Doğuş Otomotiv Kurumsal Ekspertizli 2. El. ${city} Doğuş Otomotiv Yetkili Satıcısı.${specText ? ` ${specText}.` : ""}`;
+      const cityText = cityVerified ? ` ${city} Doğuş Otomotiv Yetkili Satıcısı.` : " Doğuş Otomotiv Yetkili Satıcısı.";
+      const description = `${title} - DOD Doğuş Otomotiv Kurumsal Ekspertizli 2. El.${cityText}${specText ? ` ${specText}.` : ""}`;
 
       const listing: ScrapedListing = {
         externalId: item.externalId,
@@ -213,13 +206,13 @@ export async function scrapeDodDetails(
         price,
         mileage,
         city,
-        address: `${city} DOD Doğuş Otomotiv Bayisi`,
+        cityVerified,
+        address: cityVerified ? `${city} DOD Doğuş Otomotiv Bayisi` : undefined,
         description,
         imageUrl,
         images: [imageUrl],
         damageFlag: false,
         sellerType: "Kurumsal",
-        location: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
         features: {
           fuelType,
           transmission,

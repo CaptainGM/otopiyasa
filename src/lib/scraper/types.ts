@@ -15,6 +15,8 @@ export interface ScrapedListing {
   price: number;
   mileage: number;
   city: string;
+  /** false when the source omitted the city and the adapter would otherwise need a fallback. */
+  cityVerified?: boolean;
   
   address?: string;
   description: string;
@@ -23,7 +25,6 @@ export interface ScrapedListing {
   imageUrl: string;
   images?: string[];
   damageFlag?: boolean;
-  location?: { lat: number; lng: number };
   listingDate?: string;
   sellerType?: string;
   paintChange?: string;
@@ -76,6 +77,9 @@ export interface CrawlReport {
   observedIds?: Set<string>;
   /** Kimliği çıkarılamayan kartlar: bu taramada hiçbir eski ilanı arşivleme. */
   unsafeOmissions?: number;
+  /** DOD detail requests: sample size and listings with positive structured data. */
+  detailChecks?: number;
+  detailAlive?: number;
 }
 
 export function newCrawlReport(): CrawlReport {

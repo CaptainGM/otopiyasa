@@ -86,6 +86,7 @@ export async function scrapeOtokocListings(
       transmission: string;
       color: string;
       city: string;
+      cityVerified: boolean;
       href: string;
       imgSrc: string;
       alt: string;
@@ -107,7 +108,9 @@ export async function scrapeOtokocListings(
       const fuel = $el.attr("data-fuel") || "Bilinmiyor";
       const transmission = $el.attr("data-transmission") || "Bilinmiyor";
       const color = $el.attr("data-color") || "Belirtilmemiş";
-      const city = $el.attr("data-city") || "İstanbul";
+      const rawCity = $el.attr("data-city")?.trim() || "";
+      const cityVerified = Boolean(rawCity && cityToCoords(rawCity));
+      const city = cityVerified ? rawCity : "Türkiye";
 
       const parentA = $el.closest("a");
       const href = parentA.attr("href") || "";
@@ -162,6 +165,7 @@ export async function scrapeOtokocListings(
         transmission,
         color,
         city,
+        cityVerified,
         href,
         imgSrc,
         alt,
@@ -200,9 +204,9 @@ export async function scrapeOtokocListings(
         : `${OTOKOC_BASE_URL}${item.href}`;
 
       // Şehir adını formatla
-      const cityName =
-        item.city.charAt(0).toLocaleUpperCase("tr-TR") + item.city.slice(1).toLocaleLowerCase("tr-TR");
-      const coords = cityToCoords(cityName);
+      const cityName = item.cityVerified
+        ? item.city.charAt(0).toLocaleUpperCase("tr-TR") + item.city.slice(1).toLocaleLowerCase("tr-TR")
+        : "Türkiye";
 
       // Yakıt ve vites formatla
       const fuelType =
@@ -217,7 +221,8 @@ export async function scrapeOtokocListings(
 
       if (!mainImage) continue;
 
-      const description = `${title} - Otokoç 2. El Koç Grubu Kurumsal Garantili İkinci El. ${cityName} şubesi, ${transmissionType} vites, ${fuelType} yakıt.`;
+      const cityText = item.cityVerified ? ` ${cityName} şubesi,` : "";
+      const description = `${title} - Otokoç 2. El Koç Grubu Kurumsal Garantili İkinci El.${cityText} ${transmissionType} vites, ${fuelType} yakıt.`;
 
       const listing: ScrapedListing = {
         externalId,
@@ -230,13 +235,13 @@ export async function scrapeOtokocListings(
         price: item.price,
         mileage: item.mileage,
         city: cityName,
-        address: `${cityName} Otokoç 2. El Şubesi`,
+        cityVerified: item.cityVerified,
+        address: item.cityVerified ? `${cityName} Otokoç 2. El Şubesi` : undefined,
         description,
         imageUrl: mainImage,
         images: [mainImage],
         damageFlag: false,
         sellerType: "Kurumsal",
-        location: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
         features: {
           fuelType,
           transmission: transmissionType,

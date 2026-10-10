@@ -7,6 +7,7 @@ import { cached, CACHE_TTL } from "@/lib/cache";
 import { isNonCarBrand, normalizeBrand } from "@/lib/normalize-brand";
 import { normalizeCity } from "@/lib/normalize-city";
 import { getDefaultMapClusters } from "@/lib/nearby";
+import { isVehicleClass } from "@/lib/vehicle-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,10 @@ export async function GET(request: Request) {
     await connectDB();
     const params = new URL(request.url).searchParams;
     const query = buildMapQuery(params);
+    const requestedClass = params.get("vehicleClass");
+    const classFilter = isVehicleClass(requestedClass)
+      ? { vehicleClass: requestedClass === "otomobil" ? { $in: ["otomobil", null] } : requestedClass }
+      : {};
 
     const hasFilter = params.toString().length > 0;
 
@@ -29,17 +34,16 @@ export async function GET(request: Request) {
       hasFilter
         ? (async () => {
             const cars = (await Car.find(query, { _id: 0, city: 1, address: 1, price: 1 })
-              .limit(5000)
               .lean()) as unknown as ClusterInput[];
             return buildClusters(cars);
           })()
         : getDefaultMapClusters(),
 
-      cached("map:options", CACHE_TTL.long, async () => {
+      cached(`map:options:${requestedClass || "all"}`, CACHE_TTL.long, async () => {
         const [brands, cities, fuels] = await Promise.all([
-          Car.distinct("brand", PUBLIC_LISTING_FILTER),
-          Car.distinct("city", PUBLIC_LISTING_FILTER),
-          Car.distinct("features.fuelType", PUBLIC_LISTING_FILTER),
+          Car.distinct("brand", { ...PUBLIC_LISTING_FILTER, ...classFilter }),
+          Car.distinct("city", { ...PUBLIC_LISTING_FILTER, ...classFilter }),
+          Car.distinct("features.fuelType", { ...PUBLIC_LISTING_FILTER, ...classFilter }),
         ]);
 
         const sortTr = (list: unknown[]) =>

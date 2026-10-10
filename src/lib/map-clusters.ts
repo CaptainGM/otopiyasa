@@ -5,6 +5,7 @@ import { cityStorageAliases } from "@/lib/normalize-city";
 import { TR_GEO } from "@/lib/tr-geo";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { modelFamilyRegex } from "@/lib/model-family";
+import { isVehicleClass } from "@/lib/vehicle-scope";
 
 
 
@@ -94,13 +95,19 @@ export function buildClusters(cars: ClusterInput[]): {
   
   clusters.sort((a, b) => b.count - a.count);
 
-  return { clusters, total: cars.length - unmapped, unmapped };
+  // total counts matching listings, including records without usable map coordinates.
+  return { clusters, total: cars.length, unmapped };
 }
 
 
 export function buildMapQuery(params: URLSearchParams): Record<string, unknown> {
 
   const query: Record<string, unknown> = { ...PUBLIC_LISTING_FILTER };
+
+  const vehicleClass = params.get("vehicleClass");
+  if (isVehicleClass(vehicleClass)) {
+    query.vehicleClass = vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass;
+  }
 
   const brand = params.get("brand");
   if (brand) query.brand = { $in: brandStorageAliases(brand) };

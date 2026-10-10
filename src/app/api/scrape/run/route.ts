@@ -14,7 +14,7 @@ import { runEnrichArabamBatch } from "@/lib/scraper/enrich-arabam";
 import { runRecentArabamScrape } from "@/lib/scraper/arabam-discovery";
 import { requireAdmin } from "@/lib/auth";
 import { ManualScrapeLog } from "@/models/ManualScrapeLog";
-import { startManualBeat } from "@/lib/manual-scrape-state";
+import { ManualScrapeAlreadyRunningError, startManualBeat } from "@/lib/manual-scrape-state";
 
 export async function POST(request: Request) {
   const startTime = Date.now();
@@ -255,6 +255,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof ManualScrapeAlreadyRunningError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("POST /api/scrape/run error:", error);
     return NextResponse.json(
       {

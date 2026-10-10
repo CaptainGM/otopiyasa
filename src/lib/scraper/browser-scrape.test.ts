@@ -16,6 +16,18 @@ describe("isListingGone", () => {
     expect(isListingGone("<html>...</html>", "https://www.arabam.com/")).toBe(false);
     expect(isListingGone("<html>...</html>", "https://tr.vava.cars/")).toBe(false);
   });
+
+  it("keeps a parsed live listing even when its HTML contains a generic removal phrase", () => {
+    const liveCar = `<script type="application/ld+json">${JSON.stringify({
+      "@type": "Car",
+      brand: "Porsche",
+      model: "911 GT3 RS",
+      name: "Porsche 911 GT3 RS",
+      productionDate: 2024,
+      offers: { price: 60000000 },
+    })}</script><footer>Aradığınız ilan bulunamamıştır</footer>`;
+    expect(isListingGone(liveCar, "https://www.arabam.com/ilan/porsche-911/12345678")).toBe(false);
+  });
 });
 
 describe("isCloudflareChallenge", () => {

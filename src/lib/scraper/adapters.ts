@@ -74,7 +74,6 @@ export function enrichListing(listing: ScrapedListing): ScrapedListing {
       new Set([resolvedCover, ...(listing.images || []).filter(Boolean)])
     ),
     damageFlag: listing.damageFlag || false,
-    location: listing.location || undefined,
   };
 }
 

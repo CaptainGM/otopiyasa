@@ -36,6 +36,7 @@ import { isPermanentRemoval, knownFeatureUpdates, PLATFORM_SCOPE_REASON } from "
 import { outOfScopeReason, vehicleClassOf } from "@/lib/vehicle-scope";
 import { fuelWithTitleHint } from "@/lib/normalize-fuel";
 import { normalizeCity } from "@/lib/normalize-city";
+import { verifiedCityUpdate } from "@/lib/scraper/city-merge";
 import { normalizeVehicleTransmission } from "@/lib/vehicle-attrs";
 import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
 import { ListingSource } from "@/types";
@@ -177,6 +178,7 @@ export async function saveListing(
     const newPrice = listing.price > 0 ? listing.price : existing.price;
     const priceChanged = existing.price !== newPrice && listing.price > 0;
     const mileageChanged = listing.mileage > 0 && Math.abs(existing.mileage - listing.mileage) > 50;
+    const nextCity = verifiedCityUpdate(existing.city, listing.city, listing.cityVerified);
     // Açıklama: satıcının notu ilan sayfasından boşlukları sadeleştirilerek okunur (bkz. parseArabamDetailHtml), yani aynı metin her okumada
     // aynı çıkar; en küçük değişiklik de (aynı uzunlukta "var" → "yok", telefon numarası) değişiklik sayılır. Eskiden uzunluk farkı 5
     // karakterden azsa görmezden geliniyordu.
@@ -221,10 +223,11 @@ export async function saveListing(
     const hasAnyChange =
       priceChanged || mileageChanged || descChanged || damageChanged || imagesEnriched || statusReactivated || urlChanged ||
       featuresChanged || needsVerifyFlag || classChanged || identityChanged;
+    const anyChange = hasAnyChange || Boolean(nextCity);
 
     // GERÇEKTE HİÇBİR ŞEY DEĞİŞMEDİYSE içerik yazılmaz (updatedAt oynamaz);
     // yalnızca "canlı görüldü" bilgisi seyrek olarak işlenir.
-    if (!hasAnyChange) {
+    if (!anyChange) {
       const lastSeen = existing.lastVerifiedAt ? new Date(existing.lastVerifiedAt).getTime() : 0;
       if (markVerified && (existing.missingSince || now.getTime() - lastSeen > SEEN_WRITE_INTERVAL_MS)) {
         await Car.updateOne(
@@ -254,8 +257,8 @@ export async function saveListing(
     if (hasValidYear && listing.yearVerified !== false) existing.year = listing.year;
     existing.price = newPrice;
     if (listing.mileage > 0) existing.mileage = listing.mileage;
-    if (!isPlaceholder(listing.city) && listing.city !== "Türkiye") existing.city = listing.city;
-    if (listing.address) existing.address = listing.address;
+    if (nextCity) existing.city = nextCity;
+    if (listing.address && listing.cityVerified === true) existing.address = listing.address;
     if (
       listing.descriptionVerified === true &&
       listing.description &&
@@ -280,7 +283,6 @@ export async function saveListing(
     ) {
       existing.damageParts = listing.damageParts;
     }
-    if (listing.location) existing.location = listing.location;
     if (listing.features) {
       for (const [key, value] of Object.entries(featureUpdates)) existing.set(`features.${key}`, value);
       // Motor bilgileri: detayı ilan sayfasından tamamlanmış kurumsal ilanda liste verisi ezmez.
@@ -388,6 +390,8 @@ export async function saveListing(
   try {
     await Car.create({
       ...toCreate,
+      city: toCreate.cityVerified === true ? toCreate.city : "Türkiye",
+      address: toCreate.cityVerified === true ? toCreate.address || "" : "",
       features: {
         ...toCreate.features,
         ...(toCreate.features.avgFuelConsumption ? { avgFuelConsumptionSource: "listing" as const } : {}),

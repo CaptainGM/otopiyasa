@@ -45,10 +45,6 @@ const CarSchema = new Schema(
     imageUrl: { type: String, default: "" },
     images: { type: [String], default: [] },
     damageFlag: { type: Boolean, default: false },
-    location: {
-      lat: Number,
-      lng: Number,
-    },
     features: { type: CarFeaturesSchema, required: true },
     listingDate: { type: String, default: "" },
     sellerType: { type: String, default: "" },

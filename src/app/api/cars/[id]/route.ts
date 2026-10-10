@@ -97,7 +97,7 @@ export async function GET(
       ? serializeCar(carDoc, market)
       : serializeCarPublic(carDoc, market);
 
-    // Scraper'ların location alanı şehir merkezidir; satıcının tam konumu gibi gösterilmemeli.
+    // Only the declared city/address is mapped; vehicle coordinates are not collected or exposed.
     const mapPlacement = resolvePlacement(car.city || "", car.address, 0, car.description);
 
     return NextResponse.json(

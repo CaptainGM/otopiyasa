@@ -28,7 +28,7 @@ const FUEL_MAP: Record<string, string> = {
   lpg: "LPG",
 };
 
-function extractCityFromUrl(url: string): string {
+function extractCityFromUrl(url: string): string | null {
   // e.g. -ekspertizli-İzmir-1300000tl-572344
   const match = url.match(/-([A-Za-zÇĞİÖŞÜçğıöşü]+)-\d+tl-\d+/i);
   if (match) {
@@ -37,7 +37,7 @@ function extractCityFromUrl(url: string): string {
       return candidate.charAt(0).toUpperCase() + candidate.slice(1).toLowerCase();
     }
   }
-  return "İstanbul";
+  return null;
 }
 
 export async function scrapeOtoplusListings(
@@ -158,8 +158,9 @@ export async function scrapeOtoplusListings(
 
       const year = Number(v.vehicleModelDate || v.productionDate) || new Date().getFullYear();
       const mileage = Number(v.mileageFromOdometer?.value) || 0;
-      const city = extractCityFromUrl(v.url || "");
-      const coords = cityToCoords(city);
+      const rawCity = extractCityFromUrl(v.url || "");
+      const city = rawCity || "Türkiye";
+      const cityVerified = Boolean(rawCity && cityToCoords(rawCity));
 
       // Kaynakta yazmayan özellik tahmin edilmez; kasa tipi başlıktan değil ilan sayfasından (enrich-detail) gelir.
       const rawTrans = (v.vehicleTransmission || "").toLowerCase();
@@ -187,10 +188,10 @@ export async function scrapeOtoplusListings(
         price,
         mileage,
         city,
+        cityVerified,
         description: v.description || title,
         imageUrl,
         images: imageUrl ? [imageUrl] : [],
-        location: coords || undefined,
         features: {
           fuelType,
           transmission,

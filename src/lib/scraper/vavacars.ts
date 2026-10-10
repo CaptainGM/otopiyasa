@@ -143,8 +143,9 @@ export async function scrapeVavaCarsListings(
 
       const year = Number(item.year) || new Date().getFullYear();
       const mileage = Number(item.mileage) || 0;
-      const city = item.locationCity?.trim() || "İstanbul";
-      const coords = cityToCoords(city);
+      const rawCity = item.locationCity?.trim() || "";
+      const cityVerified = Boolean(rawCity && cityToCoords(rawCity));
+      const city = cityVerified ? rawCity : "Türkiye";
 
       const title = `${rawBrand} ${rawModel} ${item.trimLevel || ""} ${year} ${mileage.toLocaleString("tr-TR")} km`.trim();
 
@@ -155,7 +156,8 @@ export async function scrapeVavaCarsListings(
       const mainImage = item.imageUrl || imageList[0] || "";
       if (!mainImage) continue; // Görseli olmayan araçları atla
 
-      const description = `${title} - VavaCars Ekspertiz Onaylı Kurumsal İkinci El. ${city} merkezli, ${item.transmission || "Bilinmiyor"} vites, ${item.fuelType || "Bilinmiyor"} yakıt.`;
+      const cityText = cityVerified ? ` ${city} merkezli,` : "";
+      const description = `${title} - VavaCars Ekspertiz Onaylı Kurumsal İkinci El.${cityText} ${item.transmission || "Bilinmiyor"} vites, ${item.fuelType || "Bilinmiyor"} yakıt.`;
 
       const listing: ScrapedListing = {
         externalId,
@@ -170,13 +172,13 @@ export async function scrapeVavaCarsListings(
         price,
         mileage,
         city,
-        address: `${city} VavaCars Merkezi`,
+        cityVerified,
+        address: cityVerified ? `${city} VavaCars Merkezi` : undefined,
         description,
         imageUrl: mainImage,
         images: imageList.length > 0 ? imageList : [mainImage],
         damageFlag: Boolean(item.isDamaged || item.hasTramer),
         sellerType: "Galeriden",
-        location: coords ? { lat: coords.lat, lng: coords.lng } : undefined,
         features: {
           fuelType: item.fuelType || "Bilinmiyor",
           transmission: item.transmission || "Bilinmiyor",

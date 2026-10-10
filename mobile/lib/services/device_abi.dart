@@ -1,7 +1,3 @@
-import 'dart:io';
-
-import 'package:flutter/services.dart';
-
 /// Cihazın hangi işlemci mimarisini kullandığını söyler (bkz.
 /// mobile/android/app/src/main/kotlin/.../MainActivity.kt).
 ///
@@ -12,6 +8,10 @@ import 'package:flutter/services.dart';
 /// Saf yardımcı, testten doğrudan çağrılabilir: hangi değerin hangi pakete denk geldiğini
 /// burada tutmak, sunucudaki dosya adı kuralıyla tek yerde buluşmasını sağlar.
 library;
+
+import 'dart:io';
+
+import 'package:flutter/services.dart';
 
 /// Sunucudaki paket adlarıyla eşleşen desteklenen mimariler.
 const supportedAbis = <String>['arm64-v8a', 'armeabi-v7a'];

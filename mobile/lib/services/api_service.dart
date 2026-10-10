@@ -389,8 +389,9 @@ class ApiService {
       }
       final message =
           failure['error'] as String? ?? 'Kimlik doğrulama başarısız';
-      if (failure['needsVerification'] == true)
+      if (failure['needsVerification'] == true) {
         throw NeedsVerificationException(message);
+      }
       throw Exception(message);
     }
 

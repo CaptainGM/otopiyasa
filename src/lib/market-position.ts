@@ -1,4 +1,4 @@
-import { SUSPICIOUS_DISCOUNT } from "@/lib/deals";
+import { FAIR_BAND_PCT, MIN_MARKET_COMPARABLES, SUSPICIOUS_PCT } from "@/lib/market-thresholds";
 
 /**
  * Fiyatın kendi segmentindeki yeri (kart göstergesi, ilan termometresi, mobil rozet aynı kuralı kullanır):
@@ -6,9 +6,11 @@ import { SUSPICIOUS_DISCOUNT } from "@/lib/deals";
  *  - %6+ altında: ucuz; %30+ altında: şüpheli ucuz (hatalı fiyat ya da kapora dolandırıcılığı olabilir)
  *  - %6+ üstünde: pahalı
  * Gösterge ibresi 0 farkta ortada, her %1 fark için %2,5 kayar (uçlarda %6–%94 arasında kalır).
+ *
+ * Eşikler market-thresholds.ts içinde tanımlıdır; mobil kopyası
+ * mobile/lib/utils/market_position.dart dosyasındadır ve birlikte güncellenmelidir.
  */
-export const FAIR_BAND_PCT = 6;
-export const MIN_MARKET_COMPARABLES = 3;
+export { FAIR_BAND_PCT, MIN_MARKET_COMPARABLES };
 
 export type MarketBand = "suspicious" | "cheap" | "fair" | "pricey";
 
@@ -30,7 +32,7 @@ export function marketPosition(
   if (!price || !avg || avg <= 0 || !count || count < MIN_MARKET_COMPARABLES) return null;
   const pct = Math.round(((price - avg) / avg) * 100);
   const marker = Math.max(6, Math.min(94, 50 + pct * 2.5));
-  if (pct <= -Math.round(SUSPICIOUS_DISCOUNT * 100)) {
+  if (pct <= -SUSPICIOUS_PCT) {
     return { pct, band: "suspicious", marker, label: "Şüpheli ucuz" };
   }
   if (pct <= -FAIR_BAND_PCT) return { pct, band: "cheap", marker, label: `%${Math.abs(pct)} ucuz` };

@@ -3,6 +3,10 @@
 ///  - %6+ altında: ucuz; %30+ altında: şüpheli ucuz (hatalı fiyat ya da kapora dolandırıcılığı olabilir)
 ///  - %6+ üstünde: pahalı
 /// Gösterge ibresi 0 farkta ortada, her %1 fark için %2,5 kayar (uçlarda %6–%94 arasında kalır).
+///
+/// DİKKAT: bu sabitler web tarafındaki TEK KAYNAĞIN (src/lib/market-thresholds.ts) aynasıdır.
+/// Uygulama web API'sinden yalnızca fiyat/ortalama/emsal sayısını aldığı için eşikler istemcide
+/// hesaplanır; bir eşiği değiştirirken İKİ dosya birlikte güncellenmelidir.
 const int fairBandPct = 6;
 const int suspiciousPct = 30;
 const int minMarketComparables = 3;

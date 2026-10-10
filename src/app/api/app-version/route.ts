@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { parseRelease, type AppVersion } from "@/lib/app-release";
+import { minVersionCode, parseRelease, type AppVersion } from "@/lib/app-release";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ function fallback(): AppVersion {
   return {
     version: process.env.APP_LATEST_VERSION || "1.0.2",
     versionCode: Number(process.env.APP_LATEST_VERSION_CODE || "3"),
-    minVersionCode: Number(process.env.APP_MIN_VERSION_CODE || "1"),
+    minVersionCode: minVersionCode(),
     apkUrl:
       process.env.APP_APK_URL ||
       `https://github.com/${REPO}/releases/latest/download/otopiyasa-release.apk`,

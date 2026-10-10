@@ -3,6 +3,18 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otopiyasa/services/api_service.dart';
 
+/// Güncelleme zorunlu mu?
+///
+/// Sunucu yanıtı CDN'de herkese ortak saklandığı için `forceUpdate` alanı istemciye göre
+/// değişemez (bu yüzden sunucu her zaman false gönderir). Karar burada verilir: sunucu
+/// `minVersionCode` eşiğini yayınlar, istemci kendi derleme numarasıyla karşılaştırır.
+/// Bozuk bir sürüm geri çekilmek istendiğinde sunucuda APP_MIN_VERSION_CODE yükseltilir.
+bool isForceUpdateRequired({required int currentVersionCode, required Map<String, dynamic> data}) {
+  if (data['forceUpdate'] == true) return true;
+  final minCode = (data['minVersionCode'] as num?)?.toInt() ?? 0;
+  return minCode > 0 && currentVersionCode < minCode;
+}
+
 class UpdateService {
   /// Yüklü uygulamanın gerçek sürümü (APK'nın kendisinden okunur, pubspec.yaml version: 1.0.6+7 → 1.0.6 / 7).
   /// Eskiden burada elle yazılmış '1.0.2 / 3' duruyordu ve hiç güncellenmediği için her telefon kendini
@@ -53,7 +65,9 @@ class UpdateService {
       final apkUrl = data['apkUrl']?.toString() ?? '';
       final changelog = data['changelog']?.toString() ?? '';
       final title = data['title']?.toString() ?? 'OtoPiyasa Güncellemesi Hazır!';
-      final forceUpdate = data['forceUpdate'] == true;
+      // Zorunluluk istemcide hesaplanır (bkz. isForceUpdateRequired): minVersionCode eşiğinin
+      // altındaki sürümler güncelleme ekranında kilitlenir.
+      final forceUpdate = isForceUpdateRequired(currentVersionCode: currentVersionCode, data: data);
 
       if (remoteCode > currentVersionCode) {
         if (_dialogShowing) return;

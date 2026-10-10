@@ -2,12 +2,27 @@
 export interface AppVersion {
   version: string;
   versionCode: number;
+  /**
+   * Bu kodun altındaki uygulamalar güncellemeye zorlanır. Kararı istemci verir
+   * (bkz. mobile/lib/services/update_service.dart): yanıt CDN'de herkese ortak saklandığı
+   * için "zorunlu mu" sonucu istemciye göre değişemez, bu yüzden eşik gönderilir.
+   */
   minVersionCode: number;
   apkUrl: string;
   title: string;
   changelog: string;
   releaseDate: string;
   forceUpdate: boolean;
+}
+
+/**
+ * Zorunlu güncelleme eşiği. APP_MIN_VERSION_CODE yükseltilince (ör. bozuk bir sürüm geri
+ * çekilirken) altındaki tüm uygulamalar güncelleme ekranında kilitlenir. Varsayılan 1'dir,
+ * yani normalde kimse zorlanmaz.
+ */
+export function minVersionCode(): number {
+  const value = Number(process.env.APP_MIN_VERSION_CODE || "1");
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
 }
 
 export function parseRelease(release: {
@@ -29,11 +44,13 @@ export function parseRelease(release: {
   return {
     version: (release.tag_name ?? "").replace(/^v/i, "") || String(code),
     versionCode: code,
-    minVersionCode: Number(process.env.APP_MIN_VERSION_CODE || "1"),
+    minVersionCode: minVersionCode(),
     apkUrl: apk.browser_download_url,
     title: "OtoPiyasa güncellemesi hazır",
     changelog,
     releaseDate: (release.published_at ?? "").slice(0, 10),
+    // Zorunluluk istemciye göre değiştiği için burada sabit false döner; istemci
+    // minVersionCode ile kendi kodunu karşılaştırır.
     forceUpdate: false,
   };
 }

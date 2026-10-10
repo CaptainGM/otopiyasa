@@ -7,43 +7,36 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/notification_service.dart';
+import 'package:otopiyasa/utils/deep_link.dart';
 
 /// FIREBASE CLOUD MESSAGING (FCM) — uygulama TAMAMEN KAPALIYKEN bildirim.
 ///
 /// [NotificationService] (60sn yoklama) uygulama açık/arka plandayken zaten
 /// çalışıyor; bunun tek eksiği uygulama tamamen öldürüldüğünde bildirim
-/// gösterememesiydi. Bu dosya o boşluğu FCM ile kapatmak için hazırlandı
-/// ANCAK devreye girmesi için native tarafta bir kerelik, Google hesabı
-/// gerektiren kurulum eksik — o yüzden [init] her adımda try/catch ile
-/// sarılı: yapılandırma yoksa sessizce hiçbir şey yapmaz, uygulama yoklama
-/// yöntemiyle çalışmaya devam eder. Kod derlenir ve çalışır; sadece FCM
-/// bildirim ULAŞTIRAMAZ ta ki aşağıdaki adımlar tamamlanana kadar.
+/// gösterememesiydi. Bu dosya o boşluğu FCM ile kapatır.
 ///
-/// KALAN KURULUM (Google hesabı gerektirir, elle yapılmalı):
-///  1) https://console.firebase.google.com → yeni proje → Android uygulama
-///     ekle, paket adı: `com.otopiyasa.otopiyasa` (bkz.
-///     mobile/android/app/build.gradle.kts → applicationId).
-///  2) İndirilen `google-services.json` dosyasını `mobile/android/app/`
-///     içine koy.
-///  3) `mobile/android/build.gradle.kts` (proje kökü) → plugins bloğuna:
-///       id("com.google.gms.google-services") version "4.4.2" apply false
-///     `mobile/android/app/build.gradle.kts` → plugins bloğuna:
-///       id("com.google.gms.google-services")
-///  4) Firebase Console → Proje ayarları → Hizmet hesapları → "Yeni özel
-///     anahtar oluştur" ile bir JSON indir; onun İÇERİĞİNİ (tamamını, tek
-///     satır) sunucu tarafında `FCM_SERVICE_ACCOUNT_JSON` ortam değişkenine
-///     yapıştır (bkz. src/lib/fcm.ts, .env.example). Vercel'de env var olarak
-///     eklenmeli.
-///  5) `flutter build apk` yeniden derlenmeli (google-services.json artık var).
+/// Native yapılandırma tamamdır: `mobile/android/app/google-services.json`
+/// depoda, `com.google.gms.google-services` eklentisi settings.gradle.kts ve
+/// app/build.gradle.kts içinde uygulanıyor, sunucu tarafında `src/lib/fcm.ts`
+/// ve `FCM_SERVICE_ACCOUNT_JSON` hazır. (Buradaki eski not "kurulum eksik"
+/// diyordu; kurulum yapıldıktan sonra güncellenmemişti.)
 ///
-/// Bu adımlar tamamlanmadan önce 1-4 arası HİÇBİR ŞEY bu dosyayı bozmaz;
-/// [init] sırasında oluşan hata yutulur.
+/// [init] yine de her adımda try/catch ile sarılıdır: yapılandırma bir gün
+/// eksik olursa sessizce devre dışı kalır ve yoklama yöntemi çalışmaya devam eder.
 class PushService {
   PushService._();
   static final PushService instance = PushService._();
 
   final _api = ApiService();
   bool _initialized = false;
+
+  /// Bildirime dokunulduğunda ilanı açmak için main.dart tarafından bağlanır.
+  /// Servis Navigator'a doğrudan erişmediği için geri çağrı dışarıdan verilir.
+  void Function(String carId)? onOpenCar;
+
+  /// Uygulama tamamen kapalıyken gelen bildirime dokunulup açıldığında
+  /// getInitialMessage ile gelen ilan; arayüz kurulunca işlenir.
+  String? _pendingCarId;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -72,14 +65,49 @@ class PushService {
         final title = message.notification?.title;
         final body = message.notification?.body;
         if (title != null) {
-          NotificationService.instance.showRaw(title, body ?? '');
+          NotificationService.instance.showRaw(
+            title,
+            body ?? '',
+            carId: carIdFromDeepLink(_linkOf(message)),
+          );
         }
       });
+
+      // Bildirime dokunma yolları. Üçü ayrı ayrı bağlanmazsa bildirim gelir ama
+      // dokununca uygulama yalnızca açılır, ilana gitmez.
+      FirebaseMessaging.onMessageOpenedApp.listen((message) => _openFromMessage(message));
+
+      // Uygulama tamamen kapalıyken dokunulup açıldıysa: arayüz henüz kurulmadığı
+      // için ilan kimliği saklanır, main.dart hazır olunca consumePendingCarId alır.
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) _pendingCarId = carIdFromDeepLink(_linkOf(initial));
     } catch (error) {
-      // Native Firebase yapılandırması (google-services.json) yoksa buraya
-      // düşer — beklenen durum, sessizce devam.
+      // Native Firebase yapılandırması yoksa buraya düşer — beklenen durum, sessizce devam.
       developer.log('PushService devre dışı (Firebase yapılandırılmamış): $error');
     }
+  }
+
+  /// FCM mesajındaki ilan bağlantısı: önce veri alanı, sonra yedek anahtarlar.
+  /// Sunucu `data.url` olarak tam adres gönderir (bkz. src/lib/web-push.ts); yalnızca
+  /// kimlik gelirse de çözülebilsin diye bağlantıya çevrilir.
+  String? _linkOf(RemoteMessage message) {
+    final data = message.data;
+    final raw = data['url'] ?? data['link'] ?? data['carId'];
+    if (raw is! String || raw.isEmpty) return null;
+    if (raw.contains('://')) return raw;
+    return raw.startsWith('/') ? 'https://otopiyasa.app$raw' : 'https://otopiyasa.app/cars/$raw';
+  }
+
+  void _openFromMessage(RemoteMessage message) {
+    final carId = carIdFromDeepLink(_linkOf(message));
+    if (carId != null) onOpenCar?.call(carId);
+  }
+
+  /// Kapalıyken açılan bildirimin ilanı (bir kez döner).
+  String? consumePendingCarId() {
+    final id = _pendingCarId;
+    _pendingCarId = null;
+    return id;
   }
 
   bool _wasLoggedIn = false;

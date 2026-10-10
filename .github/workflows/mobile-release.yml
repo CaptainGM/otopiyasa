@@ -80,29 +80,45 @@ jobs:
           } > notes.md
           cat notes.md
 
+      # --split-per-abi: tek 64 MB'lık paket yerine ABI başına ayrı APK çıkar (her biri ~üçte bir).
+      # Telefon yalnızca kendi mimarisini indirir; mobildeki veri tasarrufunun en büyük tek kalemi buydu.
       - name: Derle
         working-directory: mobile
         run: |
           flutter pub get
           flutter analyze --no-fatal-infos
+          flutter build apk --release --split-per-abi --build-name=${{ steps.version.outputs.name }} --build-number=${{ steps.version.outputs.code }}
+          ls -l build/app/outputs/flutter-apk/*.apk
+
+      # Universal APK: /api/app-version hâlâ tek adres yayınlıyor (telefon kendi mimarisini bildiği
+      # hâlde eski sürümler bu adresi kullanıyor), bu yüzden geriye dönük uyum için eklenir.
+      - name: Evrensel paket
+        working-directory: mobile
+        run: |
           flutter build apk --release --build-name=${{ steps.version.outputs.name }} --build-number=${{ steps.version.outputs.code }}
           cp build/app/outputs/flutter-apk/app-release.apk ../otopiyasa-release.apk
 
       # Telefonlardaki uygulamayla aynı anahtar mı? Değilse yayınlanmaz (kurulamayan güncelleme gitmesin).
+      # Hem bölünmüş hem evrensel paketler denetlenir.
       - name: İmzayı doğrula
         env:
           EXPECTED_CERT_SHA256: 350e8ee5ef27f122dc62230b53e6d43cd1365c554475f1fc0cee409d851f76f4
         run: |
           apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          actual=$("$apksigner" verify --print-certs otopiyasa-release.apk | grep -m1 "SHA-256 digest" | awk '{print $NF}')
-          echo "imza: $actual"
-          if [ "$actual" != "$EXPECTED_CERT_SHA256" ]; then echo "İmza telefonlardaki uygulamayla uyuşmuyor, yayınlanmadı."; exit 1; fi
+          for apk in otopiyasa-release.apk mobile/build/app/outputs/flutter-apk/app-*-release.apk; do
+            actual=$("$apksigner" verify --print-certs "$apk" | grep -m1 "SHA-256 digest" | awk '{print $NF}')
+            echo "$apk → imza: $actual"
+            if [ "$actual" != "$EXPECTED_CERT_SHA256" ]; then echo "İmza telefonlardaki uygulamayla uyuşmuyor, yayınlanmadı."; exit 1; fi
+          done
 
       - name: Yayınla
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.version.outputs.name }}" otopiyasa-release.apk \
+          gh release create "v${{ steps.version.outputs.name }}" \
+            otopiyasa-release.apk \
+            mobile/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+            mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
             --title "OtoPiyasa Mobil ${{ steps.version.outputs.name }}" \
             --notes-file notes.md \
             --latest

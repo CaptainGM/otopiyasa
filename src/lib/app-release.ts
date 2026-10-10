@@ -25,23 +25,49 @@ export function minVersionCode(): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
 }
 
-export function parseRelease(release: {
-  tag_name?: string;
-  body?: string | null;
-  published_at?: string;
-  assets?: Array<{ name: string; browser_download_url: string }>;
-}): AppVersion | null {
+/** Cihazın bildirebileceği mimariler ve yayındaki paket adları. */
+export const SUPPORTED_ABIS = ["arm64-v8a", "armeabi-v7a"] as const;
+export type SupportedAbi = (typeof SUPPORTED_ABIS)[number];
+
+export function isSupportedAbi(value: unknown): value is SupportedAbi {
+  return typeof value === "string" && (SUPPORTED_ABIS as readonly string[]).includes(value);
+}
+
+/**
+ * İndirilecek paketi seçer.
+ *
+ * Yayın üç paket içeriyor: mimariye göre bölünmüş `app-arm64-v8a-release.apk` (~23 MB) ve
+ * `app-armeabi-v7a-release.apk` (~21 MB) ile tüm mimarileri kapsayan `otopiyasa-release.apk`
+ * (~65 MB). İstemci kendi mimarisini bildirirse (bkz. mobile/lib/services/device_abi.dart)
+ * küçük paket verilir; bildirmezse ya da eşleşme yoksa evrensel pakete düşülür, böylece
+ * güncelleme her telefonda kurulabilir kalır.
+ *
+ * Sıralamaya güvenilmez: GitHub varlıkları ada göre döner ve "app-..." evrenselden önce gelir.
+ */
+export function pickApkAsset<T extends { name: string; browser_download_url: string }>(
+  assets: T[] | undefined,
+  abi?: string
+): T | undefined {
+  const byName = (name: string) => assets?.find((a) => a.name.toLowerCase() === name);
+  if (isSupportedAbi(abi)) {
+    const split = byName(`app-${abi}-release.apk`);
+    if (split) return split;
+  }
+  return byName("otopiyasa-release.apk") ?? assets?.find((a) => a.name.toLowerCase().endsWith(".apk"));
+}
+
+export function parseRelease(
+  release: {
+    tag_name?: string;
+    body?: string | null;
+    published_at?: string;
+    assets?: Array<{ name: string; browser_download_url: string }>;
+  },
+  options: { abi?: string } = {}
+): AppVersion | null {
   const body = release.body ?? "";
   const code = Number(/versionCode\s*[:=]\s*(\d+)/i.exec(body)?.[1]);
-
-  // Yayın artık üç paket içeriyor: mimariye göre bölünmüş iki paket (~23 MB) ve tüm mimarileri
-  // kapsayan evrensel paket (~65 MB). Otomatik güncelleme HERKESE aynı adresi verdiği için
-  // evrensel paket seçilir: eski/yeni bütün telefonlara kurulabilir. Bölünmüş paketler, cihazın
-  // mimarisini bilen bir istemci kendi kendine seçebilsin diye yayında durur (yeni kurulumlar).
-  // Sıralamaya güvenilmez (GitHub varlıkları ada göre döner ve "app-..." önce gelir).
-  const apk =
-    release.assets?.find((a) => a.name.toLowerCase() === "otopiyasa-release.apk") ??
-    release.assets?.find((a) => a.name.toLowerCase().endsWith(".apk"));
+  const apk = pickApkAsset(release.assets, options.abi);
   if (!Number.isFinite(code) || code <= 0 || !apk) return null;
   const changelog = body
     .replace(/<!--[\s\S]*?-->/g, "")

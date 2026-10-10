@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseRelease } from "./app-release";
+import { isSupportedAbi, minVersionCode, parseRelease, pickApkAsset } from "./app-release";
 
 const asset = { name: "otopiyasa-release.apk", browser_download_url: "https://example.com/otopiyasa-release.apk" };
+const arm64 = { name: "app-arm64-v8a-release.apk", browser_download_url: "https://example.com/app-arm64-v8a-release.apk" };
+const armeabi = { name: "app-armeabi-v7a-release.apk", browser_download_url: "https://example.com/app-armeabi-v7a-release.apk" };
 
 describe("parseRelease", () => {
   it("sürüm kodunu gizli yorumdan, APK'yı ekten okur; yorum notta görünmez", () => {
@@ -39,20 +41,59 @@ describe("parseRelease", () => {
       else process.env.APP_MIN_VERSION_CODE = previous;
     }
   });
+});
 
-  it("bölünmüş paketler varken evrensel paketi seçer (her telefona kurulabilir)", () => {
-    // Yayın artık app-arm64-v8a / app-armeabi-v7a (küçük) ve otopiyasa-release (evrensel)
-    // paketlerini birlikte içeriyor. GitHub varlıkları ada göre döndüğü için "ilk .apk"
-    // seçilseydi yalnızca arm64 cihazlara kurulabilen paket dağıtılırdı.
-    const arm64 = {
-      name: "app-arm64-v8a-release.apk",
-      browser_download_url: "https://example.com/app-arm64-v8a-release.apk",
-    };
-    const parsed = parseRelease({
-      tag_name: "v1.0.16",
-      body: "<!-- versionCode: 17 -->",
-      assets: [arm64, asset],
-    });
-    expect(parsed?.apkUrl).toBe(asset.browser_download_url);
+describe("minVersionCode", () => {
+  it("tanımsız/geçersiz değerde 1 döner (kimse zorlanmaz)", () => {
+    const previous = process.env.APP_MIN_VERSION_CODE;
+    try {
+      delete process.env.APP_MIN_VERSION_CODE;
+      expect(minVersionCode()).toBe(1);
+      process.env.APP_MIN_VERSION_CODE = "abc";
+      expect(minVersionCode()).toBe(1);
+      process.env.APP_MIN_VERSION_CODE = "0";
+      expect(minVersionCode()).toBe(1);
+      process.env.APP_MIN_VERSION_CODE = "12";
+      expect(minVersionCode()).toBe(12);
+    } finally {
+      if (previous === undefined) delete process.env.APP_MIN_VERSION_CODE;
+      else process.env.APP_MIN_VERSION_CODE = previous;
+    }
+  });
+});
+
+describe("pickApkAsset", () => {
+  const assets = [arm64, armeabi, asset];
+
+  it("istemci mimarisini bildirdiyse küçük bölünmüş paketi seçer", () => {
+    // Uygulama içi güncelleme bu sayede 65 MB yerine ~23 MB indirir.
+    expect(pickApkAsset(assets, "arm64-v8a")).toBe(arm64);
+    expect(pickApkAsset(assets, "armeabi-v7a")).toBe(armeabi);
+  });
+
+  it("mimari bildirilmediyse evrensel pakete düşer (her telefona kurulabilir)", () => {
+    expect(pickApkAsset(assets, undefined)).toBe(asset);
+    expect(pickApkAsset(assets, "x86_64")).toBe(asset);
+    expect(pickApkAsset(assets, "")).toBe(asset);
+  });
+
+  it("istenen mimarinin paketi yayında yoksa evrensel pakete düşer", () => {
+    expect(pickApkAsset([armeabi, asset], "arm64-v8a")).toBe(asset);
+    expect(pickApkAsset([arm64], undefined)).toBe(arm64);
+  });
+
+  it("hiç APK yoksa undefined döner", () => {
+    expect(pickApkAsset([], "arm64-v8a")).toBeUndefined();
+    expect(pickApkAsset(undefined, "arm64-v8a")).toBeUndefined();
+  });
+});
+
+describe("isSupportedAbi", () => {
+  it("yalnızca yayında paketi olan mimarileri kabul eder", () => {
+    expect(isSupportedAbi("arm64-v8a")).toBe(true);
+    expect(isSupportedAbi("armeabi-v7a")).toBe(true);
+    expect(isSupportedAbi("x86_64")).toBe(false);
+    expect(isSupportedAbi(undefined)).toBe(false);
+    expect(isSupportedAbi("../../etc/passwd")).toBe(false);
   });
 });

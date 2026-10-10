@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/models/account.dart';
 import 'package:otopiyasa/models/offer.dart';
+import 'package:otopiyasa/services/device_abi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Giriş: hesap var ama e-posta henüz doğrulanmamış (ekran "tekrar gönder" seçeneği sunar).
@@ -164,7 +165,9 @@ class ApiService {
     final host = Platform.isAndroid && baseUrl.contains('localhost')
         ? _androidLocalhost
         : baseUrl;
-    return Uri.parse('$host$path').replace(queryParameters: query);
+    final uri = Uri.parse('$host$path');
+    // query null ise adresteki mevcut sorgu korunur (silinmez).
+    return query == null ? uri : uri.replace(queryParameters: {...uri.queryParameters, ...query});
   }
 
   Map<String, String> get _headers => {
@@ -1592,12 +1595,14 @@ class ApiService {
         .toList();
   }
 
-  /// Uygulama surum kontrolu (OTA Guncelleme)
+  /// Uygulama surum kontrolu (OTA Guncelleme).
+  /// Cihazin islemci mimarisi de gonderilir: sunucu mimariye gore bolunmus kucuk paketi
+  /// (~23 MB) verebilsin, evrensel paketi (~65 MB) degil (bkz. services/device_abi.dart).
   Future<Map<String, dynamic>?> checkAppVersion() async {
     try {
-      final response = await http
-          .get(_uri('/api/app-version'), headers: _headers)
-          .timeout(const Duration(seconds: 8));
+      final abi = await deviceAbi();
+      final uri = _uri('/api/app-version', abi == null ? null : {'abi': abi});
+      final response = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) return null;
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (_) {

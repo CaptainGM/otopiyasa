@@ -23,6 +23,16 @@ import { normalizeTransmission, transmissionMatch } from "@/lib/vehicle-attrs";
 import { AUTOMATIC_TRANSMISSION_PATTERN } from "@/lib/transmission-label";
 import { isVehicleClass } from "@/lib/vehicle-scope";
 
+/**
+ * Atlas metin araması ayarları. Yazım toleransı (1 harf fark) yalnızca düz kelimelerde açık: "i30" ile "i20", "3008" ile "3006" tek
+ * harf farkı yüzünden birbirinin yerine geçiyordu. Rakam içeren ya da 5 harften kısa aramalarda tam eşleşme kullanılır.
+ */
+export function textSearchOptions(term: string): Record<string, unknown> {
+  const text: Record<string, unknown> = { query: term, path: ["title", "brand", "model", "city"] };
+  if (term.length >= 5 && !/\d/.test(term)) text.fuzzy = { maxEdits: 1, prefixLength: 1 };
+  return text;
+}
+
 export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   
   const query: FilterQuery<unknown> = { ...PUBLIC_LISTING_FILTER };
@@ -230,11 +240,7 @@ async function findCarsPageUncached(
         {
           $search: {
             index: "default",
-            text: {
-              query: searchTerm,
-              path: ["title", "brand", "model", "city"],
-              fuzzy: { maxEdits: 1, prefixLength: 1 },
-            },
+            text: textSearchOptions(searchTerm),
           },
         },
         { $match: matchFilter },

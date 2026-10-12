@@ -32,6 +32,7 @@ export function PricePredictionBadge({
   marketListingCount,
   marketScope,
   marketFamilyLabel,
+  marketBasisLabel,
 }: {
   actualPrice: number;
   prediction: PricePrediction;
@@ -39,6 +40,8 @@ export function PricePredictionBadge({
   marketListingCount?: number;
   marketScope?: "model" | "family";
   marketFamilyLabel?: string;
+  /** Ortalamanın geldiği emsal kademesi (ör. "Aynı yıl, km, hasar ve donanım"). Verilirse eski ham ortalama metni yerine bu yazılır. */
+  marketBasisLabel?: string;
 }) {
   if (prediction.sampleSize < 3) {
     return null;
@@ -114,13 +117,15 @@ export function PricePredictionBadge({
         </div>
         {showSegment ? (
           <div>
-            <dt className="text-xs text-[var(--muted)]">Ham ilan ortalaması</dt>
+            <dt className="text-xs text-[var(--muted)]">{marketBasisLabel ? "Emsal medyanı" : "Ham ilan ortalaması"}</dt>
             <dd className="num mt-0.5 text-base font-semibold">{formatPrice(marketAvgPrice!)}</dd>
             <dd className="text-[0.72rem] text-[var(--muted)]">
-              {marketScope === "family" && marketFamilyLabel
-                ? `${marketFamilyLabel} ailesi, aynı yıl (tüm donanımlar): ${marketListingCount} aktif ilan`
-                : `Aynı marka/model/yıl: ${marketListingCount} aktif ilan`}
-              {" · km ve donanım farkı gözetmez"}
+              {marketBasisLabel
+                ? `${marketBasisLabel}: ${marketListingCount} emsal ilan`
+                : marketScope === "family" && marketFamilyLabel
+                  ? `${marketFamilyLabel} ailesi, aynı yıl (tüm donanımlar): ${marketListingCount} aktif ilan`
+                  : `Aynı marka/model/yıl: ${marketListingCount} aktif ilan`}
+              {!marketBasisLabel && " · km ve donanım farkı gözetmez"}
             </dd>
           </div>
         ) : null}

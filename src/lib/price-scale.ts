@@ -18,10 +18,26 @@ export interface ScaleCar {
   year: number;
   mileage: number;
   damaged: boolean;
+  city?: string | null;
   engineSize?: number | null;
   fuelType?: string | null;
   transmission?: string | null;
   horsepower?: number | null;
+}
+
+/**
+ * Aynı aracın birden fazla kez yayınlanması (aynı model, yıl, km, fiyat ve şehir) emsal sayısını ve ortalamayı şişirir.
+ * İlanın kendisiyle aynı olanlar ve tekrarların ikincisi ve sonrası emsal sayılmaz; veri değiştirilmez.
+ */
+export function dedupeCandidates<T extends ScaleCar>(subject: ScaleCar, candidates: T[]): T[] {
+  const keyOf = (car: ScaleCar) => [car.year, car.mileage, car.price, car.city ?? ""].join("|");
+  const seen = new Set<string>([keyOf(subject)]);
+  return candidates.filter((candidate) => {
+    const key = keyOf(candidate);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export type TierKey = "tam" | "donanim" | "km" | "aile";

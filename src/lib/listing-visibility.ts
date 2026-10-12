@@ -6,6 +6,8 @@ export const PUBLIC_LISTING_FILTER = {
   priceSuspect: { $ne: true },
   // Kilometresi yazım hatası gibi görünen ilanlar (bkz. price-plausibility.ts) da herkese açık yerlerde gösterilmez.
   mileageSuspect: { $ne: true },
+  // Segment tavanını aşan fiyatlı ilanlar da herkese açık yerlerde gösterilmez (bkz. segment-cap.ts).
+  segmentSuspect: { $ne: true },
 } as const;
 
 /**

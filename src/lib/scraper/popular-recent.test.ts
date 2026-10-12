@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planPopularRecent, POPULAR_FAMILY_MIN, RECENT_ROUND_CAP } from "./popular-recent";
+import { planPopularRecent, RECENT_ROUND_CAP } from "./popular-recent";
 
 const fam = (brand: string, label: string, total: number, recent: number) => ({
   brand,
@@ -10,9 +10,28 @@ const fam = (brand: string, label: string, total: number, recent: number) => ({
 });
 
 describe("planPopularRecent", () => {
-  it("yalnızca popüler aileleri alır (en az 100 ilan)", () => {
-    const plan = planPopularRecent([fam("Fiat", "Egea", POPULAR_FAMILY_MIN, 10), fam("Fiat", "Uno", POPULAR_FAMILY_MIN - 1, 0)], 150, 10);
-    expect(plan.map((p) => p.label)).toEqual(["Egea"]);
+  it("hiç ilanı olmayan aileyi de alır ve önce koyar (Ioniq 5N örneği)", () => {
+    const plan = planPopularRecent([fam("Hyundai", "Kona", 300, 40), fam("Hyundai", "IONIQ 5N", 0, 0)], 150, 10);
+    expect(plan[0].label).toBe("IONIQ 5N");
+  });
+
+  it("2020 ve sonrası ilan sayısı az olan önce gelir, toplam sayıya bakılmaz", () => {
+    const plan = planPopularRecent([fam("A", "Büyük", 500, 80), fam("B", "Küçük", 60, 5)], 150, 10);
+    expect(plan.map((p) => p.label)).toEqual(["Küçük", "Büyük"]);
+  });
+
+  it("yeni nesil sayısı eşitse toplamı az olan önce gelir", () => {
+    const plan = planPopularRecent([fam("A", "Orta", 200, 10), fam("A", "Az", 40, 10)], 150, 10);
+    expect(plan.map((p) => p.label)).toEqual(["Az", "Orta"]);
+  });
+
+  it("eşitlikte az ilanlı markanın (Porsche) modeli, kalabalık markanın (Hyundai) modelinden önce gelir", () => {
+    const plan = planPopularRecent(
+      [fam("Hyundai", "Yeni", 9000, 500), fam("Hyundai", "X", 0, 0), fam("Porsche", "Y", 0, 0)],
+      150,
+      10
+    );
+    expect(plan.map((p) => p.label)).toEqual(["Y", "X"]);
   });
 
   it("hedefi zaten tutturan aileyi atlar", () => {
@@ -27,9 +46,9 @@ describe("planPopularRecent", () => {
     expect(small[0].quota).toBe(30);
   });
 
-  it("en az ilanlı aile önce gelir (popülere doğru) ve maxFamilies uygulanır", () => {
-    const plan = planPopularRecent([fam("A", "Küçük", 120, 0), fam("B", "Büyük", 500, 0), fam("C", "Orta", 200, 0)], 150, 2);
-    expect(plan.map((p) => p.label)).toEqual(["Küçük", "Orta"]);
+  it("maxFamilies tur başına kaç aile alınacağını sınırlar", () => {
+    const plan = planPopularRecent([fam("A", "Bir", 10, 0), fam("B", "İki", 20, 0), fam("C", "Üç", 30, 0)], 150, 2);
+    expect(plan).toHaveLength(2);
   });
 
   it("bekleme listesindeki aileyi bu turda atlar", () => {

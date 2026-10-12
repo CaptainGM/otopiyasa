@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { Car } from "@/models/Car";
 import { isPlausibleListingPrice, isPlausibleMileage } from "@/lib/price-plausibility";
+import { loadSegmentCap } from "@/lib/segment-cap-data";
+import { isAboveSegmentCap } from "@/lib/segment-cap";
 import {
   arabamAdapter,
   demoImportAdapter,
@@ -266,6 +268,8 @@ export async function saveListing(
     if (identityChanged) existing.externalId = listing.externalId;
     if (hasValidYear && listing.yearVerified !== false) existing.year = listing.year;
     existing.price = newPrice;
+    // Fiyat değiştiyse segment tavanı yeniden denetlenir; tavanı aşan mevcut ilan gizlenir, silinmez.
+    if (priceChanged) (existing as any).segmentSuspect = isAboveSegmentCap(newPrice, await loadSegmentCap(existing.brand, existing.model));
     if (listing.mileage > 0) existing.mileage = listing.mileage;
     if (nextCity) existing.city = nextCity;
     if (listing.address && listing.cityVerified === true) existing.address = listing.address;
@@ -371,6 +375,8 @@ export async function saveListing(
   // Yazım hatası gibi fiyatlı yeni ilan eklenmez; mevcut ilanın fiyatı değişirse kanca bayrağı işaretler.
   if (!isPlausibleListingPrice(listing.price, vehicleClass)) return "skipped";
   if (!isPlausibleMileage(listing.mileage, vehicleClass)) return "skipped";
+  // Segment tavanını aşan yeni ilan eklenmez (ör. aynı modelin normal fiyatının çok üstü).
+  if (isAboveSegmentCap(listing.price, await loadSegmentCap(listing.brand, listing.model))) return "skipped";
   if (isPlaceholder(listing.brand) || isPlaceholder(listing.model) || isPlaceholder(listing.title)) return "skipped";
   // Kaynakta yıl bulunamadığında bazı adaptörler güncel yılı yalnızca placeholder olarak verir. Böyle bir
   // kayıt eklenmesin; mevcut araçta ise yukarıdaki doğrulanmış yıl korunur.
@@ -927,6 +933,18 @@ export async function runPopularRecentScrape(
       if (modelNameKey(modelFamily(m.name, brand)) !== modelNameKey(m.name)) continue;
       const entry = standings.get(familyId(brand, modelFamilyKey(m.name, brand)));
       if (entry && !entry.path) entry.path = `${doc.category}/${m.slug}`;
+    }
+  }
+  // Katalogda olup hiç ilanı olmayan aileler de hedeflenir (ör. Hyundai IONIQ 5N hiç yoksa önce o gelir).
+  for (const doc of catalogDocs) {
+    const brand = normalizeBrand(doc.brand);
+    for (const m of doc.models) {
+      if (modelNameKey(modelFamily(m.name, brand)) !== modelNameKey(m.name)) continue;
+      const familyKey = modelFamilyKey(m.name, brand);
+      const id = familyId(brand, familyKey);
+      if (!standings.has(id)) {
+        standings.set(id, { brand, familyKey, label: modelFamily(m.name, brand), total: 0, recent: 0, path: `${doc.category}/${m.slug}` });
+      }
     }
   }
 

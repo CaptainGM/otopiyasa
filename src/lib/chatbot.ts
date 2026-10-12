@@ -72,6 +72,11 @@ const FAQ: FaqEntry[] = [
       "Piyasa ortalaması, o aracın aynı marka/model/yıl segmentindeki tüm ilanların ortalama fiyatıdır — sayfadaki tüm ilanların genel ortalaması değildir.",
   },
   {
+    keywords: ["fiyat tahmini", "tahmini nasıl", "tahmin nasıl", "fiyat tahmini nasıl"],
+    answer:
+      "Fiyat tahmini, ilanın model yılı, kilometresi, hasar durumu ve motor, yakıt, vites, beygir bilgileriyle aynı model ailesinin yayındaki ilanlarından hesaplanır. Aynı donanımdaki ilanlar öncelenir, yeterli değilse model geneli kullanılır. Arşive alınmış ilanlar tarihe göre azalan ağırlıkla katılır ve yazım hatası gibi görünen fiyatlar hesaba girmez.",
+  },
+  {
     keywords: ["tahmin", "yapay zeka", "makine öğren", "regresyon"],
     answer:
       "Fiyat Tahmini sayfasından marka/model/yıl/kilometre girerek, veritabanındaki ilanlar üzerinden eğitilmiş bir regresyon modeliyle tahmini piyasa fiyatı alabilirsin.",
@@ -423,9 +428,36 @@ export function cleanCarTerm(raw: string): string {
     .join(" ");
 }
 
+/** Araç tipi kelimeleri ("motosiklet", "karavan"...) marka değil, ilan tipidir. */
+const VEHICLE_CLASS_WORDS: Array<[RegExp, string]> = [
+  [/^(motosiklet|motorsiklet|scooter)$/i, "motosiklet"],
+  [/^(karavan|motokaravan)$/i, "karavan"],
+  [/^(ticari|kamyon|kamyonet|otobüs|otobus|minibüs|minibus)$/i, "ticari"],
+  [/^(suv|arazi|pickup|pick-up)$/i, "suv-pickup"],
+  [/^(minivan|panelvan)$/i, "minivan-panelvan"],
+  [/^(otomobil|sedan)$/i, "otomobil"],
+];
+
+function vehicleClassOf(term: string): string | null {
+  const hit = VEHICLE_CLASS_WORDS.find(([pattern]) => pattern.test(term.trim()));
+  return hit ? hit[1] : null;
+}
+
+/** Terimin kapsamı: araç tipi, marka (ve model) ya da yalnızca model adı ("Doblo" gibi markasız aramalar). Eşleşme yoksa null. */
+async function scopeFilterFor(term: string): Promise<Record<string, unknown> | null> {
+  const cls = vehicleClassOf(term);
+  if (cls) return { vehicleClass: cls === "otomobil" ? { $in: ["otomobil", null] } : cls };
+  const byBrand = brandModelFilter(term);
+  if (await Car.exists({ ...VISIBLE, ...byBrand })) return byBrand;
+  const byModel = { model: modelFamilyRegex(term) };
+  if (await Car.exists({ ...VISIBLE, ...byModel })) return byModel;
+  return null;
+}
+
 /** En ucuz/en pahalı ilan. Terim boşsa (genel soru) tüm yayındaki ilanlar arasında aranır; bayraklı fiyatlar VISIBLE ile dışarıda kalır. */
 async function findExtreme(term: string, direction: 1 | -1): Promise<CarLite | null> {
-  return Car.findOne({ ...VISIBLE, ...(term ? brandModelFilter(term) : {}) })
+  const scope = term ? (await scopeFilterFor(term)) ?? brandModelFilter(term) : {};
+  return Car.findOne({ ...VISIBLE, ...scope })
     .sort({ price: direction })
     .select("title price brand imageUrl")
     .lean<CarLite | null>();
@@ -442,6 +474,15 @@ async function tryDataQuery(
   context?: ChatContext,
   skipRedirect = false
 ): Promise<ChatReply | null> {
+
+  const countAsk = message.match(/^(.*?)\s*kaç\s+(?:ilan|araç|arac)/i);
+  if (countAsk && cleanCarTerm(countAsk[1])) {
+    const term = cleanCarTerm(countAsk[1]);
+    const scope = await scopeFilterFor(term);
+    if (!scope) return { reply: `"${term}" için aktif ilan bulamadım.` };
+    const count = await Car.countDocuments({ ...VISIBLE, ...scope });
+    return { reply: `${term} için ${count} aktif ilan var.` };
+  }
 
   if (/kaç\s+(ilan|araç|arac)/.test(message)) {
     const count = await Car.countDocuments(PUBLIC_LISTING_FILTER);
@@ -468,10 +509,11 @@ async function tryDataQuery(
   
   const avgMatch = message.match(/^(.*?)\s+(ortalama fiyat|fiyat ortalama)/i);
   if (avgMatch) {
-    const brand = avgMatch[1].trim().split(/\s+/).pop();
-    if (brand) {
+    const brand = cleanCarTerm(avgMatch[1]);
+    const scope = brand ? await scopeFilterFor(brand) : null;
+    if (brand && scope) {
       const stats = await Car.aggregate([
-        { $match: { ...VISIBLE, ...brandModelFilter(brand) } },
+        { $match: { ...VISIBLE, ...scope } },
         { $group: { _id: null, avgPrice: { $avg: "$price" }, count: { $sum: 1 } } },
       ]);
       if (stats.length && stats[0].count > 0) {
@@ -486,6 +528,28 @@ async function tryDataQuery(
   }
 
   
+  const priceAsk = message.match(/^(.*?)\s+(fiyat(?:ı|i)?|ne kadar|kaç para|kac para)/i);
+  if (priceAsk) {
+    const yearMatch = priceAsk[1].match(/\b((?:19|20)\d{2})\b/);
+    const term = cleanCarTerm(priceAsk[1].replace(/\b(?:19|20)\d{2}\b/g, " "));
+    const scope = term ? await scopeFilterFor(term) : null;
+    if (term && scope) {
+      const year = yearMatch ? Number(yearMatch[1]) : null;
+      const docs = await Car.find({ ...VISIBLE, ...scope, ...(year ? { year: { $gte: year - 1, $lte: year + 1 } } : {}) })
+        .select("price")
+        .limit(3000)
+        .lean<{ price: number }[]>();
+      if (docs.length < 3) return { reply: `"${term}" için yeterli ilan bulamadım.` };
+      const prices = docs.map((d) => d.price).sort((a, b) => a - b);
+      const mid = Math.floor(prices.length / 2);
+      const med = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
+      const label = year ? `${term} ${year} (±1 yıl)` : term;
+      return {
+        reply: `${label} için piyasa medyanı ${formatPrice(Math.round(med))} (${prices.length} ilan, ${formatPrice(prices[0])} – ${formatPrice(prices[prices.length - 1])}). Km, hasar ve donanıma göre ayrıntı için ilan sayfasındaki fiyat skalasına bak.`,
+      };
+    }
+  }
+
   if (message.includes("altı") || message.includes("altında") || message.includes("altinda")) {
     const amount = parseAmount(message);
     const brandMatch = message.match(/([a-zçğıöşü]{2,})\s*(?:markası|marka)?/gi);

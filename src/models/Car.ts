@@ -42,6 +42,8 @@ const CarSchema = new Schema(
     priceSuspect: { type: Boolean, default: false },
     // Kilometre 1 milyonun üstünde (yazım hatası gibi): herkese açık sorgular dışarıda tutar, arşive almaz.
     mileageSuspect: { type: Boolean, default: false },
+    // Segment tavanını aşan fiyat (bkz. segment-cap.ts): herkese açık sorgular dışarıda tutar, arşive almaz.
+    segmentSuspect: { type: Boolean, default: false },
     mileage: { type: Number, required: true },
     city: { type: String, required: true },
     address: { type: String, default: "" },

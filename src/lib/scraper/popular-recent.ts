@@ -38,10 +38,18 @@ export function planPopularRecent(
   maxFamilies: number,
   blocked: ReadonlySet<string> = new Set()
 ): RecentTarget[] {
+  // Marka toplamı: eşitlikte az ilanlı markanın (ör. Porsche) modeli, kalabalık markanın (ör. Hyundai) modelinden önce gelir.
+  const brandTotal = new Map<string, number>();
+  for (const f of families) brandTotal.set(f.brand, (brandTotal.get(f.brand) ?? 0) + f.total);
   return families
-    .filter((f) => f.total >= POPULAR_FAMILY_MIN)
     .filter((f) => f.recent < targetRecent && !blocked.has(`${f.brand}::${f.familyKey}`))
-    .sort((a, b) => a.total - b.total || a.label.localeCompare(b.label, "tr"))
+    .sort(
+      (a, b) =>
+        a.recent - b.recent ||
+        a.total - b.total ||
+        (brandTotal.get(a.brand) ?? 0) - (brandTotal.get(b.brand) ?? 0) ||
+        a.label.localeCompare(b.label, "tr")
+    )
     .slice(0, maxFamilies)
     .map((f) => ({ ...f, quota: Math.min(targetRecent - f.recent, RECENT_ROUND_CAP) }));
 }

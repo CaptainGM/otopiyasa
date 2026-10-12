@@ -5,6 +5,7 @@ import {
   runScrapeJob,
   runRareBrandScrape,
   runRareModelScrape,
+  runPopularRecentScrape,
   runSparseMarketSegmentScrape,
   runPriceRefresh,
   runAddressBackfill,
@@ -181,6 +182,17 @@ export async function POST(request: Request) {
           : 1500;
       const result = await runRareModelScrape(threshold, perModelPages, maxSegments, maxListings);
       await recordLog(result, "rare-model", "Nadir Model Doldurma");
+      return NextResponse.json(result);
+    }
+
+    // Popüler ailelerin yeni model yılı ilanları (bkz. popular-recent.ts): hedef yıl liste sayfasından süzülür.
+    if (body.mode === "popular-recent") {
+      const minYear = typeof body.minYear === "number" && body.minYear >= 1990 ? Math.min(body.minYear, 2030) : 2020;
+      const targetRecent = typeof body.targetRecent === "number" && body.targetRecent > 0 ? Math.min(body.targetRecent, 1000) : 150;
+      const maxListings = typeof body.maxListings === "number" && body.maxListings > 0 ? Math.min(body.maxListings, 5000) : 1200;
+      const maxFamilies = typeof body.maxFamilies === "number" && body.maxFamilies > 0 ? Math.min(body.maxFamilies, 300) : 80;
+      const result = await runPopularRecentScrape(minYear, targetRecent, maxListings, maxFamilies);
+      await recordLog(result, "popular-recent", "Popüler aileler (yeni model yılları)");
       return NextResponse.json(result);
     }
 

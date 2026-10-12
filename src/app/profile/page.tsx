@@ -55,6 +55,7 @@ export default async function ProfilePage() {
   const favoriteCount = user.favorites?.length || 0;
   const memberSince = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString("tr-TR", {
+        timeZone: "Europe/Istanbul",
         year: "numeric",
         month: "long",
         day: "numeric",

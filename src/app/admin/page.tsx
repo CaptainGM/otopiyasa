@@ -508,7 +508,7 @@ export default async function AdminPage() {
                 <span className="text-slate-300">{row.targetLabel}</span>
                 {row.reason && <span className="text-xs text-slate-500">— {row.reason}</span>}
                 <span className="ml-auto text-xs text-slate-600">
-                  {row.actor} • {new Date(row.createdAt).toLocaleString("tr-TR")}
+                  {row.actor} • {new Date(row.createdAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
                 </span>
               </div>
             ))}
@@ -545,7 +545,7 @@ export default async function AdminPage() {
                   <td className="p-2.5">{user.favorites?.length || 0}</td>
                   <td className="p-2.5 text-slate-500">
                     {user.createdAt
-                      ? new Date(user.createdAt).toLocaleDateString("tr-TR")
+                      ? new Date(user.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })
                       : "-"}
                   </td>
                   <td className="p-2.5">
@@ -603,7 +603,7 @@ export default async function AdminPage() {
                   <td className="p-2.5 text-slate-400">{car.city}</td>
                   <td className="p-2.5 font-medium text-emerald-400">
                     {car.updatedAt
-                      ? new Date(car.updatedAt).toLocaleString("tr-TR", {
+                      ? new Date(car.updatedAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul",
                           day: "2-digit",
                           month: "2-digit",
                           year: "numeric",
@@ -614,7 +614,7 @@ export default async function AdminPage() {
                   </td>
                   <td className="p-2.5 text-slate-500 text-xs">
                     {car.createdAt
-                      ? new Date(car.createdAt).toLocaleDateString("tr-TR")
+                      ? new Date(car.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })
                       : "-"}
                   </td>
                   <td className="p-2.5 text-right">

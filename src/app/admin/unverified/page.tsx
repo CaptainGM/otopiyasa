@@ -86,7 +86,7 @@ export default async function UnverifiedListingsPage({ searchParams }: PageProps
                   <td className="px-4 py-3 text-xs text-slate-200">{car.year || "—"}</td>
                   <td className="px-4 py-3 text-xs font-black text-amber-400">{car.price ? formatPrice(car.price) : "—"}</td>
                   <td className="px-4 py-3 text-xs text-slate-300">
-                    {car.createdAt ? new Date(car.createdAt).toLocaleDateString("tr-TR") : "—"}
+                    {car.createdAt ? new Date(car.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }) : "—"}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-400">
                     {car.lastVerifyAttemptAt ? <span className="text-slate-300">{formatRelativeTr(car.lastVerifyAttemptAt)}</span> : null}

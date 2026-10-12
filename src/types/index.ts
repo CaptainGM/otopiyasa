@@ -132,8 +132,8 @@ export interface CarFilters {
   /** Kilometre aralığı (en az / en çok). */
   mileageMin?: number;
   mileageMax?: number;
-  /** Satıcı tipi: arabam ilanlarının başlığındaki "Galeriden" / "Sahibinden" öneki. */
-  seller?: "galeriden" | "sahibinden";
+  /** Satıcı tipi: galeriden satılan ya da bireysel (kişinin kendi sattığı) ilanlar. */
+  seller?: "galeriden" | "bireysel";
   /** Yalnızca hasar kaydı olmayan ilanlar. */
   noDamage?: boolean;
   fuelType?: string;

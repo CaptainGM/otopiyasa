@@ -22,7 +22,7 @@ export default function AdminLoading() {
         {/* Terminal skeleton */}
         <div className="rounded-xl bg-black/30 p-4 space-y-2 h-48">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <div key={i} className="h-3 rounded bg-white/5" style={{ width: `${60 + Math.random() * 35}%` }} />
+            <div key={i} className="h-3 rounded bg-white/5" style={{ width: `${[72, 88, 64, 80, 58, 91][i - 1]}%` }} />
           ))}
         </div>
       </div>

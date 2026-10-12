@@ -100,7 +100,7 @@ export function NotificationBell() {
                   <p className="text-sm font-medium text-slate-200">{n.title}</p>
                   {n.body && <p className="mt-0.5 line-clamp-2 text-xs text-slate-400">{n.body}</p>}
                   <p className="mt-1 text-[10px] text-slate-600">
-                    {new Date(n.createdAt).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {new Date(n.createdAt).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })}
                   </p>
                 </button>
               ))

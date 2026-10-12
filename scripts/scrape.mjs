@@ -160,6 +160,11 @@ const MODES = {
       { mode: "sparse-market-segments", maxSegments: 100, pagesPerYear: 4, maxListings: 500, label: "Seyrek piyasa emsalleri" },
     ],
   },
+  // Populer aileler (100+ ilan): 2020 ve sonrasi ilanlari hedefe kadar tamamlar; yil liste sayfasindan suzulur, eski ilanlar acilmaz.
+  23: {
+    name: "POPULER AILELER: 2020 ve sonrasi ilanlar, 100+ ilani olan modellerde aile basina hedefe kadar",
+    jobs: [{ mode: "popular-recent", minYear: 2020, targetRecent: 150, maxListings: 1200, maxFamilies: 80, label: "Populer aileler (yeni yillar)" }],
+  },
   // Sitemap'ten yalnizca SON GUNLERIN ilanlarini, en yeniden baslayarak ceker (site taze kalsin).
   21: {
     name: "SON 3 GUN: sitemap'ten son 3 gunun Arabam ilanlari, en yeniden baslayarak",

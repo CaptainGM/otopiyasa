@@ -444,8 +444,8 @@ export function ScrapePanel({
               <tbody className="divide-y divide-white/5">
                 {filteredLogs.map((log) => {
                   const dateObj = new Date(log.createdAt);
-                  const dateStr = dateObj.toLocaleDateString("tr-TR");
-                  const timeStr = dateObj.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                  const dateStr = dateObj.toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" });
+                  const timeStr = dateObj.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/Istanbul" });
 
                   // Aktör stili (Yönetici vs Terminal vs Web vs Mobil)
                   const isManager = log.actor.toLowerCase().includes("yönetici") || log.actor.toLowerCase() === "admin";

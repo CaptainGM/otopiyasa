@@ -2,6 +2,8 @@
 export const PUBLIC_LISTING_FILTER = {
   status: "active",
   moderationStatus: { $nin: ["pending", "rejected"] },
+  // Yazım hatası gibi görünen fiyatlı ilanlar (bkz. price-plausibility.ts) herkese açık yerlerde gösterilmez.
+  priceSuspect: { $ne: true },
 } as const;
 
 /**

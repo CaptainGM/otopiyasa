@@ -17,6 +17,8 @@ import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 import { SourceBadge } from "@/components/SourceBadge";
 import { Icon } from "@/components/Icon";
 import { MarketGauge } from "@/components/MarketGauge";
+import { PriceScaleCard } from "@/components/PriceScaleCard";
+import { loadPriceScale } from "@/lib/price-scale-data";
 import { MarketTempoCard } from "@/components/MarketTempoCard";
 import { carHeadline } from "@/lib/car-headline";
 import { ShareButton } from "@/components/ShareButton";
@@ -100,6 +102,11 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   );
 
   const market = marketMap.get(segmentKey(brand, model, year, carDoc.vehicleClass));
+  // Fiyat skalası: emsallerin yıl, km, hasar ve donanım kademelerine göre medyanı. Ortalama satırı bu kademeyi gösterir.
+  const priceScale = await loadPriceScale(carDoc._id.toString());
+  // Ortalama yalnızca dar bir kademeden (aynı yıl, km, hasar ya da donanım) gösterilir; aile genelinden gösterilmez.
+  const scaleTier =
+    priceScale?.chosen && priceScale.chosen !== "aile" ? priceScale.tiers.find((t) => t.key === priceScale.chosen) ?? null : null;
   const car = serializeCar(carDoc, market);
 
   // Hiç yeniden doğrulanmamış ilanda son kontrol, ilanın kaynakta ilk görüldüğü andır.
@@ -132,7 +139,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const anomaly = detectPriceAnomaly(car.price, segmentPrices);
 
   const chartData = car.priceHistory.map((point) => ({
-    date: new Date(point.recordedAt).toLocaleDateString("tr-TR"),
+    date: new Date(point.recordedAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }),
     price: point.price,
   }));
 
@@ -302,11 +309,12 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           <PricePredictionBadge
             actualPrice={car.price}
             prediction={prediction}
-            marketAvgPrice={car.marketAvgPrice}
-            marketListingCount={car.marketListingCount}
-            marketScope={car.marketScope}
-            marketFamilyLabel={car.marketFamilyLabel}
+            marketAvgPrice={scaleTier?.median ?? undefined}
+            marketListingCount={scaleTier?.n ?? undefined}
+            marketBasisLabel={scaleTier ? scaleTier.label : undefined}
           />
+
+          {priceScale && <PriceScaleCard scale={priceScale} />}
 
 
           {(() => {

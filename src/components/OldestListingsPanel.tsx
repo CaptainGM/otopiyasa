@@ -534,7 +534,7 @@ export function OldestListingsPanel() {
                     <td className="py-2.5 px-3 text-slate-400">{car.city || "Türkiye"}</td>
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
                       {car.lastVerifiedAt
-                        ? new Date(car.lastVerifiedAt).toLocaleDateString("tr-TR", {
+                        ? new Date(car.lastVerifiedAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul",
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",
@@ -543,7 +543,7 @@ export function OldestListingsPanel() {
                     </td>
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500">
                       {car.createdAt
-                        ? new Date(car.createdAt).toLocaleDateString("tr-TR", {
+                        ? new Date(car.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul",
                             day: "2-digit",
                             month: "2-digit",
                             year: "numeric",

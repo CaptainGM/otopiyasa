@@ -103,7 +103,8 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
   const [hourly, setHourly] = useState<HourlyStat[]>(initialHourly || []);
   const [selectedSlot, setSelectedSlot] = useState<HourlyStat | null>(null);
   const [loading, setLoading] = useState(!initialDaemon && !initialHourly?.length);
-  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  // Sunucuda ve istemcide farklı anlar yazılmasın diye ilk değer boş; ilk veri gelince dolar (hidrasyon uyuşmazlığı).
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [syncStates, setSyncStates] = useState<SyncState[]>([]);
 
   // Son manuel buton tıklamasını takip et (arka plan sorgusu arayüzü geri döndürmesin)
@@ -349,7 +350,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
             className="flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300 transition"
           >
             <span>🔄</span>
-            <span>Yenile ({lastRefreshed.toLocaleTimeString("tr-TR")})</span>
+            <span>Yenile ({lastRefreshed ? lastRefreshed.toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul" }) : "—"})</span>
           </button>
         </div>
       </div>
@@ -438,7 +439,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
           Son Kalp Atışı:{" "}
           <span className="text-slate-300 font-medium">
             {daemon?.lastHeartbeat
-              ? new Date(daemon.lastHeartbeat).toLocaleTimeString("tr-TR")
+              ? new Date(daemon.lastHeartbeat).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul" })
               : "Bilinmiyor"}
           </span>
         </div>
@@ -577,7 +578,7 @@ export function DaemonStatsPanel({ initialDaemon, initialToday, initialHourly }:
       {/* Bugünün Hızlı Toplamları (4 Kart) */}
       <div>
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-          Otonom motor — bugünün özeti ({today?.date || new Date().toLocaleDateString("tr-TR")})
+          Otonom motor — bugünün özeti ({today?.date || getTurkeyDateStr()})
         </h3>
         <p className="-mt-2 mb-3 text-[11px] text-slate-500">
           Yalnızca sunucudaki 7/24 motorun işi. Bekçi ve elle yapılan taramalar dahil toplam için sayfanın en üstündeki günlük özete bak.

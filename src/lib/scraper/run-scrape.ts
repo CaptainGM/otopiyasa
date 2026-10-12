@@ -2,6 +2,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { Car } from "@/models/Car";
+import { isPlausibleListingPrice } from "@/lib/price-plausibility";
 import {
   arabamAdapter,
   demoImportAdapter,
@@ -18,6 +19,9 @@ import {
   scrapeArabamForMarketYears,
   refetchArabamDetails,
   fetchArabamByHrefs,
+  collectRecentArabamHrefs,
+  familyBaseUrl,
+  type QuotaOutcome,
   createDetailFetchStats,
   arabamModelSlug,
   POPULAR_BRANDS,
@@ -46,6 +50,11 @@ import { modelFamily, modelFamilyKey, modelFamilyRegex, modelNameKey } from "@/l
 import { RareModelAttempt } from "@/models/RareModelAttempt";
 import { ArabamCatalog, type ArabamCatalogDoc } from "@/models/ArabamCatalog";
 import { DAY_MS, familyId, planRareLevel, selectRareFamilies, type SegmentCount } from "@/lib/scraper/rare-models";
+import { planPopularRecent, type FamilyStanding } from "@/lib/scraper/popular-recent";
+import { setArabamPace } from "@/lib/scraper/rate-limit";
+
+/** Sunucu üzerinden yapılan Arabam taramalarında ilan arası temel bekleme (ms); bekçiyle aynı insansı ritim. */
+const SERVER_ARABAM_PACE_MS = 6000;
 
 function pickAdapters(source: "sahibinden" | "arabam" | "otomerkezi" | "vavacars" | "otoplus" | "carvak" | "otokoc" | "dod" | "ikinciyeni" | "all"): ScrapeAdapter[] {
   if (source === "sahibinden") return [sahibindenAdapter];
@@ -358,6 +367,8 @@ export async function saveListing(
   if (!(listing.price > 0)) {
     return "skipped";
   }
+  // Yazım hatası gibi fiyatlı yeni ilan eklenmez; mevcut ilanın fiyatı değişirse kanca bayrağı işaretler.
+  if (!isPlausibleListingPrice(listing.price, vehicleClass)) return "skipped";
   if (isPlaceholder(listing.brand) || isPlaceholder(listing.model) || isPlaceholder(listing.title)) return "skipped";
   // Kaynakta yıl bulunamadığında bazı adaptörler güncel yılı yalnızca placeholder olarak verir. Böyle bir
   // kayıt eklenmesin; mevcut araçta ise yukarıdaki doğrulanmış yıl korunur.
@@ -694,6 +705,7 @@ export async function runRareModelScrape(
   maxSegments = RARE_MODEL_LIMIT,
   maxListings = RARE_MODEL_MAX_LISTINGS
 ): Promise<ScrapeJobResult> {
+  setArabamPace(SERVER_ARABAM_PACE_MS);
   // Kaynağın kendi model listesi: bizde hiç ilanı olmayan modeller de sıraya girer (sayıları 0). Yalnızca ad olarak kendi ailesini
   // veren satırlar alınır (donanım yazımları aileyi bölmesin).
   const catalogDocs = await ArabamCatalog.find().lean<ArabamCatalogDoc[]>();
@@ -871,6 +883,148 @@ export async function runRareModelScrape(
     reactivated: counts.reactivated,
     sources: [{ source: "arabam", fetched, saved: counts.saved }],
     sampleVehicles,
+  };
+}
+
+/**
+ * POPÜLER AİLELER (bkz. popular-recent.ts): 100+ ilanı olan ailelerin minYear ve sonrası ilanlarını hedefe kadar tamamlar. Yıl liste
+ * sayfasından okunur, eski ilanların detayı açılmaz. Her aile bir kez denenir; sonuca göre yeniden denemesi 0–14 gün sonra olur.
+ */
+export async function runPopularRecentScrape(
+  minYear = 2020,
+  targetRecent = 150,
+  maxListings = 1200,
+  maxFamilies = 80
+): Promise<ScrapeJobResult> {
+  setArabamPace(SERVER_ARABAM_PACE_MS);
+  const [cars, catalogDocs, attempts] = await Promise.all([
+    Car.find({ status: "active", sourceSite: "arabam" }, { brand: 1, model: 1, year: 1 }).lean<
+      Array<{ brand: string; model: string; year: number }>
+    >(),
+    ArabamCatalog.find().lean<ArabamCatalogDoc[]>(),
+    RareModelAttempt.find({ familyKey: /::recent$/ }, { brand: 1, familyKey: 1, attemptedAt: 1, retryAfterDays: 1 }).lean<
+      Array<{ brand: string; familyKey: string; attemptedAt: Date; retryAfterDays?: number }>
+    >(),
+  ]);
+
+  const standings = new Map<string, FamilyStanding>();
+  for (const car of cars) {
+    const brand = (car.brand || "").trim();
+    const familyKey = modelFamilyKey(car.model, brand);
+    if (!brand || !familyKey) continue;
+    const id = familyId(brand, familyKey);
+    const entry = standings.get(id) ?? { brand, familyKey, label: modelFamily(car.model, brand), total: 0, recent: 0 };
+    entry.total += 1;
+    if (car.year >= minYear) entry.recent += 1;
+    standings.set(id, entry);
+  }
+  // Katalogdaki model sayfası adresi (ad çözümünden daha kesin): yalnızca kendi ailesinin adını taşıyan satırlar.
+  for (const doc of catalogDocs) {
+    const brand = normalizeBrand(doc.brand);
+    for (const m of doc.models) {
+      if (modelNameKey(modelFamily(m.name, brand)) !== modelNameKey(m.name)) continue;
+      const entry = standings.get(familyId(brand, modelFamilyKey(m.name, brand)));
+      if (entry && !entry.path) entry.path = `${doc.category}/${m.slug}`;
+    }
+  }
+
+  const now = Date.now();
+  const blocked = new Set(
+    attempts
+      .filter((a) => a.attemptedAt.getTime() + (a.retryAfterDays ?? 1) * DAY_MS > now)
+      .map((a) => familyId(a.brand, a.familyKey.slice(0, -"::recent".length)))
+  );
+  const plan = planPopularRecent([...standings.values()], targetRecent, maxFamilies, blocked);
+
+  const counter = createSaveCounter();
+  const { counts } = counter;
+  const onListing = async (listing: ScrapedListing) => {
+    const result = await saveListing(listing);
+    counter.add(result);
+    return result;
+  };
+  let saved = 0;
+  let stoppedByBlock = false;
+  const done: string[] = [];
+
+  for (const target of plan) {
+    if (saved >= maxListings || stoppedByBlock) break;
+    reportProgress(`Popüler aile: ${target.brand} ${target.label} (hedef ${targetRecent}, şu an ${target.recent})`, done.length + 1, plan.length);
+
+    let base: string | null = target.path ? `https://www.arabam.com/ikinci-el/${target.path}` : null;
+    try {
+      base = base ?? (await familyBaseUrl(target.brand, target.label));
+    } catch (error) {
+      if (error instanceof Error && /hız sınırı|Cloudflare/i.test(error.message)) {
+        stoppedByBlock = true;
+        break;
+      }
+    }
+
+    let outcome: QuotaOutcome = "unavailable";
+    let found = 0;
+    let fresh: string[] = [];
+    if (base) {
+      try {
+        const res = await collectRecentArabamHrefs(
+          base,
+          Math.min(target.quota, maxListings - saved),
+          40,
+          minYear,
+          target.path ? lastSlug(target.path) : undefined
+        );
+        outcome = res.outcome;
+        found = res.seen;
+        fresh = res.fresh;
+      } catch (error) {
+        if (error instanceof Error && /hız sınırı|Cloudflare/i.test(error.message)) {
+          stoppedByBlock = true;
+          break;
+        }
+        outcome = "unknown";
+      }
+    }
+
+    let gained = 0;
+    if (fresh.length > 0) {
+      const countGain: OnListing = async (listing) => {
+        const result = await onListing(listing);
+        if (result !== "skipped" && result !== "unchanged") gained += 1;
+        return result;
+      };
+      await refetchArabamDetails(fresh, countGain, undefined, 0, fresh.length);
+    }
+    saved += gained;
+    done.push(`${target.label} +${gained}`);
+
+    const verdict = judgeAttempt({ outcome, added: gained, fresh: fresh.length });
+    await recordRareAttempt(
+      target.brand,
+      `${target.familyKey}::recent`,
+      target.label,
+      verdict,
+      { found, added: gained, before: target.recent, after: target.recent + gained }
+    );
+  }
+
+  if (counts.inserted > 0) {
+    try {
+      await checkSubscriptions();
+    } catch (error) {
+      console.error("Abonelik bildirimi kontrolü başarısız:", error);
+    }
+  }
+
+  return {
+    success: true,
+    message:
+      `Popüler aileler (${minYear} ve sonrası, aile başına hedef ${targetRecent}): ${plan.length} aile sırada, ${done.length} işlendi, +${saved} yeni ilan.` +
+      (done.length > 0 ? ` ${done.slice(0, 12).join(", ")}` : "") +
+      (stoppedByBlock ? " Kaynak hız sınırı koydu; biraz sonra yeniden çalıştırın." : ""),
+    inserted: counts.inserted,
+    updated: counts.updated,
+    reactivated: counts.reactivated,
+    sources: [{ source: "arabam", fetched: saved, saved: counts.saved }],
   };
 }
 

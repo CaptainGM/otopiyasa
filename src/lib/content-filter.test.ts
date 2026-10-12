@@ -24,7 +24,7 @@ describe("containsProfanity", () => {
   });
 
   it("rakam/noktalama/boşlukla gizlemeyi yakalar", () => {
-    for (const text of ["s1kt1r", "0rospu", "a m k", "s.i.k.t.i.r", "o r o s p u", "p3zevenk"]) {
+    for (const text of ["s1kt1r", "0rospu", "a m k", "s.i.k.t.i.r", "o r o s p u", "p3zevenk", "y.a.r.a.k"]) {
       expect(containsProfanity(text), text).toBe(true);
     }
   });
@@ -38,7 +38,8 @@ describe("containsProfanity", () => {
       "Pazarlık payı vardır, takas yapılır, kış lastiği hediye",
       "Sıfır ayarında, garantili, ilk sahibinden, ekspertizli",
       "Mazda CX-5 2.0 Skyactiv, Pasat B8, Opel Astra",
-      "Sık kullanılan bir araç değil, garajda durdu",
+      "Sık kullanılan bir araç değil, garajda durdu", "Değeri tanıyarak belirledik, sağlayarak sonuç verdi",
+      "Fiyat tahmini sayfasında aracınızın değerini öğrenebilirsiniz. Yapay zekamız aracı tanıyarak formu doldurur.",
       "Hatchback 5 kapı, otomatik vites, klima, ABS, ESP",
       "",
     ]) {

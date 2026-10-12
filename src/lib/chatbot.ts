@@ -299,6 +299,9 @@ function isFollowUp(message: string): boolean {
 
 
 async function fastReply(message: string, context?: ChatContext): Promise<ChatReply | null> {
+  // Fiyat sorusu ("Renault Clio 2020 fiyatı ne kadar") yıl içerse de arama sayılmaz; önce piyasa medyanı denenir.
+  const price = await priceQueryReply(message);
+  if (price) return price;
   const c = parseFilterCriteria(message);
   const hasCriteria = c.yearMin || c.yearMax || c.priceMin || c.priceMax || c.fuelType || c.transmission;
   if (hasCriteria) {
@@ -419,7 +422,7 @@ export function brandModelFilter(term: string): Record<string, unknown> {
 }
 
 /** Genel araç sözcükleri ("araç", "araba", "hangisi") marka ya da model sayılmaz; kalan terim aranır. */
-const GENERIC_CAR_WORDS = new Set(["arac", "araç", "araclar", "araçlar", "araba", "arabalar", "hangisi", "hangi", "nedir", "ilan", "ilanı", "ilani", "olan", "var", "bir", "mi", "mı"]);
+const GENERIC_CAR_WORDS = new Set(["arac", "araç", "araclar", "araçlar", "araba", "arabalar", "hangisi", "hangi", "nedir", "ilan", "ilanı", "ilani", "olan", "var", "bir", "mi", "mı", "bu", "şu", "o", "bunun", "şunun", "onun", "ilanın", "aracın", "arabanın", "ne", "nasıl", "kadar"]);
 
 export function cleanCarTerm(raw: string): string {
   return raw
@@ -461,6 +464,63 @@ async function findExtreme(term: string, direction: 1 | -1): Promise<CarLite | n
     .sort({ price: direction })
     .select("title price brand imageUrl")
     .lean<CarLite | null>();
+}
+
+const PRICE_BLOCK_WORDS = new Set([
+  "en", "ortalama", "altı", "alti", "altında", "altinda", "altındaki", "üstü", "ustu", "üstünde", "ustunde",
+  "üzeri", "uzeri", "üzerinde", "uzerinde", "sonrası", "sonrasi", "öncesi", "oncesi", "arası", "arasi",
+  "arasında", "arasinda", "tahmin", "tahmini", "hesap", "hesaplama", "nasıl", "nasil", "dizel", "benzin",
+  "lpg", "hibrit", "elektrik", "elektrikli", "otomatik", "manuel", "vites",
+]);
+
+/**
+ * Düz fiyat sorusu mu? Yalnızca model/marka ve (varsa) tek bir yıl içerir. Sıralama ("en ucuz"), ortalama, aralık,
+ * yakıt, vites, yön ("2020 sonrası") ya da tahmin/nasıl soruları false döner; bunlar liste ve sohbet yoluna kalır.
+ */
+export function isPlainPriceQuestion(message: string): boolean {
+  const text = message.toLocaleLowerCase("tr-TR");
+  if (/kaç\s+(ilan|araç|arac)/.test(text) || /\d\s*(milyon|bin)/.test(text)) return false;
+  const words = text.split(/\s+/).map((w) => w.replace(/[^a-zçğıöşü0-9]/g, ""));
+  if (words.some((w) => PRICE_BLOCK_WORDS.has(w))) return false;
+  const years = text.match(/\b(?:19|20)\d{2}\b/g) ?? [];
+  if (years.length > 1) return false;
+  const criteria = parseFilterCriteria(text);
+  if (criteria.priceMin || criteria.priceMax || criteria.fuelType || criteria.transmission || criteria.yearMax) return false;
+  if (years.length === 1 && /(sonra|üst|üzer|büyük|yeni|geç)/.test(text)) return false;
+  return true;
+}
+
+/** "Renault Clio 2020 fiyatı ne kadar", "Togg T10X fiyatı": aranan modelin piyasa medyanı. */
+async function priceQueryReply(message: string): Promise<ChatReply | null> {
+  const priceAsk = message.match(/^(.*?)\s+(fiyat(?:ı|i)?|ne kadar|kaç para|kac para)/i);
+  if (!priceAsk || !isPlainPriceQuestion(message)) return null;
+  const yearMatch = message.match(/\b((?:19|20)\d{2})\b/);
+  let year = yearMatch ? Number(yearMatch[1]) : null;
+  let term = cleanCarTerm(priceAsk[1].replace(/\b(?:19|20)\d{2}\b/g, " "));
+  let scope = term ? await scopeFilterFor(term) : null;
+  // "Peugeot 2008": sayı model adıysa yıl sayılmaz. Yalnızca marka + model birlikte eşleşirse kabul edilir; model adıyla eşleşme ("clio 2020") yılı düşürür.
+  if (term && year && !term.includes(" ")) {
+    const asModel = `${term} ${year}`;
+    const modelScope = await scopeFilterFor(asModel);
+    if (modelScope && "brand" in modelScope && "model" in modelScope) {
+      term = asModel;
+      scope = modelScope;
+      year = null;
+    }
+  }
+  if (!term || !scope) return null;
+  const docs = await Car.find({ ...VISIBLE, ...scope, ...(year ? { year: { $gte: year - 1, $lte: year + 1 } } : {}) })
+    .select("price")
+    .limit(3000)
+    .lean<{ price: number }[]>();
+  if (docs.length < 3) return { reply: `"${term}" için yeterli ilan bulamadım.` };
+  const prices = docs.map((d) => d.price).sort((a, b) => a - b);
+  const mid = Math.floor(prices.length / 2);
+  const med = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
+  const label = year ? `${term} ${year} (±1 yıl)` : term;
+  return {
+    reply: `${label} için piyasa medyanı ${formatPrice(Math.round(med))} (${prices.length} ilan, ${formatPrice(prices[0])} – ${formatPrice(prices[prices.length - 1])}). Km, hasar ve donanıma göre ayrıntı için ilan sayfasındaki fiyat skalasına bak.`,
+  };
 }
 
 /**
@@ -528,28 +588,6 @@ async function tryDataQuery(
   }
 
   
-  const priceAsk = message.match(/^(.*?)\s+(fiyat(?:ı|i)?|ne kadar|kaç para|kac para)/i);
-  if (priceAsk) {
-    const yearMatch = priceAsk[1].match(/\b((?:19|20)\d{2})\b/);
-    const term = cleanCarTerm(priceAsk[1].replace(/\b(?:19|20)\d{2}\b/g, " "));
-    const scope = term ? await scopeFilterFor(term) : null;
-    if (term && scope) {
-      const year = yearMatch ? Number(yearMatch[1]) : null;
-      const docs = await Car.find({ ...VISIBLE, ...scope, ...(year ? { year: { $gte: year - 1, $lte: year + 1 } } : {}) })
-        .select("price")
-        .limit(3000)
-        .lean<{ price: number }[]>();
-      if (docs.length < 3) return { reply: `"${term}" için yeterli ilan bulamadım.` };
-      const prices = docs.map((d) => d.price).sort((a, b) => a - b);
-      const mid = Math.floor(prices.length / 2);
-      const med = prices.length % 2 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
-      const label = year ? `${term} ${year} (±1 yıl)` : term;
-      return {
-        reply: `${label} için piyasa medyanı ${formatPrice(Math.round(med))} (${prices.length} ilan, ${formatPrice(prices[0])} – ${formatPrice(prices[prices.length - 1])}). Km, hasar ve donanıma göre ayrıntı için ilan sayfasındaki fiyat skalasına bak.`,
-      };
-    }
-  }
-
   if (message.includes("altı") || message.includes("altında") || message.includes("altinda")) {
     const amount = parseAmount(message);
     const brandMatch = message.match(/([a-zçğıöşü]{2,})\s*(?:markası|marka)?/gi);

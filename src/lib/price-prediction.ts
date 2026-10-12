@@ -4,6 +4,7 @@ import { normalizeTransmission } from "@/lib/vehicle-attrs";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { turkishSearchRegex, levenshtein, extractVehicleTokens, calculateTitleMatchScore } from "@/lib/utils";
 import { modelFamilyRegex } from "@/lib/model-family";
+import { similarQuery } from "@/lib/comparables";
 
 export type Condition = "clean" | "painted" | "damaged";
 
@@ -589,8 +590,10 @@ export async function predictPrice(
   // 1. Önce doğrudan indeksli segment sorgusu (~5ms): aktif ilanlar + yaşa göre ağırlıklı arşiv.
   // Model ailesi (SCALA / Scala 1.0 TSI / Scala Style aynı segment): birebir ad eşleşmesi yazım farkı yüzünden segmenti 2 ilana düşürüyordu.
   let segmentRows = await memo(`seg:${brand}|${resolvedModel}|${options.vehicleClass || "all"}`, () => loadTier({ brand, model: modelFamilyRegex(resolvedModel, brand), ...vehicleClassFilter }, 200, 100, SEGMENT_SKIP_ARCHIVE_ABOVE));
-  const activeSegmentCount = await memo(`segcount:${brand}|${resolvedModel}|${year}|${options.vehicleClass || "all"}`, () =>
-    Car.countDocuments({ brand, model: modelFamilyRegex(resolvedModel, brand), year, ...PUBLIC_LISTING_FILTER, ...vehicleClassFilter })
+  // Gösterilen emsal sayısı benzer ilanlarla AYNI kuraldan gelir (aile, yıl ±3, kilometre penceresi). Eskiden yalnızca aynı yıl sayılıyordu:
+  // kartta "3 emsal" yazarken benzer ilan listesi 12 ilan gösteriyordu.
+  const activeSegmentCount = await memo(`segcount:${brand}|${resolvedModel}|${year}|${Math.round(mileage / 20000)}|${options.vehicleClass || "all"}`, () =>
+    Car.countDocuments({ ...similarQuery({ brand, model: resolvedModel, year, mileage, vehicleClass: options.vehicleClass }), ...PUBLIC_LISTING_FILTER })
   );
 
   // Yeterli örnek yoksa geniş regex sorgusuyla destekle

@@ -35,7 +35,7 @@ export async function loadPriceScale(carId: string): Promise<PriceScale | null> 
   await connectDB();
   const subject = (await Car.findOne({ _id: carId, ...PUBLIC_LISTING_FILTER })
     .select("brand model year mileage price vehicleClass damageFlag features")
-    .lean()) as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
+    .lean()) as unknown as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
   if (!subject) return null;
 
   const candidates = (await Car.find({
@@ -46,7 +46,7 @@ export async function loadPriceScale(carId: string): Promise<PriceScale | null> 
   })
     .select("price year mileage damageFlag features.engineSize features.fuelType features.transmission features.horsepower")
     .limit(CANDIDATE_LIMIT)
-    .lean()) as Array<Parameters<typeof toScaleCar>[0]>;
+    .lean()) as unknown as Array<Parameters<typeof toScaleCar>[0]>;
 
   return buildPriceScale(toScaleCar(subject), candidates.map(toScaleCar));
 }

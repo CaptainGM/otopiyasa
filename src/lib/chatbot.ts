@@ -413,8 +413,19 @@ export function brandModelFilter(term: string): Record<string, unknown> {
   };
 }
 
-async function findExtreme(brand: string, direction: 1 | -1): Promise<CarLite | null> {
-  return Car.findOne({ ...VISIBLE, ...brandModelFilter(brand) })
+/** Genel araç sözcükleri ("araç", "araba", "hangisi") marka ya da model sayılmaz; kalan terim aranır. */
+const GENERIC_CAR_WORDS = new Set(["arac", "araç", "araclar", "araçlar", "araba", "arabalar", "hangisi", "hangi", "nedir", "ilan", "ilanı", "ilani", "olan", "var", "bir", "mi", "mı"]);
+
+export function cleanCarTerm(raw: string): string {
+  return raw
+    .split(/\s+/)
+    .filter((word) => word && !GENERIC_CAR_WORDS.has(word.toLocaleLowerCase("tr-TR")))
+    .join(" ");
+}
+
+/** En ucuz/en pahalı ilan. Terim boşsa (genel soru) tüm yayındaki ilanlar arasında aranır; bayraklı fiyatlar VISIBLE ile dışarıda kalır. */
+async function findExtreme(term: string, direction: 1 | -1): Promise<CarLite | null> {
+  return Car.findOne({ ...VISIBLE, ...(term ? brandModelFilter(term) : {}) })
     .sort({ price: direction })
     .select("title price brand imageUrl")
     .lean<CarLite | null>();
@@ -441,9 +452,8 @@ async function tryDataQuery(
   const extreme = message.match(/en\s+(ucuz|pahalı|pahali)\s+([a-zçğıöşü0-9\s]+)/i);
   if (extreme) {
     const direction: 1 | -1 = extreme[1].startsWith("ucuz") ? 1 : -1;
-    const tokens = extreme[2].trim().split(/\s+/).filter(Boolean);
-    const brand = tokens[0];
-    const car = await findExtreme(brand, direction);
+    const term = cleanCarTerm(extreme[2]);
+    const car = await findExtreme(term, direction);
     const label = direction === 1 ? "En ucuz" : "En pahalı";
     if (car) {
       return {
@@ -452,7 +462,7 @@ async function tryDataQuery(
         context: carContext(car),
       };
     }
-    return { reply: `"${brand}" markasına ait bir ilan bulamadım.` };
+    return { reply: term ? `"${term}" için bir ilan bulamadım.` : "Yayında ilan bulamadım." };
   }
 
   
@@ -643,8 +653,9 @@ async function handleIntent(
     case "priciest": {
       if (!term) return { reply: intent.reply || FALLBACK_ANSWER };
       const direction: 1 | -1 = intent.action === "cheapest" ? 1 : -1;
-      const car = await findExtreme(term, direction);
-      if (!car) return { reply: `"${term}" markasına ait bir ilan bulamadım.` };
+      const cleaned = cleanCarTerm(term);
+      const car = await findExtreme(cleaned, direction);
+      if (!car) return { reply: `"${cleaned || term}" için bir ilan bulamadım.` };
       const label = direction === 1 ? "En ucuz" : "En pahalı";
       return {
         reply: `${label} ${car.brand} ilanı: "${car.title}" – ${formatPrice(car.price)}.`,

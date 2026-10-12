@@ -42,7 +42,7 @@ function extractCityFromUrl(url: string): string | null {
 
 export async function scrapeOtoplusListings(
   limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   skipExisting = true,
   pageOffset = 1,
   report?: CrawlReport

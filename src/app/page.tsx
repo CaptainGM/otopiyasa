@@ -125,6 +125,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
     !!filters.yearMax ||
     !!filters.priceMin ||
     !!filters.priceMax ||
+    !!filters.mileageMin ||
+    !!filters.mileageMax ||
+    !!filters.seller ||
+    !!filters.noDamage ||
     !!filters.fuelType ||
     !!filters.transmission ||
     !!filters.deals ||
@@ -146,6 +150,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
   if (filters.yearMax) clearQueryParams.set("yearMax", String(filters.yearMax));
   if (filters.priceMin) clearQueryParams.set("priceMin", String(filters.priceMin));
   if (filters.priceMax) clearQueryParams.set("priceMax", String(filters.priceMax));
+  if (filters.mileageMin) clearQueryParams.set("mileageMin", String(filters.mileageMin));
+  if (filters.mileageMax) clearQueryParams.set("mileageMax", String(filters.mileageMax));
+  if (filters.seller) clearQueryParams.set("seller", filters.seller);
+  if (filters.noDamage) clearQueryParams.set("noDamage", "true");
   if (filters.sort && filters.sort !== "mixed") clearQueryParams.set("sort", filters.sort);
   if (filters.deals) clearQueryParams.set("firsat", "1");
   if (filters.discountOnly) clearQueryParams.set("discountOnly", "true");

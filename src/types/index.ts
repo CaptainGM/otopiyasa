@@ -129,6 +129,13 @@ export interface CarFilters {
   yearMax?: number;
   priceMin?: number;
   priceMax?: number;
+  /** Kilometre aralığı (en az / en çok). */
+  mileageMin?: number;
+  mileageMax?: number;
+  /** Satıcı tipi: arabam ilanlarının başlığındaki "Galeriden" / "Sahibinden" öneki. */
+  seller?: "galeriden" | "sahibinden";
+  /** Yalnızca hasar kaydı olmayan ilanlar. */
+  noDamage?: boolean;
   fuelType?: string;
   transmission?: string;
   /** Araç tipi (bkz. lib/vehicle-scope.ts VEHICLE_CLASSES). */

@@ -9,7 +9,7 @@ const CARVAK_URL = "https://www.carvak.com/tr/satilik-arac";
 
 export async function scrapeCarvakListings(
   limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   skipExisting = true,
   pageOffset = 1,
   report?: CrawlReport

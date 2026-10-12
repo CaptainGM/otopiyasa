@@ -97,7 +97,7 @@ export async function fetchDodCarUrls(): Promise<string[]> {
 /** Verilen DOD araç sayfalarını açıp ilan verisine çevirir. */
 export async function scrapeDodDetails(
   items: Array<{ url: string; externalId: string }>,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   onGone?: (externalId: string, reason: string) => Promise<void> | void,
   onAttempt?: (externalId: string) => Promise<void> | void
 ): Promise<number> {
@@ -236,7 +236,7 @@ export async function scrapeDodDetails(
 
 export async function scrapeDodListings(
   limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   skipExisting = true,
   report?: CrawlReport
 ): Promise<number> {

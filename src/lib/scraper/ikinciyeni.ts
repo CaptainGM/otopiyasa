@@ -27,7 +27,7 @@ interface IkinciyeniVehicle {
 
 export async function scrapeIkinciyeniListings(
   limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   skipExisting = true,
   report?: CrawlReport
 ): Promise<number> {

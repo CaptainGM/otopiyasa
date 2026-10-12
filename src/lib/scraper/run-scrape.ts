@@ -728,6 +728,8 @@ export async function runRareModelScrape(
         });
       }
     }
+    // Çağıran, eklenen (yeni ya da arşivden geri açılan) ilanları ayırt edebilsin diye sonucu döndürür.
+    return result;
   };
 
   let fetched = 0;

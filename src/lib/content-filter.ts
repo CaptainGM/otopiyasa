@@ -88,7 +88,7 @@ const PREFIX_STEMS = [
 ].map(normalizeWord);
 
 // Harf harf ayrılarak ya da noktalama ile gizlenenler için "yalnızca harf" metninde aranan uzun kökler.
-const COMPACT_STEMS = ["siktir", "orospu", "yarrak", "pezevenk", "aminakoy", "motherfuck", "gerizekali"].map(normalizeWord);
+const COMPACT_STEMS = ["siktir", "orospu", "pezevenk", "aminakoy", "motherfuck", "gerizekali"].map(normalizeWord); // "yarak" yok: tanıyarak, sağlayarak gibi sözcüklerde geçiyor; sözcük kontrolü yakalar
 
 const TOKEN_SPLIT = /[^\p{L}\p{N}@$!]+/u;
 

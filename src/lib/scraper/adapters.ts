@@ -803,7 +803,16 @@ export async function scrapeArabamForQuotas(
       Car.countDocuments({ brand: target.brand, model: modelFamilyRegex(target.model, target.brand), status: "active" }).catch(() => undefined);
     const before = await countActive();
     // Adaylar zaten "bizde yok ya da arşivde" diye süzüldü; skipExisting=false: arşivdekiler okunup canlıysa geri açılır.
-    const added = result.fresh.length > 0 ? await fetchAndSaveArabamDetails(result.fresh, onListing, false) : 0;
+    // Sayılan: gerçekten kaydedilen (yeni ya da geri açılan) ilanlar. Kapsam dışı ("skipped") ve değişmeyen kayıtlar sayılmaz;
+    // eskiden okunan her sayfa sayılıyordu ve olay günlüğünde bir modele "+99" yazılmasına yol açtı.
+    let saved = 0;
+    const countSaved: OnListing = async (listing) => {
+      const outcome = await onListing(listing);
+      if (outcome !== "skipped" && outcome !== "unchanged") saved += 1;
+      return outcome;
+    };
+    if (result.fresh.length > 0) await fetchAndSaveArabamDetails(result.fresh, countSaved, false);
+    const added = saved;
     fetched += added;
     const after = before === undefined ? undefined : await countActive();
     if (added > 0) reportEvent({ label: `${target.brand} ${target.model}`, before, after, added });

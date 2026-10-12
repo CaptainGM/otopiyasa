@@ -57,7 +57,8 @@ export interface ScrapedListing {
 }
 
 
-export type OnListing = (listing: ScrapedListing) => Promise<void>;
+/** Kaydetme sonucunu (SaveResult) döndürebilir; çağıran hangilerinin gerçekten yeni/geri açılan olduğunu sayabilsin diye. */
+export type OnListing = (listing: ScrapedListing) => Promise<unknown>;
 
 /**
  * Bir envanter taramasının nasıl bittiğini raporlar. "Hata yüzünden yarıda

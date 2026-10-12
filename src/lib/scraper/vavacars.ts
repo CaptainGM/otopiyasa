@@ -46,7 +46,7 @@ interface VavaSearchResponse {
 
 export async function scrapeVavaCarsListings(
   limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   skipExisting = true,
   pageOffset = 1,
   report?: CrawlReport

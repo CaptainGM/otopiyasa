@@ -298,7 +298,7 @@ function parseOtomerkeziLdJson(html: string): { listings: ScrapedListing[]; unsa
 
 export async function scrapeOtomerkeziListings(
   limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   pageOffset = 1,
   report?: CrawlReport
 ): Promise<number> {

@@ -41,7 +41,7 @@ async function fetchListPage(pageNum: number): Promise<{ html: string } | { erro
 
 export async function scrapeOtokocListings(
   limit: number,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   skipExisting = true,
   pageOffset = 1,
   report?: CrawlReport

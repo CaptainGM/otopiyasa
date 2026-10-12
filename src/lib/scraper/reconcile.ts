@@ -95,7 +95,7 @@ async function claimReconcileLease(source: ReconcileSource, now: Date): Promise<
 
 async function crawlInventory(
   source: ReconcileSource,
-  onListing: (listing: ScrapedListing) => Promise<void>,
+  onListing: (listing: ScrapedListing) => Promise<unknown>,
   report: CrawlReport,
   seen: Set<string>
 ): Promise<void> {
@@ -128,7 +128,7 @@ async function crawlInventory(
  * dönenler ve en uzun süredir detayına bakılmamış ilanlar açılır.
  */
 async function crawlDodInventory(
-  onListing: (l: ScrapedListing) => Promise<void>,
+  onListing: (l: ScrapedListing) => Promise<unknown>,
   report: CrawlReport,
   seen: Set<string>
 ) {

@@ -132,7 +132,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const anomaly = detectPriceAnomaly(car.price, segmentPrices);
 
   const chartData = car.priceHistory.map((point) => ({
-    date: new Date(point.recordedAt).toLocaleDateString("tr-TR"),
+    date: new Date(point.recordedAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }),
     price: point.price,
   }));
 

@@ -294,7 +294,7 @@ export default async function AdminArchivePage({ searchParams }: ArchivePageProp
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-xs text-slate-300">
-                        {car.updatedAt ? new Date(car.updatedAt).toLocaleDateString("tr-TR") : "—"}
+                        {car.updatedAt ? new Date(car.updatedAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }) : "—"}
                       </p>
                       <span className="inline-block rounded bg-slate-800/80 px-1.5 py-0.5 text-[9px] text-slate-400">
                         Arşivlendi

@@ -2,6 +2,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { Car } from "@/models/Car";
+import { isPlausibleListingPrice } from "@/lib/price-plausibility";
 import {
   arabamAdapter,
   demoImportAdapter,
@@ -366,6 +367,8 @@ export async function saveListing(
   if (!(listing.price > 0)) {
     return "skipped";
   }
+  // Yazım hatası gibi fiyatlı yeni ilan eklenmez; mevcut ilanın fiyatı değişirse kanca bayrağı işaretler.
+  if (!isPlausibleListingPrice(listing.price, vehicleClass)) return "skipped";
   if (isPlaceholder(listing.brand) || isPlaceholder(listing.model) || isPlaceholder(listing.title)) return "skipped";
   // Kaynakta yıl bulunamadığında bazı adaptörler güncel yılı yalnızca placeholder olarak verir. Böyle bir
   // kayıt eklenmesin; mevcut araçta ise yukarıdaki doğrulanmış yıl korunur.

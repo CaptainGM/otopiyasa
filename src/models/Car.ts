@@ -1,4 +1,5 @@
 import mongoose, { Schema, models, model } from "mongoose";
+import { isPlausibleListingPrice } from "@/lib/price-plausibility";
 
 const PricePointSchema = new Schema(
   {
@@ -37,6 +38,8 @@ const CarSchema = new Schema(
     model: { type: String, required: true, trim: true, index: true },
     year: { type: Number, required: true, index: true },
     price: { type: Number, required: true, index: true },
+    // Yazım hatası gibi görünen fiyat (bkz. price-plausibility.ts): herkese açık sorgular dışarıda tutar, arşive almaz.
+    priceSuspect: { type: Boolean, default: false },
     mileage: { type: Number, required: true },
     city: { type: String, required: true },
     address: { type: String, default: "" },
@@ -213,6 +216,22 @@ CarSchema.index({ status: 1, createdAt: -1, _id: -1 });
 CarSchema.index({ sourceSite: 1, status: 1, removedAt: -1 });
 CarSchema.index({ sourceSite: 1, createdAt: -1 });
 CarSchema.index({ sourceSite: 1, status: 1, lastVerifiedAt: 1 });
+
+// Bayrak fiyatla birlikte her yazımda aynı kuralla yeniden hesaplanır; kaydetme ve sorgu güncellemelerinin ikisi de kapsanır.
+CarSchema.pre("save", function (next) {
+  if (this.isNew || this.isModified("price") || this.isModified("vehicleClass")) {
+    this.priceSuspect = !isPlausibleListingPrice(this.price, this.vehicleClass);
+  }
+  next();
+});
+CarSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], function (next) {
+  const update = this.getUpdate() as Record<string, any> | null;
+  const set = (update?.$set ?? update) as Record<string, any> | undefined;
+  if (set && set.price !== undefined) {
+    set.priceSuspect = !isPlausibleListingPrice(Number(set.price), set.vehicleClass);
+  }
+  next();
+});
 
 export const Car = models.Car || model("Car", CarSchema);
 

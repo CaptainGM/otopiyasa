@@ -94,10 +94,24 @@ const SPLIT_BRANDS: Array<{ head: string; tail: RegExp; brand: string }> = [
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** Satıcı türü sözcükleri: marka alanına düşerse marka değildir ("Galeriden Karavan Motokaravan"). */
+const SELLER_TYPE_WORDS = /^(galeriden|sahibinden|bireysel|kurumsal)$/i;
+/** Kategori adından türetilen marka etiketleri; ilk eşleşen kazanır. */
+const CATEGORY_BRANDS: Array<[RegExp, string]> = [
+  [/karavan/i, "Karavan"],
+  [/ticari/i, "Ticari Araç"],
+  [/elektrikli/i, "Elektrikli Araç"],
+];
+
 /** Marka/model ayrımını düzeltir, markayı tek yazıma çevirir ve modelin başında tekrarlanan markayı atar. */
 export function normalizeBrandModel(rawBrand: string, rawModel: string): { brand: string; model: string } {
   let brand = (rawBrand || "").trim();
   let model = (rawModel || "").trim();
+  // Satıcı türü marka sanıldıysa marka kategoriden türetilir; bulunamazsa "Bilinmiyor" (yeni kayıt eklenmez, mevcut marka ezilmez).
+  if (SELLER_TYPE_WORDS.test(brand)) {
+    const category = CATEGORY_BRANDS.find(([pattern]) => pattern.test(model));
+    return { brand: category ? category[1] : "Bilinmiyor", model };
+  }
   const head = brand.replace(/İ/g, "i").replace(/ı/g, "i").toLowerCase();
   const split = SPLIT_BRANDS.find((s) => s.head === head && s.tail.test(model));
   if (split) {

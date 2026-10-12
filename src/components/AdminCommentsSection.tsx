@@ -131,7 +131,7 @@ export function AdminCommentsSection({ initialComments }: AdminCommentsSectionPr
             const car = item.car;
             const user = item.user;
             const dateStr = item.createdAt
-              ? new Date(item.createdAt).toLocaleString("tr-TR", {
+              ? new Date(item.createdAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul",
                   day: "numeric",
                   month: "short",
                   year: "numeric",

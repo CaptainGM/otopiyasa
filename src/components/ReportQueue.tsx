@@ -87,7 +87,7 @@ export function ReportQueue({ initial }: { initial: PendingReport[] }) {
                     {r.chatSnapshot && <span className="badge border-white/15 bg-white/10 text-slate-300">Sohbet</span>}
                   </div>
                   <p className="text-sm text-slate-400">
-                    {r.reporterName} • {new Date(r.createdAt).toLocaleDateString("tr-TR")}
+                    {r.reporterName} • {new Date(r.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })}
                     {r.reportedUserName && ` • Bildirilen: ${r.reportedUserName}`}
                   </p>
                   {r.note && <p className="mt-1 text-xs text-slate-500">&quot;{r.note}&quot;</p>}

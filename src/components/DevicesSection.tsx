@@ -20,7 +20,7 @@ function formatRelative(iso: string): string {
   if (hours < 24) return `${hours} sa önce`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days} gün önce`;
-  return new Date(iso).toLocaleDateString("tr-TR");
+  return new Date(iso).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" });
 }
 
 export function DevicesSection() {

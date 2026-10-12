@@ -28,8 +28,9 @@ export interface RecentTarget extends FamilyStanding {
 }
 
 /**
- * Hedefi eksik popüler aileleri, en çok ilanlıdan başlayarak seçer. [blocked]: son denemesi "bekle" dediği için bu turda atlananlar
- * (aile kimliği: "marka::aileAnahtarı").
+ * Hedefi eksik popüler aileleri, en az ilanlıdan başlayıp en popülere doğru seçer (yeni nesil ilanı en az olan aileler önce
+ * tamamlanır; hedefi tutanlar her turda otomatik düşer, böylece çalışmalar birikerek en popülerlere ulaşır). [blocked]: son
+ * denemesi "bekle" dediği için bu turda atlananlar (aile kimliği: "marka::aileAnahtarı").
  */
 export function planPopularRecent(
   families: FamilyStanding[],
@@ -40,7 +41,7 @@ export function planPopularRecent(
   return families
     .filter((f) => f.total >= POPULAR_FAMILY_MIN)
     .filter((f) => f.recent < targetRecent && !blocked.has(`${f.brand}::${f.familyKey}`))
-    .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, "tr"))
+    .sort((a, b) => a.total - b.total || a.label.localeCompare(b.label, "tr"))
     .slice(0, maxFamilies)
     .map((f) => ({ ...f, quota: Math.min(targetRecent - f.recent, RECENT_ROUND_CAP) }));
 }

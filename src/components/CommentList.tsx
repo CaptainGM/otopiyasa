@@ -82,7 +82,7 @@ export function CommentList({ carId }: Props) {
           <div key={c._id} className="card p-4">
             <div className="flex items-center justify-between">
               <strong>{typeof c.user === "string" ? "Anonim" : c.user?.name || "Üye"}</strong>
-              <span className="text-sm text-slate-500">{new Date(c.createdAt).toLocaleString()}</span>
+              <span className="text-sm text-slate-500">{new Date(c.createdAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}</span>
             </div>
             <p className="mt-2">{c.text}</p>
             <div className="mt-2 flex items-center justify-between">

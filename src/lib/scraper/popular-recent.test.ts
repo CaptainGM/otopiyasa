@@ -27,9 +27,9 @@ describe("planPopularRecent", () => {
     expect(small[0].quota).toBe(30);
   });
 
-  it("en çok ilanlı aile önce gelir ve maxFamilies uygulanır", () => {
+  it("en az ilanlı aile önce gelir (popülere doğru) ve maxFamilies uygulanır", () => {
     const plan = planPopularRecent([fam("A", "Küçük", 120, 0), fam("B", "Büyük", 500, 0), fam("C", "Orta", 200, 0)], 150, 2);
-    expect(plan.map((p) => p.label)).toEqual(["Büyük", "Orta"]);
+    expect(plan.map((p) => p.label)).toEqual(["Küçük", "Orta"]);
   });
 
   it("bekleme listesindeki aileyi bu turda atlar", () => {

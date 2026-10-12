@@ -2,7 +2,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { Car } from "@/models/Car";
-import { isPlausibleListingPrice } from "@/lib/price-plausibility";
+import { isPlausibleListingPrice, isPlausibleMileage } from "@/lib/price-plausibility";
 import {
   arabamAdapter,
   demoImportAdapter,
@@ -259,7 +259,8 @@ export async function saveListing(
       featuresChanged,
     });
 
-    if (!isPlaceholder(listing.title) && !/^bilinmiyor(?:\s|$)|^model(?:\s|$)/i.test(listing.title.trim())) existing.title = listing.title;
+    // Yıl kaynakta okunamadıysa başlıktaki yıl tahmindir (güncel yıl): mevcut başlık korunur.
+    if (listing.yearVerified !== false && !isPlaceholder(listing.title) && !/^bilinmiyor(?:\s|$)|^model(?:\s|$)/i.test(listing.title.trim())) existing.title = listing.title;
     if (!isPlaceholder(listing.brand)) existing.brand = listing.brand;
     if (!isPlaceholder(listing.model)) existing.model = listing.model;
     if (identityChanged) existing.externalId = listing.externalId;
@@ -369,6 +370,7 @@ export async function saveListing(
   }
   // Yazım hatası gibi fiyatlı yeni ilan eklenmez; mevcut ilanın fiyatı değişirse kanca bayrağı işaretler.
   if (!isPlausibleListingPrice(listing.price, vehicleClass)) return "skipped";
+  if (!isPlausibleMileage(listing.mileage, vehicleClass)) return "skipped";
   if (isPlaceholder(listing.brand) || isPlaceholder(listing.model) || isPlaceholder(listing.title)) return "skipped";
   // Kaynakta yıl bulunamadığında bazı adaptörler güncel yılı yalnızca placeholder olarak verir. Böyle bir
   // kayıt eklenmesin; mevcut araçta ise yukarıdaki doğrulanmış yıl korunur.

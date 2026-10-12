@@ -31,6 +31,21 @@ export function isPlausibleListingPrice(price: number, vehicleClass?: string | n
   return Number.isFinite(price) && price >= minPlausiblePrice(vehicleClass) && price <= MAX_PLAUSIBLE_PRICE;
 }
 
+/**
+ * Kilometre üst sınırı: binek araç ve motosikletlerde 1 milyon km üstü yoktur (99.999.999 gibi değerler yazım hatasıdır).
+ * Ticari araçlarda (kamyon, çekici, otobüs) bir milyon km gerçekçidir; onlar için 3 milyon.
+ */
+export const MAX_PLAUSIBLE_MILEAGE = 1_000_000;
+export const MAX_PLAUSIBLE_COMMERCIAL_MILEAGE = 3_000_000;
+
+export function maxPlausibleMileage(vehicleClass?: string | null): number {
+  return vehicleClass === "ticari" ? MAX_PLAUSIBLE_COMMERCIAL_MILEAGE : MAX_PLAUSIBLE_MILEAGE;
+}
+
+export function isPlausibleMileage(mileage: number, vehicleClass?: string | null): boolean {
+  return Number.isFinite(mileage) && mileage >= 0 && mileage <= maxPlausibleMileage(vehicleClass);
+}
+
 /** Veritabanı sorgusu karşılığı: bayraklanması gereken fiyat aralığı (araç tipine göre alt sınır). */
 export const IMPLAUSIBLE_PRICE_QUERY = {
   $or: [

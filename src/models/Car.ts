@@ -1,5 +1,5 @@
 import mongoose, { Schema, models, model } from "mongoose";
-import { isPlausibleListingPrice } from "@/lib/price-plausibility";
+import { isPlausibleListingPrice, isPlausibleMileage } from "@/lib/price-plausibility";
 
 const PricePointSchema = new Schema(
   {
@@ -40,6 +40,8 @@ const CarSchema = new Schema(
     price: { type: Number, required: true, index: true },
     // Yazım hatası gibi görünen fiyat (bkz. price-plausibility.ts): herkese açık sorgular dışarıda tutar, arşive almaz.
     priceSuspect: { type: Boolean, default: false },
+    // Kilometre 1 milyonun üstünde (yazım hatası gibi): herkese açık sorgular dışarıda tutar, arşive almaz.
+    mileageSuspect: { type: Boolean, default: false },
     mileage: { type: Number, required: true },
     city: { type: String, required: true },
     address: { type: String, default: "" },
@@ -222,6 +224,9 @@ CarSchema.pre("save", function (next) {
   if (this.isNew || this.isModified("price") || this.isModified("vehicleClass")) {
     this.priceSuspect = !isPlausibleListingPrice(this.price, this.vehicleClass);
   }
+  if (this.isNew || this.isModified("mileage")) {
+    this.mileageSuspect = !isPlausibleMileage(this.mileage, this.vehicleClass);
+  }
   next();
 });
 CarSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], function (next) {
@@ -229,6 +234,9 @@ CarSchema.pre(["updateOne", "updateMany", "findOneAndUpdate"], function (next) {
   const set = (update?.$set ?? update) as Record<string, any> | undefined;
   if (set && set.price !== undefined) {
     set.priceSuspect = !isPlausibleListingPrice(Number(set.price), set.vehicleClass);
+  }
+  if (set && set.mileage !== undefined) {
+    set.mileageSuspect = !isPlausibleMileage(Number(set.mileage), set.vehicleClass);
   }
   next();
 });

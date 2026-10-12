@@ -2,7 +2,7 @@ import { Car } from "@/models/Car";
 import { User } from "@/models/User";
 import { getMarketMap } from "@/lib/market-price";
 import { attachMarketToCars, isLeanCarDoc, LeanCarDoc } from "@/lib/serialize-car";
-import { extractVehicleTokens, calculateTitleMatchScore } from "@/lib/utils";
+import { similarQuery, rankSimilar } from "@/lib/comparables";
 import { Car as CarType } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 
@@ -101,62 +101,36 @@ export async function getRecommendationsForUser(
   return toSerializedCars(scored);
 }
 
+/**
+ * Benzer ilanlar: aynı marka ve model ailesi, yakın yıl (en fazla ±3, tercihen ±2) ve yakın kilometre. Fiyat burada emsal seçmez; eskiden
+ * başlık eşleşmesi ve düşük ağırlıklı yıl farkı yüzünden 2025 modelin yanına 2001 modeller girebiliyordu. Kurallar lib/comparables.ts'te.
+ */
 export async function getSimilarCars(
   carId: string,
   brand: string,
   model: string,
-  price: number,
+  _price: number,
   limit = 12,
-  title?: string,
+  _title?: string,
   year?: number,
   mileage?: number,
-  targetPrice?: number,
+  _targetPrice?: number,
   vehicleClass?: string
 ): Promise<CarType[]> {
-  const classFilter = vehicleClass
-    ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass }
-    : {};
-  const sameModel = await Car.find({
+  const subject = { brand, model, year, mileage, vehicleClass };
+  const candidates = await Car.find({
     ...PUBLIC_LISTING_FILTER,
-    ...classFilter,
-    brand,
-    model,
+    ...similarQuery(subject),
     _id: { $ne: carId },
   })
     .sort({ createdAt: -1 })
-    .limit(40)
+    .limit(300)
     .slice("images", 4)
     .lean();
 
-  let pool: LeanCarDoc[] = (sameModel as unknown[]).filter(isLeanCarDoc);
-  // Benzer ilanlar başka gövde/model ailesinden araçlarla doldurulmaz. Aksi hâlde 911 GT3 RS
-  // sayfasında Cayenne ve Macan çıkabiliyor; az emsal varsa daha kısa liste göstermek daha doğru.
-
-  // %100 Jenerik alt-model, gövde tipi ve paket eşleşmesi
-  const targetTokens = extractVehicleTokens(title || "", brand, model);
-  const refPrice = targetPrice && targetPrice > 0 ? targetPrice : price;
-
-  const sorted = pool
-    .sort((a, b) => {
-      if (targetTokens.length > 0) {
-        const aMatch = calculateTitleMatchScore(targetTokens, a.title || "");
-        const bMatch = calculateTitleMatchScore(targetTokens, b.title || "");
-        if (aMatch !== bMatch) return bMatch - aMatch;
-      }
-      // Fiyat yakınlığı: Belirlenen hedef fiyata (örn. adil piyasa değeri 265 bin) yakın olan emsaller öne çıksın
-      const priceDiffA = Math.abs(a.price - refPrice) / (refPrice || 1);
-      const priceDiffB = Math.abs(b.price - refPrice) / (refPrice || 1);
-      const yearDiffA = year && a.year ? Math.abs(a.year - year) / 5 : 0;
-      const yearDiffB = year && b.year ? Math.abs(b.year - year) / 5 : 0;
-      const kmDiffA = mileage && a.mileage ? Math.abs(a.mileage - mileage) / 100000 : 0;
-      const kmDiffB = mileage && b.mileage ? Math.abs(b.mileage - mileage) / 100000 : 0;
-
-      const scoreA = priceDiffA * 0.45 + yearDiffA * 0.35 + kmDiffA * 0.2;
-      const scoreB = priceDiffB * 0.45 + yearDiffB * 0.35 + kmDiffB * 0.2;
-      return scoreA - scoreB;
-    })
-    .slice(0, limit);
+  const pool = (candidates as unknown[]).filter(isLeanCarDoc) as LeanCarDoc[];
+  const picked = rankSimilar(pool, { year, mileage }, limit);
 
   // Benzer ilan kartları piyasa ortalamalarını render etmez; gereksiz DB agregasyonunu atla
-  return attachMarketToCars(sorted, new Map());
+  return attachMarketToCars(picked, new Map());
 }

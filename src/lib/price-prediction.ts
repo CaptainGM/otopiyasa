@@ -3,6 +3,7 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { normalizeTransmission } from "@/lib/vehicle-attrs";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { turkishSearchRegex, levenshtein, extractVehicleTokens, calculateTitleMatchScore } from "@/lib/utils";
+import { modelFamilyRegex } from "@/lib/model-family";
 
 export type Condition = "clean" | "painted" | "damaged";
 
@@ -428,7 +429,7 @@ async function fetchComparableDocs(brand: string, model: string, classFilter: Re
   // Kullanıcıya gösterilen benzer ilanlar: yalnızca herkese açık (aktif + onaylı) olanlar.
   let docs = await Car.find({
     brand,
-    model,
+    model: modelFamilyRegex(model, brand),
     ...classFilter,
     ...PUBLIC_LISTING_FILTER,
   })
@@ -586,9 +587,10 @@ export async function predictPrice(
   const input: FeatureInput = { year, mileage, damaged, painted };
 
   // 1. Önce doğrudan indeksli segment sorgusu (~5ms): aktif ilanlar + yaşa göre ağırlıklı arşiv.
-  let segmentRows = await memo(`seg:${brand}|${resolvedModel}|${options.vehicleClass || "all"}`, () => loadTier({ brand, model: resolvedModel, ...vehicleClassFilter }, 200, 100, SEGMENT_SKIP_ARCHIVE_ABOVE));
+  // Model ailesi (SCALA / Scala 1.0 TSI / Scala Style aynı segment): birebir ad eşleşmesi yazım farkı yüzünden segmenti 2 ilana düşürüyordu.
+  let segmentRows = await memo(`seg:${brand}|${resolvedModel}|${options.vehicleClass || "all"}`, () => loadTier({ brand, model: modelFamilyRegex(resolvedModel, brand), ...vehicleClassFilter }, 200, 100, SEGMENT_SKIP_ARCHIVE_ABOVE));
   const activeSegmentCount = await memo(`segcount:${brand}|${resolvedModel}|${year}|${options.vehicleClass || "all"}`, () =>
-    Car.countDocuments({ brand, model: resolvedModel, year, ...PUBLIC_LISTING_FILTER, ...vehicleClassFilter })
+    Car.countDocuments({ brand, model: modelFamilyRegex(resolvedModel, brand), year, ...PUBLIC_LISTING_FILTER, ...vehicleClassFilter })
   );
 
   // Yeterli örnek yoksa geniş regex sorgusuyla destekle

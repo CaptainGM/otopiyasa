@@ -327,7 +327,7 @@ export function CarFilters({
           <select id="seller" name="seller" defaultValue={searchParams.get("seller") || ""} className="select">
             <option value="">Tümü</option>
             <option value="galeriden">Galeriden</option>
-            <option value="sahibinden">Sahibinden</option>
+            <option value="bireysel">Bireysel (kişi satıyor)</option>
           </select>
         </div>
 

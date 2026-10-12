@@ -100,6 +100,12 @@ class _HomeScreenState extends State<HomeScreen> {
   String _vehicleClass = '';
   bool _discountOnly = false;
   bool _excludeOutliers = false;
+  String _seller = '';
+  bool _noDamage = false;
+  final _mileageMinController = TextEditingController();
+  final _mileageMaxController = TextEditingController();
+  int? get _mileageMin => int.tryParse(_mileageMinController.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  int? get _mileageMax => int.tryParse(_mileageMaxController.text.replaceAll(RegExp(r'[^0-9]'), ''));
 
   List<String> _brands = _fallbackBrands;
   Map<String, List<String>> _brandModels = {};
@@ -115,6 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
       _transmission.isNotEmpty ||
       _discountOnly ||
       _excludeOutliers ||
+      _noDamage ||
+      _seller.isNotEmpty ||
+      _mileageMin != null ||
+      _mileageMax != null ||
       _vehicleClass.isNotEmpty;
 
   @override
@@ -162,6 +172,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _searchController.dispose();
     _scrollController.dispose();
+    _mileageMinController.dispose();
+    _mileageMaxController.dispose();
     super.dispose();
   }
 
@@ -201,6 +213,10 @@ class _HomeScreenState extends State<HomeScreen> {
         vehicleClass: _vehicleClass,
         discountOnly: _discountOnly,
         excludeOutliers: _excludeOutliers,
+        mileageMin: _mileageMin,
+        mileageMax: _mileageMax,
+        seller: _seller,
+        noDamage: _noDamage,
         page: nextPage,
         slot: _isFeed ? _feedSlot : null,
         bucket: _isFeed ? _feedBucket : null,
@@ -265,6 +281,10 @@ class _HomeScreenState extends State<HomeScreen> {
       [_brand, _model, _fuelType, _transmission].where((v) => v.isNotEmpty).length +
       (_discountOnly ? 1 : 0) +
       (_excludeOutliers ? 1 : 0) +
+      (_noDamage ? 1 : 0) +
+      (_seller.isNotEmpty ? 1 : 0) +
+      (_mileageMin != null ? 1 : 0) +
+      (_mileageMax != null ? 1 : 0) +
       (_sort != 'mixed' ? 1 : 0);
 
   Widget _filterButton() {
@@ -404,6 +424,45 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _mileageMinController,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(labelText: 'Min km', isDense: true),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _mileageMaxController,
+                          keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(labelText: 'Maks km', isDense: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('seller-$_seller'),
+                    initialValue: _seller,
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Satıcı'),
+                    items: const [
+                      DropdownMenuItem(value: '', child: Text('Tümü', style: TextStyle(fontSize: 14))),
+                      DropdownMenuItem(value: 'galeriden', child: Text('Galeriden', style: TextStyle(fontSize: 14))),
+                      DropdownMenuItem(value: 'bireysel', child: Text('Bireysel (kişi satıyor)', style: TextStyle(fontSize: 14))),
+                    ],
+                    onChanged: (selected) {
+                      if (selected == null) return;
+                      refresh(() => _seller = selected);
+                      _loadCars(reset: true);
+                    },
+                  ),
+                  const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     key: ValueKey('sort-$_sort'),
                     initialValue: _sort,
@@ -447,6 +506,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       _loadCars(reset: true);
                     },
                   ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _noDamage,
+                    activeThumbColor: AppTheme.accent,
+                    title: const Text('Hasarsız ilanlar', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      'Hasar kaydı, boya ya da değişen bilgisi olmayanlar',
+                      style: TextStyle(color: AppColors.of(context).muted, fontSize: 12),
+                    ),
+                    onChanged: (value) {
+                      refresh(() => _noDamage = value);
+                      _loadCars(reset: true);
+                    },
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -463,6 +536,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                     _sort = 'mixed';
                                     _discountOnly = false;
                                     _excludeOutliers = false;
+                                    _noDamage = false;
+                                    _seller = '';
+                                    _mileageMinController.clear();
+                                    _mileageMaxController.clear();
                                   });
                                   _loadCars(reset: true);
                                 },

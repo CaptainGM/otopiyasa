@@ -102,7 +102,9 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
   }
 
   if (filters.seller) {
-    (query.$and ||= []).push({ title: { $regex: `^\\s*${filters.seller}\\b`, $options: "i" } });
+    // Kaynak başlıkları satıcıyı önekle belirtir; bireysel satış için önek, filtre adında geçmeden kullanılır.
+    const prefix = filters.seller === "galeriden" ? "galeriden" : "sahibinden";
+    (query.$and ||= []).push({ title: { $regex: `^\\s*${prefix}\\b`, $options: "i" } });
   }
 
   if (filters.noDamage) query.damageFlag = { $ne: true };
@@ -329,7 +331,7 @@ export function parseCarFilters(searchParams: URLSearchParams): CarFilters {
     priceMax: num("priceMax"),
     mileageMin: num("mileageMin"),
     mileageMax: num("mileageMax"),
-    seller: searchParams.get("seller") === "galeriden" || searchParams.get("seller") === "sahibinden" ? (searchParams.get("seller") as "galeriden" | "sahibinden") : undefined,
+    seller: searchParams.get("seller") === "galeriden" || searchParams.get("seller") === "bireysel" ? (searchParams.get("seller") as "galeriden" | "bireysel") : undefined,
     noDamage: searchParams.get("noDamage") === "true",
     fuelType: searchParams.get("fuelType") || undefined,
     transmission: searchParams.get("transmission") || undefined,

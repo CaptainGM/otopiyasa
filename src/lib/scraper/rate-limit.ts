@@ -1,6 +1,19 @@
 
 const DEFAULT_INTERVAL_MS = Number(process.env.SCRAPE_MIN_INTERVAL_MS) || 0;
 
+/**
+ * Arabam için temel ilan arası bekleme (ms). Ortam değişkeni ayarlı değilse 900 ms kalıyordu: sunucu üzerinden çalışan nadir model ve
+ * popüler aile taramaları bu hızda Cloudflare engeline takıldı. Toplu taramalar 6 sn gibi insansı bir hızla başlatır (bkz. setArabamPace).
+ */
+let arabamBaseMs = DEFAULT_INTERVAL_MS > 0 ? DEFAULT_INTERVAL_MS : 900;
+
+/** Arabam isteklerinin temel aralığını değiştirir; çağıran işi bitirince önceki değeri geri koymalıdır. */
+export function setArabamPace(ms: number): number {
+  const previous = arabamBaseMs;
+  arabamBaseMs = Math.max(900, ms);
+  return previous;
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -17,7 +30,7 @@ export async function waitForSlot(hostname: string) {
   const isArabam = hostname.includes("arabam.com");
   const baseMs = DEFAULT_INTERVAL_MS > 0
     ? DEFAULT_INTERVAL_MS
-    : (isArabam ? 900 : 800);
+    : (isArabam ? arabamBaseMs : 800);
 
   const prev = gateChain.get(hostname) || Promise.resolve();
   const mine = prev.then(() => sleep(jitter(baseMs)));

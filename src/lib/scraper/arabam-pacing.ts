@@ -8,10 +8,10 @@
  */
 export const PACING = {
   /**
-   * İlanlar arası hedef bekleme (sn); ±%25 oynar. 8 Eki 2026'da 10'dan 8'e indirildi (%25 daha hızlı): son 6 günde günde 2–6 engel
-   * görüldü, hiç uzun mola gerekmedi. Engel artarsa bekleme kendiliğinden uzar ve mola verilir; yine de sık mola görülürse 10'a dön.
+   * İlanlar arası hedef bekleme (sn); ±%25 oynar. 8 Eki 2026'da 10'dan 8'e indirildi. Popüler ailelerde 2020 sonrası ilanların
+   * ayrıntısını tamamlamak için 6'ya indirildi; engel görülürse bekleme kendiliğinden uzar, mola verilir. Sık engel olursa 8'e dön.
    */
-  baseGapSeconds: 8,
+  baseGapSeconds: 6,
   maxGapSeconds: 40,
   /** İlk engel molası (dk); sonraki her engelde iki katına çıkar. */
   firstPauseMinutes: 15,

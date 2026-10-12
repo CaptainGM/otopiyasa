@@ -741,6 +741,74 @@ export async function collectFreshArabamHrefs(
 }
 
 /**
+ * Model sayfasını YIL bilgisiyle gezer. Liste sayfası her ilanın yılını verdiği için minYear'dan eski ilanların detay sayfası hiç
+ * açılmaz: detay isteği (yavaş ve engel riski taşıyan adım) yalnızca hedef yıllardaki ilanlara harcanır. Bizde olmayan ya da arşivden
+ * geri açılabilecek (kaynakta hâlâ listelenen) ilanların adresleri döner.
+ */
+export async function collectRecentArabamHrefs(
+  base: string,
+  quota: number,
+  maxPages: number,
+  minYear: number,
+  expectedSlug?: string
+): Promise<{ fresh: string[]; seen: number; outcome: QuotaOutcome }> {
+  const fresh: string[] = [];
+  const seenIds = new Set<string>();
+  let seen = 0;
+  let outcome: QuotaOutcome = "more";
+
+  for (let page = 1; page <= maxPages; page++) {
+    let html = "";
+    let finalUrl = base;
+    try {
+      ({ html, finalUrl } = await listPageFromUrl(page > 1 ? `${base}?page=${page}` : base));
+    } catch (error) {
+      if (isRateLimitError(error)) throw error;
+      outcome = fresh.length > 0 ? "more" : "unknown";
+      break;
+    }
+    if (page === 1 && expectedSlug && !isRequestedModelPage(expectedSlug, finalUrl)) {
+      return { fresh: [], seen: 0, outcome: "unavailable" };
+    }
+    const docs = parseArabamListPage(html).docs;
+    if (docs.length === 0) {
+      if (isRealListPage(html)) outcome = page === 1 ? "empty" : "exhausted";
+      else outcome = fresh.length > 0 ? "more" : "unknown";
+      break;
+    }
+    seen += docs.length;
+    const recent = docs.filter((d) => d.year !== null && d.year >= minYear && !seenIds.has(d.id));
+    docs.forEach((d) => seenIds.add(d.id));
+    const ids = recent.map((d) => `arabam-${d.id}`);
+    const existing = ids.length
+      ? await Car.find({ externalId: { $in: ids } }, { externalId: 1, status: 1, removedReason: 1 }).lean<
+          Array<{ externalId: string; status?: string; removedReason?: string }>
+        >()
+      : [];
+    // Aktif ilan zaten bizde; arşivdekiler yalnızca elle kaldırılmamış ve kapsam dışı değilse yeniden okunur.
+    const skip = new Set(existing.filter((d) => d.status !== "removed" || isPermanentRemoval(d.removedReason)).map((d) => d.externalId));
+    for (const doc of recent) {
+      if (skip.has(`arabam-${doc.id}`)) continue;
+      fresh.push(doc.url.startsWith("http") ? new URL(doc.url).pathname : doc.url);
+    }
+    if (fresh.length >= quota) {
+      outcome = "satisfied";
+      break;
+    }
+    if (docs.length < 20) {
+      outcome = "exhausted";
+      break;
+    }
+  }
+  return { fresh: fresh.slice(0, quota), seen, outcome };
+}
+
+/** Bir aile için kaynağın model sayfası adresi (katalog yolu yoksa ad çözülür). */
+export async function familyBaseUrl(brand: string, model: string): Promise<string | null> {
+  return resolveArabamModelBase(brand, model);
+}
+
+/**
  * Kademeli doldurma: her model için yalnızca [quota] kadar YENİ ilan çekilir (ör. 1 → 5), böylece tur başına bütçe birkaç modele
  * değil çok modele dağılır. Kota ilanlarını modelin kendi sayfasından (katalog adresi ya da çözülen ad) alır.
  */

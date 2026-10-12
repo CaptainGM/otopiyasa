@@ -28,6 +28,7 @@ echo  [B] FIYAT TAHMIN ^& AI MODELINI GUCLENDIRME (Model Dogrulugu Icin)
 echo   ------------------------------------------------------------------
 echo    6  - Nadir MODEL        (kademeli: once her modeli 5 ilana, sonra 10, 15, 20... cikarir; kaynakta olup bizde hic olmayan modeller dahil)
 echo    7  - Nadir MODEL genis  (ayni kademeli mantik, tur basina 500 modele kadar)
+echo    23 - Populer aileler    (100+ ilanli modellerde 2020 ve sonrasi ilanlari hedefe kadar tamamlar; yil liste sayfasindan suzulur)
 echo    22 - Marka/Model katalogu (kaynagin kendi model listesini okur; ayri model listesi ve eksik modeller buradan gelir, ~25 dk)
 echo    20 - Seyrek piyasa emsali (Aykiri deger sonrasi 3'ten az marka/model/yil ilani)
 echo    4  - Nadir MARKA        (^<40 ilanli markalari Arabam'da tarar: Alfa, Jeep vb.)
@@ -59,7 +60,7 @@ echo    D  - EKSIK DETAY TARAMASI (DB'yi tara: kac ilanda ne eksik, raporla ve t
 echo    P  - PARALEL MOD        (Iki modu ayni anda calistir, ornegin 11 + 12)
 echo ====================================================================
 echo.
-set /p secim="Secimin (T, Z, K, G, D, N, S, E, 1-22 veya P, varsayilan T): "
+set /p secim="Secimin (T, Z, K, G, D, N, S, E, 1-23 veya P, varsayilan T): "
 if "%secim%"=="" set secim=T
 
 if /i "%secim%"=="T" goto :turbo

@@ -12,13 +12,19 @@ describe("kilometre ve satıcı filtreleri", () => {
     expect(query.mileage).toEqual({ $lte: 80000 });
   });
 
-  it("satıcı filtresi ilan başlığının önekine bakar (Galeriden / Sahibinden)", () => {
+  it("galeriden satıcı filtresi ilan başlığının önekine bakar", () => {
     const query = buildCarQuery({ seller: "galeriden" } as any) as any;
-    const clause = query.$and.find((c: any) => c.title)?.title?.$regex as string;
-    const pattern = new RegExp(clause, "i");
+    const pattern = new RegExp(query.$and.find((c: any) => c.title)?.title?.$regex as string, "i");
     expect(pattern.test("Galeriden BMW 5 Serisi 520i M Sport 2025")).toBe(true);
     expect(pattern.test("Sahibinden BMW 5 Serisi 520i")).toBe(false);
     expect(pattern.test("BMW 5 Serisi Galeriden ile biten başlık")).toBe(false);
+  });
+
+  it("bireysel satıcı filtresi kişinin kendi sattığı ilanları seçer", () => {
+    const query = buildCarQuery({ seller: "bireysel" } as any) as any;
+    const pattern = new RegExp(query.$and.find((c: any) => c.title)?.title?.$regex as string, "i");
+    expect(pattern.test("Sahibinden BMW 5 Serisi 520i")).toBe(true);
+    expect(pattern.test("Galeriden BMW 5 Serisi 520i")).toBe(false);
   });
 
   it("hasarsız filtresi hasar kaydını olan ilanları dışarıda bırakır", () => {

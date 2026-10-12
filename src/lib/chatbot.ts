@@ -5,6 +5,7 @@ import { cached, CACHE_TTL } from "@/lib/cache";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { ABSOLUTE_PRICE_FLOOR } from "@/lib/listing-validation";
 import { topicLinkFor } from "@/lib/chat-topics";
+import { modelFamilyRegex } from "@/lib/model-family";
 
 /**
  * Asistanın gösterebileceği ilanlar: yalnızca herkese açık (aktif, onaylı) ve makul fiyatlı olanlar.
@@ -387,8 +388,33 @@ export function extractSearchTerm(message: string): string {
   return withDigit || tokens[tokens.length - 1];
 }
 
+/** Birden çok kelimeli marka adları ("Mercedes-Benz", "Land Rover"...). Bunlar dışında ilk kelime marka, kalanı model sayılır. */
+const MULTI_WORD_BRANDS = ["mercedes-benz", "mercedes benz", "land rover", "alfa romeo", "aston martin", "rolls-royce", "rolls royce", "ds automobiles"];
+
+/** "BMW 5 Serisi" → { brand: "BMW", model: "5 Serisi" }; tek kelimede model yoktur. */
+export function splitBrandModel(term: string): { brand: string; model?: string } {
+  const clean = term.trim();
+  const lower = clean.toLocaleLowerCase("tr-TR");
+  const multi = MULTI_WORD_BRANDS.find((b) => lower.startsWith(b));
+  if (multi) {
+    const model = clean.slice(multi.length).trim();
+    return { brand: clean.slice(0, multi.length), model: model || undefined };
+  }
+  const [brand, ...rest] = clean.split(/\s+/);
+  return { brand, model: rest.length ? rest.join(" ") : undefined };
+}
+
+/** Marka (ve varsa model ailesi) filtresi. Model adı kaynakta farklı yazılmış olabileceği için aile regex'i kullanılır. */
+export function brandModelFilter(term: string): Record<string, unknown> {
+  const { brand, model } = splitBrandModel(term);
+  return {
+    brand: { $regex: turkishSearchRegex(brand), $options: "i" },
+    ...(model ? { model: modelFamilyRegex(model, brand) } : {}),
+  };
+}
+
 async function findExtreme(brand: string, direction: 1 | -1): Promise<CarLite | null> {
-  return Car.findOne({ ...VISIBLE, brand: { $regex: turkishSearchRegex(brand), $options: "i" } })
+  return Car.findOne({ ...VISIBLE, ...brandModelFilter(brand) })
     .sort({ price: direction })
     .select("title price brand imageUrl")
     .lean<CarLite | null>();
@@ -435,7 +461,7 @@ async function tryDataQuery(
     const brand = avgMatch[1].trim().split(/\s+/).pop();
     if (brand) {
       const stats = await Car.aggregate([
-        { $match: { ...VISIBLE, brand: { $regex: turkishSearchRegex(brand), $options: "i" } } },
+        { $match: { ...VISIBLE, ...brandModelFilter(brand) } },
         { $group: { _id: null, avgPrice: { $avg: "$price" }, count: { $sum: 1 } } },
       ]);
       if (stats.length && stats[0].count > 0) {
@@ -464,7 +490,7 @@ async function tryDataQuery(
       if (brand) {
         const car = await Car.findOne({
           ...VISIBLE,
-          brand: { $regex: turkishSearchRegex(brand), $options: "i" },
+          ...brandModelFilter(brand),
           price: { $gte: ABSOLUTE_PRICE_FLOOR, $lte: amount },
         })
           .sort({ price: -1 })
@@ -635,7 +661,7 @@ async function handleIntent(
     case "average": {
       if (!term) return { reply: intent.reply || FALLBACK_ANSWER };
       const stats = await Car.aggregate([
-        { $match: { ...VISIBLE, brand: { $regex: turkishSearchRegex(term), $options: "i" } } },
+        { $match: { ...VISIBLE, ...brandModelFilter(term) } },
         { $group: { _id: null, avgPrice: { $avg: "$price" }, count: { $sum: 1 } } },
       ]);
       if (stats.length && stats[0].count > 0) {

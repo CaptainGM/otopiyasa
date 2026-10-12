@@ -232,6 +232,11 @@ class ApiService {
     // "Keşfet" dilimi ve dönemi (bkz. home_screen.dart _pickFeedSlot); aynı yenilemenin sayfaları aynısını kullanır.
     int? slot,
     int? bucket,
+    // Kilometre aralığı, satıcı tipi (galeriden | bireysel) ve hasar kaydı olmayanlar (web ile aynı adlar).
+    int? mileageMin,
+    int? mileageMax,
+    String? seller,
+    bool noDamage = false,
   }) async {
     final response = await _http.get(
       _uri('/api/cars', {
@@ -247,6 +252,10 @@ class ApiService {
         if (vehicleClass != null && vehicleClass.isNotEmpty) 'vehicleClass': vehicleClass,
         if (discountOnly) 'discountOnly': 'true',
         if (excludeOutliers) 'excludeOutliers': 'true',
+        if (mileageMin != null) 'mileageMin': '$mileageMin',
+        if (mileageMax != null) 'mileageMax': '$mileageMax',
+        if (seller != null && seller.isNotEmpty) 'seller': seller,
+        if (noDamage) 'noDamage': 'true',
         'page': '$page',
         'limit': '$limit',
         'compact': '1',

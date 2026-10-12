@@ -2,7 +2,7 @@ import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { familyQuery } from "@/lib/comparables";
-import { buildPriceScale, type PriceScale, type ScaleCar } from "@/lib/price-scale";
+import { buildPriceScale, dedupeCandidates, type PriceScale, type ScaleCar } from "@/lib/price-scale";
 
 /** Bir kademe için en fazla bu kadar aday okunur; model ailesi ve yıl penceresi zaten dar tutar. */
 const CANDIDATE_LIMIT = 1500;
@@ -13,6 +13,7 @@ export function toScaleCar(doc: {
   year: number;
   mileage?: number;
   damageFlag?: boolean;
+  city?: string | null;
   features?: { engineSize?: number | null; fuelType?: string | null; transmission?: string | null; horsepower?: number | null };
 }): ScaleCar {
   return {
@@ -20,6 +21,7 @@ export function toScaleCar(doc: {
     year: doc.year,
     mileage: doc.mileage ?? 0,
     damaged: doc.damageFlag === true,
+    city: doc.city ?? null,
     engineSize: doc.features?.engineSize ?? null,
     fuelType: doc.features?.fuelType ?? null,
     transmission: doc.features?.transmission ?? null,
@@ -34,8 +36,8 @@ export function toScaleCar(doc: {
 export async function loadPriceScale(carId: string): Promise<PriceScale | null> {
   await connectDB();
   const subject = (await Car.findOne({ _id: carId, ...PUBLIC_LISTING_FILTER })
-    .select("brand model year mileage price vehicleClass damageFlag features")
-    .lean()) as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
+    .select("brand model year mileage price vehicleClass damageFlag city features")
+    .lean()) as unknown as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
   if (!subject) return null;
 
   const candidates = (await Car.find({
@@ -44,9 +46,10 @@ export async function loadPriceScale(carId: string): Promise<PriceScale | null> 
     _id: { $ne: subject._id },
     year: { $gte: subject.year - 3, $lte: subject.year + 3 },
   })
-    .select("price year mileage damageFlag features.engineSize features.fuelType features.transmission features.horsepower")
+    .select("price year mileage damageFlag city features.engineSize features.fuelType features.transmission features.horsepower")
     .limit(CANDIDATE_LIMIT)
-    .lean()) as Array<Parameters<typeof toScaleCar>[0]>;
+    .lean()) as unknown as Array<Parameters<typeof toScaleCar>[0]>;
 
-  return buildPriceScale(toScaleCar(subject), candidates.map(toScaleCar));
+  const subjectScale = toScaleCar(subject);
+  return buildPriceScale(subjectScale, dedupeCandidates(subjectScale, candidates.map(toScaleCar)));
 }

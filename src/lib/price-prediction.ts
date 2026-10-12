@@ -4,7 +4,7 @@ import { normalizeTransmission } from "@/lib/vehicle-attrs";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { turkishSearchRegex, levenshtein, extractVehicleTokens, calculateTitleMatchScore } from "@/lib/utils";
 import { modelFamilyRegex } from "@/lib/model-family";
-import { similarQuery } from "@/lib/comparables";
+import { MAX_COMPARABLE_YEAR_GAP, similarQuery } from "@/lib/comparables";
 
 export type Condition = "clean" | "painted" | "damaged";
 
@@ -57,6 +57,8 @@ export interface PricePrediction {
   segmentSize?: number;
   /** Tahmini besleyen arşiv ilanı sayısı (düşük ağırlıkla; emsal sayısına girmez). */
   archivedUsed?: number;
+  /** Tahminin dayandığı emsal kümesi: aynı donanım ("paket") ya da model geneli ("model"). */
+  basis?: "paket" | "model";
  
   comparableRange?: { min: number; max: number };
   
@@ -264,6 +266,7 @@ interface TrainingDoc {
   year: number;
   mileage: number;
   price: number;
+  city?: string | null;
   damageFlag?: boolean;
   paintChange?: string;
   features?: {
@@ -279,6 +282,58 @@ interface TrainingDoc {
  * Arşivdeki (satılmış/kaldırılmış) ilanlar yalnızca istatistik içindir ve kullanıcıya gösterilmez.
  */
 const UNMODERATED_EXCLUDED = { moderationStatus: { $nin: ["pending", "rejected"] } } as const;
+/** Fiyatı ya da kilometresi yazım hatası gibi görünen kayıtlar (bkz. price-plausibility.ts) eğitim verisine ve emsale girmez. */
+const NOT_SUSPECT = { priceSuspect: { $ne: true }, mileageSuspect: { $ne: true }, segmentSuspect: { $ne: true } } as const;
+
+/** Aynı ilanın birden fazla kez yayınlanması (yıl, km, fiyat, şehir) eğitimde ve emsalde tek sayılır: emsal sayısı ve ortalama şişmez. */
+export function uniqueListings<T extends { year: number; mileage: number; price: number; city?: string | null }>(docs: T[]): T[] {
+  const seen = new Set<string>();
+  return docs.filter((doc) => {
+    const key = `${doc.year}|${doc.mileage}|${doc.price}|${doc.city ?? ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** İlanın donanımı (motor, yakıt, vites, beygir): aynı paketteki emsaller tahmini öne çıkarır. */
+export interface PackageFeatures {
+  engineSize?: number | null;
+  horsepower?: number | null;
+  transmission?: string | null;
+  fuelType?: string | null;
+}
+
+/** Aynı donanımda en az bu kadar (ağırlıklı) emsal yoksa tahmin model genelinden yapılır. */
+export const MIN_PACKAGE_TRAINING = 12;
+
+function packageInputOf(features?: PackageFeatures): Pick<FeatureInput, "engineSize" | "horsepower" | "automatic" | "diesel"> {
+  const electric = (features?.fuelType || "").toLocaleLowerCase("tr-TR").startsWith("elektrik");
+  const engine = electric ? 0 : features?.engineSize && features.engineSize >= 0.5 ? features.engineSize : null;
+  return {
+    engineSize: engine,
+    horsepower: features?.horsepower && features.horsepower > 0 ? features.horsepower : null,
+    automatic: gearIndicator(features?.transmission ?? undefined),
+    diesel: dieselIndicator(features?.fuelType ?? undefined),
+  };
+}
+
+/** Eğitim satırı ilanın donanımıyla aynı mı; bilinen alanlar karşılaştırılır, bilinmeyen alan eşleşmeyi bozmaz. */
+export function rowMatchesPackage(row: TrainingRow, input: FeatureInput): boolean {
+  const same = (a?: number | null, b?: number | null) => a == null || b == null || a === b;
+  if (input.engineSize != null && row.engineSize != null && Math.abs(input.engineSize - row.engineSize) > 0.1) return false;
+  if (!same(input.automatic, row.automatic) || !same(input.diesel, row.diesel)) return false;
+  if (input.horsepower != null && row.horsepower != null) {
+    const allowed = Math.max(input.horsepower, row.horsepower) * 0.1;
+    if (Math.abs(input.horsepower - row.horsepower) > allowed) return false;
+  }
+  return true;
+}
+
+/** İlanın donanım bilgisi var mı (motor, vites ya da yakıttan en az biri). */
+function hasPackage(input: FeatureInput): boolean {
+  return input.engineSize != null || input.automatic != null || input.diesel != null;
+}
 
 function gearIndicator(raw?: string): number | null {
   const gear = normalizeTransmission(raw);
@@ -297,12 +352,12 @@ async function loadTrainingRows(
   filter: Record<string, unknown>,
   limit: number
 ): Promise<TrainingRow[]> {
-  const query = Car.find({ ...filter, ...UNMODERATED_EXCLUDED })
+  const query = Car.find({ ...filter, ...UNMODERATED_EXCLUDED, ...NOT_SUSPECT })
     .sort({ updatedAt: -1 })
-    .select("year mileage price damageFlag paintChange features")
+    .select("year mileage price city damageFlag paintChange features")
     .limit(limit);
   if (filter.status !== undefined && typeof filter.brand === "object" && filter.brand !== null) query.hint(BRAND_INDEX_HINT);
-  const docs = await query.lean<TrainingDoc[]>();
+  const docs = uniqueListings(await query.lean<TrainingDoc[]>());
   return docs
     .filter((d) => d.price > 0 && d.year > 1900 && d.mileage >= 0)
     .map((d) => ({
@@ -349,6 +404,7 @@ async function loadArchivedRows(identity: Record<string, unknown>, limit: number
   const query = Car.find({
     ...identity,
     ...UNMODERATED_EXCLUDED,
+    ...NOT_SUSPECT,
     status: "removed",
     price: { $gt: 0 },
     mileage: { $gte: ARCHIVE_MIN_KM },
@@ -356,12 +412,12 @@ async function loadArchivedRows(identity: Record<string, unknown>, limit: number
     $and: [{ $or: [{ removedAt: { $gte: since } }, { removedAt: { $exists: false }, updatedAt: { $gte: since } }] }],
   })
     .sort({ updatedAt: -1 })
-    .select("year mileage price damageFlag paintChange features removedAt updatedAt")
+    .select("year mileage price city damageFlag paintChange features removedAt updatedAt")
     .limit(limit);
   // Marka filtresi varken planlayıcı updatedAt sıralama indeksini seçip nadir markada (3 kayıt) 28 bin arşiv kaydını tek tek
   // tarıyordu (2,4 sn); marka+model indeksi regex'i anahtarlar üzerinde süzer.
   if (identity.brand !== undefined) query.hint(BRAND_INDEX_HINT);
-  const docs = await query.lean<ArchivedDoc[]>();
+  const docs = uniqueListings(await query.lean<ArchivedDoc[]>());
   const rows: TrainingRow[] = [];
   for (const d of docs) {
     if (!(d.price > 0) || !(d.year > 1900) || !(d.mileage >= ARCHIVE_MIN_KM)) continue;
@@ -435,9 +491,9 @@ async function fetchComparableDocs(brand: string, model: string, classFilter: Re
     ...PUBLIC_LISTING_FILTER,
   })
     .sort({ createdAt: -1 })
-    .select("title brand model year mileage price")
+    .select("title brand model year mileage price city")
     .limit(100)
-    .lean<{ _id: { toString(): string }; title: string; brand: string; model: string; year: number; mileage: number; price: number }[]>();
+    .lean<{ _id: { toString(): string }; title: string; brand: string; model: string; year: number; mileage: number; price: number; city?: string | null }[]>();
 
   // Yeterli emsal bulunamazsa regex ile genişlet
   if (docs.length < 5) {
@@ -451,12 +507,12 @@ async function fetchComparableDocs(brand: string, model: string, classFilter: Re
       ],
     })
       .sort({ createdAt: -1 })
-      .select("title brand model year mileage price")
+      .select("title brand model year mileage price city")
       .limit(100)
-      .lean<{ _id: { toString(): string }; title: string; brand: string; model: string; year: number; mileage: number; price: number }[]>();
+      .lean<{ _id: { toString(): string }; title: string; brand: string; model: string; year: number; mileage: number; price: number; city?: string | null }[]>();
   }
 
-  return docs;
+  return uniqueListings(docs);
 }
 
 function rankComparables(
@@ -576,7 +632,7 @@ export async function predictPrice(
   condition: Condition = "clean",
   title?: string,
   /** Model adı veritabanından geliyorsa (toplu adil değer hesabı) yazım düzeltme sorgusu atlanır. */
-  options: { modelFromDb?: boolean; vehicleClass?: string } = {}
+  options: { modelFromDb?: boolean; vehicleClass?: string; features?: PackageFeatures } = {}
 ): Promise<PricePrediction> {
   const resolvedModel = options.modelFromDb ? model : await resolveModel(brand, model, options.vehicleClass);
   const matchedModel = norm(resolvedModel) !== norm(model) ? resolvedModel : undefined;
@@ -585,16 +641,13 @@ export async function predictPrice(
     : {};
 
   const { damaged, painted } = conditionFlags(condition);
-  const input: FeatureInput = { year, mileage, damaged, painted };
+  const input: FeatureInput = { year, mileage, damaged, painted, ...packageInputOf(options.features) };
 
   // 1. Önce doğrudan indeksli segment sorgusu (~5ms): aktif ilanlar + yaşa göre ağırlıklı arşiv.
   // Model ailesi (SCALA / Scala 1.0 TSI / Scala Style aynı segment): birebir ad eşleşmesi yazım farkı yüzünden segmenti 2 ilana düşürüyordu.
   let segmentRows = await memo(`seg:${brand}|${resolvedModel}|${options.vehicleClass || "all"}`, () => loadTier({ brand, model: modelFamilyRegex(resolvedModel, brand), ...vehicleClassFilter }, 200, 100, SEGMENT_SKIP_ARCHIVE_ABOVE));
   // Gösterilen emsal sayısı benzer ilanlarla AYNI kuraldan gelir (aile, yıl ±3, kilometre penceresi). Eskiden yalnızca aynı yıl sayılıyordu:
   // kartta "3 emsal" yazarken benzer ilan listesi 12 ilan gösteriyordu.
-  const activeSegmentCount = await memo(`segcount:${brand}|${resolvedModel}|${year}|${Math.round(mileage / 20000)}|${options.vehicleClass || "all"}`, () =>
-    Car.countDocuments({ ...similarQuery({ brand, model: resolvedModel, year, mileage, vehicleClass: options.vehicleClass }), ...PUBLIC_LISTING_FILTER })
-  );
 
   // Yeterli örnek yoksa geniş regex sorgusuyla destekle
   if (effectiveSampleSize(segmentRows) < MIN_SAMPLE_FOR_REGRESSION) {
@@ -616,6 +669,9 @@ export async function predictPrice(
     );
   }
 
+  // Gösterilen emsal sayısı: aynı model ailesinden aktif ilanlar, yıl ±3 (km penceresi yok: km regresyonda ayrıca hesaba girer).
+  // Eskiden km penceresiyle sayılıyordu; yüksek km'li ilanda pencere daralıp "PİYASA VERİSİ AZ" yazdırıyordu.
+  const activeSegmentCount = segmentRows.filter((r) => !r.archived && Math.abs(r.year - year) <= MAX_COMPARABLE_YEAR_GAP).length;
   const comparables = await loadComparables(brand, resolvedModel, year, mileage, 5, title, options.vehicleClass);
   const finalPrediction = await predictFromTiers(
     {
@@ -672,27 +728,35 @@ export async function predictFromTiers(
     comparableRange,
   };
 
+  // İlanın kendi donanımı varsa onu kullanır; yoksa segmentin medyan donanımı (eskiden her zaman medyan kullanılıyordu).
   const withSegmentSpecs = (rows: TrainingRow[]): FeatureInput => {
     const m = featureMedians(rows);
     return {
       ...input,
-      engineSize: m.engineSize,
-      horsepower: m.horsepower,
-      automatic: m.automatic >= 0.5 ? 1 : 0,
-      diesel: m.diesel >= 0.5 ? 1 : 0,
+      engineSize: input.engineSize ?? m.engineSize,
+      horsepower: input.horsepower ?? m.horsepower,
+      automatic: input.automatic ?? (m.automatic >= 0.5 ? 1 : 0),
+      diesel: input.diesel ?? (m.diesel >= 0.5 ? 1 : 0),
     };
   };
 
+  // Aynı donanımdaki emsaller yeterliyse tahmin yalnızca onlarla yapılır: farklı motor, vites ya da yakıttaki ilanlar karışmaz.
+  const packageRows = hasPackage(input) ? segmentRows.filter((r) => rowMatchesPackage(r, input)) : [];
+  const packageUsable = packageRows.length > 0 && effectiveSampleSize(packageRows) >= MIN_PACKAGE_TRAINING;
+  const trainRows = packageUsable ? packageRows : segmentRows;
+  const basis: "paket" | "model" = packageUsable ? "paket" : "model";
+
   // sampleSize kullanıcıya gösterilen aynı marka/model/yıl emsal sayısıdır. Daha geniş marka/genel
   // regresyon havuzu yalnızca trainingSampleSize alanında tutulur.
-  const publish = (prediction: PricePrediction): PricePrediction => ({
+  const publish = (prediction: PricePrediction, basis: "paket" | "model" = "model"): PricePrediction => ({
     ...prediction,
     ...extra,
     sampleSize: comparableSegmentSize,
     trainingSampleSize: prediction.sampleSize,
+    basis,
   });
-  const attempt = tryPredict(segmentRows, withSegmentSpecs(segmentRows), "segment", comparables);
-  if (attempt) return publish(attempt);
+  const attempt = tryPredict(trainRows, withSegmentSpecs(trainRows), "segment", comparables);
+  if (attempt) return publish(attempt, basis);
 
   const brandRows = await tiers.brand();
   const brandAttempt = tryPredict(

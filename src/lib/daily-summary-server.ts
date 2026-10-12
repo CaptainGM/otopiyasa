@@ -60,7 +60,8 @@ async function loadCarCounts(dayStarts: Date[]): Promise<CarCounts> {
             Car.countDocuments({
               sourceSite: source,
               createdAt: { $lt: dayEnd },
-              $or: [{ removedAt: { $exists: false } }, { removedAt: null }, { removedAt: { $gte: dayEnd } }],
+              // Durumu "removed" olup arşiv tarihi eksik kayıtlar (eski veri) aktif sayılmaz: ilan durumu esas alınır.
+              $or: [{ status: "active" }, { status: { $ne: "active" }, removedAt: { $gte: dayEnd } }],
             }),
           ]);
           return { source, active: activeThen, added, removed };

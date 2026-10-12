@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPriceScale, evenSample, median, packageKey, quantile, samePackage, type ScaleCar } from "@/lib/price-scale";
+import { buildPriceScale, dedupeCandidates, evenSample, median, packageKey, quantile, samePackage, type ScaleCar } from "@/lib/price-scale";
 
 const dizel = { engineSize: 1.6, fuelType: "Dizel", transmission: "Manuel", horsepower: 115 };
 const subject: ScaleCar = { price: 1_000_000, year: 2020, mileage: 40_000, damaged: false, ...dizel };
@@ -106,6 +106,18 @@ describe("buildPriceScale", () => {
     const ev = { ...subject, fuelType: "Elektrik", engineSize: 0.1, horsepower: 204, transmission: "Otomatik" };
     const evCars = [900_000, 920_000, 940_000, 960_000, 980_000].map((p) => ({ ...ev, price: p, year: 2020, mileage: 41_000, damaged: false }));
     expect(buildPriceScale(ev, evCars).chosen).toBe("tam");
+  });
+});
+
+describe("dedupeCandidates", () => {
+  it("ilanın kendisiyle özdeş ve aynı ilanın tekrarlarını emsal saymaz", () => {
+    const subjectScale = { ...subject, city: "İstanbul" };
+    const identicalToSubject = { ...subject, city: "İstanbul" };
+    const repost = { ...car(900_000), city: "İstanbul" };
+    const otherCity = { ...car(900_000), city: "Ankara" };
+    const kept = dedupeCandidates(subjectScale, [identicalToSubject, repost, { ...repost }, otherCity]);
+    expect(kept).toHaveLength(2);
+    expect(kept.map((c) => c.city)).toEqual(["İstanbul", "Ankara"]);
   });
 });
 

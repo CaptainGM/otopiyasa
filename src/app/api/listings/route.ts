@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { loadSegmentCap } from "@/lib/segment-cap-data";
+import { isAboveSegmentCap } from "@/lib/segment-cap";
 import { readJson } from "@/lib/http";
 import { randomUUID } from "node:crypto";
 import { connectDB } from "@/lib/mongodb";
@@ -74,6 +76,15 @@ export async function POST(request: Request) {
     const minCheck = validateMinOffer(input.minOffer, input.price);
     if (!minCheck.valid) {
       return NextResponse.json({ error: minCheck.error }, { status: 400 });
+    }
+    // Segment tavanı: aynı modelin normal fiyat düzeyinin çok üstündeki fiyat (yazım hatası gibi) kabul edilmez.
+    const segmentCap = await loadSegmentCap(input.brand, input.model);
+    if (isAboveSegmentCap(input.price, segmentCap)) {
+      const limit = Math.round(segmentCap?.cap ?? 0).toLocaleString("tr-TR");
+      return NextResponse.json(
+        { error: `Bu marka ve model için girilen fiyat benzer ilanların normal fiyat düzeyinin çok üstünde (en fazla ${limit} TL). Fiyatı kontrol edin.` },
+        { status: 400 }
+      );
     }
 
     await connectDB();

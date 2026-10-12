@@ -80,6 +80,7 @@ type FairCandidate = DealInput & {
   model: string;
   vehicleClass?: string;
   market?: { fairAt?: Date; fp?: number } | null;
+  features?: { engineSize?: number | null; horsepower?: number | null; transmission?: string | null; fuelType?: string | null } | null;
 };
 
 /**
@@ -99,7 +100,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
       { $expr: { $ne: ["$market.fp", "$price"] } },
     ],
   })
-    .select("brand model year mileage price vehicleClass damageFlag paintChange title description market.fairAt market.fp")
+    .select("brand model year mileage price vehicleClass damageFlag paintChange title description market.fairAt market.fp features.engineSize features.horsepower features.transmission features.fuelType")
     // Sıralama yok: Atlas sıralamayı bellekte (32 MB) yapıyor, açıklamalarla birlikte 27 bin ilan sığmıyordu.
     // Sıra önemsiz: bu turda kalanlar bir sonraki saatte seçilir.
     .limit(limit)
@@ -130,6 +131,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
           const prediction = await predictPrice(car.brand, car.model, car.year, car.mileage, conditionOf(car), car.title, {
             modelFromDb: true,
             vehicleClass: car.vehicleClass || "otomobil",
+            features: car.features ?? undefined,
           });
           fields = fairFields(car, prediction.predictedPrice, prediction.sampleSize);
         } catch {
@@ -177,6 +179,7 @@ interface LiveFairInput extends DealInput {
   vehicleClass?: string;
   status?: string;
   market?: { fair?: number; fp?: number } | null;
+  features?: { engineSize?: number | null; horsepower?: number | null; transmission?: string | null; fuelType?: string | null } | null;
 }
 
 /**
@@ -187,9 +190,9 @@ export async function liveFairValue(car: LiveFairInput) {
   const { cached, CACHE_TTL } = await import("@/lib/cache");
   const condition = conditionOf(car);
   const prediction = await cached(
-    `predict:${car.brand}|${car.model}|${car.year}|${Math.round(car.mileage / 20000)}|${condition}|${(car.title ?? "").slice(0, 30)}`,
+    `predict:${car.brand}|${car.model}|${car.year}|${Math.round(car.mileage / 20000)}|${condition}|${(car.title ?? "").slice(0, 30)}|${car.features?.engineSize ?? ""}|${car.features?.horsepower ?? ""}|${car.features?.transmission ?? ""}|${car.features?.fuelType ?? ""}`,
     CACHE_TTL.medium,
-    () => predictPrice(car.brand, car.model, car.year, car.mileage, condition, car.title, { vehicleClass: car.vehicleClass || "otomobil" })
+    () => predictPrice(car.brand, car.model, car.year, car.mileage, condition, car.title, { vehicleClass: car.vehicleClass || "otomobil", features: car.features ?? undefined })
   );
   const fields = prediction.sampleSize >= MIN_MARKET_COMPARABLES
     ? fairFields(car, prediction.predictedPrice, prediction.sampleSize)

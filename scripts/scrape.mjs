@@ -163,7 +163,7 @@ const MODES = {
   // Populer aileler (100+ ilan): 2020 ve sonrasi ilanlari hedefe kadar tamamlar; yil liste sayfasindan suzulur, eski ilanlar acilmaz.
   23: {
     name: "POPULER AILELER: 2020 ve sonrasi ilanlar, 100+ ilani olan modellerde aile basina hedefe kadar",
-    jobs: [{ mode: "popular-recent", minYear: 2020, targetRecent: 150, maxListings: 1200, maxFamilies: 80, label: "Populer aileler (yeni yillar)" }],
+    jobs: [{ mode: "popular-recent", minYear: 2020, targetRecent: 150, maxListings: 1200, maxFamilies: 80, label: "Az emsalli aileler (yeni yillar, once en az ilanlilar)" }],
   },
   // Sitemap'ten yalnizca SON GUNLERIN ilanlarini, en yeniden baslayarak ceker (site taze kalsin).
   21: {

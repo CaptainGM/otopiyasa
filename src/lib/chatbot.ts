@@ -498,11 +498,11 @@ async function priceQueryReply(message: string): Promise<ChatReply | null> {
   let year = yearMatch ? Number(yearMatch[1]) : null;
   let term = cleanCarTerm(priceAsk[1].replace(/\b(?:19|20)\d{2}\b/g, " "));
   let scope = term ? await scopeFilterFor(term) : null;
-  // "Peugeot 2008": sayı model adıysa yıl sayılmaz; marka + sayı ilanlarda model olarak varsa model olarak aranır.
+  // "Peugeot 2008": sayı model adıysa yıl sayılmaz. Yalnızca marka + model birlikte eşleşirse kabul edilir; model adıyla eşleşme ("clio 2020") yılı düşürür.
   if (term && year && !term.includes(" ")) {
     const asModel = `${term} ${year}`;
     const modelScope = await scopeFilterFor(asModel);
-    if (modelScope && "model" in modelScope) {
+    if (modelScope && "brand" in modelScope && "model" in modelScope) {
       term = asModel;
       scope = modelScope;
       year = null;

@@ -27,8 +27,10 @@ import { isVehicleClass } from "@/lib/vehicle-scope";
  * Atlas metin araması ayarları. Yazım toleransı (1 harf fark) yalnızca düz kelimelerde açık: "i30" ile "i20", "3008" ile "3006" tek
  * harf farkı yüzünden birbirinin yerine geçiyordu. Rakam içeren ya da 5 harften kısa aramalarda tam eşleşme kullanılır.
  */
-export function textSearchOptions(term: string): Record<string, unknown> {
-  const text: Record<string, unknown> = { query: term, path: ["title", "brand", "model", "city"] };
+export function textSearchOptions(term: string, matchCriteria: "all" | "any" = "all"): Record<string, unknown> {
+  // "all": aranan kelimelerin HEPSİ ilanda geçmeli ("galeriden bmw 520i" yalnızca galeriden 520i ilanlarını getirir). Atlas varsayılanı
+  // "any"dir: tek bir kelime tutsa yeter, bu yüzden başka satıcıların ilanları da aramaya girerdi.
+  const text: Record<string, unknown> = { query: term, path: ["title", "brand", "model", "city"], matchCriteria };
   if (term.length >= 5 && !/\d/.test(term)) text.fuzzy = { maxEdits: 1, prefixLength: 1 };
   return text;
 }
@@ -92,6 +94,18 @@ export function buildCarQuery(filters: CarFilters): FilterQuery<unknown> {
     if (filters.priceMin) query.price.$gte = filters.priceMin;
     if (filters.priceMax) query.price.$lte = filters.priceMax;
   }
+
+  if (filters.mileageMin || filters.mileageMax) {
+    query.mileage = {};
+    if (filters.mileageMin) query.mileage.$gte = filters.mileageMin;
+    if (filters.mileageMax) query.mileage.$lte = filters.mileageMax;
+  }
+
+  if (filters.seller) {
+    (query.$and ||= []).push({ title: { $regex: `^\\s*${filters.seller}\\b`, $options: "i" } });
+  }
+
+  if (filters.noDamage) query.damageFlag = { $ne: true };
 
   if (filters.deals) {
     query["market.deal"] = true;
@@ -157,6 +171,10 @@ export async function findCarsPage(
     !filters.yearMax &&
     !filters.priceMin &&
     !filters.priceMax &&
+    !filters.mileageMin &&
+    !filters.mileageMax &&
+    !filters.seller &&
+    !filters.noDamage &&
     !filters.fuelType &&
     !filters.transmission &&
     !filters.discountOnly &&
@@ -236,35 +254,33 @@ async function findCarsPageUncached(
       const filtersWithoutQ = { ...filters, q: undefined };
       const matchFilter = buildCarQuery(filtersWithoutQ);
 
-      const pipeline: any[] = [
-        {
-          $search: {
-            index: "default",
-            text: textSearchOptions(searchTerm),
+      // Önce aranan kelimelerin hepsini içerenler; hiçbiri yoksa en az birini içerenler (yazım farkı, bilinmeyen kelime).
+      const buildPipeline = (criteria: "all" | "any") => {
+        const stages: any[] = [
+          { $search: { index: "default", text: textSearchOptions(searchTerm, criteria) } },
+          { $match: matchFilter },
+        ];
+        // Kullanıcı belirli bir sıralama seçtiyse uygula (seçmediyse Lucene alaka puanına göre sıralanır)
+        if (filters.sort && filters.sort !== "mixed") stages.push({ $sort: buildCarSort(filters.sort) });
+        stages.push({
+          $facet: {
+            docs: [
+              { $skip: skip },
+              { $limit: limit },
+              { $addFields: { images: { $slice: ["$images", LIST_IMAGE_LIMIT] } } },
+            ],
+            totalCount: [{ $count: "count" }],
           },
-        },
-        { $match: matchFilter },
-      ];
-
-      // Kullanıcı belirli bir sıralama seçtiyse uygula (seçmediyse Lucene alaka puanına göre sıralanır)
-      if (filters.sort && filters.sort !== "mixed") {
-        pipeline.push({ $sort: buildCarSort(filters.sort) });
-      }
-
-      pipeline.push({
-        $facet: {
-          docs: [
-            { $skip: skip },
-            { $limit: limit },
-            { $addFields: { images: { $slice: ["$images", LIST_IMAGE_LIMIT] } } },
-          ],
-          totalCount: [{ $count: "count" }],
-        },
-      });
-
-      const [facetResult] = await Car.aggregate(pipeline);
-      const docs = facetResult?.docs || [];
-      const total = facetResult?.totalCount?.[0]?.count || 0;
+        });
+        return stages;
+      };
+      const runAtlas = async (criteria: "all" | "any") => {
+        const [facetResult] = await Car.aggregate(buildPipeline(criteria));
+        return { docs: facetResult?.docs || [], total: facetResult?.totalCount?.[0]?.count || 0 };
+      };
+      let result = await runAtlas("all");
+      if (result.total === 0 && searchTerm.split(/\s+/).length > 1) result = await runAtlas("any");
+      const { docs, total } = result;
       return { docs, total, page, limit };
     } catch {
       // Atlas Search desteklenmiyorsa (örn. yerel mock testler) standart $regex aramasına devam eder
@@ -311,6 +327,10 @@ export function parseCarFilters(searchParams: URLSearchParams): CarFilters {
     yearMax: num("yearMax"),
     priceMin: num("priceMin"),
     priceMax: num("priceMax"),
+    mileageMin: num("mileageMin"),
+    mileageMax: num("mileageMax"),
+    seller: searchParams.get("seller") === "galeriden" || searchParams.get("seller") === "sahibinden" ? (searchParams.get("seller") as "galeriden" | "sahibinden") : undefined,
+    noDamage: searchParams.get("noDamage") === "true",
     fuelType: searchParams.get("fuelType") || undefined,
     transmission: searchParams.get("transmission") || undefined,
     vehicleClass: isVehicleClass(searchParams.get("vehicleClass")) ? (searchParams.get("vehicleClass") as string) : undefined,

@@ -30,7 +30,7 @@ export function CarFilters({
   const [model, setModel] = useState(searchParams.get("model") || "");
   const models = (brand && brandModels?.[brand]) || [];
   // Gelişmiş filtrelerden biri seçiliyse katlanmış bölüm açık gelsin (seçili değer görünür kalsın).
-  const hasAdvanced = ["sort", "yearMin", "yearMax", "priceMin", "priceMax", "fuelType", "vehicleClass", "transmission", "color"].some(
+  const hasAdvanced = ["sort", "yearMin", "yearMax", "priceMin", "priceMax", "mileageMin", "mileageMax", "seller", "noDamage", "fuelType", "vehicleClass", "transmission", "color"].some(
     (key) => !!searchParams.get(key)
   );
 
@@ -41,6 +41,7 @@ export function CarFilters({
 
   const [discountOnly, setDiscountOnly] = useState(searchParams.get("discountOnly") === "true");
   const [excludeOutliers, setExcludeOutliers] = useState(searchParams.get("excludeOutliers") === "true");
+  const [noDamage, setNoDamage] = useState(searchParams.get("noDamage") === "true");
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +49,7 @@ export function CarFilters({
     const params = new URLSearchParams(searchParams.toString());
     // Filtreyi uygulayınca ilk sayfaya dön; keşfet akışının tohumu/dilimi arama sonuçlarına taşınmasın.
     for (const key of ["page", "seed", "slot", "b", "compact"]) params.delete(key);
-    const formKeys = ["q", "brand", "model", "city", "color", "yearMin", "yearMax", "priceMin", "priceMax", "fuelType", "transmission", "vehicleClass", "sort", "discountOnly", "firsat"];
+    const formKeys = ["q", "brand", "model", "city", "color", "yearMin", "yearMax", "priceMin", "priceMax", "mileageMin", "mileageMax", "seller", "noDamage", "fuelType", "transmission", "vehicleClass", "sort", "discountOnly", "firsat"];
     formKeys.forEach((key) => params.delete(key));
 
     for (const [key, value] of formData.entries()) {
@@ -73,6 +74,16 @@ export function CarFilters({
     router.push(`/?${params.toString()}`);
   }
 
+  function toggleNoDamage() {
+    const next = !noDamage;
+    setNoDamage(next);
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set("noDamage", "true");
+    else params.delete("noDamage");
+    params.delete("page");
+    router.push(`/?${params.toString()}`);
+  }
+
   function toggleOutliers() {
     const next = !excludeOutliers;
     setExcludeOutliers(next);
@@ -86,6 +97,7 @@ export function CarFilters({
   return (
     <form onSubmit={handleSubmit} className="card space-y-4 p-3 sm:p-5 md:p-6">
       {discountOnly && <input type="hidden" name="discountOnly" value="true" />}
+      {noDamage && <input type="hidden" name="noDamage" value="true" />}
       {searchParams.get("firsat") === "1" && <input type="hidden" name="firsat" value="1" />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -102,6 +114,15 @@ export function CarFilters({
             title="Son piyasa taramasında model ailesine göre aykırı bulunan fiyatları gizler"
           >
             Aykırı fiyatları gizle
+          </button>
+          <button
+            type="button"
+            onClick={toggleNoDamage}
+            aria-pressed={noDamage}
+            className={`chip ${noDamage ? "chip-active" : ""}`}
+            title="Kayıtlı hasar, boya ya da değişen bilgisi olmayan ilanlar"
+          >
+            Hasarsız
           </button>
           <button
             type="button"
@@ -271,6 +292,43 @@ export function CarFilters({
             className="input"
             placeholder="2.000.000 ₺"
           />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="mileageMin">
+            Min km
+          </label>
+          <FormattedNumberInput
+            id="mileageMin"
+            name="mileageMin"
+            defaultValue={searchParams.get("mileageMin") || ""}
+            className="input"
+            placeholder="0 km"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="mileageMax">
+            Maks km
+          </label>
+          <FormattedNumberInput
+            id="mileageMax"
+            name="mileageMax"
+            defaultValue={searchParams.get("mileageMax") || ""}
+            className="input"
+            placeholder="200.000 km"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="seller">
+            Satıcı
+          </label>
+          <select id="seller" name="seller" defaultValue={searchParams.get("seller") || ""} className="select">
+            <option value="">Tümü</option>
+            <option value="galeriden">Galeriden</option>
+            <option value="sahibinden">Sahibinden</option>
+          </select>
         </div>
 
         <div>

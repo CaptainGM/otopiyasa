@@ -94,7 +94,9 @@ describe("Keşfet dilimleri (CDN'de paylaşılan, kişiye göre seçilen)", () =
     const { FEED_ROTATE_MS, resolveFeedBucket } = await import("./car-mix");
     const now = 1000 * FEED_ROTATE_MS + 5;
     expect(resolveFeedBucket(998, now)).toBe(998);
-    expect(resolveFeedBucket(1001, now)).toBe(1000);
+    // Bir sonraki dönem ısıtıcı ve saati ileri cihazlar için kabul edilir; ötesi uydurmadır.
+    expect(resolveFeedBucket(1001, now)).toBe(1001);
+    expect(resolveFeedBucket(1002, now)).toBe(1000);
     expect(resolveFeedBucket(990, now)).toBe(1000);
     expect(resolveFeedBucket(undefined, now)).toBe(1000);
   });

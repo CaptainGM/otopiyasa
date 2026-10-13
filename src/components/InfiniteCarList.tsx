@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { CarListItem } from "@/types";
 import { CarCard } from "@/components/CarCard";
 import { feedBucket, isValidFeedSlot, randomFeedSlot, shuffleInPlace } from "@/lib/car-mix";
+import { feedPageQuery, feedSliceQuery } from "@/lib/feed-url";
 
 const SLOT_KEY = "op_feed_slot";
 
@@ -90,11 +91,8 @@ export function InfiniteCarList({
 
   const fetchPage = useCallback(
     async (pageNumber: number): Promise<CarListItem[]> => {
-      const params = new URLSearchParams(activeQueryRef.current);
-      params.set("page", String(pageNumber));
-      params.set("limit", String(pageSize));
-      params.set("compact", "1");
-      const response = await fetch(`/api/cars?${params.toString()}`);
+      // Adres lib/feed-url.ts ile kurulur: VM'deki ısıtıcı (lib/feed-warm.ts) CDN'e aynı adresi koyar, parametre sırası birebir aynı olmalı.
+      const response = await fetch(`/api/cars?${feedPageQuery(activeQueryRef.current, pageNumber, pageSize)}`);
       if (!response.ok) throw new Error("İlanlar yüklenemedi. Yeniden deneyin.");
       const data = (await response.json()) as { items?: CarListItem[] };
       const list = Array.isArray(data.items) ? data.items : [];
@@ -117,11 +115,7 @@ export function InfiniteCarList({
 
     const slot = randomFeedSlot(readPreviousSlot());
     rememberSlot(slot);
-    const params = new URLSearchParams(query);
-    params.delete("seed");
-    params.set("slot", String(slot));
-    params.set("b", String(feedBucket()));
-    activeQueryRef.current = params.toString();
+    activeQueryRef.current = feedSliceQuery(query, slot, feedBucket());
 
     loadingRef.current = true;
     setLoading(true);

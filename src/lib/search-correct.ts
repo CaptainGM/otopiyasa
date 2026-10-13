@@ -171,8 +171,39 @@ interface Match {
   distance: number;
 }
 
-/** q'ya en yakın sözlük girdileri: önce tam eşleşme (en küçük uzaklık), yoksa önek eşleşmesi. */
-export function bestMatches(q: string, candidates: SearchCandidate[]): Match | null {
+/** Son çare eşleşmesi için: en az bu uzunlukta ve uzaklık kelimenin bu oranından fazla olmayacak ("carallo" → Corolla, uzaklık 3). */
+const TOLERANT_MIN_LENGTH = 5;
+const TOLERANT_RATIO = 0.45;
+
+/**
+ * Son çare: baş harfi aynı, birkaç harf hatası olan tek bir en yakın aday ("carallo" → Corolla). Normal eşleşme hiçbir şey
+ * bulmadığında çağrılır; birden fazla aday aynı uzaklıktaysa belirsizdir ve eşleşme yoktur.
+ */
+function bestTolerantMatch(q: string, candidates: SearchCandidate[]): Match | null {
+  if (q.length < TOLERANT_MIN_LENGTH) return null;
+  const budget = Math.floor(q.length * TOLERANT_RATIO);
+  let best = Infinity;
+  let top: SearchCandidate[] = [];
+  for (const candidate of candidates) {
+    if (candidate.key[0] !== q[0]) continue;
+    const { full } = editDistances(q, candidate.key, budget);
+    if (full > budget) continue;
+    if (full < best) {
+      best = full;
+      top = [];
+    }
+    if (full === best) top.push(candidate);
+  }
+  // Eşit uzaklıkta birkaç aday varsa yazım hatası çoğunlukla harf değişimidir (uzunluk aynı kalır): "carallo" için 7 harfli
+  // Corolla tek aday olarak seçilir; Camaro, Cargo, Caravelle gibi farklı uzunluklar elenir. Yine belirsizse eşleşme yoktur.
+  const sameLength = top.filter((c) => c.key.length === q.length);
+  if (sameLength.length === 1) top = sameLength;
+  return top.length === 1 ? { matches: top, distance: best } : null;
+}
+
+/** q'ya en yakın sözlük girdileri: önce tam eşleşme (en küçük uzaklık), yoksa önek eşleşmesi. tolerant: son çare eşleşmesi. */
+export function bestMatches(q: string, candidates: SearchCandidate[], tolerant = false): Match | null {
+  if (tolerant) return bestTolerantMatch(q, candidates);
   const budget = maxEdits(q.length);
   let bestFull = Infinity;
   let bestPrefix = Infinity;
@@ -187,7 +218,8 @@ export function bestMatches(q: string, candidates: SearchCandidate[]): Match | n
       }
       if (df === bestFull) full.push(candidate);
     }
-    if (dp <= budget && q.length >= 4) {
+    // Önek eşleşmesinde ilk harf aynı olmalı: "xline" içindeki başıboş "x" silinip "Linea" bulunmasın (Atlas'ın prefixLength 1 kuralı gibi).
+    if (dp <= budget && q.length >= 4 && candidate.key[0] === q[0]) {
       if (dp < bestPrefix) {
         bestPrefix = dp;
         prefix = [];
@@ -242,12 +274,47 @@ function commonWordPrefix(labels: string[]): string {
 export function correctSearch(query: string, candidates: SearchCandidate[], options: { strict: boolean }): SearchCorrection | null {
   const tokens = query.trim().split(/\s+/).filter(Boolean).slice(0, MAX_TOKENS);
   if (tokens.length === 0) return null;
+  const normal = scanWindows(tokens, candidates, options, false);
+  if (!normal) return scanWindows(tokens, candidates, options, true);
+  // Yalnız marka bulunup model açıklanamadıysa ("toyota carallo"): kalan kelime o markanın modelleriyle tolere edilir.
+  const brandOnly = normal.matches.every((m) => m.kind === "brand") && normal.extraWords.length > 0;
+  return (brandOnly ? brandScopedMatch(normal, candidates) : null) ?? normal;
+}
+
+/** Marka bulunmuş, model açıklanamamışsa kalan kelime yalnız o markanın modelleriyle tolere edilerek aranır. */
+function brandScopedMatch(normal: SearchCorrection, candidates: SearchCandidate[]): SearchCorrection | null {
+  const brand = normal.matches[0]?.brand;
+  if (!brand) return null;
+  const families: SearchCandidate[] = candidates
+    .filter((c) => c.kind === "brand-family" && c.brand === brand && c.family)
+    .map((c) => ({ ...c, key: compactKey(c.family ?? "") }));
+  for (const word of normal.extraWords) {
+    const hit = bestTolerantMatch(compactKey(word), families);
+    if (!hit) continue;
+    const attributes = [normal.fuelType, normal.transmission, normal.year ? String(normal.year) : undefined].filter(Boolean);
+    const label = hit.matches[0].label + (attributes.length > 0 ? ` · ${attributes.join(" · ")}` : "");
+    return {
+      matches: hit.matches,
+      fuelType: normal.fuelType,
+      transmission: normal.transmission,
+      year: normal.year,
+      extraWords: normal.extraWords.filter((w) => w !== word),
+      label,
+      distance: hit.distance,
+    };
+  }
+  return null;
+}
+
+function scanWindows(tokens: string[], candidates: SearchCandidate[], options: { strict: boolean }, tolerant: boolean): SearchCorrection | null {
   for (let length = tokens.length; length >= 1; length--) {
+    // Tolere edilen eşleşme tek kelimeye uygulanır: uzun pencere (marka + model + ek kelimeler) geniş bütçeyle yanlış modele bağlanıyordu.
+    if (tolerant && length > 1) continue;
     for (let start = 0; start + length <= tokens.length; start++) {
       const q = compactKey(tokens.slice(start, start + length).join(""));
       // Tek kelimelik parça kısa kalırsa ("ve", "ile") sözlükte rastgele bir şeye benzemesin.
       if (q.length < MIN_QUERY_LENGTH || (length < tokens.length && q.length < 4)) continue;
-      const hit = bestMatches(q, candidates);
+      const hit = bestMatches(q, candidates, tolerant);
       if (!hit) continue;
       const rest = [...tokens.slice(0, start), ...tokens.slice(start + length)];
       const out: SearchCorrection = { matches: hit.matches, extraWords: [], label: "", distance: hit.distance };

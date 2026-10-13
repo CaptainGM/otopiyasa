@@ -90,13 +90,10 @@ describe("imageCandidates", () => {
 });
 
 describe("cardImageUrl", () => {
-  it("Arabam 800x600 kapağını kart için 580x435'e indirir (aynı oran, daha az bayt)", async () => {
+  it("Arabam kart görseli sunucu küçültmesinden geçer (480 px, önbellekli); ilan sayfası orijinali alır", async () => {
     const { cardImageUrl } = await import("@/lib/image-url");
-    expect(cardImageUrl("https://arbstorage.mncdn.com/ilanfotograflari/2026/02/05/37554027/c7_image_for_silan_37554027_800x600.jpg")).toBe(
-      "https://arbstorage.mncdn.com/ilanfotograflari/2026/02/05/37554027/c7_image_for_silan_37554027_580x435.jpg"
-    );
-    // Başka boyut ve başka alan adı dokunulmadan kalır.
-    expect(cardImageUrl("https://arbstorage.mncdn.com/x/a_image_240x180.jpg")).toBe("https://arbstorage.mncdn.com/x/a_image_240x180.jpg");
+    const url = "https://arbstorage.mncdn.com/ilanfotograflari/2026/02/05/37554027/c7_image_for_silan_37554027_800x600.jpg";
+    expect(cardImageUrl(url)).toBe("/api/img?u=" + encodeURIComponent(url) + "&w=480");
   });
 
   it("Carvak ve Otokoç için kart boyutunda daha hafif varyant seçer", async () => {

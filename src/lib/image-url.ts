@@ -20,12 +20,6 @@ export const CARD_IMAGE_SIZE = "800x600";
 export function cardImageUrl(url: string): string {
   if (!url) return url;
   if (isProxyableImage(url)) return proxiedImageUrl(url, 480);
-  // Arabam kart görseli: 800x600 (~80 KB) yerine aynı oranda 580x435 (~59 KB). Kartta en çok ~360 CSS px gösterilir; ilk ekranda
-  // altı görsel bant genişliğini paylaştığı için bu fark ilk görünümü belirgin biçimde hızlandırır (ölçüldü: LCP ~2,2 sn).
-  // Yalnızca 580x435'in doğrulandığı arbstorage alanı (arbimg1 gibi diğer Arabam alanları dokunulmadan kalır).
-  if (/arbstorage\.mncdn\.com\//.test(url) && /_(800x600|1920x1080)\.(jpe?g|png|webp)(\?|$)/i.test(url)) {
-    return url.replace(/_(800x600|1920x1080)(\.(?:jpe?g|png|webp))/i, "_580x435$2");
-  }
   if (url.includes("img.carvak.co/") && url.includes("w_1920,h_1080")) {
     return url.replace("w_1920,h_1080", "w_640,h_360");
   }

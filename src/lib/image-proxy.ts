@@ -16,6 +16,9 @@ export const PROXY_HOSTS: ProxyHost[] = [
   { host: "images.kavak.services" },
   { host: "asset.otomerkezi.net", referer: "https://www.otomerkezi.net/" },
   { host: "cdn.otoplus.com", referer: "https://www.otoplus.com/" },
+  // Arabam kart görselleri (ilk ekranda 6+ fotoğraf): görsel sunucusunun yanıtı ~1 sn; küçültülmüş kopya CDN'de saklanınca
+  // ilk görünüm belirgin biçimde hızlanır. Yalnızca kart boyutu kullanılır (ilan sayfası orijinal kaliteyi çeker).
+  { host: "arbstorage.mncdn.com" },
 ];
 
 export const IMAGE_PROXY_MIN_WIDTH = 160;

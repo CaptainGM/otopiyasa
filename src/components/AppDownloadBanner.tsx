@@ -14,6 +14,8 @@ export function AppDownloadBanner() {
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
+    // Yalnızca Android telefonlarda: masaüstü ve iPhone'da bu uygulama şeridi anlamsız.
+    if (!/Android/i.test(navigator.userAgent) || !/Mobile/i.test(navigator.userAgent)) return;
     try {
       if (sessionStorage.getItem(DISMISS_KEY) === "1") return;
     } catch {

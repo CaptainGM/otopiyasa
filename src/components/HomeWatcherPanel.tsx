@@ -98,6 +98,16 @@ export function HomeWatcherPanel() {
     };
   }, [openDate]);
 
+  // Açık günün saat tablosu da yenilenir; yoksa sayfa açıldığı andaki görüntüde kalır ("henüz gelmedi" olan saatler dolmaz).
+  const refreshHours = useCallback(() => {
+    if (!openDate) return;
+    fetch(`/api/admin/home-watcher?date=${encodeURIComponent(openDate)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setHours(d.hours))
+      .catch(() => {});
+  }, [openDate]);
+  useVisibleInterval(refreshHours, 30_000);
+
   useEffect(() => {
     if (!detailKey) return;
     const [date, hourStr, kind] = detailKey.split("|");

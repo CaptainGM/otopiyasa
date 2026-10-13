@@ -56,6 +56,24 @@ describe("correctSearch", () => {
     expect(labelOf("hyundaii20")).toBe("Hyundai i20");
   });
 
+  it("birkaç harf hatası olan uzun model adını son çare olarak bulur: carallo → Corolla", () => {
+    expect(labelOf("carallo")).toBe("Corolla");
+    expect(loose("toyota carallo")?.label).toBe("Toyota Corolla");
+    expect(loose("carallo 1.6")?.label).toBe("Corolla");
+    expect(loose("carallo 1.6")?.extraWords).toEqual(["1.6"]);
+  });
+
+  it("son çare eşleşmesi alakasız kelimede uydurma sonuç vermez", () => {
+    expect(labelOf("xyzzy")).toBeNull();
+    expect(labelOf("qwerty")).toBeNull();
+  });
+
+  it("önek eşleşmesinde ilk harf aynı olmalı: başıboş 'x' silinip Linea bulunmaz", () => {
+    const candidates = buildCandidates({ BMW: ["X1"], Fiat: ["Linea"] });
+    expect(correctSearch("xline", candidates, { strict: false })).toBeNull();
+    expect(correctSearch("BMWX1 18i sDrive X Line", candidates, { strict: false })?.label).toBe("BMW X1");
+  });
+
   it("yalnızca model adındaki hatayı da düzeltir", () => {
     expect(labelOf("corola")).toBe("Corolla");
     expect(labelOf("pasat")).toBe("Passat");

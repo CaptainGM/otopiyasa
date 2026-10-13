@@ -30,6 +30,20 @@ const FEW_RESULTS = 5;
 /** Atlas metin aramasının baktığı alanlar. */
 const SEARCH_PATHS = ["title", "brand", "model", "city"];
 
+/**
+ * Durum-marka-model indeksi. Az ilanın eşleştiği filtrelerde Mongo sıralama indeksini (tarih ya da rastgele) seçip tüm ilanları
+ * tarıyordu (3-7 sn); bu ipucuyla yalnızca eşleşenler okunur (~150-450 ms). Sıralama değişmez.
+ */
+const MODEL_INDEX = { status: 1, brand: 1, model: 1, year: 1 };
+
+/** Bu sayının altında eşleşen filtrelerde ipucu verilir; yoğun sonuçlarda Mongo'nun kendi planı hızlıdır (sıralama indeksi erken biter). */
+const NARROW_TOTAL = 1000;
+
+function withNarrowHint<Q extends { hint: (hint: object) => unknown }>(query: Q, narrow: boolean): Q {
+  if (narrow) query.hint(MODEL_INDEX);
+  return query;
+}
+
 /** Önek eşleşmesinde joker karakterler ("*", "?") kullanıcı yazdıysa etkisizleştirilir. */
 const escapeWildcard = (token: string) => token.replace(/[\\*?]/g, "\\$&");
 
@@ -48,6 +62,37 @@ function prefixClauses(text: string): Record<string, unknown>[] {
       },
     },
   ];
+}
+
+/**
+ * Harf ve rakamları tek tek aralıklı yazılmış kelimeleri birleştirir: "b m w 3 2 0 i" → "bmw320i", "M a z d a 3 2 3" → "Mazda323",
+ * "C h e v r o l e t A v e o 1 . 4 L T" → "ChevroletAveo 1.4 LT". Motor hacmi ("1 . 6" → "1.6") ondalıklı kalır; ondalık
+ * sayının rakamı harfle birleşmez ("3 2 3 1.5" içinde "1" motor hacmine aittir).
+ */
+export function collapseSpacedLetters(text: string): string {
+  return text
+    .replace(/(\d)\s*\.\s*(\d)/g, "$1.$2")
+    // Ondalığın rakamından ("1.6 D") ya da harfle bitişik rakamdan (ör. "a3") başlayan dizi birleşmez.
+    .replace(/(?<![\p{L}\p{N}.,])(?:[\p{L}\p{N}] ){1,}[\p{L}\p{N}](?![\p{L}\p{N}]|[.,]\p{N})/gu, (run) => run.replace(/ /g, ""));
+}
+
+/**
+ * Her kelime tam ya da önek olarak aranır, bulanık eşleşme yok ("honda civi" → Civic). Bulanık arama kısmi kelimeyi yanlış
+ * ilanlara bağlıyordu ("civi" ~ "crv", 30 CR-V). Kelime 3 harften kısaysa yalnız tam eşleşir.
+ */
+function exactOrPrefixQuery(text: string): Record<string, unknown> {
+  const tokens = text.replace(/İ/g, "i").toLowerCase().split(/\s+/).filter(Boolean);
+  return {
+    compound: {
+      must: tokens.map((token) => {
+        // "all": "mercedes-benzeqa" gibi tireli bir belirteç analizde parçalanır; parçalardan biri tutsa yetmesin (varsayılan "any").
+        const exact = { text: { query: token, path: SEARCH_PATHS, matchCriteria: "all" } };
+        if (token.length < 3) return exact;
+        const prefix = { wildcard: { query: `${escapeWildcard(token)}*`, path: SEARCH_PATHS, allowAnalyzedField: true } };
+        return { compound: { should: [exact, prefix], minimumShouldMatch: 1 } };
+      }),
+    },
+  };
 }
 
 /** Bir sayfa sonuç. correction: aranan metin hiçbir ilanda tutmadığı için yazım düzeltmesiyle bulunan sonuçlarda dolar. */
@@ -194,9 +239,17 @@ export async function countCars(filters: CarFilters): Promise<number> {
   return cached(`count:${JSON.stringify(query)}`, CACHE_TTL.short, () => Car.countDocuments(query));
 }
 
-export async function findCarsPage(
-  filters: CarFilters
-): Promise<CarsPage> {
+export async function findCarsPage(input: CarFilters): Promise<CarsPage> {
+  const text = input.q?.trim();
+  const collapsed = text ? collapseSpacedLetters(text) : text;
+  if (!text || collapsed === text) return searchCarsPage(input);
+  const page = await searchCarsPage({ ...input, q: collapsed });
+  if (page.total > 0) return page;
+  // Birleştirme sonucu bozduysa ("YamahaYZFR25") özgün metinle de dene: marka ayrımı boşluklu metinde çalışır.
+  return searchCarsPage(input);
+}
+
+async function searchCarsPage(filters: CarFilters): Promise<CarsPage> {
   // Varsayılan ana akışta tüm sayfalar aynı güncel sıralamayı kullanmalı;
   // ilk sayfa ile devam sayfalarını farklı sıralamak ilan tekrarına yol açar.
   const isDefaultHome =
@@ -258,28 +311,23 @@ async function findCarsPageUncached(
     let docs: unknown[];
     if (page === 1 || offset < tailCount) {
       const tailSkip = page === 1 ? 0 : offset;
-      const tailDocs = await Car.find(tailQuery)
-        .sort(sort)
-        .skip(tailSkip)
-        .limit(limit)
-        .slice("images", LIST_IMAGE_LIMIT)
-        .lean();
+      const tailDocs = await withNarrowHint(
+        Car.find(tailQuery).sort(sort).skip(tailSkip).limit(limit).slice("images", LIST_IMAGE_LIMIT),
+        total <= NARROW_TOTAL
+      ).lean();
       docs = tailDocs as unknown[];
       if (docs.length < limit) {
-        const headDocs = await Car.find(headQuery)
-          .sort(sort)
-          .limit(limit - docs.length)
-          .slice("images", LIST_IMAGE_LIMIT)
-          .lean();
+        const headDocs = await withNarrowHint(
+          Car.find(headQuery).sort(sort).limit(limit - docs.length).slice("images", LIST_IMAGE_LIMIT),
+          total <= NARROW_TOTAL
+        ).lean();
         docs.push(...(headDocs as unknown[]));
       }
     } else {
-      docs = (await Car.find(headQuery)
-        .sort(sort)
-        .skip(offset - tailCount)
-        .limit(limit)
-        .slice("images", LIST_IMAGE_LIMIT)
-        .lean()) as unknown[];
+      docs = (await withNarrowHint(
+        Car.find(headQuery).sort(sort).skip(offset - tailCount).limit(limit).slice("images", LIST_IMAGE_LIMIT),
+        total <= NARROW_TOTAL
+      ).lean()) as unknown[];
     }
     return { docs: docs as unknown[], total, page, limit };
   }
@@ -323,7 +371,14 @@ async function findCarsPageUncached(
         if (should.length === 0) return { docs: [] as unknown[], total: 0 };
         return runSearch({ compound: { should, minimumShouldMatch: 1 } }).catch(() => ({ docs: [] as unknown[], total: 0 }));
       };
-      let result = await runAtlas("all");
+      // Önce kelimelerin tam ya da önek eşleşmesi; en az FEW_RESULTS ilan dönerse bulanık aramaya gerek yok ("corola" gibi
+      // yazım hatalarında bu aşama az sonuç verir ve bulanık arama devreye girer).
+      const wordsFirst = runSearch(exactOrPrefixQuery(searchTerm)).catch(() => ({ docs: [] as unknown[], total: 0 }));
+      const fuzzyFirst = runAtlas("all");
+      fuzzyFirst.catch(() => {});
+      const wordsResult = await wordsFirst;
+      if (wordsResult.total >= FEW_RESULTS) return { ...wordsResult, page, limit };
+      let result = await fuzzyFirst;
       if (result.total < FEW_RESULTS) {
         // Az sonuç ya da hiç yok. Aşağıdaki adaylar birbirinden bağımsız: sırayla çalıştırılınca yazım düzeltmesi gereken aramalar
         // 3-10 sn sürüyordu. Hepsi birlikte hesaplanır, sonuç yine ÖNCELİK sırasıyla seçilir (aşağıdaki numaralar):
@@ -368,15 +423,12 @@ async function findCarsPageUncached(
     }
   }
 
-  const [docs, total] = await Promise.all([
-    Car.find(query)
-      .sort(buildCarSort(filters.sort))
-      .skip(skip)
-      .limit(limit)
-      .slice("images", LIST_IMAGE_LIMIT)
-      .lean(),
-    Car.countDocuments(query),
-  ]);
+  // Önce sayılır: seyrek sonuçta sıralama indeksine değil marka/model indeksine ipucu verilsin (bkz. withNarrowHint).
+  const total = await Car.countDocuments(query);
+  const docs = await withNarrowHint(
+    Car.find(query).sort(buildCarSort(filters.sort)).skip(skip).limit(limit).slice("images", LIST_IMAGE_LIMIT),
+    total <= NARROW_TOTAL
+  ).lean();
   if (total === 0 && filters.q?.trim()) {
     // Atlas Search yokken (yerel/test ortamı) de aynı yazım düzeltmesi çalışsın.
     const corrected = (await correctedPage(filters, skip, limit, true)) ?? (await correctedPage(filters, skip, limit, false));
@@ -443,7 +495,8 @@ async function correctedPage(filters: CarFilters, skip: number, limit: number, s
     const run = async (withExtra: boolean) => {
       const query: FilterQuery<unknown> = { $and: [base, modelClause, ...(withExtra ? extra : [])] };
       const [docs, total] = await Promise.all([
-        Car.find(query).sort(buildCarSort(filters.sort)).skip(skip).limit(limit).slice("images", LIST_IMAGE_LIMIT).lean(),
+        // Sıralama tarihe göre kalır; ipucu olmadan Mongo tarih indeksini seçip seyrek eşleşmede tüm ilanları tarıyordu (3,8 sn).
+        Car.find(query).sort(buildCarSort(filters.sort)).skip(skip).limit(limit).slice("images", LIST_IMAGE_LIMIT).hint(MODEL_INDEX).lean(),
         Car.countDocuments(query),
       ]);
       return { docs: docs as unknown[], total };

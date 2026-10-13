@@ -547,7 +547,9 @@ export async function sweepAndCleanDeadListings(options: {
           }
         } else if (result.status === "gone" || result.status === "redirected") {
           const list = goneBySource.get(source) || [];
-          list.push({ id: item._id, reason: result.reason, strong: result.strong !== false });
+          // Zayıf kanıt (yönlendirme döngüsü) bir önceki kontrolde de tekrarlandıysa güçlü sayılır: "bekletilen" ilan sonsuza dek kalmasın.
+          const repeated = item.lastVerifyStatus === "gone-held";
+          list.push({ id: item._id, reason: result.reason, strong: result.strong !== false || repeated });
           goneBySource.set(source, list);
         } else {
           attemptedIds.push(item._id);

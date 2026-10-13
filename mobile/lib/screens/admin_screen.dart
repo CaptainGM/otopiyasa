@@ -10,6 +10,7 @@ import 'package:otopiyasa/widgets/admin_health_tab.dart';
 import 'package:otopiyasa/widgets/admin_motor_controls.dart';
 import 'package:otopiyasa/widgets/admin_users_tab.dart';
 import 'package:otopiyasa/widgets/home_watcher_card.dart';
+import 'package:otopiyasa/widgets/sheet_insets.dart';
 
 const _emerald = Color(0xFF10B981);
 const _roseColor = Color(0xFFF43F5E);
@@ -1563,6 +1564,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
 
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF0F172A),
       shape: const RoundedRectangleBorder(
@@ -1577,7 +1579,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           builder: (_, scrollController) {
             return ListView(
               controller: scrollController,
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + sheetBottomInset(ctx)),
               children: [
                 Center(
                   child: Container(

@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/data/model_advisories.dart';
+import 'package:otopiyasa/widgets/car_parts_diagram.dart';
+import 'package:otopiyasa/widgets/sheet_insets.dart';
 
 /// FİYAT TAHMİNİ — web'deki `/predict` sayfasının mobil karşılığı.
 ///
@@ -665,6 +667,19 @@ class _PredictScreenState extends State<PredictScreen> {
                         );
                       }).toList(),
                     ),
+                    const SizedBox(height: 14),
+                    const Divider(height: 1, color: Colors.white12),
+                    const SizedBox(height: 12),
+                    // Araç şablonu: bölgelerden çıkan oklar parça adlarına gider (web'deki şemayla aynı).
+                    const Center(
+                      child: Text(
+                        'Araç şablonu: bölgeye ya da yazıya dokunarak durumu değiştir',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 10.5, color: Colors.white54),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    CarPartsDiagram(states: _panelStates, names: _panelNames, onToggle: _cyclePanel),
                   ],
                 ),
               ),
@@ -788,6 +803,7 @@ class _PredictScreenState extends State<PredictScreen> {
 
     showModalBottomSheet(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF0F172A),
       shape: const RoundedRectangleBorder(
@@ -849,7 +865,7 @@ class _PredictScreenState extends State<PredictScreen> {
                 Expanded(
                   child: ListView(
                     controller: scrollController,
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + sheetBottomInset(sheetContext)),
                     children: [
                       // BÖLÜM 1: GÖRSEL SERTİFİKA KARTI (RepaintBoundary ile ekran resmi alınabilir)
                       RepaintBoundary(

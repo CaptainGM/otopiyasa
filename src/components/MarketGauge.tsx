@@ -20,11 +20,14 @@ export function MarketGauge({
   avg,
   count,
   size = "sm",
+  pending = false,
 }: {
   price: number;
   avg?: number | null;
   count?: number | null;
   size?: "sm" | "md";
+  /** Yeni ilan, adil değeri henüz hesaplanmadı: "veri az" yerine "hesaplanıyor" (bkz. marketPending). */
+  pending?: boolean;
 }) {
   const position = marketPosition(price, avg, count);
   const md = size === "md";
@@ -32,7 +35,7 @@ export function MarketGauge({
     return (
       <div className={md ? "space-y-2" : "space-y-1.5"}>
         <div className="h-1.5 rounded-full bg-[var(--border)]" />
-        <p className="eyebrow !text-[0.66rem] !tracking-[0.1em] text-[var(--faint)]">Piyasa verisi az</p>
+        <p className="eyebrow !text-[0.66rem] !tracking-[0.1em] text-[var(--faint)]">{pending ? "Hesaplanıyor" : "Piyasa verisi az"}</p>
       </div>
     );
   }

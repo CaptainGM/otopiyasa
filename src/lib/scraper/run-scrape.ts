@@ -2,6 +2,7 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import { Car } from "@/models/Car";
+import { computeListingFair } from "@/lib/market-fair";
 import { isPlausibleListingPrice, isPlausibleMileage } from "@/lib/price-plausibility";
 import { loadSegmentCap } from "@/lib/segment-cap-data";
 import { isAboveSegmentCap } from "@/lib/segment-cap";
@@ -407,7 +408,7 @@ export async function saveListing(
   }
 
   try {
-    await Car.create({
+    const created = await Car.create({
       ...toCreate,
       city: toCreate.cityVerified === true ? toCreate.city : "Türkiye",
       address: toCreate.cityVerified === true ? toCreate.address || "" : "",
@@ -424,6 +425,8 @@ export async function saveListing(
       verifiedFeatures: listing.confirmedFeatures?.length ? listing.confirmedFeatures : undefined,
       vehicleClass,
     });
+    // Adil değer hemen hesaplanır: kart saatlik tura kadar "veri az" demesin (emsal varsa). Arka planda; tarama beklemez.
+    void computeListingFair(created._id).catch(() => {});
   } catch (error) {
     // Aynı ilan iki eşzamanlı taramada görünürse unique index yarışı işi tüm partiyle düşürmesin.
     if ((error as { code?: number })?.code === 11000) return "unchanged";

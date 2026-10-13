@@ -40,7 +40,7 @@ export function PricePredictionBadge({
   marketListingCount?: number;
   marketScope?: "model" | "family";
   marketFamilyLabel?: string;
-  /** Ortalamanın geldiği emsal kademesi (ör. "Aynı yıl, km, hasar ve donanım"). Verilirse eski ham ortalama metni yerine bu yazılır. */
+  /** Ortalamanın geldiği emsal kademesi (ör. "Aynı yıl, km, hasar, motor ve vites"). Verilirse eski ham ortalama metni yerine bu yazılır. */
   marketBasisLabel?: string;
 }) {
   if (prediction.sampleSize < 3) {

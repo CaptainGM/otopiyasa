@@ -5,6 +5,7 @@ import { readJson } from "@/lib/http";
 import { randomUUID } from "node:crypto";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
+import { computeListingFair } from "@/lib/market-fair";
 import { User } from "@/models/User";
 import { getCurrentUser } from "@/lib/auth";
 import { checkSharedRateLimit } from "@/lib/api-rate-limit";
@@ -131,6 +132,9 @@ export async function POST(request: Request) {
       rejectionReason: outcome.status === "rejected" ? outcome.reason : "",
       priceHistory: [{ price: input.price }],
     });
+
+    // Adil değer yeni ilanda hemen hesaplanır (kart "veri az" demesin); en fazla 4 sn beklenir, yavaşsa saatlik tur tamamlar.
+    await Promise.race([computeListingFair(car._id).catch(() => false), new Promise((resolve) => setTimeout(() => resolve(false), 4000))]);
 
     // Yayınlandıysa da haber ver — kullanıcı ilanın gerçekten yayına
     // girdiğini görmek istiyor (önceden yalnızca RED durumunda mail gidiyordu).

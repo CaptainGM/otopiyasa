@@ -91,7 +91,7 @@ export function CarCard({
 
         <div className="mt-auto space-y-2.5 border-t border-[var(--border)] pt-3">
           <p className="num text-[1.35rem] font-semibold leading-none tracking-tight">{formatPrice(car.price)}</p>
-          <MarketGauge price={car.price} avg={car.fairPrice} count={car.fairSample} />
+          <MarketGauge price={car.price} avg={car.fairPrice} count={car.fairSample} pending={car.marketPending} />
         </div>
       </div>
     </article>

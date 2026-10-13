@@ -7,7 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
     description:
       "Türkiye ikinci el araç ilanlarını takip et: piyasa ortalaması, fiyat geçmişi, karşılaştırma ve fiyat alarmları.",
     start_url: "/",
-    display: "standalone",
+    // "browser": tarayıcının "uygulamayı yükle" istemi çıkmaz (eskiden web'in kendi kurulumu, APK'dan farklı bir sürümü kuruyordu).
+    // Uygulamanın tek kurulum yolu üstteki şeritteki en yeni APK'dır.
+    display: "browser",
     background_color: "#070b12",
     theme_color: "#070b12",
     lang: "tr",

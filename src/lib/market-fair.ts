@@ -96,6 +96,44 @@ type FairCandidate = DealInput & {
  * hesaplanacağı (veritabanı yükü saate yayılsın). Marka marka ilerler: aynı markanın sorguları paylaşılır, bellek
  * her markadan sonra boşalır.
  */
+const LISTING_FAIR_SELECT =
+  "brand model year mileage price vehicleClass damageFlag paintChange title description features";
+
+type ListingFairDoc = DealInput & {
+  brand?: string;
+  model?: string;
+  vehicleClass?: string;
+  features?: NonNullable<Parameters<typeof predictPrice>[6]>["features"];
+};
+
+/**
+ * Tek bir yeni ilanın adil değerini hemen hesaplar: saatlik tur gelene kadar kart "veri az" demesin (emsal varsa). Hesap saatlik
+ * turla aynıdır (predictPrice + fairFields); sonuç aynı alanlara yazılır. Döndürülen değer: adil değer kaydedildi mi.
+ */
+export async function computeListingFair(carId: unknown): Promise<boolean> {
+  const [car] = (await Car.find({ _id: carId }).select(LISTING_FAIR_SELECT).lean()) as unknown as ListingFairDoc[];
+  if (!car || !car.brand || !car.model || !car.year) return false;
+  const prediction = await predictPrice(car.brand, car.model, car.year, car.mileage, conditionOf(car), car.title ?? "", {
+    modelFromDb: true,
+    vehicleClass: car.vehicleClass || "otomobil",
+    features: car.features ?? undefined,
+  });
+  const fields = fairFields(car, prediction.predictedPrice, prediction.sampleSize);
+  if (fields) {
+    await Car.updateOne({ _id: carId }, { $set: fields }, { timestamps: false });
+    return true;
+  }
+  await Car.updateOne(
+    { _id: carId },
+    {
+      $set: { "market.fairAt": new Date(), "market.fp": car.price, "market.deal": false, "market.fairV": FAIR_LOGIC_VERSION },
+      $unset: { "market.fair": 1, "market.fairN": 1, "market.disc": 1 },
+    },
+    { timestamps: false }
+  );
+  return false;
+}
+
 export async function refreshFairValues(limit = 8000): Promise<{ scanned: number; updated: number; cleared: number; failed: number; ms: number }> {
   const started = Date.now();
   const staleBefore = new Date(Date.now() - STALE_MS);

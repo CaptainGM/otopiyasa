@@ -11,6 +11,9 @@
          bastığında sistem izin ekranı çıkar, açılışta otomatik istenmez. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- Uygulama içi güncelleme: indirilen APK'nın sistem yükleyicisiyle açılabilmesi için. Kullanıcıya ilk seferde Android
+         "bu kaynaktan yüklemeye izin ver" ekranını gösterir. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="OtoPiyasa"
         android:name="${applicationName}"
@@ -55,6 +58,16 @@
                     android:host="cars"/>
             </intent-filter>
         </activity>
+        <!-- Uygulama içi güncelleme: indirilen APK'yı sistem yükleyicisine güvenle açar (bkz. MainActivity.installApk). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

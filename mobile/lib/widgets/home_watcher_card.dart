@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/utils/relative_time.dart';
+import 'package:otopiyasa/widgets/sheet_insets.dart';
 
 /// Evdeki bilgisayarda arka planda çalışan Arabam bekçisinin durumu, günlük özeti ve (güne dokununca)
 /// saat saat dökümü — web yönetim panelindeki "Arabam Bekçisi" bölümünün mobil karşılığı
@@ -138,6 +139,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
   void _openUnverifiedSheet() {
     showModalBottomSheet<void>(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) => DraggableScrollableSheet(
@@ -155,6 +157,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
     final label = '$date ${hour.toString().padLeft(2, '0')}:00';
     showModalBottomSheet<void>(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) => DraggableScrollableSheet(
@@ -163,7 +166,7 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
         maxChildSize: 0.95,
         builder: (_, controller) => ListView(
           controller: controller,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + sheetBottomInset(ctx)),
           children: [
             Text(
               label,
@@ -765,7 +768,7 @@ class _UnverifiedListState extends State<_UnverifiedList> {
   Widget build(BuildContext context) {
     return ListView(
       controller: widget.scrollController,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + sheetBottomInset(context)),
       children: [
         Text(
           'Kontrol edilmemiş ilanlar (${_nf.format(_total)})',

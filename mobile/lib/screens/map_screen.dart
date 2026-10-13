@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/device_location.dart';
+import 'package:otopiyasa/widgets/sheet_insets.dart';
 
 /// HARİTA — web'deki `/map` sayfasının mobil karşılığı.
 ///
@@ -713,6 +714,7 @@ class _MapScreenState extends State<MapScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF0F172A),
       shape: const RoundedRectangleBorder(
@@ -723,7 +725,7 @@ class _MapScreenState extends State<MapScreen> {
           left: 20,
           right: 20,
           top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+          bottom: sheetBottomInset(context) + 20,
         ),
         child: StatefulBuilder(
           builder: (context, setSheetState) {
@@ -930,6 +932,7 @@ class _MapScreenState extends State<MapScreen> {
   ) {
     showModalBottomSheet<void>(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       backgroundColor: const Color(0xFF0F172A),
       shape: const RoundedRectangleBorder(
@@ -1047,9 +1050,11 @@ class _MapScreenState extends State<MapScreen> {
 
                       return ListView.separated(
                         controller: scrollController,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
+                        padding: EdgeInsets.fromLTRB(
+                          16,
+                          10,
+                          16,
+                          10 + sheetBottomInset(context),
                         ),
                         itemCount: items.length,
                         separatorBuilder: (context, i) =>

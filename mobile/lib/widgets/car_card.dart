@@ -173,7 +173,8 @@ class _CarCardState extends State<CarCard> {
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         // Keşfet kartı sade: fiyat göstergesi ve indirim rozeti yalnızca ilan sayfasında.
-        height: 140,
+        // Alt satırdaki ilan başlığı iki satıra kadar uzar (eskiden tek satırda "..." ile kesiliyordu): kart biraz yüksek.
+        height: 158,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -285,11 +286,13 @@ class _CarCardState extends State<CarCard> {
                         style: AppText.eyebrow(context, size: 9.5),
                       ),
                       const SizedBox(height: 3),
-                      Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.display(size: 15)),
+                      // Marka + model + donanım uzun olabilir ("Subaru Outback 2.0 D …"): iki satıra kadar uzar (web kartıyla aynı).
+                      // En kötü durumda (2 + 2 satır) içerik ≈126 dp, kullanılabilir alan 138 dp: taşma olmaz.
+                      Text(name, maxLines: 2, overflow: TextOverflow.ellipsis, style: AppText.display(size: 15)),
                       if (name != car.title)
                         Text(
                           car.title,
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.3),
                         ),

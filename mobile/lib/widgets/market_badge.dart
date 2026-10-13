@@ -7,7 +7,7 @@ import 'package:otopiyasa/widgets/market_gauge.dart';
 
 /// Fiyat analizi — web ilan sayfasındaki kartla aynı ölçü: ilan fiyatı, model yılı, km, hasar ve donanıma göre
 /// hesaplanan ADİL DEĞERLE karşılaştırılır (üstteki gösterge de bu sayıyı kullanır). Aynı marka/model/yılın ham
-/// ilan ortalaması yalnızca bağlam olarak gösterilir (km ve donanım farkını gözetmez). Bantlar: ±%6 adil, %30+ altı
+/// ilan ortalaması artık gösterilmez (km ve donanım farkını gözetiyordu); emsal ortalaması kademe kademe PriceScaleCard'da. Bantlar: ±%6 adil, %30+ altı
 /// "şüpheli ucuz" uyarısı.
 class MarketBadge extends StatelessWidget {
   const MarketBadge({super.key, required this.car});
@@ -69,8 +69,6 @@ class MarketBadge extends StatelessWidget {
         description =
             'Bu ilanın fiyatı benzer araçların ortalamasının kat be kat üzerinde; kaynakta yanlış girilmiş olabilir. Piyasa karşılaştırması güvenilir değil.';
     }
-    final avg = car.marketAvgPrice;
-    final avgCount = car.marketListingCount ?? 0;
 
     Widget cell(String label, String value, String note, {Color? valueColor}) => Expanded(
           child: Column(
@@ -121,13 +119,6 @@ class MarketBadge extends StatelessWidget {
               ),
             ],
           ),
-          if (avg != null && avg > 0 && avgCount >= 3) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Aynı marka/model/yıl ham ilan ortalaması ${_money.format(avg)} ($avgCount ilan; km ve donanım farkını gözetmez).',
-              style: TextStyle(fontSize: 12, color: c.muted, height: 1.35),
-            ),
-          ],
           const SizedBox(height: 10),
           if (position.band == MarketBand.suspicious)
             Row(

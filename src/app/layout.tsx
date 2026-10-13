@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { Archivo, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
-import { ChatWidget } from "@/components/ChatWidget";
+import { AppDownloadBanner } from "@/components/AppDownloadBanner";
+import { ChatWidgetLazy as ChatWidget } from "@/components/ChatWidgetLazy";
 import { CompareTray } from "@/components/CompareTray";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -126,6 +127,8 @@ export default function RootLayout({
     <html lang="tr" suppressHydrationWarning className={`${inter.variable} ${archivo.variable} ${plexMono.variable}`}>
       <head>
         {/* İlan fotoğrafları üçüncü taraf CDN'lerden geliyor: bağlantıyı önceden kur (ilk görsel gecikmesini azaltır). */}
+        {/* Kart görselleri arbstorage'dan gelir (ilk ekrandaki tüm kartlar); bağlantı önceden kurulursa ilk görsel TLS beklemez. */}
+        <link rel="preconnect" href="https://arbstorage.mncdn.com" />
         <link rel="preconnect" href="https://arbimg1.mncdn.com" crossOrigin="" />
         <link rel="preconnect" href="https://2el-cdn.otokoc.com.tr" crossOrigin="" />
         <link rel="dns-prefetch" href="https://cdn.otoplus.com" />
@@ -149,6 +152,7 @@ export default function RootLayout({
               "try{if(localStorage.getItem('otopiyasa:theme')==='light'){document.documentElement.dataset.theme='light';}}catch(e){}",
           }}
         />
+        <AppDownloadBanner />
         <Navbar />
         <ErrorBoundary>
           <main className="container py-8">{children}</main>

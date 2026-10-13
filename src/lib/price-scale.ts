@@ -101,7 +101,7 @@ export interface TierRule {
 export const SCALE_TIERS: readonly TierRule[] = [
   {
     key: "tam",
-    label: "Aynı yıl, km, hasar ve donanım",
+    label: "Aynı yıl, km, hasar, motor ve vites",
     yearGap: 1,
     kmWindow: (km) => Math.max(15_000, Math.round(km * 0.2)),
     sameDamage: true,
@@ -110,7 +110,7 @@ export const SCALE_TIERS: readonly TierRule[] = [
   },
   {
     key: "donanim",
-    label: "Aynı donanım, yıl ±2, km yakın",
+    label: "Aynı motor ve vites, yıl ±2, km yakın",
     yearGap: 2,
     kmWindow: (km) => Math.max(30_000, Math.round(km * 0.4)),
     sameDamage: false,

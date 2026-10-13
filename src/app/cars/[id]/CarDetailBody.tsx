@@ -362,7 +362,13 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
           <div className="space-y-3 border-y border-[var(--border)] py-4">
             <p className="num text-[2.4rem] font-semibold leading-none tracking-tight">{formatPrice(car.price)}</p>
-            <MarketGauge price={car.price} avg={fair?.["market.fair"]} count={fair?.["market.fairN"]} size="md" />
+            {/* Kayıtlı adil değer yoksa (yeni ilan, saatlik tur henüz almadı) fiyat analiziyle aynı anlık hesap kullanılır: iki yer çelişmez. */}
+            <MarketGauge
+              price={car.price}
+              avg={fair?.["market.fair"] ?? prediction?.predictedPrice}
+              count={fair?.["market.fairN"] ?? prediction?.sampleSize}
+              size="md"
+            />
           </div>
 
           {car.status === "sold" && (
@@ -540,7 +546,14 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
       {similarCars.length > 0 && (
         <div className="space-y-4">
-          <h2 className="font-display text-xl font-semibold">Benzer ilanlar</h2>
+          <div className="space-y-1">
+            <h2 className="font-display text-xl font-semibold">Benzer ilanlar</h2>
+            {/* Paket adı (Vision Plus, Flame X-Pack, GT Line…) ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. */}
+            <p className="text-xs text-amber-300/90">
+              Bu ilanların paket adı farklı olabilir (ör. Vision Plus ile Flame X-Pack). Benzerlik motor, yakıt, vites ve beygire göre; donanım
+              seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et.
+            </p>
+          </div>
           <div className="listing-grid">
             {similarCars.map((similar) => (
               <CarCard key={similar._id} car={serializeCarListItem(similar)} />

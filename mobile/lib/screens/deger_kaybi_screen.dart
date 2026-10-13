@@ -127,6 +127,7 @@ class _DegerKaybiScreenState extends State<DegerKaybiScreen> {
 
   Future<String?> _pick(String title, List<String> options, String current) => showModalBottomSheet<String>(
         context: context,
+        useSafeArea: true,
         isScrollControlled: true,
         builder: (context) => _PickerSheet(title: title, options: options, current: current),
       );

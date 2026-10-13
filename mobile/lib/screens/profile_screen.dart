@@ -82,6 +82,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _editAvatar() async {
     final result = await showModalBottomSheet<String>(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => const AvatarPickerSheet(),

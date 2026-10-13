@@ -22,6 +22,42 @@ import { normalizeColor } from "@/lib/normalize-color";
 import { normalizeTransmission, transmissionMatch } from "@/lib/vehicle-attrs";
 import { AUTOMATIC_TRANSMISSION_PATTERN } from "@/lib/transmission-label";
 import { isVehicleClass } from "@/lib/vehicle-scope";
+import { alnumVariants, brandSplitVariants, buildCandidates, correctSearch, type SearchCandidate } from "@/lib/search-correct";
+
+/** Tam eşleşme bu kadar azsa başka yazımlar ve yarım kelimelerle genişletilir ("bmw 320" tam yalnızca 1 ilan bulur, "320i" 100'den fazla). */
+const FEW_RESULTS = 5;
+
+/** Atlas metin aramasının baktığı alanlar. */
+const SEARCH_PATHS = ["title", "brand", "model", "city"];
+
+/** Önek eşleşmesinde joker karakterler ("*", "?") kullanıcı yazdıysa etkisizleştirilir. */
+const escapeWildcard = (token: string) => token.replace(/[\\*?]/g, "\\$&");
+
+/** Aranan metnin her kelimesi bir önekle eşleşsin ("bmw 320" → "320i"); 3 harften kısa kelimeler tam eşleşir. */
+function prefixClauses(text: string): Record<string, unknown>[] {
+  const tokens = text.replace(/İ/g, "i").toLowerCase().split(/\s+/).filter(Boolean);
+  if (!tokens.some((token) => token.length >= 3)) return [];
+  return [
+    {
+      compound: {
+        must: tokens.map((token) =>
+          token.length >= 3
+            ? { wildcard: { query: `${escapeWildcard(token)}*`, path: SEARCH_PATHS, allowAnalyzedField: true } }
+            : { text: { query: token, path: SEARCH_PATHS } }
+        ),
+      },
+    },
+  ];
+}
+
+/** Bir sayfa sonuç. correction: aranan metin hiçbir ilanda tutmadığı için yazım düzeltmesiyle bulunan sonuçlarda dolar. */
+export interface CarsPage {
+  docs: unknown[];
+  total: number;
+  page: number;
+  limit: number;
+  correction?: { from: string; label: string };
+}
 
 /**
  * Atlas metin araması ayarları. Yazım toleransı (1 harf fark) yalnızca düz kelimelerde açık: "i30" ile "i20", "3008" ile "3006" tek
@@ -30,7 +66,7 @@ import { isVehicleClass } from "@/lib/vehicle-scope";
 export function textSearchOptions(term: string, matchCriteria: "all" | "any" = "all"): Record<string, unknown> {
   // "all": aranan kelimelerin HEPSİ ilanda geçmeli ("galeriden bmw 520i" yalnızca galeriden 520i ilanlarını getirir). Atlas varsayılanı
   // "any"dir: tek bir kelime tutsa yeter, bu yüzden başka satıcıların ilanları da aramaya girerdi.
-  const text: Record<string, unknown> = { query: term, path: ["title", "brand", "model", "city"], matchCriteria };
+  const text: Record<string, unknown> = { query: term, path: SEARCH_PATHS, matchCriteria };
   if (term.length >= 5 && !/\d/.test(term)) text.fuzzy = { maxEdits: 1, prefixLength: 1 };
   return text;
 }
@@ -160,7 +196,7 @@ export async function countCars(filters: CarFilters): Promise<number> {
 
 export async function findCarsPage(
   filters: CarFilters
-): Promise<{ docs: unknown[]; total: number; page: number; limit: number }> {
+): Promise<CarsPage> {
   // Varsayılan ana akışta tüm sayfalar aynı güncel sıralamayı kullanmalı;
   // ilk sayfa ile devam sayfalarını farklı sıralamak ilan tekrarına yol açar.
   const isDefaultHome =
@@ -195,7 +231,7 @@ export async function findCarsPage(
 
 async function findCarsPageUncached(
   filters: CarFilters
-): Promise<{ docs: unknown[]; total: number; page: number; limit: number }> {
+): Promise<CarsPage> {
   const query = buildCarQuery(filters);
   const page = filters.page || 1;
   const limit = filters.limit || 12;
@@ -256,10 +292,10 @@ async function findCarsPageUncached(
       const filtersWithoutQ = { ...filters, q: undefined };
       const matchFilter = buildCarQuery(filtersWithoutQ);
 
-      // Önce aranan kelimelerin hepsini içerenler; hiçbiri yoksa en az birini içerenler (yazım farkı, bilinmeyen kelime).
-      const buildPipeline = (criteria: "all" | "any") => {
+      // Önce aranan kelimelerin hepsini içerenler; hiçbiri yoksa başka yazımlar, yazım düzeltmesi ve en az birini içerenler (aşağıdaki basamaklar).
+      const buildPipeline = (search: Record<string, unknown>) => {
         const stages: any[] = [
-          { $search: { index: "default", text: textSearchOptions(searchTerm, criteria) } },
+          { $search: { index: "default", ...search } },
           { $match: matchFilter },
         ];
         // Kullanıcı belirli bir sıralama seçtiyse uygula (seçmediyse Lucene alaka puanına göre sıralanır)
@@ -276,12 +312,41 @@ async function findCarsPageUncached(
         });
         return stages;
       };
-      const runAtlas = async (criteria: "all" | "any") => {
-        const [facetResult] = await Car.aggregate(buildPipeline(criteria));
+      const runSearch = async (search: Record<string, unknown>) => {
+        const [facetResult] = await Car.aggregate(buildPipeline(search));
         return { docs: facetResult?.docs || [], total: facetResult?.totalCount?.[0]?.count || 0 };
       };
+      const runAtlas = (criteria: "all" | "any") => runSearch({ text: textSearchOptions(searchTerm, criteria) });
+      /** exactTexts'in kelimelerinin hepsini içerenler ile prefixTexts'in her kelimesini önekle eşleyenlerin birleşimi. */
+      const runUnion = async (exactTexts: string[], prefixTexts: string[]) => {
+        const should = [...exactTexts.map((text) => ({ text: textSearchOptions(text, "all") })), ...prefixTexts.flatMap(prefixClauses)];
+        if (should.length === 0) return { docs: [] as unknown[], total: 0 };
+        return runSearch({ compound: { should, minimumShouldMatch: 1 } }).catch(() => ({ docs: [] as unknown[], total: 0 }));
+      };
       let result = await runAtlas("all");
-      if (result.total === 0 && searchTerm.split(/\s+/).length > 1) result = await runAtlas("any");
+      if (result.total < FEW_RESULTS) {
+        // Az sonuç ya da hiç yok. Sırayla: başka yazım ve yarım kelime, marka ayırma, sözlük düzeltmesi, kelimelerden biri.
+        // 1. Aynı model kodunun başka yazımı ("c180" / "c 180") ve yarım yazılmış kelimeler ("bmw 320" → 320i). Tam eşleşenleri de kapsar.
+        const variants = alnumVariants(searchTerm);
+        const alternative = await runUnion(variants, [searchTerm, ...variants]);
+        if (alternative.total > result.total) return { ...alternative, page, limit };
+        if (result.total === 0) {
+          const brands = await searchBrands(filters.vehicleClass);
+          // 2. Boşluksuz yazılmış "marka + model" ("bmw320i" → "BMW 320i"): markayı ayırıp yeniden ara.
+          for (const text of brandSplitVariants(searchTerm, brands)) {
+            const texts = [text, ...alnumVariants(text)];
+            const split = await runUnion(texts, texts);
+            if (split.total > 0) return { ...split, page, limit, correction: { from: searchTerm, label: text } };
+          }
+          // 3. Marka/model sözlüğüne göre yazım düzeltmesi ("cherytigo7pro" → Chery Tiggo 7 Pro).
+          const strict = await correctedPage(filters, skip, limit, true);
+          if (strict) return strict;
+          // 4. Açıklanamayan kelimeleri başlıkta arayan gevşek düzeltme; olmazsa kelimelerden en az biri.
+          const loose = await correctedPage(filters, skip, limit, false);
+          if (loose) return loose;
+          if (searchTerm.split(/\s+/).length > 1) result = await runAtlas("any");
+        }
+      }
       const { docs, total } = result;
       return { docs, total, page, limit };
     } catch {
@@ -298,7 +363,90 @@ async function findCarsPageUncached(
       .lean(),
     Car.countDocuments(query),
   ]);
+  if (total === 0 && filters.q?.trim()) {
+    // Atlas Search yokken (yerel/test ortamı) de aynı yazım düzeltmesi çalışsın.
+    const corrected = (await correctedPage(filters, skip, limit, true)) ?? (await correctedPage(filters, skip, limit, false));
+    if (corrected) return corrected;
+  }
   return { docs: docs as unknown[], total, page, limit };
+}
+
+const candidateCache = new WeakMap<object, SearchCandidate[]>();
+
+/**
+ * Marka/model seçenekleri (15 dk önbellekli). Veritabanı bağlantısını yükleyen modül yalnızca burada, gerektiğinde içe aktarılır:
+ * statik içe aktarma, ortam değişkeni olmayan test ortamında car-query'yi yüklenemez kılıyordu.
+ */
+async function brandModelOptions(vehicleClass?: string) {
+  const { getBrandModelOptions } = await import("@/lib/brand-models");
+  return getBrandModelOptions(vehicleClass);
+}
+
+const searchBrands = (vehicleClass?: string) => brandModelOptions(vehicleClass).then((options) => options.brands, () => [] as string[]);
+
+/** Marka/model sözlüğü; seçenek nesnesi aynı kaldıkça girdiler yeniden üretilmez. */
+async function searchCandidates(vehicleClass?: string): Promise<SearchCandidate[]> {
+  const options = await brandModelOptions(vehicleClass);
+  let candidates = candidateCache.get(options.brandFamilies);
+  if (!candidates) {
+    candidates = buildCandidates(options.brandFamilies);
+    candidateCache.set(options.brandFamilies, candidates);
+  }
+  return candidates;
+}
+
+/** Düzeltilen eşleşmenin marka/model koşulu (buildCarQuery'deki marka ve model ailesi mantığıyla aynı). */
+function candidateClause(candidate: SearchCandidate): FilterQuery<unknown> {
+  const clause: FilterQuery<unknown> = {};
+  if (candidate.kind !== "family" && candidate.brand) {
+    clause.brand = { $in: brandStorageAliases(candidate.brand).map((brand) => new RegExp(`^${turkishSearchRegex(brand)}$`, "i")) };
+  }
+  if (candidate.family) clause.model = modelFamilyRegex(candidate.family, candidate.brand);
+  return clause;
+}
+
+/**
+ * Aranan metin hiçbir ilanda tutmadığında yazım düzeltmesiyle bulunan sonuçlar ("cherytigo7pro" → Chery Tiggo 7 Pro). Düzeltme
+ * bulunamazsa ya da sonuç yine boşsa null döner. strict: aranan metindeki her kelime açıklanabiliyorsa düzeltir (bkz. search-correct.ts).
+ * Gevşek modda açıklanamayan kelimeler başlıkta aranır; onlarla sonuç çıkmazsa yalnızca model gösterilir.
+ */
+async function correctedPage(filters: CarFilters, skip: number, limit: number, strict: boolean): Promise<CarsPage | null> {
+  try {
+    const from = filters.q?.trim() ?? "";
+    const found = correctSearch(from, await searchCandidates(filters.vehicleClass), { strict });
+    if (!found) return null;
+    const base = buildCarQuery({
+      ...filters,
+      q: undefined,
+      fuelType: found.fuelType ?? filters.fuelType,
+      transmission: found.transmission ?? filters.transmission,
+      yearMin: found.year ?? filters.yearMin,
+      yearMax: found.year ?? filters.yearMax,
+    });
+    const clauses = found.matches.map(candidateClause);
+    const modelClause = clauses.length === 1 ? clauses[0] : { $or: clauses };
+    const extra = found.extraWords.map((word) => ({ title: { $regex: turkishSearchRegex(word), $options: "i" } }));
+    const run = async (withExtra: boolean) => {
+      const query: FilterQuery<unknown> = { $and: [base, modelClause, ...(withExtra ? extra : [])] };
+      const [docs, total] = await Promise.all([
+        Car.find(query).sort(buildCarSort(filters.sort)).skip(skip).limit(limit).slice("images", LIST_IMAGE_LIMIT).lean(),
+        Car.countDocuments(query),
+      ]);
+      return { docs: docs as unknown[], total };
+    };
+    // Ek kelimeli ve kelimesiz sorgu birlikte koşar (ardışık olsaydı her biri tüm ilanları tarar, süre iki katına çıkardı).
+    const [withExtra, withoutExtra] = await Promise.all([extra.length > 0 ? run(true) : null, run(false)]);
+    const result = withExtra && withExtra.total > 0 ? withExtra : withoutExtra;
+    const correction = { from, label: found.label };
+    if (result.total === 0) {
+      // Model bulundu ama yakıt/vites/yıl filtresiyle ilan yok ("Tiggo 7 Pro dizel"): alakasız sonuç yerine boş sonuç gösterilir.
+      const filtered = !!(found.fuelType || found.transmission || found.year);
+      return filtered ? { docs: [], total: 0, page: filters.page || 1, limit, correction } : null;
+    }
+    return { ...result, page: filters.page || 1, limit, correction };
+  } catch {
+    return null;
+  }
 }
 
 

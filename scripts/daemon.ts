@@ -240,6 +240,11 @@ async function main() {
       const { recomputeDealFlags } = await import("@/lib/market-fair");
       const flags = await recomputeDealFlags();
       if (flags.changed) log(`📊 [FIRSAT] ${flags.changed} ilanın fırsat durumu güncellendi.`);
+      // Yakıt maliyetinin tüketim medyanları: Vercel'deki her yeni sunucu örneği bunları sıfırdan (≈5 sn) hesaplamasın diye
+      // burada hazırlanıp kaydedilir (bkz. lib/fuel-cost-data.ts).
+      const { refreshConsumptionStatsIfStale } = await import("@/lib/fuel-cost-data");
+      const consumption = await refreshConsumptionStatsIfStale(50 * 60 * 1000);
+      if (consumption) log(`⛽ [TÜKETİM] ${consumption.models} model anahtarı, ${Math.round(consumption.bytes / 1024)} KB, ${Math.round(consumption.ms / 1000)} sn.`);
     } catch (err: any) {
       console.warn(`[PİYASA] ${err?.message || err}`);
     } finally {

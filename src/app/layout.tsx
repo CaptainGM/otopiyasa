@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { NavLink as Link } from "@/components/NavLink";
 import type { Metadata } from "next";
 import { Archivo, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";

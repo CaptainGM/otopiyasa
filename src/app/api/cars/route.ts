@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const filters = parseCarFilters(searchParams);
-    const { docs: rawItems, total, page, limit } = await findCarsPage(filters);
+    const { docs: rawItems, total, page, limit, correction } = await findCarsPage(filters);
     const docs = rawItems.filter(isLeanCarDoc);
     const compact = searchParams.get("compact") === "1";
     // Kartlardaki piyasa göstergesi ilanın üstündeki saatlik anlık görüntüyü okur (bkz. lib/market-snapshot.ts):
@@ -34,6 +34,8 @@ export async function GET(request: Request) {
         total,
         page,
         totalPages: Math.ceil(total / limit) || 1,
+        // Aranan metin yazım düzeltmesiyle eşleştiyse hangi ada çevrildiği (web "X sonuçları gösteriliyor" der).
+        ...(correction ? { correction } : {}),
       },
       {
         headers: {

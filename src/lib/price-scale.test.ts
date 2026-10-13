@@ -32,7 +32,8 @@ describe("packageKey (donanım anahtarı)", () => {
   });
 
   it("vites ve yakıt adlarını gruplara indirir", () => {
-    expect(packageKey({ ...subject, transmission: "Yarı Otomatik" })?.gear).toBe("yari");
+    // "Yarı otomatik" ve "otomatik" aynı grup (kaynaklar aynı DCT şanzımanı iki adla yazıyor).
+    expect(packageKey({ ...subject, transmission: "Yarı Otomatik" })?.gear).toBe("otomatik");
     expect(packageKey({ ...subject, transmission: "Tiptronik" })?.gear).toBe("otomatik");
     expect(packageKey({ ...subject, fuelType: "LPG & Benzin" })?.fuel).toBe("lpg");
   });
@@ -40,6 +41,13 @@ describe("packageKey (donanım anahtarı)", () => {
   it("vites ya da yakıt bilinmiyorsa donanım anahtarı üretmez", () => {
     expect(packageKey({ ...subject, transmission: "Bilinmiyor" })).toBeNull();
     expect(packageKey({ ...subject, fuelType: "" })).toBeNull();
+  });
+
+  it("motor hacmi önce başlıktan okunur: kayıtlı alan başlıkla çelişse bile 1.6 TGDI 1.6 sayılır", () => {
+    expect(packageKey({ ...subject, engineSize: 1.4, title: "Chery Tiggo 7 Pro 1.6 TGDI Comfort 2024" })?.engine).toBe(1.6);
+    expect(packageKey({ ...subject, engineSize: 1.4, title: "Chery Tiggo 7 Pro Comfort 2024" })?.engine).toBe(1.4);
+    // Kilometre gibi sayıları motor sanmaz.
+    expect(packageKey({ ...subject, engineSize: 1.6, title: "Clio 166.787 km" })?.engine).toBe(1.6);
   });
 
   it("elektrikli araçta motor hacmi 0 kabul edilir; anlamsız motor değeri donanımı bozar", () => {
@@ -86,6 +94,50 @@ describe("buildPriceScale", () => {
     expect(scale.packageKnown).toBe(false);
     expect(scale.tiers.find((t) => t.key === "tam")!.note).toContain("donanım bilgisi");
     expect(scale.chosen).toBe("km");
+  });
+
+  it("motor hacmi yazılmamış ilanda, yakıt ve vitesi aynı emsallerin baskın motoru esas alınır", () => {
+    const noEngine = { ...subject, engineSize: null, horsepower: null };
+    const candidates = [950_000, 980_000, 1_000_000, 1_020_000, 1_050_000, 1_100_000].map((p) => car(p));
+    const scale = buildPriceScale(noEngine, candidates);
+    expect(scale.packageKnown).toBe(true);
+    expect(scale.inferredEngine).toBe(1.6);
+    expect(scale.chosen).toBe("tam");
+    expect(scale.tiers.find((t) => t.key === "tam")!.n).toBe(6);
+    expect(scale.tiers.some((t) => t.missingPackage)).toBe(false);
+  });
+
+  it("emsallerin motoru karışıksa (baskın değil) motor tamamlanmaz; donanım kademeleri hesaplanamaz olarak işaretlenir", () => {
+    const noEngine = { ...subject, engineSize: null, horsepower: null };
+    const mixed = [
+      ...[950_000, 980_000, 1_000_000].map((p) => car(p)),
+      ...[1_050_000, 1_100_000, 1_150_000].map((p) => car(p, { engineSize: 2.0 })),
+    ];
+    const scale = buildPriceScale(noEngine, mixed);
+    expect(scale.packageKnown).toBe(false);
+    expect(scale.inferredEngine).toBeNull();
+    expect(scale.tiers.filter((t) => t.missingPackage).map((t) => t.key)).toEqual(["tam", "donanim"]);
+    expect(scale.chosen).toBe("km");
+  });
+
+  it("motor zaten yazılıysa tamamlama yapılmaz; yakıt ya da vites eksikse hiç denenmez", () => {
+    const candidates = [950_000, 980_000, 1_000_000, 1_020_000, 1_050_000, 1_100_000].map((p) => car(p));
+    expect(buildPriceScale(subject, candidates).inferredEngine).toBeNull();
+    expect(buildPriceScale({ ...subject, engineSize: null, transmission: "Bilinmiyor" }, candidates).inferredEngine).toBeNull();
+  });
+
+  it("yarı otomatik ve otomatik emsaller aynı donanım sayılır", () => {
+    const auto = { ...subject, transmission: "Otomatik" };
+    const candidates = [950_000, 980_000, 1_000_000, 1_020_000, 1_050_000, 1_100_000].map((p, i) =>
+      car(p, { transmission: i % 2 ? "Yarı Otomatik" : "Otomatik" })
+    );
+    expect(buildPriceScale(auto, candidates).tiers.find((t) => t.key === "tam")!.n).toBe(6);
+  });
+
+  it("tamamlanan motorla beygir farkı emsali dışlamaz (beygir tamamlanmaz)", () => {
+    const noEngine = { ...subject, engineSize: null, horsepower: null };
+    const candidates = [950_000, 980_000, 1_000_000, 1_020_000, 1_050_000, 1_100_000].map((p, i) => car(p, { horsepower: i % 2 ? 150 : 115 }));
+    expect(buildPriceScale(noEngine, candidates).tiers.find((t) => t.key === "tam")!.n).toBe(6);
   });
 
   it("km penceresi dışındaki ilanlar km kademesine girmez; yalnızca model ailesi kademesinde kalır", () => {

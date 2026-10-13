@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { displayTransmission } from "@/lib/transmission-label";
 
 import { User } from "@/models/User";
@@ -35,6 +36,8 @@ import { isLeanCarDoc, serializeCar } from "@/lib/serialize-car";
 import { MiniMap } from "@/components/MiniMap";
 import { FuelCostCard } from "@/components/FuelCostCard";
 import { ListingDescription } from "@/components/ListingDescription";
+import { formatListingDescription } from "@/lib/listing-description";
+import { assignColumns, FUEL_CARD, leftBaseHeight, MAP_BLOCK, rightBaseHeight, specsHeight, TEMPO_CARD } from "@/lib/detail-layout";
 import { getFuelCostForCar } from "@/lib/fuel-cost-data";
 import { resolvePlacement } from "@/lib/district-coords";
 import {
@@ -85,13 +88,18 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
   // Tek ölçü: üstteki gösterge, fiyat analizi ve listelerdeki kart aynı adil değere bakar (bkz. lib/market-fair.ts;
   // anlık sonuç kayıttan farklıysa ilanın üstüne yazılır).
-  const [marketMap, { prediction, fields: fair }, segment, favoriteCount, fuelCost] = await Promise.all([
+  // Fiyat skalası ve ilan sahibi de aynı grupta: ardışık beklemek soğuk sunucuda saniyeleri ekliyordu.
+  const [marketMap, { prediction, fields: fair }, segment, favoriteCount, fuelCost, priceScale, owner] = await Promise.all([
     getMarketMap([{ brand, model, year, vehicleClass: carDoc.vehicleClass }]),
     liveFairValue(carDoc),
     cached(`segment:${brand}|${model}|${carDoc.vehicleClass || "otomobil"}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model, carDoc.vehicleClass)),
     User.countDocuments({ favorites: carDoc._id }),
     // Yakıt maliyeti hesaplanamazsa (fiyat kaynağına ulaşılamadı, tüketim bilinmiyor) kart gösterilmez.
     getFuelCostForCar(carDoc).catch(() => null),
+    // Fiyat skalası: emsallerin yıl, km, hasar ve donanım kademelerine göre medyanı. Ortalama satırı bu kademeyi gösterir.
+    loadPriceScale(carDoc._id.toString()),
+    // Üye ilanına özel: ilanı veren kişinin adı. Derlenen (arabam/otomerkezi) ilanlarda karşılığı yok, sorgu çalıştırılmaz.
+    carDoc.sourceSite === "user" && carDoc.ownerId ? User.findById(carDoc.ownerId).select("name").lean<{ name?: string }>() : Promise.resolve(null),
   ]);
 
   const targetPrice = prediction?.predictedPrice || price;
@@ -102,8 +110,6 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   );
 
   const market = marketMap.get(segmentKey(brand, model, year, carDoc.vehicleClass));
-  // Fiyat skalası: emsallerin yıl, km, hasar ve donanım kademelerine göre medyanı. Ortalama satırı bu kademeyi gösterir.
-  const priceScale = await loadPriceScale(carDoc._id.toString());
   // Ortalama yalnızca dar bir kademeden (aynı yıl, km, hasar ya da donanım) gösterilir; aile genelinden gösterilmez.
   const scaleTier =
     priceScale?.chosen && priceScale.chosen !== "aile" ? priceScale.tiers.find((t) => t.key === priceScale.chosen) ?? null : null;
@@ -116,13 +122,10 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const mapPoint = resolvePlacement(car.city || "", car.address, 0, car.description);
 
   /**
-   * Üye ilanına özel veriler: ilanı veren kişinin adı ve gelen teklif sayısı.
-   * Derlenen (arabam/otomerkezi) ilanlarda karşılığı yok, o yüzden sorgu bile
-   * çalıştırılmaz.
+   * Üye ilanına özel veri: ilanı veren kişinin adı (sorgusu yukarıdaki paralel grupta).
    */
   let sellerName = "Üye";
   if (carDoc.sourceSite === "user" && carDoc.ownerId) {
-    const owner = await User.findById(carDoc.ownerId).select("name").lean<{ name?: string }>();
     /**
      * GİZLİLİK: ilan sayfası herkese açık. Satıcının tam adı ve telefonu
      * burada dururken teklif/mesaj akışının anlamı kalmaz, üstelik bu
@@ -184,6 +187,70 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
       ].filter((r): r is { label: string; value: string } => r !== null),
     },
   ];
+
+  // Üst bölümün iki sütunu dengelenir: ikincil kartlar kısa sütuna konur, altta büyük boşluk kalmaz (bkz. lib/detail-layout.ts).
+  const isUserListing = car.sourceSite === "user";
+  const specsCard = (
+    <div className="card p-5">
+      <h2 className="font-display mb-5 text-xl font-semibold">Teknik özellikler</h2>
+      <div className="space-y-5">
+        {specGroups.map((group) => (
+          <div key={group.title}>
+            <p className="eyebrow mb-2">{group.title}</p>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
+              {group.rows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-2">
+                  <dt className="text-sm text-[var(--muted)]">{row.label}</dt>
+                  <dd className="text-right text-sm font-medium">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+
+        {f.safetyFeatures && f.safetyFeatures.length > 0 && (
+          <div>
+            <p className="eyebrow mb-2">Güvenlik & donanım</p>
+            <div className="flex flex-wrap gap-2">
+              {f.safetyFeatures.map((item) => (
+                <span key={item} className="badge">
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {f.specSource && <p className="text-[11px] text-slate-600">Teknik katalog verisi kaynağı: {f.specSource}</p>}
+      </div>
+    </div>
+  );
+  const mapCard = mapPoint ? (
+    <div className="card p-5">
+      <h3 className="mb-2 text-sm text-slate-500">Konum</h3>
+      <MiniMap
+        lat={mapPoint.lat}
+        lng={mapPoint.lng}
+        zoom={mapPoint.level === "province" ? 9 : mapPoint.level === "district" ? 12 : 14}
+        note={mapPoint.level === "district" ? "Yaklaşık konum: ilçe merkezi" : "Yaklaşık konum: il merkezi"}
+      />
+    </div>
+  ) : null;
+  const movable: Array<{ key: string; height: number; node: ReactNode }> = [];
+  if (car.status === "active" && !isUserListing) movable.push({ key: "tempo", height: TEMPO_CARD, node: <MarketTempoCard carId={car._id} /> });
+  if (fuelCost) movable.push({ key: "fuel", height: FUEL_CARD, node: <FuelCostCard cost={fuelCost} /> });
+  movable.push({
+    key: "specs",
+    height: specsHeight(specGroups.map((group) => group.rows.length), f.safetyFeatures?.length ?? 0, Boolean(f.specSource)),
+    node: specsCard,
+  });
+  if (mapCard) movable.push({ key: "map", height: MAP_BLOCK, node: mapCard });
+  const columns = assignColumns(
+    movable.map(({ key, height }) => ({ key, height })),
+    leftBaseHeight(car.images && car.images.length > 0 ? car.images.length : 1, (formatListingDescription(car.description) ?? "").length),
+    rightBaseHeight(isUserListing)
+  );
+  const placed = (keys: string[]) => keys.map((key) => <div key={key}>{movable.find((block) => block.key === key)?.node}</div>);
 
   return (
     <div className="space-y-8 pb-10">
@@ -356,9 +423,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
             );
           })()}
 
-          {car.status === "active" && car.sourceSite !== "user" && <MarketTempoCard carId={car._id} />}
 
-          {fuelCost && <FuelCostCard cost={fuelCost} />}
 
 
           {/* Üye ilanıysa iletişim + işletme rozeti */}
@@ -437,86 +502,25 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           </div>
 
           <ViewerReportButton carId={car._id} />
+
+          {placed(columns.right)}
         </div>
 
         <div className="space-y-5 lg:col-start-1 lg:row-start-2">
           <ListingDescription value={car.description} />
           {/* Hasar/boya görsel özeti */}
           <DamageDiagram paintChange={car.paintChange} damageFlag={car.damageFlag} damageParts={car.damageParts} />
+          {placed(columns.left)}
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <div className="card p-5">
-          <h2 className="font-display mb-5 text-xl font-semibold">Teknik özellikler</h2>
-          <div className="space-y-5">
-            {specGroups.map((group) => (
-              <div key={group.title}>
-                <p className="eyebrow mb-2">
-                  {group.title}
-                </p>
-                <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2">
-                  {group.rows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-2"
-                    >
-                      <dt className="text-sm text-[var(--muted)]">{row.label}</dt>
-                      <dd className="text-right text-sm font-medium">{row.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            ))}
-
-            {f.safetyFeatures && f.safetyFeatures.length > 0 && (
-              <div>
-                <p className="eyebrow mb-2">
-                  Güvenlik & donanım
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {f.safetyFeatures.map((item) => (
-                    <span key={item} className="badge">{item}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {f.specSource && (
-              <p className="text-[11px] text-slate-600">
-                Teknik katalog verisi kaynağı: {f.specSource}
-              </p>
-            )}
-          </div>
-
-          {mapPoint && (
-            <div className="mt-5">
-              <h3 className="mb-2 text-sm text-slate-500">Konum</h3>
-              <MiniMap
-                lat={mapPoint.lat}
-                lng={mapPoint.lng}
-                zoom={mapPoint.level === "province" ? 9 : mapPoint.level === "district" ? 12 : 14}
-                note={
-                  mapPoint.level === "district"
-                    ? "Yaklaşık konum: ilçe merkezi"
-                    : "Yaklaşık konum: il merkezi"
-                }
-              />
-            </div>
-          )}
+          <h2 className="font-display mb-4 text-xl font-semibold">Fiyat geçmişi</h2>
+          <CarPriceHistoryChart data={chartData} />
         </div>
-
-        <div className="card space-y-6 p-5">
-          <div>
-            <h2 className="font-display mb-4 text-xl font-semibold">Fiyat geçmişi</h2>
-            <CarPriceHistoryChart data={chartData} />
-          </div>
-          <PriceHistogram
-            prices={segmentPrices}
-            currentPrice={car.price}
-            segmentLabel={segmentLabel}
-            brand={car.brand}
-          />
+        <div className="card p-5">
+          <PriceHistogram prices={segmentPrices} currentPrice={car.price} segmentLabel={segmentLabel} brand={car.brand} />
         </div>
       </div>
 

@@ -325,26 +325,40 @@ async function findCarsPageUncached(
       };
       let result = await runAtlas("all");
       if (result.total < FEW_RESULTS) {
-        // Az sonuç ya da hiç yok. Sırayla: başka yazım ve yarım kelime, marka ayırma, sözlük düzeltmesi, kelimelerden biri.
-        // 1. Aynı model kodunun başka yazımı ("c180" / "c 180") ve yarım yazılmış kelimeler ("bmw 320" → 320i). Tam eşleşenleri de kapsar.
+        // Az sonuç ya da hiç yok. Aşağıdaki adaylar birbirinden bağımsız: sırayla çalıştırılınca yazım düzeltmesi gereken aramalar
+        // 3-10 sn sürüyordu. Hepsi birlikte hesaplanır, sonuç yine ÖNCELİK sırasıyla seçilir (aşağıdaki numaralar):
+        // 1. Aynı model kodunun başka yazımı ("c180" / "c 180") ve yarım yazılmış kelimeler ("bmw 320" → 320i).
+        // 2. Boşluksuz yazılmış "marka + model" ("bmw320i" → "BMW 320i"): markayı ayırıp yeniden ara.
+        // 3. Marka/model sözlüğüne göre yazım düzeltmesi ("cherytigo7pro" → Chery Tiggo 7 Pro); sıkı, sonra gevşek.
+        // 4. Çok kelimeli aramada en az bir kelimeyi içeren ilanlar.
         const variants = alnumVariants(searchTerm);
-        const alternative = await runUnion(variants, [searchTerm, ...variants]);
+        const alternativePromise = runUnion(variants, [searchTerm, ...variants]);
+        const none = result.total === 0;
+        const brands = none ? await searchBrands(filters.vehicleClass) : [];
+        const splitPromises = none
+          ? brandSplitVariants(searchTerm, brands).map((text) => {
+              const texts = [text, ...alnumVariants(text)];
+              return runUnion(texts, texts).then((split) => ({ text, split }));
+            })
+          : [];
+        const strictPromise = none ? correctedPage(filters, skip, limit, true) : Promise.resolve(null);
+        const loosePromise = none ? correctedPage(filters, skip, limit, false) : Promise.resolve(null);
+        const anyPromise =
+          none && searchTerm.split(/\s+/).length > 1 ? runAtlas("any").catch(() => null) : Promise.resolve(null);
+
+        const alternative = await alternativePromise;
         if (alternative.total > result.total) return { ...alternative, page, limit };
-        if (result.total === 0) {
-          const brands = await searchBrands(filters.vehicleClass);
-          // 2. Boşluksuz yazılmış "marka + model" ("bmw320i" → "BMW 320i"): markayı ayırıp yeniden ara.
-          for (const text of brandSplitVariants(searchTerm, brands)) {
-            const texts = [text, ...alnumVariants(text)];
-            const split = await runUnion(texts, texts);
+        if (none) {
+          for (const pending of splitPromises) {
+            const { text, split } = await pending;
             if (split.total > 0) return { ...split, page, limit, correction: { from: searchTerm, label: text } };
           }
-          // 3. Marka/model sözlüğüne göre yazım düzeltmesi ("cherytigo7pro" → Chery Tiggo 7 Pro).
-          const strict = await correctedPage(filters, skip, limit, true);
+          const strict = await strictPromise;
           if (strict) return strict;
-          // 4. Açıklanamayan kelimeleri başlıkta arayan gevşek düzeltme; olmazsa kelimelerden en az biri.
-          const loose = await correctedPage(filters, skip, limit, false);
+          const loose = await loosePromise;
           if (loose) return loose;
-          if (searchTerm.split(/\s+/).length > 1) result = await runAtlas("any");
+          const any = await anyPromise;
+          if (any) result = any;
         }
       }
       const { docs, total } = result;

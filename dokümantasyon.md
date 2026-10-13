@@ -73,7 +73,7 @@ ve her ilan orijinal kaynağına bağlantı verir.
 
 - **Vercel** — web/API canlı barındırma, bölge Atlas ile eşleşecek şekilde `fra1` (Frankfurt).
 - **MongoDB Atlas** — tek, paylaşılan bulut veritabanı; hem web hem mobil hem yerel scraper aynı veriyi okur/yazar.
-- **7/24 daemon (pm2)** — Oracle Cloud sunucusunda sürekli çalışır; yeni ilan keşfi, kaynakların tam envanter senkronu ve arşivleme. Kalp atışı panelde görünür; sinyal kesilirse panel "SİNYAL YOK" gösterir.
+- **7/24 daemon (pm2)** — Oracle Cloud sunucusunda sürekli çalışır; yeni ilan keşfi, kaynakların tam envanter senkronu ve arşivleme. Kalp atışı panelde görünür; sinyal kesilirse panel "SİNYAL YOK" gösterir. Saatlik piyasa anlık görüntüsünü (adil değer, fırsat bayrakları, yakıt tüketim istatistiği) hazırlar ve her 15 dakikalık dönemde Keşfet akışının 24 dilimini CDN'e önceden koyar: ziyaretçi ilk listeyi soğuk sunucuyu beklemeden ~0,3 sn'de alır (`src/lib/feed-warm.ts`).
 - **`scrape.bat`** — kullanıcı için tek tıkla menü: Arabam doğrulama (11), Arabam sitemap (S), kurumsal envanter (E), turbo çekim. Kesintiye dayanıklı (artımlı kayıt).
 
 ---

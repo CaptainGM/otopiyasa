@@ -56,6 +56,7 @@ export function InfiniteCarList({
   pageSize,
   query,
   feed = false,
+  feedStart,
 }: {
   initialItems: CarListItem[];
   initialPage: number;
@@ -64,10 +65,14 @@ export function InfiniteCarList({
   pageSize: number;
   query: string;
   feed?: boolean;
+  /** Keşfet'in sunucuda hazır ilk dilimi ve dönemi (bkz. page.tsx): bu dilim ağ isteği olmadan gösterilir. */
+  feedStart?: { slot: number; bucket: number };
 }) {
+  const feedStartSlot = feedStart?.slot;
+  const feedStartBucket = feedStart?.bucket;
   const [items, setItems] = useState(initialItems);
-  const [page, setPage] = useState(feed ? 0 : initialPage);
-  const [loading, setLoading] = useState(feed);
+  const [page, setPage] = useState(initialPage);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -113,7 +118,19 @@ export function InfiniteCarList({
       return;
     }
 
-    const slot = randomFeedSlot(readPreviousSlot());
+    // Bu dönemin ilk açılışı: sunucunun hazırladığı ilk sayfa zaten ekranda, ağ isteği yok. Aynı dönemde yenilemede (önceki dilim
+    // bu) istemci başka bir dilim seçip yükler; böylece her yenileme farklı ilanları gösterir.
+    const previousSlot = readPreviousSlot();
+    if (feedStartSlot !== undefined && feedStartBucket !== undefined && previousSlot !== feedStartSlot) {
+      rememberSlot(feedStartSlot);
+      activeQueryRef.current = feedSliceQuery(query, feedStartSlot, feedStartBucket);
+      setItems(initialItemsRef.current);
+      setPage(initialPage);
+      setLoading(false);
+      return;
+    }
+
+    const slot = randomFeedSlot(previousSlot);
     rememberSlot(slot);
     activeQueryRef.current = feedSliceQuery(query, slot, feedBucket());
 
@@ -137,7 +154,7 @@ export function InfiniteCarList({
     return () => {
       cancelled = true;
     };
-  }, [feed, fetchPage, initialPage, query]);
+  }, [feed, fetchPage, feedStartSlot, feedStartBucket, initialPage, query]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingRef.current || page >= totalPages) return;

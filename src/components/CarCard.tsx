@@ -74,7 +74,7 @@ export function CarCard({
             </h3>
           </Link>
           {name !== car.title && (
-            <p className="line-clamp-1 text-[0.82rem] text-[var(--muted)]" title={car.title}>
+            <p className="line-clamp-2 break-words text-[0.82rem] leading-snug text-[var(--muted)]" title={car.title}>
               {car.title}
             </p>
           )}

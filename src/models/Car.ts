@@ -177,6 +177,8 @@ const CarSchema = new Schema(
           /** Hesaplandığı andaki fiyat (fiyat değişince yeniden hesaplanır). */
           fp: Number,
           fairAt: Date,
+          /** Adil değerin hesaplandığı mantık sürümü (bkz. FAIR_LOGIC_VERSION): farklıysa yenileme işi yeniden hesaplar. */
+          fairV: Number,
           /** Son fiyat özeti güncellemesinde model ailesi medyanından aykırı olduğu saptandı mı? */
           outlier: Boolean,
           outlierAt: Date,

@@ -76,6 +76,8 @@ export interface Car {
   /** "family": donanımda emsal yetmediği için aynı yılın tüm donanımları birlikte sayıldı. */
   marketScope?: "model" | "family";
   marketFamilyLabel?: string;
+  /** Yeni ilan (üç saatten yeni) ve adil değeri henüz hesaplanmadı: kartta "Piyasa verisi az" yerine "Hesaplanıyor" yazılır. */
+  marketPending?: boolean;
   priceVsMarket?: number;
   priceHistory: PricePoint[];
   createdAt: string;
@@ -98,6 +100,7 @@ export type CarListItem = Pick<
   | "listingDate"
   | "marketAvgPrice"
   | "marketListingCount"
+  | "marketPending"
   | "status"
 > & {
   /** Kart başlığı marka + model (ilan başlığı satıcının serbest metni, ikinci satırda). */

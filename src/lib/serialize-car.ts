@@ -112,6 +112,8 @@ export function serializeCar(
     marketListingCount,
     marketScope: market?.scope ?? (stored?.scope === "family" ? "family" : stored ? "model" : undefined),
     marketFamilyLabel: market?.familyLabel,
+    // Saatlik piyasa turu yeni ilanı henüz işlemediyse (üç saat içinde) kart "veri az" demez: hesaplanıyor der.
+    marketPending: doc.market?.fair === undefined && !!doc.createdAt && Date.now() - new Date(doc.createdAt).getTime() < 3 * 3600e3,
     priceVsMarket,
     createdAt: doc.createdAt?.toISOString?.() || "",
     updatedAt: doc.updatedAt?.toISOString?.() || "",

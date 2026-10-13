@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Güncelleme APK'sı uygulamanın önbellek dizinine indirilir (Dart tarafında getTemporaryDirectory); sistem yükleyicisine yalnızca
+     bu dizin FileProvider ile açılır. -->
+<paths>
+    <cache-path name="updates" path="." />
+</paths>

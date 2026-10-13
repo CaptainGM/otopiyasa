@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/widgets/sheet_insets.dart';
 
 /// Liste seçicinin sonucu: var olan bir liste ya da yeni açılacak liste adı.
 class FavoriteListPick {
@@ -60,6 +61,7 @@ Future<FavoriteListPick?> showFavoriteListPicker(
 }) {
   return showModalBottomSheet<FavoriteListPick>(
     context: context,
+    useSafeArea: true,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => _ListPickerSheet(title: title, lists: lists, currentId: currentId),
@@ -98,7 +100,7 @@ class _ListPickerSheetState extends State<_ListPickerSheet> {
     final c = AppColors.of(context);
     final customCount = widget.lists.where((l) => !l.isDefault).length;
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + sheetBottomInset(context)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,6 +171,7 @@ Future<FavoriteMenuAction?> showFavoriteCarMenu(
   final alertText = (meta ?? const FavoriteMeta()).alertSummary;
   return showModalBottomSheet<FavoriteMenuAction>(
     context: context,
+    useSafeArea: true,
     showDragHandle: true,
     builder: (sheetContext) => SafeArea(
       child: Column(
@@ -215,6 +218,7 @@ Future<FavoriteMenuAction?> showFavoriteCarMenu(
 Future<FavoriteMeta?> showFavoriteNoteSheet(BuildContext context, {required String carId, FavoriteMeta? meta}) {
   return showModalBottomSheet<FavoriteMeta>(
     context: context,
+    useSafeArea: true,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => _NoteSheet(carId: carId, initial: meta?.note ?? ''),
@@ -261,7 +265,7 @@ class _NoteSheetState extends State<_NoteSheet> {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + sheetBottomInset(context)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -302,6 +306,7 @@ Future<FavoriteMeta?> showFavoriteAlertSheet(
 }) {
   return showModalBottomSheet<FavoriteMeta>(
     context: context,
+    useSafeArea: true,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => _AlertSheet(carId: carId, initial: meta ?? const FavoriteMeta(), price: price),
@@ -376,7 +381,7 @@ class _AlertSheetState extends State<_AlertSheet> {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + sheetBottomInset(context)),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

@@ -27,6 +27,8 @@ import 'package:otopiyasa/utils/tr_text.dart';
 import 'package:otopiyasa/widgets/car_card.dart' show SourcePill, PhotoBadge;
 import 'package:otopiyasa/widgets/market_gauge.dart';
 import 'package:otopiyasa/widgets/market_tempo_card.dart';
+import 'package:otopiyasa/models/price_scale.dart';
+import 'package:otopiyasa/widgets/price_scale_card.dart';
 
 class DetailScreen extends StatefulWidget {
   const DetailScreen({super.key, required this.carId, this.initialCar});
@@ -49,6 +51,7 @@ class _DetailScreenState extends State<DetailScreen> {
   String? _error;
   int _activeImageIndex = 0;
   Map<String, dynamic>? _fuelCost;
+  PriceScale? _priceScale;
   bool _inCompare = false;
   static const _similarStep = 6;
   int _similarShown = _similarStep;
@@ -74,6 +77,9 @@ class _DetailScreenState extends State<DetailScreen> {
     _api.reportView(widget.carId);
     _api.fetchFuelCost(widget.carId).then((cost) {
       if (mounted && cost != null) setState(() => _fuelCost = cost);
+    });
+    _api.fetchPriceScale(widget.carId).then((scale) {
+      if (mounted && scale != null) setState(() => _priceScale = scale);
     });
   }
 
@@ -609,6 +615,10 @@ class _DetailScreenState extends State<DetailScreen> {
               ),
               const SizedBox(height: 16),
               MarketBadge(car: car),
+              if (_priceScale != null) ...[
+                const SizedBox(height: 12),
+                PriceScaleCard(scale: _priceScale!),
+              ],
               if (car.isActive && car.sourceSite != 'user') ...[
                 const SizedBox(height: 12),
                 MarketTempoCard(carId: car.id),

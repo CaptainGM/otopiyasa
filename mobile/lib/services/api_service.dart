@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/models/account.dart';
 import 'package:otopiyasa/models/offer.dart';
+import 'package:otopiyasa/models/price_scale.dart';
 import 'package:otopiyasa/services/device_abi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -240,6 +241,9 @@ class ApiService {
   }) async {
     final response = await _http.get(
       _uri('/api/cars', {
+        // Keşfet dilimlerinde parametre sırası web ile birebir aynıdır (limit, slot, b, page, compact; karışık sıra varsayılan olduğundan
+        // sort gönderilmez): CDN adresin tamamına göre saklar, VM'deki ısıtıcı (src/lib/feed-warm.ts) aynı adresi önceden koyar.
+        'limit': '$limit',
         if (slot != null && slot >= 0) 'slot': '$slot',
         if (slot != null && bucket != null) 'b': '$bucket',
         if (q != null && q.isNotEmpty) 'q': q,
@@ -248,7 +252,7 @@ class ApiService {
         if (fuelType != null && fuelType.isNotEmpty) 'fuelType': fuelType,
         if (transmission != null && transmission.isNotEmpty)
           'transmission': transmission,
-        if (sort != null && sort.isNotEmpty) 'sort': sort,
+        if (sort != null && sort.isNotEmpty && sort != 'mixed') 'sort': sort,
         if (vehicleClass != null && vehicleClass.isNotEmpty) 'vehicleClass': vehicleClass,
         if (discountOnly) 'discountOnly': 'true',
         if (excludeOutliers) 'excludeOutliers': 'true',
@@ -257,7 +261,6 @@ class ApiService {
         if (seller != null && seller.isNotEmpty) 'seller': seller,
         if (noDamage) 'noDamage': 'true',
         'page': '$page',
-        'limit': '$limit',
         'compact': '1',
       }),
       headers: _headers,
@@ -320,6 +323,17 @@ class ApiService {
       if (response.statusCode != 200) return null;
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       return body['tempo'] as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// İlanın fiyat skalası (emsal kademeleri: yıl, km, hasar, donanım). Hesaplanamazsa (ilan yok, sunucu hatası) null.
+  Future<PriceScale?> fetchPriceScale(String id) async {
+    try {
+      final response = await _http.get(_uri('/api/cars/$id/price-scale'), headers: _headers);
+      if (response.statusCode != 200) return null;
+      return PriceScale.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
     } catch (_) {
       return null;
     }

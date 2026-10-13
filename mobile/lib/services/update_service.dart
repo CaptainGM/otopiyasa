@@ -1,7 +1,12 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/widgets/apk_download_dialog.dart';
 
 /// Güncelleme zorunlu mu?
 ///
@@ -12,8 +17,19 @@ import 'package:otopiyasa/services/api_service.dart';
 bool isForceUpdateRequired({required int currentVersionCode, required Map<String, dynamic> data}) {
   if (data['forceUpdate'] == true) return true;
   final minCode = (data['minVersionCode'] as num?)?.toInt() ?? 0;
-  return minCode > 0 && currentVersionCode < minCode;
+  return minCode > 0 && releaseNumber(currentVersionCode) < minCode;
 }
+
+/// Android sürüm kodundan yayın numarasını çıkarır. Flutter, mimariye bölünmüş paketlerde kodu "mimari × 1000 + yayın numarası"
+/// yapar (arm64-v8a: 2022, armeabi-v7a: 1022); evrensel pakette yayın numarasının kendisidir (22). Karşılaştırma yayın numarası
+/// üzerinden yapılır: ham kodla karşılaştırınca bölünmüş paketi kuran telefon 2022'yi "çok yeni" sanıp sonraki sürümleri (23, 24…)
+/// hiç görmüyordu (emülatörde doğrulandı: "Derleme 2022"). Sunucu da bölünmüş paket için ham kod bildirir (bkz. src/lib/app-release.ts
+/// packageVersionCode); iki taraf da indirgendiği için her ölçekte doğru çalışır. Yayın numarası 1000'e ulaşırsa gözden geçirilmeli.
+int releaseNumber(int androidVersionCode) => androidVersionCode % 1000;
+
+/// Sunucudaki sürüm yüklü olandan yeni mi? (ikisi de yayın numarasına indirgenir)
+bool isUpdateAvailable({required int installedCode, required int remoteCode}) =>
+    releaseNumber(remoteCode) > releaseNumber(installedCode);
 
 class UpdateService {
   /// Yüklü uygulamanın gerçek sürümü (APK'nın kendisinden okunur, pubspec.yaml version: 1.0.6+7 → 1.0.6 / 7).
@@ -31,6 +47,8 @@ class UpdateService {
     bool manual = false,
   }) async {
     if (!context.mounted) return;
+    // Önceki güncellemeden kalan APK önbellekte yer tutmasın.
+    unawaited(cleanupDownloads());
 
     if (manual) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -44,7 +62,8 @@ class UpdateService {
     try {
       final info = await packageInfo();
       final currentVersionName = info.version;
-      final currentVersionCode = int.tryParse(info.buildNumber) ?? 0;
+      // Ham Android kodu mimari payı taşıyabilir (2022); karşılaştırma yayın numarasıyla yapılır (bkz. releaseNumber).
+      final currentVersionCode = releaseNumber(int.tryParse(info.buildNumber) ?? 0);
       final data = await ApiService().checkAppVersion();
       if (!context.mounted) return;
 
@@ -69,7 +88,7 @@ class UpdateService {
       // altındaki sürümler güncelleme ekranında kilitlenir.
       final forceUpdate = isForceUpdateRequired(currentVersionCode: currentVersionCode, data: data);
 
-      if (remoteCode > currentVersionCode) {
+      if (isUpdateAvailable(installedCode: currentVersionCode, remoteCode: remoteCode)) {
         if (_dialogShowing) return;
         _showUpdateDialog(
           context,
@@ -228,7 +247,7 @@ class UpdateService {
                   FilledButton.icon(
                     onPressed: () async {
                       Navigator.of(ctx).pop();
-                      _startDownload(context, apkUrl);
+                      _startDownload(context, apkUrl, remoteVersion);
                     },
                     icon: const Icon(Icons.download_rounded, size: 20),
                     label: const Text(
@@ -267,9 +286,12 @@ class UpdateService {
     });
   }
 
-  static Future<void> _startDownload(BuildContext context, String apkUrl) async {
+  /// Güncellemeyi uygulamanın içinde indirir (ilerleme çubuğuyla) ve bitince sistem yükleyicisini açar. Android dışında ya da
+  /// uygulama içi indirme kurulamıyorsa tarayıcıya düşer. Eskiden APK doğrudan Chrome'a bırakılıyordu: Chrome indirme sonrası
+  /// güvenlik denetiminde "İndiriliyor…"da (23,29 / 23,29 MB) takılı kalabiliyor, kullanıcı güncellemeyi hiç yükleyemiyordu.
+  static Future<void> _startDownload(BuildContext context, String apkUrl, String version) async {
     final uri = Uri.tryParse(apkUrl);
-    if (uri == null) {
+    if (uri == null || !uri.hasScheme) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -280,7 +302,39 @@ class UpdateService {
       }
       return;
     }
+    if (!Platform.isAndroid) {
+      await _openInBrowser(context, uri);
+      return;
+    }
+    if (!context.mounted) return;
+    _downloadActive = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ApkDownloadDialog(apkUrl: uri, version: version, onBrowserFallback: () => _openInBrowser(context, uri)),
+      );
+    } finally {
+      _downloadActive = false;
+    }
+  }
 
+  /// İndirme penceresi açıkken indirilen dosya silinmesin (kullanıcı "Yükle"ye yeniden dokunabilir).
+  static bool _downloadActive = false;
+
+  /// Bu sürümden önce indirilmiş ve yüklenmiş/yarım kalmış güncelleme dosyasını siler (önbellek şişmesin).
+  static Future<void> cleanupDownloads() async {
+    if (_downloadActive) return;
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/${ApkDownloadDialog.fileName}');
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // temizlik başarısızsa sorun değil: dosya sistem tarafından da silinir
+    }
+  }
+
+  static Future<void> _openInBrowser(BuildContext context, Uri uri) async {
     try {
       final launched = await launchUrl(
         uri,

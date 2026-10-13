@@ -14,6 +14,7 @@ import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/widgets/app_logo.dart';
 import 'package:otopiyasa/widgets/car_card.dart';
+import 'package:otopiyasa/widgets/sheet_insets.dart';
 
 // Sunucudan gerçek marka listesi gelene kadar gösterilen dar yedek liste.
 const _fallbackBrands = [
@@ -352,6 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openFilters() async {
     await showModalBottomSheet<void>(
       context: context,
+      useSafeArea: true,
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheet) {
@@ -614,6 +616,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? () {
               showModalBottomSheet(
                 context: context,
+                useSafeArea: true,
                 isScrollControlled: true,
                 backgroundColor: Colors.transparent,
                 builder: (ctx) => _SearchablePickerSheet(
@@ -1050,6 +1053,7 @@ class _SearchablePickerSheetState extends State<_SearchablePickerSheet> {
                       )
                     : ListView.builder(
                         controller: scrollController,
+                        padding: EdgeInsets.only(bottom: sheetBottomInset(context)),
                         itemCount: filtered.length,
                         itemBuilder: (context, index) {
                           final item = filtered[index];

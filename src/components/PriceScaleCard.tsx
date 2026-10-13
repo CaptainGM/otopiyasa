@@ -71,8 +71,9 @@ export function PriceScaleCard({ scale }: { scale: PriceScale }) {
         </p>
       )}
 
+      {/* Hesaplanamayan donanım kademeleri "0 ilan" diye gösterilmez: 0, "emsal yok" demek olurdu; oysa bilgi eksikti. */}
       <ul className="divide-y divide-white/5 text-sm">
-        {scale.tiers.map((t) => (
+        {scale.tiers.filter((t) => !t.missingPackage).map((t) => (
           <li key={t.key} className={`flex items-center justify-between gap-3 py-2 ${t.key === scale.chosen ? "text-white" : "text-slate-400"}`}>
             <span>
               {t.label}
@@ -90,6 +91,18 @@ export function PriceScaleCard({ scale }: { scale: PriceScale }) {
           </li>
         ))}
       </ul>
+
+      {scale.inferredEngine !== null && (
+        <p className="text-[11px] leading-relaxed text-amber-300/90">
+          İlanda motor hacmi yazmıyor; aynı model, yakıt ve vitesteki emsallerin en yaygın motoru ({scale.inferredEngine.toFixed(1).replace(".", ",")} L)
+          esas alındı.
+        </p>
+      )}
+      {scale.tiers.some((t) => t.missingPackage) && (
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          Donanım kademeleri için ilanda motor hacmi, yakıt ve vites bilgisi gerekli; eksik olduğu için gösterilmedi.
+        </p>
+      )}
 
       <p className="text-[11px] leading-relaxed text-slate-500">
         Donanım eşleşmesi motor hacmi, yakıt, vites ve beygir (±%10) ile yapılır; başlıktaki paket adı (ör. GT Line) yapısal veri

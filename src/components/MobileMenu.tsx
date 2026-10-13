@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { NavLink as Link } from "@/components/NavLink";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/LogoutButton";
 

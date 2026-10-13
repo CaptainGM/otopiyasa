@@ -24,13 +24,28 @@ function rememberSlot(slot: number) {
   }
 }
 
+/** İlk yükleme sırasında kartların yerini tutar: boş ekran yerine sayfanın dolduğunu gösterir. */
+function CarCardSkeleton() {
+  return (
+    <div className="card overflow-hidden" aria-hidden>
+      <div className="aspect-[16/10] animate-pulse bg-white/5" />
+      <div className="space-y-3 p-4">
+        <div className="h-3 w-1/3 animate-pulse rounded bg-white/10" />
+        <div className="h-4 w-2/3 animate-pulse rounded bg-white/10" />
+        <div className="h-3 w-full animate-pulse rounded bg-white/5" />
+        <div className="h-6 w-1/2 animate-pulse rounded bg-white/10" />
+      </div>
+    </div>
+  );
+}
+
 /**
  * İlan listesi + sonsuz kaydırma.
  *
- * `feed` (Keşfet, karışık sıra): sunucu herkes için aynı, CDN'de saklanan dilim sayfaları verir
+ * `feed` (Keşfet, karışık sıra, yalnızca filtresiz açılış): sunucu herkes için aynı, CDN'de saklanan dilim sayfaları verir
  * (bkz. lib/car-mix.ts FEED_SLOTS); burada her açılışta rastgele bir dilim seçilir ve her sayfa kendi
  * içinde karıştırılır. Böylece farklı tarayıcılar ve her yenileme farklı ilanlar/sıra görür, sunucu
- * yükü ise kullanıcı sayısıyla artmaz. Diğer sıralamalarda (en yeni, fiyat...) ilk sayfa sunucudan gelir.
+ * yükü ise kullanıcı sayısıyla artmaz. Diğer durumlarda (arama, filtre, en yeni, fiyat...) ilk sayfa sunucudan gelir.
  */
 export function InfiniteCarList({
   initialItems,
@@ -56,6 +71,10 @@ export function InfiniteCarList({
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
   const activeQueryRef = useRef(query);
+  // Sunucudan gelen ilk sayfa: dizinin kimliği üst bileşen her çizildiğinde değişebilir. Efektin bağımlılığı olsaydı liste her seferinde
+  // boşalıp yeniden yüklenirdi ("0 / 6 ilan yüklendi"de takılma); bu yüzden ref'te tutulur, yalnızca sorgu/sayfa değişince okunur.
+  const initialItemsRef = useRef(initialItems);
+  initialItemsRef.current = initialItems;
 
   // Tarayıcı yenilemesinde sayfanın altına değil başa dön (yeni akış baştan görünsün).
   useLayoutEffect(() => {
@@ -90,7 +109,7 @@ export function InfiniteCarList({
     setError("");
     if (!feed) {
       activeQueryRef.current = query;
-      setItems(initialItems);
+      setItems(initialItemsRef.current);
       setPage(initialPage);
       setLoading(false);
       return;
@@ -107,6 +126,7 @@ export function InfiniteCarList({
     loadingRef.current = true;
     setLoading(true);
     setItems([]);
+    setPage(0);
     fetchPage(1)
       .then((list) => {
         if (cancelled) return;
@@ -115,13 +135,15 @@ export function InfiniteCarList({
       })
       .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "İlanlar yüklenemedi."))
       .finally(() => {
+        // İptal edilmiş (yerini yenisi almış) isteğin sonucu, yeni isteğin yükleme kilidini açmamalı.
+        if (cancelled) return;
         loadingRef.current = false;
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [feed, fetchPage, initialItems, initialPage, query]);
+  }, [feed, fetchPage, initialPage, query]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingRef.current || page >= totalPages) return;
@@ -156,18 +178,47 @@ export function InfiniteCarList({
     return () => observer.disconnect();
   }, [loadNextPage, page, totalPages]);
 
+  const retry = () => void (page === 0 ? window.location.reload() : loadNextPage());
+  const errorBlock = error ? (
+    <>
+      <p role="alert" className="text-sm text-rose-300">{error}</p>
+      <button type="button" onClick={retry} className="btn btn-secondary text-sm">Yeniden dene</button>
+    </>
+  ) : null;
+  const exhausted = page > 0 && page >= totalPages;
+  const showSkeleton = items.length === 0 && !error && (loading || page === 0);
+
   return (
     <div className="space-y-4">
-      <div className="listing-grid" aria-live="polite">
+      <div className="listing-grid" aria-live="polite" aria-busy={loading}>
         {items.map((car, i) => <CarCard key={car._id} car={car} priority={i < 4} />)}
+        {showSkeleton && Array.from({ length: Math.min(pageSize, 8) }, (_, i) => <CarCardSkeleton key={`skeleton-${i}`} />)}
       </div>
-      {page === 0 || page < totalPages ? (
+      {!exhausted ? (
         <div ref={sentinelRef} className="flex min-h-16 flex-col items-center justify-center gap-2 py-3">
-          {loading && <><span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" aria-hidden /><span className="text-sm text-slate-400">{page === 0 ? "İlanlar yükleniyor…" : "Daha fazla ilan yükleniyor…"}</span></>}
-          {error && <><p role="alert" className="text-sm text-rose-300">{error}</p><button type="button" onClick={() => void (page === 0 ? window.location.reload() : loadNextPage())} className="btn btn-secondary text-sm">Yeniden dene</button></>}
+          {loading && (
+            <>
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-amber-300 border-t-transparent" aria-hidden />
+              <span className="text-sm text-slate-400">{items.length === 0 ? "İlanlar yükleniyor…" : "Daha fazla ilan yükleniyor…"}</span>
+            </>
+          )}
+          {errorBlock}
           {!loading && !error && page > 0 && <button type="button" onClick={() => void loadNextPage()} className="btn btn-secondary text-sm">Daha fazla ilan göster</button>}
         </div>
-      ) : <p className="py-4 text-center text-sm text-slate-500">{items.length < total ? `${items.length} / ${total} ilan yüklendi` : "Tüm ilanlar yüklendi"}</p>}
+      ) : (
+        <div className="flex flex-col items-center justify-center gap-2 py-4 text-center">
+          {errorBlock}
+          {!error && items.length === 0 && total > 0 && (
+            <>
+              <p className="text-sm text-slate-400">İlanlar şu an yüklenemedi.</p>
+              <button type="button" onClick={retry} className="btn btn-secondary text-sm">Yeniden dene</button>
+            </>
+          )}
+          {!error && (items.length > 0 || total === 0) && (
+            <p className="text-sm text-slate-500">{items.length < total ? `${items.length} / ${total} ilan gösteriliyor` : "Tüm ilanlar yüklendi"}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

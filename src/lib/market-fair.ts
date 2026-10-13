@@ -17,6 +17,13 @@ import { MIN_MARKET_COMPARABLES } from "@/lib/market-position";
 const STALE_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Adil değer hesabının mantık sürümü. Tahmin mantığı değişince (donanım, emsal sayımı, km penceresi...) artırılır: yenileme işi
+ * sürümü farklı her ilanı yeniden hesaplar, önce eski mantıkla "emsalsiz" diye temizlenmiş olanları. Aksi halde 24 saat boyunca
+ * kartlarda "PİYASA VERİSİ AZ" yazıyordu (13 Ekim 2026: aktif ilanların %24,6'sı; bunların %95'i bugünkü mantıkla hesaplanabiliyordu).
+ */
+export const FAIR_LOGIC_VERSION = 2;
+
+/**
  * Fırsat eşiği: adil değerin en az %18 altı. Adil değer tahmini olduğu için küçük farklar tahmin hatası olabilir;
  * %12 eşiğinde ~1.000 ilan "fırsat" çıkıyordu (her 25 ilandan biri), %18'de ~300: gerçekten öne çıkanlar.
  */
@@ -71,6 +78,7 @@ export function fairFields(car: DealInput, predictedPrice: number, sampleSize: n
     "market.deal": isDealCandidate(car, disc, sampleSize),
     "market.fp": car.price,
     "market.fairAt": at,
+    "market.fairV": FAIR_LOGIC_VERSION,
   };
 }
 
@@ -88,23 +96,42 @@ type FairCandidate = DealInput & {
  * hesaplanacağı (veritabanı yükü saate yayılsın). Marka marka ilerler: aynı markanın sorguları paylaşılır, bellek
  * her markadan sonra boşalır.
  */
-export async function refreshFairValues(limit = 8000): Promise<{ scanned: number; updated: number; cleared: number; ms: number }> {
+export async function refreshFairValues(limit = 8000): Promise<{ scanned: number; updated: number; cleared: number; failed: number; ms: number }> {
   const started = Date.now();
   const staleBefore = new Date(Date.now() - STALE_MS);
-  const candidates = await Car.find({
+  const select =
+    "brand model year mileage price vehicleClass damageFlag paintChange title description market.fairAt market.fp features.engineSize features.horsepower features.transmission features.fuelType";
+  // Sıralama yok: Atlas sıralamayı bellekte (32 MB) yapıyor, açıklamalarla birlikte 27 bin ilan sığmıyordu.
+  // Sıra önemsiz: bu turda kalanlar bir sonraki saatte seçilir; yalnızca emsalsiz diye temizlenmiş olanlar öne alınır.
+  // Önce eski mantıkla "emsalsiz" diye temizlenmiş ilanlar: kartlarda "PİYASA VERİSİ AZ" yazanlar bunlardır (bkz. FAIR_LOGIC_VERSION).
+  const clearedOld = await Car.find({
     ...PUBLIC_LISTING_FILTER,
     price: { $gt: 0 },
-    $or: [
-      { "market.fairAt": { $exists: false } },
-      { "market.fairAt": { $lt: staleBefore } },
-      { $expr: { $ne: ["$market.fp", "$price"] } },
-    ],
+    "market.fairAt": { $exists: true },
+    "market.fair": { $exists: false },
+    "market.fairV": { $ne: FAIR_LOGIC_VERSION },
   })
-    .select("brand model year mileage price vehicleClass damageFlag paintChange title description market.fairAt market.fp features.engineSize features.horsepower features.transmission features.fuelType")
-    // Sıralama yok: Atlas sıralamayı bellekte (32 MB) yapıyor, açıklamalarla birlikte 27 bin ilan sığmıyordu.
-    // Sıra önemsiz: bu turda kalanlar bir sonraki saatte seçilir.
+    .select(select)
     .limit(limit)
     .lean<FairCandidate[]>();
+  const others =
+    clearedOld.length >= limit
+      ? []
+      : await Car.find({
+          ...PUBLIC_LISTING_FILTER,
+          price: { $gt: 0 },
+          _id: { $nin: clearedOld.map((car) => car._id) },
+          $or: [
+            { "market.fairAt": { $exists: false } },
+            { "market.fairAt": { $lt: staleBefore } },
+            { "market.fairV": { $ne: FAIR_LOGIC_VERSION } },
+            { $expr: { $ne: ["$market.fp", "$price"] } },
+          ],
+        })
+          .select(select)
+          .limit(limit - clearedOld.length)
+          .lean<FairCandidate[]>();
+  const candidates = [...clearedOld, ...others];
 
   const byBrand = new Map<string, FairCandidate[]>();
   for (const car of candidates) {
@@ -115,6 +142,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
 
   let updated = 0;
   let cleared = 0;
+  let failed = 0;
   let ops: Parameters<typeof Car.bulkWrite>[0] = [];
   const flush = async () => {
     if (ops.length === 0) return;
@@ -135,7 +163,10 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
           });
           fields = fairFields(car, prediction.predictedPrice, prediction.sampleSize);
         } catch {
-          fields = null;
+          // Geçici hata (bağlantı, zaman aşımı) "emsalsiz" demek değildir: ilana dokunulmaz, bir sonraki turda yeniden denenir.
+          // Eskiden burada da "emsalsiz" yazılıyor ve ilan 24 saat boyunca kartta "PİYASA VERİSİ AZ" gösteriyordu.
+          failed++;
+          continue;
         }
         if (fields) {
           ops.push({ updateOne: { filter: { _id: car._id }, update: { $set: fields }, timestamps: false } });
@@ -146,7 +177,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
             updateOne: {
               filter: { _id: car._id },
               update: {
-                $set: { "market.fairAt": new Date(), "market.fp": car.price, "market.deal": false },
+                $set: { "market.fairAt": new Date(), "market.fp": car.price, "market.deal": false, "market.fairV": FAIR_LOGIC_VERSION },
                 $unset: { "market.fair": 1, "market.fairN": 1, "market.disc": 1 },
               },
               timestamps: false,
@@ -159,7 +190,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
     });
   }
   await flush();
-  return { scanned: candidates.length, updated, cleared, ms: Date.now() - started };
+  return { scanned: candidates.length, updated, cleared, failed, ms: Date.now() - started };
 }
 
 /** "Haftanın fırsatları": adil değerin en çok altında olan fırsat ilanlar ve toplam fırsat sayısı. */

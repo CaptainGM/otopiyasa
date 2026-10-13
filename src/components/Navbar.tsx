@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { NavLink as Link } from "@/components/NavLink";
 import { Avatar } from "@/components/Avatar";
 import { useViewer } from "@/components/useViewer";
 import { LogoutButton } from "@/components/LogoutButton";

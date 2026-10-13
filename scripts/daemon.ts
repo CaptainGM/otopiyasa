@@ -235,11 +235,20 @@ async function main() {
       log(`📊 [PİYASA] ${res.segments} segment, ${res.scanned} ilan; ${res.updated} güncellendi, ${res.cleared} temizlendi.`);
       // Adil piyasa değeri (kart göstergesi, ilan sayfası, fırsatlar): eksik, eski ya da fiyatı değişmiş ilanlar.
       const { refreshFairValues } = await import("@/lib/market-fair");
-      const fair = await refreshFairValues(8000);
-      log(`📊 [ADİL DEĞER] ${fair.scanned} ilan; ${fair.updated} hesaplandı, ${fair.cleared} emsalsiz (${Math.round(fair.ms / 1000)} sn).`);
+      // Birikmiş iş varsa (hesap mantığı sürümü artınca tüm ilanlar) aynı saatte birkaç parti: kartlar bir günü beklemesin.
+      for (let batch = 0; batch < 6; batch++) {
+        const fair = await refreshFairValues(8000);
+        log(`📊 [ADİL DEĞER] ${fair.scanned} ilan; ${fair.updated} hesaplandı, ${fair.cleared} emsalsiz${fair.failed ? `, ${fair.failed} hata` : ""} (${Math.round(fair.ms / 1000)} sn).`);
+        if (fair.scanned < 8000) break;
+      }
       const { recomputeDealFlags } = await import("@/lib/market-fair");
       const flags = await recomputeDealFlags();
       if (flags.changed) log(`📊 [FIRSAT] ${flags.changed} ilanın fırsat durumu güncellendi.`);
+      // Yakıt maliyetinin tüketim medyanları: Vercel'deki her yeni sunucu örneği bunları sıfırdan (≈5 sn) hesaplamasın diye
+      // burada hazırlanıp kaydedilir (bkz. lib/fuel-cost-data.ts).
+      const { refreshConsumptionStatsIfStale } = await import("@/lib/fuel-cost-data");
+      const consumption = await refreshConsumptionStatsIfStale(50 * 60 * 1000);
+      if (consumption) log(`⛽ [TÜKETİM] ${consumption.models} model anahtarı, ${Math.round(consumption.bytes / 1024)} KB, ${Math.round(consumption.ms / 1000)} sn.`);
     } catch (err: any) {
       console.warn(`[PİYASA] ${err?.message || err}`);
     } finally {

@@ -1,10 +1,11 @@
-import Link from "next/link";
+import { NavLink as Link } from "@/components/NavLink";
 import type { Metadata } from "next";
 import { Archivo, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { ChatWidget } from "@/components/ChatWidget";
 import { CompareTray } from "@/components/CompareTray";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { appBaseUrl } from "@/lib/app-url";
 import { Logo } from "@/components/Logo";
@@ -152,7 +153,8 @@ export default function RootLayout({
         <ErrorBoundary>
           <main className="container py-8">{children}</main>
         </ErrorBoundary>
-        <footer className="mt-8 border-t border-[var(--border)] py-8">
+        {/* Telefonda alttaki hızlı geçiş çubuğu (MobileBottomNav) son satırı örtmesin diye alt boşluk bırakılır. */}
+        <footer className="mt-8 border-t border-[var(--border)] py-8 pb-24 md:pb-8">
           <div className="container flex flex-col items-center gap-3 text-center">
             <Logo />
             <p className="max-w-xl text-xs leading-relaxed text-[var(--faint)]">
@@ -167,6 +169,7 @@ export default function RootLayout({
         </footer>
         <CompareTray />
         <ChatWidget />
+        <MobileBottomNav />
       </body>
     </html>
   );

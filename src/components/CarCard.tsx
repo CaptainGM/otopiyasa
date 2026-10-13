@@ -69,12 +69,12 @@ export function CarCard({
             {car.city}
           </p>
           <Link href={href} prefetch={false} className="block text-inherit">
-            <h3 className="font-display line-clamp-1 text-[1.02rem] font-semibold leading-snug transition-colors group-hover:text-[var(--accent)]">
+            <h3 className="font-display line-clamp-2 break-words text-[1.02rem] font-semibold leading-snug transition-colors group-hover:text-[var(--accent)]">
               {name}
             </h3>
           </Link>
           {name !== car.title && (
-            <p className="line-clamp-1 text-[0.82rem] text-[var(--muted)]" title={car.title}>
+            <p className="line-clamp-2 break-words text-[0.82rem] leading-snug text-[var(--muted)]" title={car.title}>
               {car.title}
             </p>
           )}

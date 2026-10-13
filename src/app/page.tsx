@@ -53,7 +53,30 @@ export default async function HomePage({ searchParams }: HomeProps) {
   // sonsuz kaydırmadaki sonraki sayfalara da gider, böylece sayfalar arasında tekrar/atlama olmaz.
   // Karışık sıralı Keşfet: ilanlar tarayıcıda rastgele dilimden yüklenip karıştırılır (InfiniteCarList feed).
   // Sayfa HTML'i bu yüzden herkes için aynıdır ve CDN'de saklanabilir; kişiye özel tohum/çerez yok.
-  const isFeed = isMixedSort(filters.sort) && !filters.q?.trim();
+  // Arama ya da herhangi bir filtre var mı (araç tipi sekmesi sayılmaz: o, büyük bir listeyi daraltmaz).
+  const hasQuery = !!filters.q?.trim();
+  const hasAnyFilter =
+    hasQuery ||
+    !!filters.brand ||
+    !!filters.model ||
+    !!filters.city ||
+    !!filters.color ||
+    !!filters.yearMin ||
+    !!filters.yearMax ||
+    !!filters.priceMin ||
+    !!filters.priceMax ||
+    !!filters.mileageMin ||
+    !!filters.mileageMax ||
+    !!filters.seller ||
+    !!filters.noDamage ||
+    !!filters.fuelType ||
+    !!filters.transmission ||
+    !!filters.deals ||
+    filters.excludeOutliers ||
+    filters.discountOnly;
+  // Rastgele dilim akışı yalnızca filtresiz açılışta. Arama ya da filtre varsa ilk sayfa sunucudan gelir: sonuç azdır, hızlıdır
+  // ve her filtre bileşiminin ayrı, önbelleksiz bir dilim isteği (soğuk sunucu + boş ekran) olması önlenir.
+  const isFeed = isMixedSort(filters.sort) && !hasAnyFilter;
   filters.seed = undefined;
   // İlk HTML'de 12 kart: 48 kartlık sayfa 670 KB'tı ve her ziyaret sunucudan o kadar veri çekiyordu.
   // Kalanı sonsuz kaydırma yükler (aynı limit ve tohumla).
@@ -73,6 +96,8 @@ export default async function HomePage({ searchParams }: HomeProps) {
   let colorOptions: ColorOption[] = [];
   let brandModelOptions: Record<string, string[]> = {};
   let boardData: MarketBoard | null = null;
+  // Aranan metin hiçbir ilanda tutmadığında yazım düzeltmesiyle bulunan sonuç (bkz. lib/search-correct.ts).
+  let correction: { from: string; label: string } | undefined;
 
   try {
     await connectDB();
@@ -100,7 +125,8 @@ export default async function HomePage({ searchParams }: HomeProps) {
       total = await countCars(filters);
       totalPages = Math.ceil(total / pageSize) || 1;
     } else {
-      const { docs: cars, total: count, limit } = await findCarsPage(filters);
+      const { docs: cars, total: count, limit, correction: fixed } = await findCarsPage(filters);
+      correction = fixed;
       const docs = cars.filter(isLeanCarDoc);
       items = attachMarketToCars(docs, new Map());
       total = count;
@@ -114,26 +140,6 @@ export default async function HomePage({ searchParams }: HomeProps) {
   // Arama/filtre aktifken tanıtım (hero) ve "Haftanın fırsatları" şeritleri gizlenir;
   // bunlar yalnızca boş Keşfet görünümünde çıkar. Filtre paneli HER durumda açıktır
   // (arama yapıp ardından marka/yıl/fiyat ile daraltmak mümkün olsun diye).
-  const hasQuery = !!filters.q?.trim();
-  const hasAnyFilter =
-    hasQuery ||
-    !!filters.brand ||
-    !!filters.model ||
-    !!filters.city ||
-    !!filters.color ||
-    !!filters.yearMin ||
-    !!filters.yearMax ||
-    !!filters.priceMin ||
-    !!filters.priceMax ||
-    !!filters.mileageMin ||
-    !!filters.mileageMax ||
-    !!filters.seller ||
-    !!filters.noDamage ||
-    !!filters.fuelType ||
-    !!filters.transmission ||
-    !!filters.deals ||
-    filters.excludeOutliers ||
-    filters.discountOnly;
   // Fırsatlar, en çok bakılanlar, yakındakiler araç tipine göre süzülmüyor: tip seçilince gizlenir.
   const showStrips = !hasAnyFilter && !filters.vehicleClass;
 
@@ -303,9 +309,21 @@ export default async function HomePage({ searchParams }: HomeProps) {
             </h2>
             {hasQuery && (
               <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
-                <span>
-                  <span className="text-[var(--text)]">&ldquo;{filters.q}&rdquo;</span> için arama sonuçları
-                </span>
+                {correction && items.length > 0 ? (
+                  <span>
+                    <span className="text-[var(--text)]">&ldquo;{correction.from}&rdquo;</span> ile eşleşen ilan yok;{" "}
+                    <span className="text-[var(--accent)]">&ldquo;{correction.label}&rdquo;</span> sonuçları gösteriliyor
+                  </span>
+                ) : correction ? (
+                  <span>
+                    <span className="text-[var(--text)]">&ldquo;{correction.from}&rdquo;</span>{" "}
+                    <span className="text-[var(--accent)]">&ldquo;{correction.label}&rdquo;</span> olarak arandı; eşleşen ilan yok
+                  </span>
+                ) : (
+                  <span>
+                    <span className="text-[var(--text)]">&ldquo;{filters.q}&rdquo;</span> için arama sonuçları
+                  </span>
+                )}
                 {/* Yalnızca arama terimini kaldırır; marka/yıl/fiyat gibi diğer filtreler korunur. */}
                 <Link href={clearQueryHref} className="chip">
                   <Icon name="close" size={13} />

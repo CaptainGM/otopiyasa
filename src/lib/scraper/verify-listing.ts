@@ -16,11 +16,11 @@ import {
   SCRAPED_SOURCE_FILTER,
   archiveListings,
   breakerTripped,
-  arabamBreakerTripped,
   markSeenAlive,
   markVerifyAttempt,
 } from "@/lib/scraper/listing-lifecycle";
 import type { ScrapedListing } from "@/lib/scraper/types";
+import { arabamNavigationVerdict, promoteRepeatedGone } from "@/lib/scraper/arabam-gone";
 
 export interface VerifyListingResult {
   /**
@@ -31,6 +31,11 @@ export interface VerifyListingResult {
    * error      → zaman aşımı veya anlaşılamayan yanıt: HİÇBİR ŞEY KANITLAMAZ
    */
   status: "active" | "gone" | "redirected" | "blocked" | "error";
+  /**
+   * gone sonuçlarında kanıtın gücü: güçlü (404/410, kategoriye yönlendirme, platform dışı) ya da zayıf (sonsuz yönlendirme döngüsü).
+   * Zayıf kanıt tek seferde arşivlenmez (bkz. arabam-gone.ts).
+   */
+  strong?: boolean;
   statusCode?: number;
   reason: string;
   finalUrl?: string;
@@ -255,11 +260,12 @@ async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListin
       return { status: "blocked", finalUrl: page.finalUrl, reason: "Cloudflare doğrulama sayfası (ilan korunur)." };
     }
     if (page.status === 404 || page.status === 410) {
-      return { status: "gone", statusCode: page.status, finalUrl: page.finalUrl, reason: `HTTP ${page.status}: İlan bulunamadı.` };
+      return { status: "gone", strong: true, statusCode: page.status, finalUrl: page.finalUrl, reason: `HTTP ${page.status}: İlan bulunamadı.` };
     }
     if (isListingGone(page.html, page.finalUrl)) {
       return {
         status: "gone",
+        strong: true,
         statusCode: page.status,
         finalUrl: page.finalUrl,
         reason: "İlan sayfası kaldırılmış (kategori sayfasına yönlendi ya da 'yayında değil' yazıyor).",
@@ -269,6 +275,7 @@ async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListin
       // ATV/UTV, deniz aracı, kiralık ya da hat-plaka ilanı yanlışlıkla eklenmiş: kapsam dışı olduğu kesin, arşive alınır.
       return {
         status: "gone",
+        strong: true,
         statusCode: page.status,
         finalUrl: page.finalUrl,
         reason: "Platform dışı araç (ATV/UTV, deniz aracı, kiralık ya da hat-plaka kategorisinde).",
@@ -289,7 +296,7 @@ async function verifyArabamWithBrowser(listingUrl: string): Promise<VerifyListin
     }
     return { status: "error", statusCode: page.status, finalUrl: page.finalUrl, reason: "İlan sayfası tanınamadı (ilan korunur)." };
   } catch (err: any) {
-    return { status: "blocked", reason: `Tarayıcı doğrulaması başarısız (ilan korunur): ${err?.message || err}` };
+    return arabamNavigationVerdict(err?.message || String(err));
   }
 }
 
@@ -445,7 +452,7 @@ export async function sweepAndCleanDeadListings(options: {
       ? { sourceSite: options.source }
       : { sourceSite: { $nin: [...INVENTORY_ONLY_SOURCES, ...(options.excludeSource ? [options.excludeSource] : []), ...(options.excludeSources || [])] } };
 
-  type Candidate = { _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string; price?: number };
+  type Candidate = { _id: Types.ObjectId; title: string; sourceSite: string; listingUrl: string; externalId?: string; price?: number; lastVerifyStatus?: string };
   const baseFilter = [
     { status: "active", listingUrl: { $nin: ["", null] } },
     SCRAPED_SOURCE_FILTER,
@@ -463,7 +470,7 @@ export async function sweepAndCleanDeadListings(options: {
         { $set: { verifyClaimUntil: claimUntil, verifyClaimBy: claimBy } },
         { sort: { ...sort, _id: 1 }, new: true, timestamps: false }
       )
-        .select("_id title sourceSite listingUrl externalId price")
+        .select("_id title sourceSite listingUrl externalId price lastVerifyStatus")
         .maxTimeMS(8000)
         .lean<Candidate | null>();
       if (!candidate) break;
@@ -484,7 +491,7 @@ export async function sweepAndCleanDeadListings(options: {
   const refreshListings: ScrapedListing[] = [];
   const refreshDetailByExternalId = new Map<string, SweepDetail>();
   const oldPrices = new Map<string, number>();
-  const goneBySource = new Map<string, Array<{ id: Types.ObjectId; reason: string }>>();
+  const goneBySource = new Map<string, Array<{ id: Types.ObjectId; reason: string; strong: boolean }>>();
   const checkedBySource = new Map<string, number>();
   const aliveBySource = new Map<string, number>();
   let errorCount = 0;
@@ -515,6 +522,9 @@ export async function sweepAndCleanDeadListings(options: {
           result = { status: "error", reason: err?.message || "zaman aşımı" };
         }
 
+        // Zayıf kanıtla (yönlendirme döngüsü) bekletilen Arabam ilanı bu kez de aynı sonucu verdiyse güçlü kanıta yükselir (bkz. arabam-gone.ts).
+        result = promoteRepeatedGone(result, source === "arabam" ? item.lastVerifyStatus : undefined);
+
         if (blocks.record(source, result.status)) {
           blockNotes.push(`${source}: art arda engel geldi (${result.reason.slice(0, 60)}); bu çalıştırmada ara verildi`);
         }
@@ -537,7 +547,7 @@ export async function sweepAndCleanDeadListings(options: {
           }
         } else if (result.status === "gone" || result.status === "redirected") {
           const list = goneBySource.get(source) || [];
-          list.push({ id: item._id, reason: result.reason });
+          list.push({ id: item._id, reason: result.reason, strong: result.strong !== false });
           goneBySource.set(source, list);
         } else {
           attemptedIds.push(item._id);
@@ -581,7 +591,27 @@ export async function sweepAndCleanDeadListings(options: {
   for (const [source, gone] of goneBySource) {
     const checked = checkedBySource.get(source) || 0;
     const aliveCount = aliveBySource.get(source) || 0;
-    const tripped = source === "arabam" ? arabamBreakerTripped(checked, gone.length, aliveCount) : breakerTripped(checked, gone.length, aliveCount);
+    if (source === "arabam") {
+      // Güçlü kanıt (404/410, kategoriye yönlendirme, platform dışı) oran aranmadan arşivlenir: Arabam'ın kendi 'ilan yok' cevabıdır.
+      // Ölü oranı yüksek bir backlog'da eski oran freni hiçbir şeyi arşivletmiyordu (13 Ekim 2026: 583 ilan doğrulanamadı).
+      // Zayıf kanıt (yönlendirme döngüsü) yalnızca bekletilir; bir sonraki kontrolde de aynıysa güçlü sayılıp arşivlenir.
+      const weak = gone.filter((g) => !g.strong);
+      if (weak.length > 0) {
+        breaker.push(`arabam: ${weak.length} ilan yönlendirme döngüsü verdi; bir sonraki kontrolde de aynıysa arşivlenecek`);
+        await markVerifyAttempt(weak.map((g) => g.id), now, "gone-held");
+      }
+      for (const g of gone.filter((g) => g.strong)) {
+        const archivedAt = new Date();
+        const archived = await archiveListings([g.id], `arabam: ${g.reason}`, archivedAt);
+        archivedCount += archived;
+        if (archived > 0) {
+          const detail = details.find((row) => row.id === String(g.id));
+          if (detail) detail.archivedAt = archivedAt;
+        }
+      }
+      continue;
+    }
+    const tripped = breakerTripped(checked, gone.length, aliveCount);
     if (tripped) {
       breaker.push(`${source}: ${gone.length}/${checked} ölü göründü, arşivleme durduruldu`);
       await markVerifyAttempt(gone.map((g) => g.id), now, "gone-held");

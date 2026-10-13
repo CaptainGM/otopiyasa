@@ -53,7 +53,30 @@ export default async function HomePage({ searchParams }: HomeProps) {
   // sonsuz kaydırmadaki sonraki sayfalara da gider, böylece sayfalar arasında tekrar/atlama olmaz.
   // Karışık sıralı Keşfet: ilanlar tarayıcıda rastgele dilimden yüklenip karıştırılır (InfiniteCarList feed).
   // Sayfa HTML'i bu yüzden herkes için aynıdır ve CDN'de saklanabilir; kişiye özel tohum/çerez yok.
-  const isFeed = isMixedSort(filters.sort) && !filters.q?.trim();
+  // Arama ya da herhangi bir filtre var mı (araç tipi sekmesi sayılmaz: o, büyük bir listeyi daraltmaz).
+  const hasQuery = !!filters.q?.trim();
+  const hasAnyFilter =
+    hasQuery ||
+    !!filters.brand ||
+    !!filters.model ||
+    !!filters.city ||
+    !!filters.color ||
+    !!filters.yearMin ||
+    !!filters.yearMax ||
+    !!filters.priceMin ||
+    !!filters.priceMax ||
+    !!filters.mileageMin ||
+    !!filters.mileageMax ||
+    !!filters.seller ||
+    !!filters.noDamage ||
+    !!filters.fuelType ||
+    !!filters.transmission ||
+    !!filters.deals ||
+    filters.excludeOutliers ||
+    filters.discountOnly;
+  // Rastgele dilim akışı yalnızca filtresiz açılışta. Arama ya da filtre varsa ilk sayfa sunucudan gelir: sonuç azdır, hızlıdır
+  // ve her filtre bileşiminin ayrı, önbelleksiz bir dilim isteği (soğuk sunucu + boş ekran) olması önlenir.
+  const isFeed = isMixedSort(filters.sort) && !hasAnyFilter;
   filters.seed = undefined;
   // İlk HTML'de 12 kart: 48 kartlık sayfa 670 KB'tı ve her ziyaret sunucudan o kadar veri çekiyordu.
   // Kalanı sonsuz kaydırma yükler (aynı limit ve tohumla).
@@ -117,26 +140,6 @@ export default async function HomePage({ searchParams }: HomeProps) {
   // Arama/filtre aktifken tanıtım (hero) ve "Haftanın fırsatları" şeritleri gizlenir;
   // bunlar yalnızca boş Keşfet görünümünde çıkar. Filtre paneli HER durumda açıktır
   // (arama yapıp ardından marka/yıl/fiyat ile daraltmak mümkün olsun diye).
-  const hasQuery = !!filters.q?.trim();
-  const hasAnyFilter =
-    hasQuery ||
-    !!filters.brand ||
-    !!filters.model ||
-    !!filters.city ||
-    !!filters.color ||
-    !!filters.yearMin ||
-    !!filters.yearMax ||
-    !!filters.priceMin ||
-    !!filters.priceMax ||
-    !!filters.mileageMin ||
-    !!filters.mileageMax ||
-    !!filters.seller ||
-    !!filters.noDamage ||
-    !!filters.fuelType ||
-    !!filters.transmission ||
-    !!filters.deals ||
-    filters.excludeOutliers ||
-    filters.discountOnly;
   // Fırsatlar, en çok bakılanlar, yakındakiler araç tipine göre süzülmüyor: tip seçilince gizlenir.
   const showStrips = !hasAnyFilter && !filters.vehicleClass;
 

@@ -223,7 +223,7 @@ export function ChatWidget() {
   }
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
+    <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-5 z-50 flex flex-col items-end md:bottom-5">
       {open && (
         <div
           className="relative mb-3 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[rgba(12,14,20,0.98)] shadow-2xl backdrop-blur-xl"

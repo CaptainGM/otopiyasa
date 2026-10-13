@@ -15,7 +15,7 @@ export function CompareTray() {
   if (ids.length === 0) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+    <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 md:bottom-4">
       <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-[#12141a]/95 px-4 py-3 shadow-2xl backdrop-blur-xl">
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-400 text-sm font-black text-[#221202]">

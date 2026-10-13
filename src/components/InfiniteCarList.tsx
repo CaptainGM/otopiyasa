@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { CarListItem } from "@/types";
 import { CarCard } from "@/components/CarCard";
 import { feedBucket, isValidFeedSlot, randomFeedSlot, shuffleInPlace } from "@/lib/car-mix";
+import { feedPageQuery, feedSliceQuery } from "@/lib/feed-url";
 
 const SLOT_KEY = "op_feed_slot";
 
@@ -55,6 +56,7 @@ export function InfiniteCarList({
   pageSize,
   query,
   feed = false,
+  feedStart,
 }: {
   initialItems: CarListItem[];
   initialPage: number;
@@ -63,10 +65,14 @@ export function InfiniteCarList({
   pageSize: number;
   query: string;
   feed?: boolean;
+  /** Keşfet'in sunucuda hazır ilk dilimi ve dönemi (bkz. page.tsx): bu dilim ağ isteği olmadan gösterilir. */
+  feedStart?: { slot: number; bucket: number };
 }) {
+  const feedStartSlot = feedStart?.slot;
+  const feedStartBucket = feedStart?.bucket;
   const [items, setItems] = useState(initialItems);
-  const [page, setPage] = useState(feed ? 0 : initialPage);
-  const [loading, setLoading] = useState(feed);
+  const [page, setPage] = useState(initialPage);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const sentinelRef = useRef<HTMLDivElement>(null);
   const loadingRef = useRef(false);
@@ -90,11 +96,8 @@ export function InfiniteCarList({
 
   const fetchPage = useCallback(
     async (pageNumber: number): Promise<CarListItem[]> => {
-      const params = new URLSearchParams(activeQueryRef.current);
-      params.set("page", String(pageNumber));
-      params.set("limit", String(pageSize));
-      params.set("compact", "1");
-      const response = await fetch(`/api/cars?${params.toString()}`);
+      // Adres lib/feed-url.ts ile kurulur: VM'deki ısıtıcı (lib/feed-warm.ts) CDN'e aynı adresi koyar, parametre sırası birebir aynı olmalı.
+      const response = await fetch(`/api/cars?${feedPageQuery(activeQueryRef.current, pageNumber, pageSize)}`);
       if (!response.ok) throw new Error("İlanlar yüklenemedi. Yeniden deneyin.");
       const data = (await response.json()) as { items?: CarListItem[] };
       const list = Array.isArray(data.items) ? data.items : [];
@@ -115,13 +118,21 @@ export function InfiniteCarList({
       return;
     }
 
-    const slot = randomFeedSlot(readPreviousSlot());
+    // Bu dönemin ilk açılışı: sunucunun hazırladığı ilk sayfa zaten ekranda, ağ isteği yok. Aynı dönemde yenilemede (önceki dilim
+    // bu) istemci başka bir dilim seçip yükler; böylece her yenileme farklı ilanları gösterir.
+    const previousSlot = readPreviousSlot();
+    if (feedStartSlot !== undefined && feedStartBucket !== undefined && previousSlot !== feedStartSlot) {
+      rememberSlot(feedStartSlot);
+      activeQueryRef.current = feedSliceQuery(query, feedStartSlot, feedStartBucket);
+      setItems(initialItemsRef.current);
+      setPage(initialPage);
+      setLoading(false);
+      return;
+    }
+
+    const slot = randomFeedSlot(previousSlot);
     rememberSlot(slot);
-    const params = new URLSearchParams(query);
-    params.delete("seed");
-    params.set("slot", String(slot));
-    params.set("b", String(feedBucket()));
-    activeQueryRef.current = params.toString();
+    activeQueryRef.current = feedSliceQuery(query, slot, feedBucket());
 
     loadingRef.current = true;
     setLoading(true);
@@ -143,7 +154,7 @@ export function InfiniteCarList({
     return () => {
       cancelled = true;
     };
-  }, [feed, fetchPage, initialPage, query]);
+  }, [feed, fetchPage, feedStartSlot, feedStartBucket, initialPage, query]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingRef.current || page >= totalPages) return;

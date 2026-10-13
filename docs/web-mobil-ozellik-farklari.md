@@ -1,6 +1,6 @@
 # Web ve mobil özellik farkları
 
-Son kontrol: 12 Ekim 2026. Durum sembolleri: ✔ var · ◐ kısmi · ✖ yok · ? bu turda kontrol edilmedi.
+Son kontrol: 13 Ekim 2026. Durum sembolleri: ✔ var · ◐ kısmi · ✖ yok · ? bu turda kontrol edilmedi.
 
 Bu dosya elle tutulur. Yeni bir özellik eklendiğinde ya da bir ekran taşındığında ilgili satırı güncelle.
 
@@ -19,6 +19,8 @@ Bu dosya elle tutulur. Yeni bir özellik eklendiğinde ya da bir ekran taşınd�
 | Yakınımdaki ilanlar | ✔ | ✔ | |
 | Araç tipi sekmeleri (otomobil, SUV, minivan) | ✔ | ✔ | |
 | Harita | ✔ | ✔ | Mobilde ayrı ekran |
+| Alt gezinme çubuğu (Keşfet, Favoriler, Değer Kaybı, Karşılaştır, Tahmin, Analiz, Hesap) | ✔ | ✔ | Web'de yalnızca telefon genişliğinde (13 Ekim 2026'da eklendi), masaüstünde üst menü |
+| Arama yazım düzeltme (bitişik yazım, harf hatası) | ✔ | ✔ | Sunucuda; mobil de aynı API'yi kullanır |
 
 ## İlan detayı
 
@@ -58,6 +60,7 @@ Bu dosya elle tutulur. Yeni bir özellik eklendiğinde ya da bir ekran taşınd�
 | Özellik | Web | Mobil | Not |
 |---|---|---|---|
 | Fiyat tahmini (form) | ✔ | ✔ | |
+| Parça seçici: araç şablonu (bölgeden parça adına oklar) | ✔ | ◐ | Mobilde kod ve test hazır, APK henüz yayımlanmadı |
 | Fiyat tahmini için fotoğrafla doldurma | ✖ | ✔ | Yalnızca mobilde |
 | Değer kaybı | ✔ | ✔ | |
 | Piyasa analizi | ✔ | ✔ | |
@@ -78,7 +81,7 @@ Bu dosya elle tutulur. Yeni bir özellik eklendiğinde ya da bir ekran taşınd�
 | Bildirimler | ✔ | ✔ | |
 | Gizlilik politikası | ✔ | ✖ | Mobilde bağlantı yok |
 | Veri tasarrufu modu | ✖ | ✔ | Yalnızca mobilde |
-| Uygulama güncelleme denetimi | ✖ | ✔ | Yalnızca mobilde |
+| Uygulama güncelleme denetimi | ✖ | ✔ | Yalnızca mobilde. Uygulama içi indirme (ilerleme çubuğu, sistem yükleyicisi) ve sürüm kodu düzeltmesi hazır, APK henüz yayımlanmadı |
 | Tema (koyu ve aydınlık) | ✔ | ✔ | |
 
 ## Yönetim
@@ -97,5 +100,6 @@ Bu dosya elle tutulur. Yeni bir özellik eklendiğinde ya da bir ekran taşınd�
 ## Açık işler
 
 - Mobil fiyat skalası kartı: test edildi, APK yayımlanmadı (onay bekleniyor).
+- Mobil (13 Ekim 2026, hepsi aynı yayını bekliyor): uygulama içi güncelleme indirmesi, bölünmüş pakette sürüm kodu düzeltmesi (arm64 kodu 2022 görünüyordu, sonraki sürümler hiç sunulmuyordu), parça şablonu, alt pencerelerde sistem gezinme çubuğu boşluğu, kart başlığı iki satır, Keşfet adresi sırası (CDN ısıtıcısıyla eşleşir).
 - Mobilde arşiv ve doğrulanmamış ilan ekranları yok (yönetici için, öncelik düşük).
 - Gizlilik politikası ve e-posta doğrulama ekranı mobilde yok (web bağlantısıyla çözülebilir).

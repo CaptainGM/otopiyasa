@@ -358,7 +358,9 @@ export async function runDetailBackfill(
           $or: [
             { detailCheckedAt: { $exists: false }, detailCheckFailedAt: { $exists: false } },
             { detailCheckFailedAt: { $lt: failureRetryBefore } },
-            { "images.1": { $exists: false }, detailCheckedAt: { $lt: retryBefore } },
+            // Okunamayan ilan ancak başarısızlık geri çekilmesiyle (24 saat, yukarıdaki satır) yeniden denenir; bu satır onu her turda
+            // tekrar kuyruğa sokmasın (eskiden Otomerkezi'nin okunamayan 165 ilanı 5 dakikada bir sürekli dönüyordu).
+            { "images.1": { $exists: false }, detailCheckedAt: { $lt: retryBefore }, detailCheckFailedAt: { $exists: false } },
           ],
         }
   )

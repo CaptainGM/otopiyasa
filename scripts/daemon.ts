@@ -258,6 +258,39 @@ async function main() {
   setTimeout(() => void runMarketSnapshot(), 5 * 60 * 1000);
   setInterval(() => void runMarketSnapshot(), 60 * 60 * 1000);
 
+  // Keşfet akışının CDN ısıtıcısı: ziyaretçinin rastgele seçtiği dilim önbellekte yoksa ilk liste saniyelerce gelmiyordu (bkz. lib/feed-warm.ts).
+  // Dönem başına bir tur: şimdiki dönem hemen, bir sonraki dönem de değişmesine ~4 dk kala. Dakikalık kontrol ağ isteği yapmaz,
+  // yalnızca ısıtılmamış dönem varsa 24 dilimi ister.
+  const warmedFeedBuckets = new Set<number>();
+  const feedWarmAttempts = new Map<number, number>();
+  let feedWarming = false;
+  const runFeedWarm = async () => {
+    if (feedWarming) return;
+    feedWarming = true;
+    try {
+      const { bucketsToWarm, warmFeedSlots, feedWarmBaseUrl } = await import("@/lib/feed-warm");
+      const { feedBucket } = await import("@/lib/car-mix");
+      const baseUrl = feedWarmBaseUrl();
+      for (const bucket of bucketsToWarm()) {
+        // Site erişilemiyorsa (hiç dilim ısınmadıysa) dakikada bir değil 5 dakikada bir denenir.
+        if (warmedFeedBuckets.has(bucket) || Date.now() - (feedWarmAttempts.get(bucket) ?? 0) < 5 * 60_000) continue;
+        feedWarmAttempts.set(bucket, Date.now());
+        const res = await warmFeedSlots(baseUrl, bucket);
+        if (res.ok > 0) warmedFeedBuckets.add(bucket);
+        log(`🔥 [ISITMA] Keşfet dönemi ${bucket}: ${res.ok}/${res.ok + res.failed} dilim CDN'e konuldu.`);
+      }
+      const oldest = feedBucket() - 1;
+      for (const bucket of [...warmedFeedBuckets]) if (bucket < oldest) warmedFeedBuckets.delete(bucket);
+      for (const bucket of [...feedWarmAttempts.keys()]) if (bucket < oldest) feedWarmAttempts.delete(bucket);
+    } catch (err: any) {
+      console.warn(`[ISITMA] ${err?.message || err}`);
+    } finally {
+      feedWarming = false;
+    }
+  };
+  setTimeout(() => void runFeedWarm(), 45 * 1000);
+  setInterval(() => void runFeedWarm(), 60 * 1000);
+
   setProgressHook((stage, current, total) => {
     touch();
     const pct = total > 0 ? Math.round((current / total) * 100) : 0;

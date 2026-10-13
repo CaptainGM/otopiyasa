@@ -27,6 +27,22 @@ describe("parseRelease", () => {
     expect(parseRelease({ tag_name: "v1.0.6", body: "versionCode: 7", assets: [] })).toBeNull();
   });
 
+  it("bölünmüş paketin gerçek Android sürüm kodunu bildirir (Flutter: arm64 2000, armeabi 1000 + yayın numarası)", () => {
+    // Telefon yüklü sürümünü ham kodla bildirir: arm64 paketi kurulu telefon 2022 görür. Sunucu 22 dese eski istemci hiçbir sonraki
+    // yayını (23, 24…) göremezdi (emülatörde doğrulandı: "Derleme 2022").
+    const release = { tag_name: "v1.0.21", body: "<!-- versionCode: 22 -->", assets: [arm64, armeabi, asset] };
+    expect(parseRelease(release, { abi: "arm64-v8a" })?.versionCode).toBe(2022);
+    expect(parseRelease(release, { abi: "armeabi-v7a" })?.versionCode).toBe(1022);
+  });
+
+  it("evrensel pakete düşülen her durumda yayın numarasının kendisi bildirilir", () => {
+    const release = { tag_name: "v1.0.21", body: "<!-- versionCode: 22 -->", assets: [armeabi, asset] };
+    expect(parseRelease(release)?.versionCode).toBe(22);
+    expect(parseRelease(release, { abi: "x86_64" })?.versionCode).toBe(22);
+    // İstenen mimarinin paketi yayında yoksa evrensel indirilir, kodu da evrenselin kodu olur.
+    expect(parseRelease(release, { abi: "arm64-v8a" })?.versionCode).toBe(22);
+  });
+
   it("zorunluluk kararı istemciye bırakılır: eşik gönderilir, forceUpdate sabit false kalır", () => {
     // Yanıt CDN'de herkese ortak saklandığı için "zorunlu mu" burada sabitlenemez; istemci
     // kendi derleme numarasını minVersionCode ile karşılaştırır (mobile/update_service.dart).

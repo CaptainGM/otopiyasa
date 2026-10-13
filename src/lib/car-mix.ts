@@ -99,12 +99,22 @@ export function isValidFeedSlot(slot?: number | null): slot is number {
 }
 
 /**
+ * Ana sayfanın sunucuda hazır gelen ilk dilimi. Dönem başına sabittir: CDN'de saklanan ana sayfa HTML'i herkes için aynı kalır
+ * (kartlar ilk boyamada görünür, JS ya da ağ isteği beklenmez). Dönemler arasında değişir; yenilemede istemci başka bir dilim seçer.
+ */
+export function feedStartSlot(bucket: number): number {
+  return hash32(bucket * 131 + 977) % FEED_SLOTS;
+}
+
+/**
  * İstemcinin gönderdiği dönem: oturum boyunca sabit kalır ki sonraki sayfalar aynı sırayla devam etsin.
- * Önbelleği delmek için uydurulan dönemler kabul edilmez (yalnızca son ~1 saat).
+ * Önbelleği delmek için uydurulan dönemler kabul edilmez (son ~1 saat ve bir sonraki dönem). Bir sonraki dönem, VM'deki ısıtıcının
+ * (lib/feed-warm.ts) dönem değişmeden CDN'e yeni dönemin sayfalarını koyabilmesi ve saati ileri kalmış cihazlar için kabul edilir;
+ * dilimin sırası yalnızca (dilim, dönem) çiftinden hesaplandığından önceden üretmek güvenlidir.
  */
 export function resolveFeedBucket(requested?: number | null, now = Date.now()): number {
   const current = feedBucket(now);
-  if (Number.isInteger(requested) && (requested as number) <= current && (requested as number) >= current - 4) {
+  if (Number.isInteger(requested) && (requested as number) <= current + 1 && (requested as number) >= current - 4) {
     return requested as number;
   }
   return current;

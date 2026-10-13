@@ -90,11 +90,23 @@ describe("Keşfet dilimleri (CDN'de paylaşılan, kişiye göre seçilen)", () =
     expect(feedOrderForSlot(5, 1001).pivot).not.toBe(feedOrderForSlot(5, 1000).pivot);
   });
 
+  it("ana sayfanın ilk dilimi dönem başına sabit, geçerli bir dilim ve dönemler arasında değişir", async () => {
+    const { feedStartSlot, isValidFeedSlot } = await import("./car-mix");
+    for (let bucket = 2000000; bucket < 2000050; bucket++) {
+      expect(isValidFeedSlot(feedStartSlot(bucket))).toBe(true);
+      expect(feedStartSlot(bucket)).toBe(feedStartSlot(bucket));
+    }
+    const distinct = new Set(Array.from({ length: 50 }, (_, i) => feedStartSlot(2000000 + i)));
+    expect(distinct.size).toBeGreaterThan(10);
+  });
+
   it("önbelleği delmek için uydurulan dönemi kabul etmez", async () => {
     const { FEED_ROTATE_MS, resolveFeedBucket } = await import("./car-mix");
     const now = 1000 * FEED_ROTATE_MS + 5;
     expect(resolveFeedBucket(998, now)).toBe(998);
-    expect(resolveFeedBucket(1001, now)).toBe(1000);
+    // Bir sonraki dönem ısıtıcı ve saati ileri cihazlar için kabul edilir; ötesi uydurmadır.
+    expect(resolveFeedBucket(1001, now)).toBe(1001);
+    expect(resolveFeedBucket(1002, now)).toBe(1000);
     expect(resolveFeedBucket(990, now)).toBe(1000);
     expect(resolveFeedBucket(undefined, now)).toBe(1000);
   });

@@ -1,6 +1,7 @@
 /** GitHub yayınından mobil uygulama sürüm bilgisi (bkz. src/app/api/app-version/route.ts, release-apk.bat). */
 export interface AppVersion {
   version: string;
+  /** Sunucunun seçtiği paketin Android sürüm kodu (bölünmüş pakette mimari payı eklidir, bkz. packageVersionCode). */
   versionCode: number;
   /**
    * Bu kodun altındaki uygulamalar güncellemeye zorlanır. Kararı istemci verir
@@ -56,6 +57,24 @@ export function pickApkAsset<T extends { name: string; browser_download_url: str
   return byName("otopiyasa-release.apk") ?? assets?.find((a) => a.name.toLowerCase().endsWith(".apk"));
 }
 
+/**
+ * Flutter, mimariye bölünmüş paketlerde Android sürüm kodunu "mimari payı + yayın numarası" yapar (flutter.gradle ABI_VERSION × 1000):
+ * arm64-v8a 2022, armeabi-v7a 1022; evrensel pakette yayın numarasının kendisi (22). Telefon yüklü sürümünü bu ham kodla bildirir.
+ *
+ * Sunucu, seçtiği paketin gerçek kodunu yayınlar. Aksi halde yüklü sürümü ham kodla karşılaştıran eski istemciler (10 Ekim 2026'dan
+ * itibarenki yayınlar) bölünmüş paketi kurunca 2022'de takılı kalır, sonraki yayınları (23, 24…) hiç göremezdi. Yeni istemci iki tarafı da
+ * yayın numarasına indirger (bkz. mobile/lib/services/update_service.dart releaseNumber); böylece her iki ölçek de doğru çalışır.
+ */
+const SPLIT_CODE_BASE: Record<SupportedAbi, number> = { "armeabi-v7a": 1000, "arm64-v8a": 2000 };
+
+export function packageVersionCode(code: number, apkName: string): number {
+  const name = apkName.toLowerCase();
+  for (const abi of SUPPORTED_ABIS) {
+    if (name === `app-${abi}-release.apk`) return SPLIT_CODE_BASE[abi] + code;
+  }
+  return code;
+}
+
 export function parseRelease(
   release: {
     tag_name?: string;
@@ -77,7 +96,7 @@ export function parseRelease(
     .join("\n");
   return {
     version: (release.tag_name ?? "").replace(/^v/i, "") || String(code),
-    versionCode: code,
+    versionCode: packageVersionCode(code, apk.name),
     minVersionCode: minVersionCode(),
     apkUrl: apk.browser_download_url,
     title: "OtoPiyasa güncellemesi hazır",

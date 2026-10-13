@@ -18,7 +18,7 @@ import { getColorOptions, type ColorOption } from "@/lib/color-counts";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { isMixedSort } from "@/lib/car-mix";
+import { feedBucket, feedStartSlot, isMixedSort } from "@/lib/car-mix";
 import { normalizeCity } from "@/lib/normalize-city";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 import { getMarketBoard, type MarketBoard } from "@/lib/market-board";
@@ -88,6 +88,8 @@ export default async function HomePage({ searchParams }: HomeProps) {
   listParams.set("limit", String(pageSize));
   listParams.delete("seed");
   let items: CarType[] = [];
+  // Keşfet'in sunucuda hazır ilk dilimi (dönem başına sabit): istemci bu dilimi ağ isteği olmadan gösterir.
+  let feedStart: { slot: number; bucket: number } | undefined;
   let total = 0;
   let totalPages = 1;
   let dbError = false;
@@ -124,6 +126,12 @@ export default async function HomePage({ searchParams }: HomeProps) {
     if (isFeed) {
       total = await countCars(filters);
       totalPages = Math.ceil(total / pageSize) || 1;
+      // İlk 24 kart HTML'de: ana sayfa ilk boyamada dolu gelir (eskiden JS yüklenip API'den çekilene kadar boştu).
+      // Dilim ve dönem CDN'de saklanan HTML ile birlikte herkes için aynıdır; kullanıcı yenilediğinde istemci başka dilim seçer.
+      const bucket = feedBucket();
+      feedStart = { slot: feedStartSlot(bucket), bucket };
+      const first = await findCarsPage({ ...filters, page: 1, slot: feedStart.slot, bucket: feedStart.bucket, limit: pageSize });
+      items = attachMarketToCars(first.docs.filter(isLeanCarDoc), new Map());
     } else {
       const { docs: cars, total: count, limit, correction: fixed } = await findCarsPage(filters);
       correction = fixed;
@@ -361,6 +369,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
             pageSize={pageSize}
             query={listParams.toString()}
             feed={isFeed}
+            feedStart={isFeed ? feedStart : undefined}
           />
         )}
       </section>

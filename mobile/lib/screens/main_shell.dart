@@ -7,6 +7,7 @@ import 'package:otopiyasa/screens/favorites_screen.dart';
 import 'package:otopiyasa/screens/home_screen.dart';
 import 'package:otopiyasa/screens/more_screen.dart';
 import 'package:otopiyasa/screens/predict_screen.dart';
+import 'package:otopiyasa/services/shell_tabs.dart';
 
 /// Uygulamanın iskeleti: alt gezinme çubuğu (Keşfet, Favoriler, Değer Kaybı, Karşılaştır, Tahmin, Analiz, Hesap). Harita Hesap
 /// menüsündedir. Sekmeler ilk açıldıklarında kurulur (analiz gibi ağır sekmeler, kullanıcı hiç açmadan veri indirmesin) ve sonra
@@ -23,6 +24,26 @@ class _MainShellState extends State<MainShell> {
   final Set<int> _opened = {0};
   // Karşılaştırma listesi başka ekranlardan değişir (ilandan "karşılaştırmaya ekle"); sekmeye her girişte yeniden kurulur.
   int _compareVersion = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    ShellTabs.request.addListener(_onTabRequest);
+  }
+
+  @override
+  void dispose() {
+    ShellTabs.request.removeListener(_onTabRequest);
+    super.dispose();
+  }
+
+  /// Başka bir ekran sekme istediyse (ör. karşılaştırmadaki boş kutu Keşfet'e götürür) o sekmeye geçilir.
+  void _onTabRequest() {
+    final index = ShellTabs.request.value;
+    if (index == null) return;
+    ShellTabs.request.value = null;
+    _select(index);
+  }
 
   static const _tabs = <({IconData icon, IconData selected, String label})>[
     (icon: Icons.explore_outlined, selected: Icons.explore, label: 'Keşfet'),

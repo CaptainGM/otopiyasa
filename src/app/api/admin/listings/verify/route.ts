@@ -33,10 +33,13 @@ export async function POST(req: NextRequest) {
 
     // Manuel Arşive Kaldırma İşlemi
     if (action === "archive") {
-      car.status = "removed";
-      car.removedAt = new Date();
-      car.removedReason = `manuel: ${admin.email || "yönetici"}`;
-      await car.save();
+      // Arşiv tarihi yalnızca aktif → arşiv geçişinde yazılır; zaten arşivdeki ilanın tarihi yeniden yazılmaz (yaş bu tarihten sayılır).
+      if (car.status !== "removed") {
+        car.status = "removed";
+        car.removedAt = new Date();
+        car.removedReason = `manuel: ${admin.email || "yönetici"}`;
+        await car.save();
+      }
       revalidateListing(car._id);
       return NextResponse.json({
         success: true,

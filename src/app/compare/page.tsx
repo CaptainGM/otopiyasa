@@ -181,13 +181,13 @@ function ComparePageInner() {
               ))}
               {items.length === 1 && (
                 <th className="p-0.5 align-bottom sm:p-3">
-                  <div className="flex min-h-[14rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/50 bg-amber-400/5 p-4 text-center">
+                  <Link href="/" className="flex min-h-[14rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/50 bg-amber-400/5 p-4 text-center transition hover:bg-amber-400/10">
                     <span className="text-2xl leading-none text-amber-300" aria-hidden>
                       +
                     </span>
                     <span className="text-sm font-semibold text-amber-200">Sağ tarafa bir araç daha ekle</span>
                     <span className="text-xs text-slate-400">Karşılaştırmak için en az 2 araç gerekli. İlan kartındaki karşılaştır ikonuna dokun.</span>
-                  </div>
+                  </Link>
                 </th>
               )}
             </tr>

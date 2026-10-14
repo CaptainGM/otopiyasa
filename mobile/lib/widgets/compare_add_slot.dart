@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 /// Karşılaştırmada tek araç varken yanındaki boş sütun: "Sağ tarafa bir araç daha ekle" (web'deki kutunun mobil karşılığı).
-/// Ölçüleri tablonun geri kalanıyla aynıdır. İçerik sığmazsa küçülür, kesilmez (320 px ekranda ve büyük yazıda da).
+/// Dokununca Keşfet'e (ilan listesine) götürür. Ölçüleri tablonun geri kalanıyla aynıdır. İçerik sığmazsa küçülür, kesilmez
+/// (320 px ekranda ve büyük yazıda da).
 class CompareAddSlot extends StatelessWidget {
   const CompareAddSlot({
     super.key,
@@ -9,12 +10,14 @@ class CompareAddSlot extends StatelessWidget {
     required this.imageWidth,
     required this.imageHeight,
     required this.headerHeight,
+    required this.onTap,
   });
 
   final double width;
   final double imageWidth;
   final double imageHeight;
   final double headerHeight;
+  final VoidCallback onTap;
 
   static const _accent = Color(0xFFF5B942);
 
@@ -23,47 +26,51 @@ class CompareAddSlot extends StatelessWidget {
     return SizedBox(
       width: width,
       height: headerHeight,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: Column(
-          children: [
-            // Fotoğrafın yerinde kesikli çerçeve.
-            SizedBox(
-              width: imageWidth,
-              height: imageHeight,
-              child: CustomPaint(
-                painter: const _DashedRoundedRectPainter(color: Color(0x99F5B942)),
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Text('+', style: TextStyle(fontSize: 22, height: 1, color: _accent)),
-                          SizedBox(height: 4),
-                          Text(
-                            'Sağ tarafa bir araç daha ekle',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w700, color: _accent),
-                          ),
-                        ],
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 3),
+          child: Column(
+            children: [
+              // Fotoğrafın yerinde kesikli çerçeve.
+              SizedBox(
+                width: imageWidth,
+                height: imageHeight,
+                child: CustomPaint(
+                  painter: const _DashedRoundedRectPainter(color: Color(0x99F5B942)),
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Text('+', style: TextStyle(fontSize: 22, height: 1, color: _accent)),
+                            SizedBox(height: 4),
+                            Text(
+                              'Sağ tarafa bir araç daha ekle',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w700, color: _accent),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 4),
-            const Expanded(
-              child: Text(
-                'En az 2 araç gerekli',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, height: 1.15, color: Colors.white54),
+              const SizedBox(height: 4),
+              const Expanded(
+                child: Text(
+                  'En az 2 araç gerekli',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, height: 1.15, color: Colors.white54),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

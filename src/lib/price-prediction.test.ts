@@ -10,6 +10,7 @@ import {
   featureMedians,
   modelOffset,
   archiveWeight,
+  archiveAgeDays,
   effectiveSampleSize,
   ARCHIVE_MAX_AGE_DAYS,
 } from "./price-prediction";
@@ -262,6 +263,21 @@ describe("arşiv ilanları (ağırlıklı eğitim)", () => {
     expect(archiveWeight(400)).toBe(0);
     expect(archiveWeight(-1)).toBe(0);
     expect(archiveWeight(NaN)).toBe(0);
+  });
+
+  it("arşiv yaşı: arşiv tarihi varsa o kullanılır; yoksa oluşturulma tarihi (gerçek yaştan büyük ya da eşit kalır)", () => {
+    const now = Date.UTC(2026, 9, 14);
+    const DAY = 24 * 60 * 60 * 1000;
+    const daysAgo = (n: number) => new Date(now - n * DAY);
+    // Arşiv tarihi varsa oluşturulma tarihi ne olursa olsun o kazanır.
+    expect(archiveAgeDays({ removedAt: daysAgo(10), createdAt: daysAgo(200) }, now)).toBeCloseTo(10, 5);
+    // Tarihsiz eski kayıt: yaş oluşturulma tarihinden sayılır (arşiv anı bilinmez, bu yaş en fazla o kadar eski).
+    expect(archiveAgeDays({ createdAt: daysAgo(100) }, now)).toBeCloseTo(100, 5);
+    // Her iki tarih de yoksa yaş sonsuz: ağırlık 0.
+    expect(archiveAgeDays({}, now)).toBe(Infinity);
+    expect(archiveWeight(archiveAgeDays({ createdAt: daysAgo(100) }, now))).toBeCloseTo(0.7, 5);
+    // Arşiv anı oluşturulmadan sonradır: oluşturulma tarihinden sayılan yaş, gerçek arşiv yaşından büyük ya da eşittir.
+    expect(archiveAgeDays({ createdAt: daysAgo(60) }, now)).toBeGreaterThanOrEqual(archiveAgeDays({ removedAt: daysAgo(20), createdAt: daysAgo(60) }, now));
   });
 
   it("arşiv ağırlığı yaşlandıkça hiç artmaz", () => {

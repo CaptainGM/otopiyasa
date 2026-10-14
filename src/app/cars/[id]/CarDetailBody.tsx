@@ -21,6 +21,8 @@ import { MarketGauge } from "@/components/MarketGauge";
 import { PriceScaleCard } from "@/components/PriceScaleCard";
 import { getNavbarUser } from "@/lib/auth";
 import { InfoHint } from "@/components/InfoHint";
+import { ListingQualityBadge } from "@/components/ListingQualityBadge";
+import { listingCompleteness, showsListingQuality } from "@/lib/listing-completeness";
 import { loadPriceScale } from "@/lib/price-scale-data";
 import { MarketTempoCard } from "@/components/MarketTempoCard";
 import { carHeadline } from "@/lib/car-headline";
@@ -195,6 +197,18 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
   // Üst bölümün iki sütunu dengelenir: ikincil kartlar kısa sütuna konur, altta büyük boşluk kalmaz (bkz. lib/detail-layout.ts).
   const isUserListing = car.sourceSite === "user";
+  // İlan kalitesi yalnızca yayındaki ve güvenilir çekilen ilanda gösterilir (arşivde fotoğraf kısaltılır); liste kartlarında yok.
+  const quality =
+    showsListingQuality(car)
+      ? listingCompleteness({
+          images: car.images,
+          description: car.description,
+          paintChange: car.paintChange,
+          damageParts: car.damageParts,
+          damageFlag: car.damageFlag,
+          features: car.features,
+        })
+      : null;
   const specsCard = (
     <div className="card p-5">
       <h2 className="font-display mb-5 text-xl font-semibold">Teknik özellikler</h2>
@@ -331,11 +345,14 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         </div>
 
         <div className="flex flex-col gap-5 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-stretch">
-          <div className="flex flex-wrap gap-2">
-            <SourceBadge source={car.sourceSite} />
-            {car.damageFlag && <span className="badge badge-danger">Hasar kaydı</span>}
-            {car.status === "sold" && <span className="badge">Satıldı</span>}
-            {car.status === "removed" && <span className="badge badge-danger">Yayından kaldırıldı</span>}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <SourceBadge source={car.sourceSite} />
+              {car.damageFlag && <span className="badge badge-danger">Hasar kaydı</span>}
+              {car.status === "sold" && <span className="badge">Satıldı</span>}
+              {car.status === "removed" && <span className="badge badge-danger">Yayından kaldırıldı</span>}
+            </div>
+            {quality && <ListingQualityBadge quality={quality} />}
           </div>
 
           <div>

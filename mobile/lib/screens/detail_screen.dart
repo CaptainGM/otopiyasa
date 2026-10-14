@@ -615,7 +615,8 @@ class _DetailScreenState extends State<DetailScreen> {
               ),
               const SizedBox(height: 16),
               MarketBadge(car: car),
-              if (_priceScale != null) ...[
+              // Fiyat skalası kartı yalnızca yöneticiye: kullanıcı için bilgi katmaz (web ile aynı kural).
+              if (_priceScale != null && _api.isAdmin) ...[
                 const SizedBox(height: 12),
                 PriceScaleCard(scale: _priceScale!),
               ],

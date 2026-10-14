@@ -76,6 +76,17 @@ export function isDealCandidate(car: DealInput, disc: number, fairN: number): bo
 }
 
 /** Bir ilanın adil değer alanları ($set için). Emsal yetersizse null. */
+/** Fırsat sıralamasında tam ağırlık için emsal sayısı: bundan az emsalli indirim, emsal sayısı oranında tartılır. */
+export const DEAL_FULL_WEIGHT_COMPARABLES = 30;
+
+/**
+ * Fırsat sıralama puanı: indirim × min(1, emsal / 30). Çok emsalle hesaplanan indirim öne geçer; az emsalli ya da
+ * uç bir indirim (tahmin hatası ya da çöp ilan olabilir) geriye düşer.
+ */
+export function dealScore(disc: number, fairN: number): number {
+  return disc * Math.min(1, fairN / DEAL_FULL_WEIGHT_COMPARABLES);
+}
+
 export function fairFields(car: DealInput, predictedPrice: number, sampleSize: number, at = new Date()) {
   if (!predictedPrice || predictedPrice <= 0 || sampleSize < MIN_MARKET_COMPARABLES) return null;
   const fair = Math.round(predictedPrice);
@@ -85,6 +96,7 @@ export function fairFields(car: DealInput, predictedPrice: number, sampleSize: n
     "market.fairN": sampleSize,
     "market.disc": disc,
     "market.deal": isDealCandidate(car, disc, sampleSize),
+    "market.dealScore": dealScore(disc, sampleSize),
     "market.fp": car.price,
     "market.fairAt": at,
     "market.fairV": FAIR_LOGIC_VERSION,
@@ -244,7 +256,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
 export async function findDealListings(limit: number, skip = 0) {
   const filter = { ...PUBLIC_LISTING_FILTER, "market.deal": true };
   const [docs, total] = await Promise.all([
-    Car.find(filter).sort({ "market.disc": -1 }).skip(skip).limit(limit).slice("images", 8).lean(),
+    Car.find(filter).sort({ "market.dealScore": -1, _id: 1 }).skip(skip).limit(limit).slice("images", 8).lean(),
     Car.countDocuments(filter),
   ]);
   return { docs, total };

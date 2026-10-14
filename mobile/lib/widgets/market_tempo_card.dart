@@ -29,15 +29,24 @@ class _MarketTempoCardState extends State<MarketTempoCard> {
         final c = AppColors.of(context);
         final pct = NumberFormat.decimalPattern('tr_TR');
 
-        Widget stat(String label, String value, String note) => Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: TextStyle(color: c.muted, fontSize: 12.5)),
-                  const SizedBox(height: 2),
-                  Text(value, style: AppText.num(size: 22, weight: FontWeight.w600, color: AppTheme.accent2)),
-                  Text(note, style: TextStyle(color: c.muted, fontSize: 12)),
-                ],
+        // Kutular renkli: süre mavi, pazarlık payı turuncu. Renkler fiyat bandı (yeşil/mercan) için ayrılmış değil.
+        Widget stat(String label, String value, String note, Color color) => Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: TextStyle(color: c.muted, fontSize: 12.5)),
+                    const SizedBox(height: 2),
+                    Text(value, style: AppText.num(size: 22, weight: FontWeight.w600, color: color)),
+                    Text(note, style: TextStyle(color: c.muted, fontSize: 12)),
+                  ],
+                ),
               ),
             );
 
@@ -77,6 +86,7 @@ class _MarketTempoCardState extends State<MarketTempoCard> {
                       'Yayında kalma süresi',
                       '~${days['median']} gün',
                       'çoğu ${days['p25']}–${days['p75']} gün · ${days['sample']} ilan',
+                      const Color(0xFF7DD3FC),
                     ),
                   if (days != null && drop != null) const SizedBox(width: 12),
                   if (drop != null)
@@ -84,6 +94,7 @@ class _MarketTempoCardState extends State<MarketTempoCard> {
                       'Pazarlık payı',
                       '%${pct.format(drop['medianPct'] ?? 0)}',
                       "ilanların %${drop['share']}'inde indirim · ${drop['sample']} ilan",
+                      const Color(0xFFF2B544),
                     ),
                 ],
               ),

@@ -8,7 +8,6 @@ import {
   MAP_BLOCK,
   rightBaseHeight,
   specsHeight,
-  TEMPO_CARD,
 } from "./detail-layout";
 
 describe("yükseklik tahminleri (gerçek sayfadan ölçülen değerlere yakın)", () => {
@@ -46,7 +45,7 @@ describe("assignColumns", () => {
   it("Arabam ilanı (uzun açıklama): özellikler sola, harita ve ikincil kartlar sağa gider; fark bir kartın altında kalır", () => {
     const left = leftBaseHeight(23, 1200);
     const right = rightBaseHeight(false);
-    const input = blocks([["tempo", TEMPO_CARD], ["fuel", 115], ["specs", 611], ["map", MAP_BLOCK]]);
+    const input = blocks([["fuel", 115], ["specs", 611], ["map", MAP_BLOCK]]);
     const result = assignColumns(input, left, right);
     expect(result.left).toContain("specs");
     const height = (keys: string[], base: number) => keys.reduce((sum, key) => sum + 20 + input.find((b) => b.key === key)!.height, base);

@@ -138,11 +138,6 @@ function ComparePageInner() {
 
       {items.length >= 2 && <CompareAiSummary items={items} />}
 
-      {items.length === 1 && (
-        <p className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">
-          Karşılaştırmak için en az 2 araç gerekli. Sağ tarafa bir araç daha ekle; ilan kartlarındaki karşılaştır ikonunu kullan.
-        </p>
-      )}
 
       <p className="-mt-3 text-xs leading-relaxed text-slate-500">
         Ortalama, karşılaştırdığın araçlar hariç aktif ilanlardan hesaplanır. Donanım ve kilometre farkları bu ortalamaya dahil değildir; en az 3 ilan yoksa gösterilmez.
@@ -184,6 +179,17 @@ function ComparePageInner() {
                   </div>
                 </th>
               ))}
+              {items.length === 1 && (
+                <th className="p-0.5 align-bottom sm:p-3">
+                  <div className="flex min-h-[14rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/50 bg-amber-400/5 p-4 text-center">
+                    <span className="text-2xl leading-none text-amber-300" aria-hidden>
+                      +
+                    </span>
+                    <span className="text-sm font-semibold text-amber-200">Sağ tarafa bir araç daha ekle</span>
+                    <span className="text-xs text-slate-400">Karşılaştırmak için en az 2 araç gerekli. İlan kartındaki karşılaştır ikonuna dokun.</span>
+                  </div>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -191,7 +197,8 @@ function ComparePageInner() {
               <tr key={row.label} className="border-t border-white/5">
                 <td className="p-1 text-[10px] leading-tight text-slate-500 sm:p-3 sm:text-sm">{row.label}</td>
                 {items.map((c) => {
-                  const isBest = row.best?.(c);
+                  // Tek araçta karşılaştırma yok: "en iyi" işareti anlamsız olur.
+                  const isBest = items.length >= 2 && row.best?.(c);
                   return (
                     <td
                       key={c._id}
@@ -210,6 +217,7 @@ function ComparePageInner() {
                     </td>
                   );
                 })}
+                {items.length === 1 && <td className="p-1 sm:p-3" aria-hidden />}
               </tr>
             ))}
           </tbody>

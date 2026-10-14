@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import { Car } from "@/models/Car";
 import { computeListingFair } from "@/lib/market-fair";
 import { isPlausibleListingPrice, isPlausibleMileage } from "@/lib/price-plausibility";
+import { isAcceptableScrapedPrice } from "@/lib/scraper/price-guard";
+import { loadPriceSanity } from "@/lib/price-sanity-data";
 import { loadSegmentCap } from "@/lib/segment-cap-data";
 import { isAboveSegmentCap } from "@/lib/segment-cap";
 import {
@@ -187,8 +189,12 @@ export async function saveListing(
     const detailKept = isDetailSource(listing.sourceSite) && Boolean((existing as any).detailCheckedAt);
 
     const oldPrice = existing.price;
-    const newPrice = listing.price > 0 ? listing.price : existing.price;
-    const priceChanged = existing.price !== newPrice && listing.price > 0;
+    // Ayrıştırma koruması: fiyat ancak makul bir değişimse kabul edilir (iki fiyatın yan yana okunması 905999885999 gibi
+    // devasa değerler üretmişti). Reddedilen fiyat hem ilanı hem fiyat geçmişini değiştirmez.
+    const priceAccepted =
+      listing.price > 0 && isAcceptableScrapedPrice(existing.price, existing.priceHistory?.[0]?.price, listing.price) && isPlausibleListingPrice(listing.price, vehicleClass);
+    const newPrice = priceAccepted ? listing.price : existing.price;
+    const priceChanged = existing.price !== newPrice;
     const mileageChanged = listing.mileage > 0 && Math.abs(existing.mileage - listing.mileage) > 50;
     const nextCity = verifiedCityUpdate(existing.city, listing.city, listing.cityVerified);
     // Açıklama: satıcının notu ilan sayfasından boşlukları sadeleştirilerek okunur (bkz. parseArabamDetailHtml), yani aynı metin her okumada
@@ -378,6 +384,9 @@ export async function saveListing(
   if (!isPlausibleMileage(listing.mileage, vehicleClass)) return "skipped";
   // Segment tavanını aşan yeni ilan eklenmez (ör. aynı modelin normal fiyatının çok üstü).
   if (isAboveSegmentCap(listing.price, await loadSegmentCap(listing.brand, listing.model))) return "skipped";
+  // Piyasa denetimi: aile ortalamasının çok altı ya da çok üstü fiyatla yeni ilan açılmaz (yanlış tutar, yazım hatası).
+  const sanity = await loadPriceSanity({ brand: listing.brand, model: listing.model, year: listing.year, price: listing.price });
+  if (sanity.status === "low" || sanity.status === "high") return "skipped";
   if (isPlaceholder(listing.brand) || isPlaceholder(listing.model) || isPlaceholder(listing.title)) return "skipped";
   // Kaynakta yıl bulunamadığında bazı adaptörler güncel yılı yalnızca placeholder olarak verir. Böyle bir
   // kayıt eklenmesin; mevcut araçta ise yukarıdaki doğrulanmış yıl korunur.

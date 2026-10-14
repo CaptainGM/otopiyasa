@@ -25,9 +25,9 @@ describe("yükseklik tahminleri (gerçek sayfadan ölçülen değerlere yakın)"
 
   it("teknik özellikler: ölçülen kartlarla ±10 px içinde", () => {
     // Üye ilanı: gruplar 6, 2, 5 satır → ölçülen 708 − harita 261 = 447
-    expect(Math.abs(specsHeight([6, 2, 5], 0, false) - 447)).toBeLessThan(15);
+    expect(Math.abs(specsHeight([6, 2, 5], false) - 447)).toBeLessThan(15);
     // Arabam ilanı: 6, 7, 7 satır → ölçülen 864 − 261 = 603
-    expect(Math.abs(specsHeight([6, 7, 7], 0, false) - 603)).toBeLessThan(15);
+    expect(Math.abs(specsHeight([6, 7, 7], false) - 603)).toBeLessThan(15);
   });
 });
 

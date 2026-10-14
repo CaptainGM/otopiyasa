@@ -63,7 +63,7 @@ interface DealInput {
 }
 
 /**
- * "Haftanın fırsatları" ölçütü: adil değerin %10–%40 altında, en az 12 emsal, en az 500 bin TL, 2010 ve sonrası, en fazla
+ * "Haftanın fırsatları" ölçütü: adil değerin %10–%40 altında, en az 12 emsal, en az 500 bin TL, 2015 ve sonrası, en fazla
  * 150 bin km, hasar kaydı ve ağır hasar/pert ifadesi yok, motosiklet ve karavan değil. %40'tan fazla altı fırsat değil
  * uyarıdır (hatalı fiyat ya da kapora dolandırıcılığı).
  */

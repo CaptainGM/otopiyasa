@@ -35,15 +35,18 @@ export function CarThumb({
   fallbacks = [],
   sizes = "(max-width: 768px) 100vw, 33vw",
   priority = false,
+  preferSize = CARD_IMAGE_SIZE,
 }: {
   src?: string;
   alt: string;
-  
+
   sizes?: string;
   priority?: boolean;
   className?: string;
- 
+
   fallbacks?: string[];
+  /** Denenecek ilk kaynak boyutu (Arabam varyantları için). Varsayılan kart boyutu. */
+  preferSize?: string;
 }) {
   return (
     <FallbackImage
@@ -54,7 +57,7 @@ export function CarThumb({
       fallback={<CarThumbPlaceholder />}
       sizes={sizes}
       priority={priority}
-      preferSize={CARD_IMAGE_SIZE}
+      preferSize={preferSize}
     />
   );
 }

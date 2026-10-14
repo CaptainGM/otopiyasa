@@ -35,10 +35,16 @@ export interface ModerationOutcome {
 }
 
 
+/**
+ * Emsal fiyat orta değeri. `damaged` verilirse yalnızca aynı hasar durumundaki ilanlardan hesaplanır: hasarlı emsaller
+ * hasarsız bir aracın tabanını aşağı çekmesin (ve tersi). Bilinmiyorsa (null) tüm ilanlar kullanılır.
+ */
 export async function comparableMedianPrice(
   brand: string,
-  model: string
+  model: string,
+  damaged: boolean | null = null
 ): Promise<number | null> {
+  const damageFilter = damaged === null ? {} : damaged ? { damageFlag: true } : { damageFlag: { $ne: true } };
   const docs = await Car.find({
     // Denetimden geçmemiş (bekleyen/reddedilen) ilanlar emsal fiyatı belirlemesin.
     moderationStatus: { $nin: ["pending", "rejected"] },
@@ -47,6 +53,7 @@ export async function comparableMedianPrice(
       { model: { $regex: turkishSearchRegex(model), $options: "i" } },
       { title: { $regex: turkishSearchRegex(model), $options: "i" } },
     ],
+    ...damageFilter,
   })
     .select("price")
     .limit(200)
@@ -67,6 +74,10 @@ export async function moderateNewListing(
     color?: string;
     description?: string;
     images?: string[];
+    /** Hasar durumu: true hasarlı, false hasarsız, null bilinmiyor. */
+    damaged?: boolean | null;
+    /** Güvenilir fiyat aralığı varken (hasar bilinir) taban kuralını aralık kuralı belirler; iki kural çelişmesin. */
+    skipRelativeFloor?: boolean;
   }
 ): Promise<ModerationOutcome> {
   // 1. Katman: kural tabanlı içerik filtresi. Yapay zekadan bağımsız çalışır; Gemini yanıt
@@ -77,7 +88,7 @@ export async function moderateNewListing(
     return { status: "rejected", reason: textCheck.reason || "İlan içeriği yayın kurallarına uygun bulunmadı." };
   }
 
-  const cmp = await comparableMedianPrice(input.brand, input.model);
+  const cmp = input.skipRelativeFloor ? null : await comparableMedianPrice(input.brand, input.model, input.damaged ?? null);
   const priceCheck = checkPriceFloor(input.price, cmp);
   if (!priceCheck.ok) {
     return { status: "rejected", reason: priceCheck.reason || "Fiyat kabul edilebilir aralıkta değil." };

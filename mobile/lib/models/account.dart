@@ -16,7 +16,11 @@ class MyListing {
     required this.rejectionReason,
     this.status = 'active',
     this.viewCount = 0,
+    this.raw = const {},
   });
+
+  /// Sunucudan gelen ham kayıt: düzenleme ekranı telefon, açıklama, yakıt gibi alanları buradan doldurur.
+  final Map<String, dynamic> raw;
 
   final String id;
   final String title;
@@ -50,6 +54,7 @@ class MyListing {
         rejectionReason: json['rejectionReason']?.toString() ?? '',
         status: json['status']?.toString() ?? 'active',
         viewCount: (json['viewCount'] as num?)?.toInt() ?? 0,
+        raw: json,
       );
 
   String get statusLabel {

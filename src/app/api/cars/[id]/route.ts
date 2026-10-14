@@ -109,6 +109,8 @@ export async function GET(
       quality:
         showsListingQuality(carDoc)
           ? listingCompleteness({
+              title: carDoc.title,
+              vehicleClass: carDoc.vehicleClass,
               images: carDoc.images,
               description: carDoc.description,
               paintChange: carDoc.paintChange,

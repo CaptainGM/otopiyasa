@@ -26,6 +26,8 @@ interface VavaCarItem {
   make?: string;
   model?: string;
   trimLevel?: string;
+  /** Motor hacmi (litre) liste API'sinde var; adaptör daha önce okumuyordu. */
+  engineVolumeLiters?: number | null;
   year?: number;
   price?: number;
   mileage?: number;
@@ -184,6 +186,10 @@ export async function scrapeVavaCarsListings(
           transmission: item.transmission || "Bilinmiyor",
           bodyType: item.categories?.[0] || "Belirtilmemiş",
           color: "Belirtilmemiş",
+          // Elektrikli araçta motor hacmi anlamsız (0 ya da boş); yalnızca pozitif litre yazılır.
+          ...(item.engineVolumeLiters && item.engineVolumeLiters > 0 && !/elektrik/i.test(item.fuelType || "")
+            ? { engineSize: item.engineVolumeLiters }
+            : {}),
         },
       };
 

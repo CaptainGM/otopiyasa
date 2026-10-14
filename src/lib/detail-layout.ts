@@ -43,10 +43,9 @@ export function rightBaseHeight(userListing: boolean, showScale = true): number 
 }
 
 /** Teknik özellikler kartı (haritasız): özellik grupları (satır sayıları) ve varsa güvenlik donanımı etiketleri. */
-export function specsHeight(groupRows: number[], safetyItems: number, hasSource: boolean): number {
+export function specsHeight(groupRows: number[], hasSource: boolean): number {
   const groups = groupRows.reduce((sum, rows) => sum + 28 + (39 * Math.ceil(rows / 2) - 10), 0) + BLOCK_GAP * Math.max(0, groupRows.length - 1);
-  const safety = safetyItems > 0 ? BLOCK_GAP + 28 + 34 * Math.ceil(safetyItems / 5) : 0;
-  return 88 + groups + safety + (hasSource ? 24 : 0);
+  return 88 + groups + (hasSource ? 24 : 0);
 }
 
 /** Konum haritası bloğu (başlık + harita). Sütunun son bloğu olduğu için sütundaki kalan boyu doldurur. */

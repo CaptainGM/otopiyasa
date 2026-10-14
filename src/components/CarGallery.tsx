@@ -1,10 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { sanitizeImageUrl } from "@/lib/image-url";
+import { cardImageUrl, imageCandidates, sanitizeImageUrl } from "@/lib/image-url";
 import { CarThumb, CarThumbPlaceholder } from "@/components/CarThumb";
 import { FallbackImage } from "@/components/FallbackImage";
 import { Lightbox } from "@/components/Lightbox";
+
+/**
+ * Galerideki ana görsel ve komşu ön yükleme aynı adresi kullanır. Arabam'da 580x435 varyantı (~50 KB): 800x600 (~80 KB) ve
+ * orijinal dosyalar (250–400 KB) ölçümde bazen 10 saniyeye kadar bekledi; küçük resimler de ana görseli kuyrukta bekletiyordu.
+ */
+const MAIN_IMAGE_SIZE = "580x435";
 
 export function CarGallery({ images, title }: { images: string[]; title: string }) {
   const gallery = images.filter(Boolean);
@@ -32,7 +38,8 @@ export function CarGallery({ images, title }: { images: string[]; title: string 
       if (!src) continue;
       const img = new Image();
       img.referrerPolicy = "no-referrer";
-      img.src = sanitizeImageUrl(src);
+      // Önceden indirilen adres, ekranda gösterilenle aynı olmalı; yoksa ön yükleme boşa gider.
+      img.src = sanitizeImageUrl(imageCandidates(src, [], 1, MAIN_IMAGE_SIZE)[0]);
     }
   }, [activeIndex, gallery]);
 
@@ -71,12 +78,15 @@ export function CarGallery({ images, title }: { images: string[]; title: string 
           aria-label="Fotoğrafı tam ekran gör"
           className="relative block h-full w-full cursor-zoom-in touch-pan-y"
         >
+          {/* Yüklenene kadar koyu boşluk yerine hafif iskelet; görsel gelince üstünü kapatır. */}
+          <span aria-hidden className="absolute inset-0 animate-pulse bg-white/[0.04]" />
+          {/* Ana görsel her zaman öncelikli: önceki fotoğraf, yeni gelene kadar ekranda kalır (bileşen yeniden kurulmaz). */}
           <CarThumb
-            key={gallery[activeIndex]}
             src={gallery[activeIndex]}
             alt={`${title} ${activeIndex + 1}`}
             className="object-cover transition group-hover:scale-[1.02]"
-            priority={activeIndex === 0}
+            preferSize={MAIN_IMAGE_SIZE}
+            priority
           />
           <span className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -112,8 +122,10 @@ export function CarGallery({ images, title }: { images: string[]; title: string 
                   : "border-white/10 hover:border-white/30"
               }`}
             >
+              {/* Küçük resim küçük varyantı çeker (tam boyut değil); olmazsa orijinal adres yedek. */}
               <FallbackImage
-                src={img}
+                src={cardImageUrl(img)}
+                fallbacks={[img]}
                 alt={`${title} ${i + 1}`}
                 className="h-full w-full object-cover"
                 fallback={<CarThumbPlaceholder />}

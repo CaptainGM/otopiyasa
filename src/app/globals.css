@@ -1014,6 +1014,18 @@ h2 {
   color: var(--text);
 }
 
+/* Her native <select> (.select sınıfı olmayanlar dahil, ör. talep formu): açılır liste metni zemine göre okunur kalsın.
+   Yalnızca .select'e bağlı olursa seçenekler beyaz zeminde açık renk yazı olarak görünmez. */
+select option {
+  background-color: var(--card);
+  color: var(--text);
+}
+
+[data-theme="light"] select option {
+  background-color: #ffffff;
+  color: var(--text);
+}
+
 [data-theme="light"] .label {
   color: #7c6f5c;
 }

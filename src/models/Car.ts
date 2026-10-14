@@ -25,7 +25,6 @@ const CarFeaturesSchema = new Schema(
     topSpeed: Number,
     acceleration: Number,
     torque: Number,
-    safetyFeatures: { type: [String], default: undefined },
     specSource: String,
   },
   { _id: false }

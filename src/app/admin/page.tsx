@@ -7,6 +7,7 @@ import { AdminTabs, AdminTabPanel } from "@/components/AdminTabs";
 import { BusinessApprovals } from "@/components/BusinessApprovals";
 import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
+import { AdminRequestsQueue } from "@/components/AdminRequestsQueue";
 import { DaemonStatsPanel } from "@/components/DaemonStatsPanel";
 import { DailySummaryPanel } from "@/components/DailySummaryPanel";
 import { FeatureStatusPanel } from "@/components/FeatureStatusPanel";
@@ -69,6 +70,7 @@ const AUDIT_LABEL: Record<string, string> = {
   comment_deleted: "Yorum silindi",
   user_warned: "Kullanıcı uyarıldı",
   user_muted: "Kullanıcı susturuldu",
+  request_updated: "Talep güncellendi",
 };
 
 const AUDIT_TONE: Record<string, string> = {
@@ -82,6 +84,7 @@ const AUDIT_TONE: Record<string, string> = {
   user_muted: "text-rose-300",
   user_warned: "text-amber-300",
   report_dismissed: "text-slate-400",
+  request_updated: "text-amber-300",
 };
 
 function readScrapeLogTail(lineCount = 12): string[] {
@@ -568,6 +571,8 @@ export default async function AdminPage() {
               })
             )}
           />
+
+          <AdminRequestsQueue />
         </AdminTabPanel>
 
         <AdminTabPanel id="ilan" label="İlanlar">

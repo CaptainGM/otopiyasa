@@ -52,6 +52,10 @@ export default function PrivacyPage() {
               "Favorilerin, verdiğin/aldığın teklifler, teklif sohbetleri, sorduğun sorular, kayıtlı aramaların ve fiyat uyarıların.",
             ],
             [
+              "Talep ve şikayet formu",
+              "Formu gönderirsen: talep türü, konu, mesaj, e-posta adresin (giriş yapmadıysan zorunlu), istersen adın ve ilgili ilan. Ayrıntılar: Talep ve şikayet bölümü.",
+            ],
+            [
               "Oturum ve cihaz kaydı",
               "Giriş yaptığında her oturum için IP adresi, tarayıcı ya da uygulama bilgisi (user agent), bu bilgiden üretilen cihaz adı (ör. \"Chrome · Windows\") ve son görülme zamanı tutulur. Cihazlar bölümünden bu oturumları görüp sonlandırabilirsin.",
             ],
@@ -155,8 +159,37 @@ export default function PrivacyPage() {
           Hesabın açık olduğu sürece hesap bilgilerin ve ilanların saklanır. Hesabını sildirirsen hesap bilgilerin ve ilanların
           silinir. Kabul edilen tekliflerdeki sohbetler 48 saat sonra kapanır. Oturum kayıtları hesabın açık olduğu sürece
           tutulur; bir oturumu sonlandırmak kaydı silmez, yalnızca iptal eder. Yayından kalkan derlenmiş ilanlar fiyat analizi için arşivde saklanır. Hız sınırı için tutulan IP bilgisi ham
-          adres değil, özetidir (karma) ve yalnızca sınırlama için kullanılır.
+          adres değil, özetidir (karma) ve yalnızca sınırlama için kullanılır. Talep kayıtları "Talep ve şikayet" bölümünde yazılı
+          şekilde saklanır.
         </p>
+      </Section>
+
+      <Section id="talep" title="Talep ve şikayet">
+        <p>
+          Talep oluştur formuyla şikayet, hata bildirimi, öneri veya kişisel veri talebi (KVKK) gönderebilirsin. Aşağıda neyin
+          saklandığını, kimlerin gördüğünü ve ne kadar tutulduğunu yazdık.
+        </p>
+        <List
+          items={[
+            [
+              "Ne saklanır",
+              "Talep türü, konu, mesaj, e-posta adresin (giriş yapmadıysan zorunlu), istersen adın ve ilgili ilan. Giriş yapmışsan talep hesabına bağlanır. IP adresi talep kaydına yazılmaz; sıklık sınırı için yalnızca IP'nin karma özeti kısa süre kullanılır.",
+            ],
+            [
+              "Kimler görür",
+              "Yalnızca site yöneticileri. Yöneticiler talebin durumunu değiştirebilir ve dahili not ekleyebilir; bu notlar sana gösterilmez.",
+            ],
+            [
+              "Yanıt",
+              "Yanıt gerekirse bildirdiğin e-posta adresi üzerinden verilir. Talep gönderildiğinde yöneticilere site içi bildirim gider.",
+            ],
+            [
+              "Ne kadar saklanır",
+              "Talep çözülse ya da reddedilse de inceleme ve kayıt amacıyla saklanır. Silinmesini istersen \"Kişisel veri talebi (KVKK)\" türüyle bildir; talep elle incelenip silinir.",
+            ],
+            ["Kişisel veri hakların", "Erişim, düzeltme, silme ve itiraz talepleri bu formdan da iletilebilir."],
+          ]}
+        />
       </Section>
 
       <Section title="Haklarınız">

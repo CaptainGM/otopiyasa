@@ -107,15 +107,18 @@ export default function PrivacyPage() {
         </p>
         <List
           items={[
-            ["Fotoğraf (en fazla 35)", "8 ve üzeri fotoğraf 35; 4–7 fotoğraf 20; 1–3 fotoğraf 10 puan."],
-            ["Açıklama (en fazla 15)", "200 karakter ve üzeri 15; 80–199 karakter 10; 1–79 karakter 3 puan."],
+            ["Fotoğraf (en fazla 25)", "10 ve üzeri fotoğraf 25; 6–9 fotoğraf 17; 3–5 fotoğraf 9; 1–2 fotoğraf 3 puan."],
             [
-              "Hasar / boya bilgisi (25)",
-              "İlanda boya-değişen bilgisi, parça listesi ya da hasar kaydı varsa 25 puan. \"Belirtilmemiş\" ya da boş alan bilgi sayılmaz.",
+              "Açıklama (en fazla 30)",
+              "Uzunluk: 300 karakter ve üzeri 12; 150–299 karakter 7; 40–149 karakter 3 puan. Ayrıca açıklamada geçen her bilgi konusu 3 puan (en fazla 6 konu, 18 puan): bakım geçmişi, parça ve boya durumu, donanım, kullanım geçmişi (tek sahip, garaj, kaza yok vb.), belge ve muayene, lastik-fren ve yedek parça. Konular anahtar kelime eşleşmesiyle bulunur; bu hesap için hiçbir dış servise veri gönderilmez.",
             ],
             [
-              "Temel özellikler (25)",
-              "Yakıt 7, vites 6, kasa tipi 6, renk 6 puan. \"Bilinmiyor\", \"Belirtilmemiş\" ya da \"Doğrulanıyor\" olan alan sayılmaz.",
+              "Hasar / boya bilgisi (15)",
+              "İlanda boya-değişen bilgisi, parça listesi ya da hasar kaydı varsa 15 puan. \"Belirtilmemiş\" ya da boş alan bilgi sayılmaz.",
+            ],
+            [
+              "Temel özellikler (30)",
+              "Yakıt, vites, kasa tipi, renk ve motor hacmi her biri 6 puan. \"Bilinmiyor\", \"Belirtilmemiş\" ya da \"Doğrulanıyor\" olan alan sayılmaz.",
             ],
           ]}
         />

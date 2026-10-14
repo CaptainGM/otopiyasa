@@ -8,7 +8,7 @@ describe("marketPosition", () => {
     // minMarketComparables / absurdPricePct ile birebir aynı olmalı; biri değişirse iki istemci
     // farklı renk/etiket gösterir. Değerler kasten burada sabitlenmiştir.
     expect(FAIR_BAND_PCT).toBe(6);
-    expect(SUSPICIOUS_PCT).toBe(30);
+    expect(SUSPICIOUS_PCT).toBe(40);
     expect(MIN_MARKET_COMPARABLES).toBe(3);
     expect(ABSURD_PRICE_PCT).toBe(400);
   });
@@ -29,7 +29,7 @@ describe("marketPosition", () => {
   it("ucuz, pahalı ve şüpheli ucuz", () => {
     expect(marketPosition(880_000, 1_000_000, 5)).toMatchObject({ band: "cheap", label: "%12 ucuz" });
     expect(marketPosition(1_150_000, 1_000_000, 5)).toMatchObject({ band: "pricey", label: "%15 pahalı" });
-    expect(marketPosition(650_000, 1_000_000, 5)).toMatchObject({ band: "suspicious", label: "Şüpheli ucuz" });
+    expect(marketPosition(550_000, 1_000_000, 5)).toMatchObject({ band: "suspicious", label: "Şüpheli ucuz" });
   });
 
   it("ibre uçlarda taşmaz", () => {

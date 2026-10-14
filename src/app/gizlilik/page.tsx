@@ -3,21 +3,20 @@ import Link from "next/link";
 export const metadata = {
   title: "Gizlilik Politikası | OtoPiyasa",
   description:
-    "OtoPiyasa hangi verileri topluyor, neden topluyor, nerede saklıyor ve kullanıcı hakları nelerdir.",
+    "OtoPiyasa hangi verileri topluyor, neden topluyor, nerede saklıyor, ilan kalitesi puanı nasıl hesaplanıyor ve kullanıcı hakları nelerdir.",
 };
 
 /**
  * GİZLİLİK POLİTİKASI.
  *
- * Neden gerekli: (1) kayıt/e-posta/telefon gibi kişisel veri işleniyor, KVKK
- * kapsamında aydınlatma yükümlülüğü var; (2) mobil uygulama Google Play'e
- * yüklenecekse herkese açık bir gizlilik politikası ADRESİ zorunlu.
+ * Neden gerekli: (1) kayıt/e-posta/telefon gibi kişisel veri işleniyor, KVKK kapsamında aydınlatma yükümlülüğü var;
+ * (2) mobil uygulama Google Play'e yüklenecekse herkese açık bir gizlilik politikası ADRESİ zorunlu.
  *
- * Metin bilinçli olarak sade: gerçekte ne yaptığımızı anlatıyor, olmayan bir
- * şeyi vaat etmiyor (ör. reklam ağı, üçüncü tarafa veri satışı yok).
+ * Metin sade ve gerçek uygulamaya dayalı: her madde koddaki bir özellikle eşleşir (oturum kaydı, bildirim belirteci, Gemini
+ * kullanımları, kaynak siteleri, cihaz deposu). Olmayan bir şeyi vaat etmez (reklam ağı, veri satışı, analitik takibi yok).
  */
 export default function PrivacyPage() {
-  const updated = "29 Temmuz 2026";
+  const updated = "14 Ekim 2026";
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 pb-12">
@@ -31,29 +30,47 @@ export default function PrivacyPage() {
 
       <Section title="Kısaca">
         <p>
-          OtoPiyasa, akademik amaçlı geliştirilmiş bir üniversite bitirme projesidir.
-          Verilerini satmıyoruz, reklam ağlarıyla paylaşmıyoruz ve hesabını istediğin
-          zaman sildirebilirsin. Aşağıda hangi veriyi neden tuttuğumuzu tek tek yazdık.
+          OtoPiyasa, akademik amaçlı geliştirilmiş bir üniversite bitirme projesidir. Verilerini satmıyoruz, reklam ağlarıyla
+          paylaşmıyoruz, takip çerezi kullanmıyoruz ve hesabını istediğin zaman sildirebilirsin. Aşağıda hangi veriyi neden
+          tuttuğumuzu tek tek yazdık.
         </p>
       </Section>
 
       <Section title="Hangi verileri topluyoruz?">
         <List
           items={[
-            ["Hesap bilgileri", "Ad soyad, e-posta adresi ve şifren. Şifre asla düz metin olarak saklanmaz; geri döndürülemez şekilde (bcrypt) şifrelenir."],
-            ["İlan bilgileri", "İlan verirsen: araç bilgileri, fotoğraflar, konum (il/ilçe) ve iletişim telefonun."],
-            ["Etkileşimler", "Favorilerin, verdiğin/aldığın teklifler, teklif sohbetleri, sorduğun sorular ve kayıtlı aramaların."],
-            ["Konum (isteğe bağlı)", "Yakınımdakiler özelliğini kullanırsan yaklaşık konumun (enlem/boylam) yakındaki ilanları hesaplamak için sunucuya gönderilir. Bu uç nokta koordinatı uygulama veritabanına kaydetmez; istek web sunucusu ve altyapı günlüklerinde yer alabilir."],
-            ["Bildirim izni (isteğe bağlı)", "Tarayıcı bildirimi açarsan, bildirim gönderebilmek için tarayıcının ürettiği abonelik anahtarı."],
+            [
+              "Hesap bilgileri",
+              "Ad soyad, e-posta adresi ve şifren. Şifre asla düz metin olarak saklanmaz; geri döndürülemez şekilde (bcrypt) şifrelenir. İsteğe bağlı olarak profil fotoğrafı ve işletme adı ekleyebilirsin.",
+            ],
+            [
+              "İlan bilgileri",
+              "İlan verirsen: araç bilgileri, fotoğraflar, açıklama, hasar/boya bilgisi, konum (il/ilçe) ve iletişim telefonun.",
+            ],
+            [
+              "Etkileşimler",
+              "Favorilerin, verdiğin/aldığın teklifler, teklif sohbetleri, sorduğun sorular, kayıtlı aramaların ve fiyat uyarıların.",
+            ],
+            [
+              "Oturum ve cihaz kaydı",
+              "Giriş yaptığında her oturum için IP adresi, tarayıcı ya da uygulama bilgisi (user agent), bu bilgiden üretilen cihaz adı (ör. \"Chrome · Windows\") ve son görülme zamanı tutulur. Cihazlar bölümünden bu oturumları görüp sonlandırabilirsin.",
+            ],
+            [
+              "Konum (isteğe bağlı)",
+              "Yakınımdakiler özelliğini kullanırsan yaklaşık konumun (enlem/boylam) yakındaki ilanları hesaplamak için sunucuya gönderilir. Bu uç nokta koordinatı uygulama veritabanına kaydetmez; istek web sunucusu ve altyapı günlüklerinde yer alabilir.",
+            ],
+            [
+              "Bildirim izni (isteğe bağlı)",
+              "Tarayıcı bildirimi açarsan tarayıcının ürettiği abonelik anahtarı. Mobil uygulamada bildirim için Google Firebase Cloud Messaging'in cihaz belirteci (token) kaydedilir.",
+            ],
           ]}
         />
       </Section>
 
       <Section title="Telefon numaran ve adın nasıl korunuyor?">
         <p>
-          Herkese açık ilan detayında telefon numaran yer almaz. İlan sahibi kendi
-          numarasını yönetim ekranında görebilir; alıcıya ise teklif kabul edildiğinde
-          teklif sohbetinde gösterilir. Adın soru/yorum alanlarında maskelenir.
+          Herkese açık ilan detayında telefon numaran yer almaz. İlan sahibi kendi numarasını yönetim ekranında görebilir; alıcıya
+          ise teklif kabul edildiğinde teklif sohbetinde gösterilir. Adın soru/yorum alanlarında maskelenir.
         </p>
       </Section>
 
@@ -61,76 +78,110 @@ export default function PrivacyPage() {
         <List
           items={[
             ["Hizmeti sunmak", "Giriş yapman, ilan vermen, teklif alıp vermen için."],
-            ["Güvenlik", "Sahte hesapları, spam ilanları ve kötüye kullanımı engellemek için (hız sınırı, e-posta doğrulama, içerik denetimi)."],
-            ["Bilgilendirme", "Şifre sıfırlama, e-posta doğrulama, teklif/soru bildirimleri ve favori aracında fiyat düşüşü uyarıları."],
+            [
+              "Güvenlik",
+              "Sahte hesapları, spam ilanları ve kötüye kullanımı engellemek için (hız sınırı, e-posta doğrulama, içerik denetimi); oturum listesi ile hesabına yetkisiz erişimi fark edebilmek için.",
+            ],
+            ["Bilgilendirme", "Şifre sıfırlama, e-posta doğrulama, teklif/soru bildirimleri, kayıtlı aramalara uyan yeni ilanlar ve favori aracında fiyat düşüşü uyarıları."],
           ]}
         />
       </Section>
 
       <Section title="İlan verileri nereden geliyor?">
         <p>
-          Sitedeki ilanların büyük kısmı, karşılaştırma ve araştırma amacıyla halka açık
-          kaynaklardan (Arabam.com, Otomerkezi.net) derlenmiştir; bu ilanların sahipleri
-          OtoPiyasa üyesi değildir ve bu ilanlara teklif verilemez, soru sorulamaz.
-          Üyelerin kendi verdiği ilanlar ayrıca işaretlidir.
+          Sitedeki ilanların büyük kısmı halka açık kaynaklardan karşılaştırma ve araştırma amacıyla derlenmiştir: Arabam.com,
+          Otokoç, DOD, Otomerkezi, Vavacars, Otoplus, Carvak ve İkinci Yeni (ihale sitesi). Bu ilanların sahipleri OtoPiyasa üyesi
+          değildir ve bu ilanlara teklif verilemez, soru sorulamaz. Üyelerin kendi verdiği ilanlar ayrıca işaretlidir.
+        </p>
+      </Section>
+
+      <Section id="ilan-kalitesi" title="İlan kalitesi puanı nasıl hesaplanır?">
+        <p>
+          Yayındaki her ilanın detay sayfasında 0–100 arası bir <strong>bilgi tamlığı</strong> puanı gösterilir. Puan yalnızca
+          ilanın kendi alanlarına bakar: kişisel veri kullanmaz, aracın durumunu, fiyatın doğruluğunu ya da satıcının
+          güvenilirliğini değerlendirmez. Kriterler ve puanlar:
+        </p>
+        <List
+          items={[
+            ["Fotoğraf (en fazla 35)", "8 ve üzeri fotoğraf 35; 4–7 fotoğraf 20; 1–3 fotoğraf 10 puan."],
+            ["Açıklama (en fazla 15)", "200 karakter ve üzeri 15; 80–199 karakter 10; 1–79 karakter 3 puan."],
+            [
+              "Hasar / boya bilgisi (25)",
+              "İlanda boya-değişen bilgisi, parça listesi ya da hasar kaydı varsa 25 puan. \"Belirtilmemiş\" ya da boş alan bilgi sayılmaz.",
+            ],
+            [
+              "Temel özellikler (25)",
+              "Yakıt 7, vites 6, kasa tipi 6, renk 6 puan. \"Bilinmiyor\", \"Belirtilmemiş\" ya da \"Doğrulanıyor\" olan alan sayılmaz.",
+            ],
+          ]}
+        />
+        <p>
+          Kaynak sitede ilanın ne zaman kontrol edildiği puana dahil değildir; bu, taramamızın sıklığına bağlıdır, ilanın
+          kendisine değil. Yayından kalkmış (arşivdeki) ilanlarda puan gösterilmez. Kaynak verisi tam çekilemeyen Otomerkezi ilanlarında da şimdilik puan gösterilmez. Puan yalnızca bilgi tamlığını ölçer; ilanın
+          doğruluğunu ya da aracın kalitesini garanti etmez. Kriterler değişirse bu bölüm güncellenir.
         </p>
       </Section>
 
       <Section title="Verilerini kimlerle paylaşıyoruz?">
         <p className="mb-2">
-          Verilerini <strong>satmıyoruz</strong> ve reklam amacıyla paylaşmıyoruz.
-          Hizmetin çalışması için yalnızca şu altyapı sağlayıcıları kullanılır:
+          Verilerini <strong>satmıyoruz</strong> ve reklam amacıyla paylaşmıyoruz. Hizmetin çalışması için yalnızca şu sağlayıcıları
+          kullanırız:
         </p>
         <List
           items={[
             ["MongoDB Atlas", "Veritabanı barındırma."],
             ["Vercel", "Site barındırma ve sunucu."],
-            ["Brevo", "E-posta gönderimi (doğrulama, bildirim)."],
-            ["Google Gemini", "Sohbet asistanı ve ilan içerik denetimi. Asistana yazdığın mesaj işlenmek üzere gönderilir; hesap bilgilerin gönderilmez."],
+            ["E-posta sağlayıcısı (SMTP)", "Doğrulama ve bildirim e-postaları."],
+            ["Google Firebase Cloud Messaging", "Mobil uygulama bildirimleri (cihaz belirteci)."],
+            [
+              "Google Gemini",
+              "Sohbet asistanı; ilan içeriği denetimi; profil fotoğrafı denetimi; yüklediğin ilan fotoğraflarının fiyat tahmini için analizi. Bu işlemlerde yazdığın metin ya da yüklediğin fotoğraf Google'a iletilir; hesap bilgilerin gönderilmez.",
+            ],
           ]}
         />
       </Section>
 
-      <Section title="Çerezler">
+      <Section title="Çerezler ve cihazındaki veriler">
         <p>
-          Yalnızca <strong>zorunlu</strong> çerez kullanılır: giriş yaptığında oturumunu
-          taşıyan güvenlik çerezi (httpOnly). Reklam veya takip çerezi yoktur. Tarayıcı
-          tarafında ayrıca karşılaştırma listesi ve sohbet geçmişi gibi tercihlerin
-          cihazının yerel deposunda tutulur; bunlar sunucuya gönderilmez.
+          Yalnızca <strong>zorunlu</strong> çerez kullanılır: giriş yaptığında oturumunu taşıyan güvenlik çerezi (httpOnly). Reklam
+          veya takip çerezi yoktur. Cihazında ayrıca şunlar tutulur ve sunucuya gönderilmez: karşılaştırma listesi, son baktıkların
+          (her hesap için ayrı) ve asistan sohbet geçmişi. Mobil uygulamada oturum belirteci telefonun şifreli depolama alanında
+          saklanır.
         </p>
       </Section>
 
       <Section title="Verilerin ne kadar saklanır?">
         <p>
-          Hesabın açık olduğu sürece. Hesabını sildirirsen hesap bilgilerin ve ilanların
-          silinir. Kabul edilen tekliflerdeki sohbetler 48 saat sonra kapanır.
+          Hesabın açık olduğu sürece hesap bilgilerin ve ilanların saklanır. Hesabını sildirirsen hesap bilgilerin ve ilanların
+          silinir. Kabul edilen tekliflerdeki sohbetler 48 saat sonra kapanır. Oturum kayıtları hesabın açık olduğu sürece
+          tutulur; bir oturumu sonlandırmak kaydı silmez, yalnızca iptal eder. Yayından kalkan derlenmiş ilanlar fiyat analizi için arşivde saklanır. Hız sınırı için tutulan IP bilgisi ham
+          adres değil, özetidir (karma) ve yalnızca sınırlama için kullanılır.
         </p>
       </Section>
 
       <Section title="Haklarınız">
         <p>
-          KVKK kapsamında; verilerine erişme, düzeltilmesini veya silinmesini isteme ve
-          işlenmesine itiraz etme haklarına sahipsin. İlan ve profil bilgilerini zaten
-          hesabından doğrudan düzenleyebilir ya da silebilirsin. Hesabını uygulama
-          içinden tek adımda silme özelliği bulunmuyor. Hesap silme talebini kayıtlı
-          e-posta adresinden OtoPiyasa bildirim e-postalarına yanıtlayarak iletebilirsin;
-          talep elle incelenir ve ilişkili kayıtlar da bu incelemede değerlendirilir.
+          KVKK kapsamında; verilerine erişme, düzeltilmesini veya silinmesini isteme ve işlenmesine itiraz etme haklarına
+          sahipsin. İlan ve profil bilgilerini zaten hesabından doğrudan düzenleyebilir ya da silebilirsin. Oturumlarını Cihazlar
+          bölümünden sonlandırabilirsin. Hesabını uygulama içinden tek adımda silme özelliği bulunmuyor. Hesap silme talebini
+          kayıtlı e-posta adresinden OtoPiyasa bildirim e-postalarına yanıtlayarak iletebilirsin; talep elle incelenir ve ilişkili
+          kayıtlar da bu incelemede değerlendirilir.
         </p>
       </Section>
 
       <p className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-xs text-slate-500">
-        Bu site bir üniversite bitirme projesidir ve ticari bir hizmet değildir.
-        İlan verileri yalnızca karşılaştırma ve araştırma amacıyla derlenmektedir.
+        Bu site bir üniversite bitirme projesidir ve ticari bir hizmet değildir. İlan verileri yalnızca karşılaştırma ve araştırma
+        amacıyla derlenmektedir.
       </p>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2">
+    <section id={id} className="scroll-mt-24 space-y-2">
       <h2 className="text-xl font-bold">{title}</h2>
-      <div className="text-sm leading-7 text-slate-300">{children}</div>
+      <div className="space-y-3 text-sm leading-7 text-slate-300">{children}</div>
     </section>
   );
 }

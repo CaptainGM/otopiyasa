@@ -174,6 +174,8 @@ const CarSchema = new Schema(
           disc: Number,
           /** "Haftanın fırsatları" ölçütünü karşılıyor mu (bkz. isDealCandidate). */
           deal: Boolean,
+          /** Fırsat sıralama puanı: indirim × emsal güveni (bkz. dealScore). Az emsalli indirim geriye düşer. */
+          dealScore: Number,
           /** Hesaplandığı andaki fiyat (fiyat değişince yeniden hesaplanır). */
           fp: Number,
           fairAt: Date,
@@ -200,6 +202,7 @@ CarSchema.index({ status: 1, vehicleClass: 1, createdAt: -1 });
 CarSchema.index({ verifyPriorityAt: 1 }, { sparse: true });
 // "Haftanın fırsatları" ve tümü listesi: fırsat ilanlar indirime göre sıralı (bkz. lib/market-fair.ts).
 CarSchema.index({ "market.deal": 1, "market.disc": -1 }, { sparse: true });
+CarSchema.index({ "market.deal": 1, "market.dealScore": -1 }, { sparse: true });
 CarSchema.index({ status: 1, moderationStatus: 1, createdAt: -1 });
 CarSchema.index({ status: 1, viewCount: -1 });
 CarSchema.index({ status: 1, updatedAt: -1 });

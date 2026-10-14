@@ -20,14 +20,22 @@ const STALE_MS = 24 * 60 * 60 * 1000;
  * Adil değer hesabının mantık sürümü. Tahmin mantığı değişince (donanım, emsal sayımı, km penceresi...) artırılır: yenileme işi
  * sürümü farklı her ilanı yeniden hesaplar, önce eski mantıkla "emsalsiz" diye temizlenmiş olanları. Aksi halde 24 saat boyunca
  * kartlarda "PİYASA VERİSİ AZ" yazıyordu (13 Ekim 2026: aktif ilanların %24,6'sı; bunların %95'i bugünkü mantıkla hesaplanabiliyordu).
+ * Sürüm 3 (14 Ekim 2026): arşiv yaşı, arşiv tarihi olmayan eski kayıtlarda güncelleme tarihi yerine oluşturulma tarihinden sayılır
+ * (bkz. archiveAgeDays); bu kayıtların ağırlığı önceden hep tam (1,0) kalıyordu.
  */
-export const FAIR_LOGIC_VERSION = 2;
+export const FAIR_LOGIC_VERSION = 3;
 
 /**
- * Fırsat eşiği: adil değerin en az %18 altı. Adil değer tahmini olduğu için küçük farklar tahmin hatası olabilir;
- * %12 eşiğinde ~1.000 ilan "fırsat" çıkıyordu (her 25 ilandan biri), %18'de ~300: gerçekten öne çıkanlar.
+ * Fırsat bandı: adil değerin %10–%40 altı (üst sınır SUSPICIOUS_DISCOUNT, bkz. deals.ts). Adil değer tahmini olduğu için
+ * küçük farklar tahmin hatası olabilir; bu yüzden fırsat sayılması için en az DEAL_MIN_COMPARABLES emsal gerekir.
  */
-export const DEAL_MIN_FAIR_DISCOUNT = 0.18;
+export const DEAL_MIN_FAIR_DISCOUNT = 0.1;
+/** Fırsat için en az emsal sayısı (adil değer bu kadar emsalle hesaplanmış olmalı). */
+export const DEAL_MIN_COMPARABLES = 12;
+/** Bu fiyatın altındaki ilanlar fırsat şeridine girmez (ucuz ilan ağırlıklı çöp ilanlar). */
+export const DEAL_MIN_PRICE = 500_000;
+/** Fırsat şeridinde gösterilmeyen araç sınıfları: motosiklet ve karavan fiyat kıyasına uygun değil. */
+const DEAL_EXCLUDED_CLASSES = new Set(["motosiklet", "karavan"]);
 
 // Büyük harfli başlıklar ("PERTLİ", "AĞIR HASARLI") da yakalansın: Türkçe küçük harfe çevrilip ı→i yapılır
 // (JavaScript'in büyük/küçük harf duyarsız araması İ ile i'yi eşlemiyor).
@@ -47,6 +55,7 @@ interface DealInput {
   year: number;
   mileage: number;
   price: number;
+  vehicleClass?: string | null;
   damageFlag?: boolean;
   title?: string;
   description?: string;
@@ -54,19 +63,32 @@ interface DealInput {
 }
 
 /**
- * "Haftanın fırsatları" ölçütü: 2010 ve sonrası, en fazla 150 bin km, hasar kaydı ve ağır hasar/pert ifadesi yok,
- * adil değerin %18–%30 altında. %30'dan fazla altı fırsat değil uyarıdır (hatalı fiyat ya da kapora dolandırıcılığı).
+ * "Haftanın fırsatları" ölçütü: adil değerin %10–%40 altında, en az 12 emsal, en az 500 bin TL, 2010 ve sonrası, en fazla
+ * 150 bin km, hasar kaydı ve ağır hasar/pert ifadesi yok, motosiklet ve karavan değil. %40'tan fazla altı fırsat değil
+ * uyarıdır (hatalı fiyat ya da kapora dolandırıcılığı).
  */
 export function isDealCandidate(car: DealInput, disc: number, fairN: number): boolean {
-  if (fairN < MIN_MARKET_COMPARABLES) return false;
-  // Göstergeyle aynı yuvarlama (bkz. market-position.ts): %29,6 göstergede "%30 → şüpheli ucuz" görünür, fırsat sayılmaz.
+  if (fairN < DEAL_MIN_COMPARABLES) return false;
+  // Göstergeyle aynı yuvarlama (bkz. market-position.ts): %39,6 göstergede "%40 → şüpheli ucuz" görünür, fırsat sayılmaz.
   const pct = Math.round(disc * 100);
   if (pct < Math.round(DEAL_MIN_FAIR_DISCOUNT * 100) || pct >= Math.round(SUSPICIOUS_DISCOUNT * 100)) return false;
-  if (car.year < DEAL_MIN_YEAR || car.mileage > DEAL_MAX_MILEAGE || car.damageFlag || car.price <= 0) return false;
+  if (car.year < DEAL_MIN_YEAR || car.mileage > DEAL_MAX_MILEAGE || car.damageFlag || car.price < DEAL_MIN_PRICE) return false;
+  if (car.vehicleClass && DEAL_EXCLUDED_CLASSES.has(car.vehicleClass)) return false;
   return !HEAVY_DAMAGE.test(trFold(`${car.title ?? ""} ${car.description ?? ""} ${car.paintChange ?? ""}`));
 }
 
 /** Bir ilanın adil değer alanları ($set için). Emsal yetersizse null. */
+/** Fırsat sıralamasında tam ağırlık için emsal sayısı: bundan az emsalli indirim, emsal sayısı oranında tartılır. */
+export const DEAL_FULL_WEIGHT_COMPARABLES = 30;
+
+/**
+ * Fırsat sıralama puanı: indirim × min(1, emsal / 30). Çok emsalle hesaplanan indirim öne geçer; az emsalli ya da
+ * uç bir indirim (tahmin hatası ya da çöp ilan olabilir) geriye düşer.
+ */
+export function dealScore(disc: number, fairN: number): number {
+  return disc * Math.min(1, fairN / DEAL_FULL_WEIGHT_COMPARABLES);
+}
+
 export function fairFields(car: DealInput, predictedPrice: number, sampleSize: number, at = new Date()) {
   if (!predictedPrice || predictedPrice <= 0 || sampleSize < MIN_MARKET_COMPARABLES) return null;
   const fair = Math.round(predictedPrice);
@@ -76,6 +98,7 @@ export function fairFields(car: DealInput, predictedPrice: number, sampleSize: n
     "market.fairN": sampleSize,
     "market.disc": disc,
     "market.deal": isDealCandidate(car, disc, sampleSize),
+    "market.dealScore": dealScore(disc, sampleSize),
     "market.fp": car.price,
     "market.fairAt": at,
     "market.fairV": FAIR_LOGIC_VERSION,
@@ -235,7 +258,7 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
 export async function findDealListings(limit: number, skip = 0) {
   const filter = { ...PUBLIC_LISTING_FILTER, "market.deal": true };
   const [docs, total] = await Promise.all([
-    Car.find(filter).sort({ "market.disc": -1 }).skip(skip).limit(limit).slice("images", 8).lean(),
+    Car.find(filter).sort({ "market.dealScore": -1, _id: 1 }).skip(skip).limit(limit).slice("images", 8).lean(),
     Car.countDocuments(filter),
   ]);
   return { docs, total };
@@ -278,7 +301,7 @@ export async function liveFairValue(car: LiveFairInput) {
  */
 export async function recomputeDealFlags(): Promise<{ scanned: number; changed: number }> {
   const cursor = Car.find({ ...PUBLIC_LISTING_FILTER, "market.fair": { $gt: 0 } })
-    .select("year mileage price damageFlag title description paintChange market.disc market.fairN market.deal")
+    .select("year mileage price vehicleClass damageFlag title description paintChange market.disc market.fairN market.deal")
     .lean<Array<DealInput & { _id: unknown; market?: { disc?: number; fairN?: number; deal?: boolean } }>>()
     .cursor({ batchSize: 1000 });
   let scanned = 0;

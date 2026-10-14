@@ -21,8 +21,9 @@ export async function GET(request: Request) {
       .map((s) => s.trim())
       .filter((s) => Types.ObjectId.isValid(s))
       .slice(0, 6);
-    if (ids.length < 2) {
-      return NextResponse.json({ error: "At least two ids required to compare" }, { status: 400 });
+    // Tek araç da döner: karşılaştırma ekranı eklenen aracın özelliklerini gösterip yanına bir araç daha ekletir.
+    if (ids.length < 1) {
+      return NextResponse.json({ error: "En az bir araç kimliği gerekli." }, { status: 400 });
     }
 
     // GÜVENLİK: Yalnızca aktif ve onaylı ilanları karşılaştırma için döndür.

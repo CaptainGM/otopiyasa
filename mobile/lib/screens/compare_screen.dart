@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/services/shell_tabs.dart';
 import 'package:otopiyasa/utils/relative_time.dart';
+import 'package:otopiyasa/widgets/compare_add_slot.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -180,6 +182,13 @@ class _CompareScreenState extends State<CompareScreen> {
     );
   }
 
+  /// Boş kutu Keşfet'e götürür: araç ilan kartlarından eklenir. Karşılaştırma bir ilan detayından açıldıysa yığın
+  /// kök ekrana (ana kabuk) kadar kapanır; sonra Keşfet sekmesi açılır.
+  void _goToDiscover() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    ShellTabs.request.value = ShellTabs.discover;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -221,17 +230,17 @@ class _CompareScreenState extends State<CompareScreen> {
                             if (_cars.length >= 2) _aiSummaryCard(),
                             if (_cars.length >= 2) _diffToggle(),
                             _table(),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              child: Text(
-                                _cars.length < 2
-                                    ? 'Karşılaştırmak için en az bir araç daha ekle.'
-                                    : 'Yeşil zemin o satırda en avantajlı olanı gösterir. '
-                                        'Fotoğrafa dokunarak ilana gidebilirsin.',
-                                style: const TextStyle(fontSize: 12, color: Colors.white54),
-                                textAlign: TextAlign.center,
+                            // Tek araçta bu yazı gereksiz: sağdaki kutu zaten "bir araç daha ekle" diyor.
+                            if (_cars.length >= 2)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 12),
+                                child: Text(
+                                  'Yeşil zemin o satırda en avantajlı olanı gösterir. '
+                                  'Fotoğrafa dokunarak ilana gidebilirsin.',
+                                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
-                            ),
                           ],
                         ),
                         if (_showStrip) Positioned(top: 0, left: 0, right: 0, child: _stickyStrip()),
@@ -390,7 +399,10 @@ class _CompareScreenState extends State<CompareScreen> {
     ];
   }
 
-  double _columnWidth(double tableWidth) => (tableWidth - _labelWidth) / _cars.length;
+  /// Tek araçta yanına boş "araç ekle" sütunu gelir; sütun genişliği iki araçlık düzenle aynı kalsın diye iki sayılır.
+  int get _slotCount => _cars.length == 1 ? 2 : _cars.length;
+
+  double _columnWidth(double tableWidth) => (tableWidth - _labelWidth) / _slotCount;
 
   String _shortName(CarListing c) {
     final name = [c.brand, c.model].where((e) => e.trim().isNotEmpty).join(' ');
@@ -428,6 +440,7 @@ class _CompareScreenState extends State<CompareScreen> {
                   ),
                 ),
               ),
+            if (_cars.length == 1) SizedBox(width: columnWidth, height: 40),
           ],
         ),
       ),
@@ -566,6 +579,25 @@ class _CompareScreenState extends State<CompareScreen> {
               children: [
                 header(_cars[c]),
                 for (var r = 0; r < rows.length; r++) valueCell(r, c),
+              ],
+            ),
+          // Tek araçta sağdaki boş sütun: başlıkta kesikli kutu, altında boş hücreler (diğer sütunlarla hizalı).
+          if (_cars.length == 1)
+            Column(
+              children: [
+                CompareAddSlot(
+                  width: columnWidth,
+                  imageWidth: imageWidth,
+                  imageHeight: imageHeight,
+                  headerHeight: headerHeight,
+                  onTap: _goToDiscover,
+                ),
+                for (var r = 0; r < rows.length; r++)
+                  Container(
+                    height: _rowHeight,
+                    width: columnWidth,
+                    color: r.isOdd ? stripe : null,
+                  ),
               ],
             ),
         ],

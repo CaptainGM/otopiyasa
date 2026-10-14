@@ -195,8 +195,11 @@ export function CarPriceHistoryChart({ data }: CarPriceHistoryChartProps) {
           Fiyat Güncelleme Geçmişi ({data.length} Kayıt)
         </p>
         <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
-          {data.slice().reverse().map((point, idx) => {
+          {data.slice().reverse().map((point, idx, rows) => {
             const isLatest = idx === 0;
+            // Her adımın yüzdesi bir önceki (daha eski) fiyata göre; ilk kayıtta karşılaştırılacak fiyat yok.
+            const older = rows[idx + 1];
+            const changePct = older && older.price > 0 ? ((point.price - older.price) / older.price) * 100 : null;
             return (
               <div
                 key={idx}
@@ -211,7 +214,16 @@ export function CarPriceHistoryChart({ data }: CarPriceHistoryChartProps) {
                   <span className="text-slate-400">{point.date}</span>
                   {isLatest && <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">(Son Fiyat)</span>}
                 </div>
-                <span className="font-bold text-slate-200">{formatPrice(point.price)}</span>
+                <span className="flex items-center gap-2">
+                  {changePct !== null && Math.abs(changePct) >= 0.05 && (
+                    <span
+                      className={`whitespace-nowrap text-[10px] font-bold tabular-nums ${changePct < 0 ? "text-emerald-400" : "text-rose-400"}`}
+                    >
+                      {changePct < 0 ? "↓" : "↑"} %{Math.abs(changePct).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}
+                    </span>
+                  )}
+                  <span className="font-bold text-slate-200">{formatPrice(point.price)}</span>
+                </span>
               </div>
             );
           })}

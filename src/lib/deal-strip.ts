@@ -26,7 +26,7 @@ export function getDealStrip(): Promise<{ items: DealStripItem[]; total: number 
       const disc = (doc as unknown as { market?: { disc?: number } }).market?.disc ?? 0;
       return {
         car: serializeCarPublicForList(doc),
-        label: `Piyasanın %${Math.round(disc * 100)} altı`,
+        label: `Adil değerin %${Math.round(disc * 100)} altı`,
         score: disc,
       };
     });

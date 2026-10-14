@@ -4,7 +4,7 @@ import { archiveListings } from "@/lib/scraper/listing-lifecycle";
 import { isUnknownValue, shouldReplaceDetailDescription, shouldReplaceFuel } from "@/lib/scraper/enrich-detail";
 import type { ScrapedListing } from "@/lib/scraper/types";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
-import { isPlausibleScrapedPrice } from "@/lib/scraper/price-guard";
+import { isAcceptableScrapedPrice } from "@/lib/scraper/price-guard";
 
 /**
  * Arabam ilan sayfasından galeri, satıcı açıklaması, parça bazlı hasar ve teknik bilgiyi
@@ -220,7 +220,7 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
         },
       ],
     },
-    { _id: 1, title: 1, listingUrl: 1, brand: 1, model: 1, year: 1, price: 1, imageUrl: 1, images: 1, description: 1, damageParts: 1, city: 1, address: 1, features: 1 }
+    { _id: 1, title: 1, listingUrl: 1, brand: 1, model: 1, year: 1, price: 1, priceHistory: 1, imageUrl: 1, images: 1, description: 1, damageParts: 1, city: 1, address: 1, features: 1 }
   )
     .sort({ detailCheckFailedAt: 1, detailCheckedAt: 1, createdAt: 1, _id: 1 })
     .limit(batchLimit)
@@ -249,7 +249,7 @@ export async function runEnrichArabamBatch(limit = 25): Promise<{
       deleted += await archiveListings([car._id], `arabam: ${result.reason}`);
     } else if (result.kind === "ok") {
       const listing = result.listing;
-      const priceChanged = listing.price !== car.price && isPlausibleScrapedPrice(car.price, listing.price);
+      const priceChanged = listing.price !== car.price && isAcceptableScrapedPrice(car.price, car.priceHistory?.[0]?.price, listing.price);
       await Car.updateOne(
         { _id: car._id },
         {

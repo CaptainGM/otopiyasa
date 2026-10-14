@@ -75,6 +75,14 @@ describe("listingCompleteness", () => {
     expect(itemOf({ title: "Renault Clio Evolution", features: noStructured }, "ozellikler").note).toBe("Eksik: Motor hacmi");
   });
 
+  it("kasa tipi olmayan sınıfta (motosiklet) eksik kasa tipi puan düşürmez; diğer sınıflarda düşürür", () => {
+    const noBody = { ...full, features: { ...full.features, bodyType: null } };
+    expect(listingCompleteness(noBody).score).toBeLessThan(100);
+    const motorcycle = listingCompleteness({ ...noBody, vehicleClass: "motosiklet" });
+    expect(motorcycle.score).toBe(100);
+    expect(motorcycle.items.find((i) => i.key === "ozellikler")?.max).toBe(24);
+  });
+
   it("puan dökümü toplamı skoru verir ve her kalem en fazla kendi maksimumunu alır", () => {
     const result = listingCompleteness({ images: photos(3), description: text(90), damageFlag: true, features: { fuelType: "Dizel" } });
     expect(result.items.reduce((sum, i) => sum + i.earned, 0)).toBe(result.score);

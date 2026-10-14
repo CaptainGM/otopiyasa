@@ -18,6 +18,8 @@ import { isMailerConfigured, sendListingRejectedEmail, sendListingPublishedEmail
 import { logAudit } from "@/lib/audit-log";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { loadSellEstimate } from "@/lib/sell-estimate-data";
+import { loadPriceSanity } from "@/lib/price-sanity-data";
+import { sanityMessage } from "@/lib/price-sanity";
 import {
   damageToFields,
   isElectricFuel,
@@ -126,6 +128,9 @@ export async function POST(request: Request) {
     });
     const priceCheck = priceGuard(input.price, sell.estimate, { damageKnown: sell.damageKnown });
     if (priceCheck.level === "block") return NextResponse.json({ error: priceCheck.message }, { status: 400 });
+    // Piyasa denetimi: aile ortalamasının çok altı ya da çok üstü fiyat ilan olarak kabul edilmez (uç değer, yazım hatası).
+    const sanityText = sanityMessage(input.price, await loadPriceSanity({ brand: input.brand, model: input.model, year: input.year, price: input.price }));
+    if (sanityText) return NextResponse.json({ error: sanityText }, { status: 400 });
 
     await connectDB();
 

@@ -14,6 +14,8 @@ import { normalizeFuelType } from "@/lib/normalize-fuel";
 import { loadSegmentCap } from "@/lib/segment-cap-data";
 import { segmentCapMessage } from "@/lib/segment-cap";
 import { loadSellEstimate } from "@/lib/sell-estimate-data";
+import { loadPriceSanity } from "@/lib/price-sanity-data";
+import { sanityMessage } from "@/lib/price-sanity";
 import {
   damageToFields,
   isElectricFuel,
@@ -143,6 +145,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       });
       const priceCheck = priceGuard(input.price, sell.estimate, { damageKnown: sell.damageKnown });
       if (priceCheck.level === "block") return NextResponse.json({ error: priceCheck.message }, { status: 400 });
+      // Piyasa denetimi: düzenlemede de aile ortalamasının çok altı ya da çok üstü fiyat kabul edilmez.
+      const sanityText = sanityMessage(input.price, await loadPriceSanity({ brand: input.brand, model: input.model, year: input.year, price: input.price, excludeId: car._id }));
+      if (sanityText) return NextResponse.json({ error: sanityText }, { status: 400 });
     }
 
     const outcome = await moderateNewListing({

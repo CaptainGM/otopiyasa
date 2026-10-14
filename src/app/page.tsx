@@ -186,11 +186,6 @@ export default async function HomePage({ searchParams }: HomeProps) {
 
   return (
     <div className="space-y-8 pb-10">
-      {/* Sol altta sabit: şikayet, bildirim ve kişisel veri talepleri (giriş gerekmez). Mobilde alt menünün üstünde durur. */}
-      <Link href="/talep" className="chat-fab fixed bottom-20 left-4 z-40 md:bottom-6 md:left-6" aria-label="Talep oluştur">
-        Talep oluştur
-      </Link>
-
       {!hasAnyFilter && (
         <section className="card overflow-hidden">
           <div className="hero grid-paper grid gap-8 p-5 sm:p-8 lg:grid-cols-[1.3fr_1fr] lg:items-end lg:p-10">

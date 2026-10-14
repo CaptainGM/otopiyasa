@@ -118,7 +118,7 @@ export default function PrivacyPage() {
             ],
             [
               "Temel özellikler (30)",
-              "Yakıt, vites, kasa tipi, renk ve motor hacmi her biri 6 puan. \"Bilinmiyor\", \"Belirtilmemiş\" ya da \"Doğrulanıyor\" olan alan sayılmaz.",
+              "Yakıt, vites, kasa tipi, renk ve motor hacmi her biri 6 puan. \"Bilinmiyor\", \"Belirtilmemiş\" ya da \"Doğrulanıyor\" olan alan sayılmaz. Motosiklet ve karavanda kasa tipi ölçülmez; puan kalan ölçütlere göre orantılanır.",
             ],
           ]}
         />

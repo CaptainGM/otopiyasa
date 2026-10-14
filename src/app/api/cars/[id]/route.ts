@@ -110,6 +110,7 @@ export async function GET(
         showsListingQuality(carDoc)
           ? listingCompleteness({
               title: carDoc.title,
+              vehicleClass: carDoc.vehicleClass,
               images: carDoc.images,
               description: carDoc.description,
               paintChange: carDoc.paintChange,

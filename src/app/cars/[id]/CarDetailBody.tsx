@@ -20,7 +20,6 @@ import { Icon } from "@/components/Icon";
 import { MarketGauge } from "@/components/MarketGauge";
 import { PriceScaleCard } from "@/components/PriceScaleCard";
 import { getNavbarUser } from "@/lib/auth";
-import { InfoHint } from "@/components/InfoHint";
 import { ListingQualityBadge } from "@/components/ListingQualityBadge";
 import { listingCompleteness, showsListingQuality } from "@/lib/listing-completeness";
 import { loadPriceScale } from "@/lib/price-scale-data";
@@ -203,6 +202,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
     showsListingQuality(car)
       ? listingCompleteness({
           title: car.title,
+          vehicleClass: carDoc.vehicleClass,
           images: car.images,
           description: car.description,
           paintChange: car.paintChange,
@@ -229,18 +229,6 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           </div>
         ))}
 
-        {f.safetyFeatures && f.safetyFeatures.length > 0 && (
-          <div>
-            <p className="eyebrow mb-2">Güvenlik & donanım</p>
-            <div className="flex flex-wrap gap-2">
-              {f.safetyFeatures.map((item) => (
-                <span key={item} className="badge">
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
         {f.specSource && <p className="text-[11px] text-slate-600">Teknik katalog verisi kaynağı: {f.specSource}</p>}
       </div>
@@ -264,7 +252,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   if (fuelCost) movable.push({ key: "fuel", height: FUEL_CARD, node: <FuelCostCard cost={fuelCost} /> });
   movable.push({
     key: "specs",
-    height: specsHeight(specGroups.map((group) => group.rows.length), f.safetyFeatures?.length ?? 0, Boolean(f.specSource)),
+    height: specsHeight(specGroups.map((group) => group.rows.length), Boolean(f.specSource)),
     node: specsCard,
   });
   if (mapCard) movable.push({ key: "map", height: MAP_BLOCK, node: mapCard });
@@ -584,16 +572,21 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
       {similarCars.length > 0 && (
         <div className="space-y-4">
-          {/* Paket adı ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. Uyarı simgeye dokununca açılır. */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Paket adı ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. Not başlığın hemen yanında;
+              dokununca sayfa akışında açılır (sağ kenarda kalıp taşmaz). Yerel açılır bölüm: sunucu bileşeninde de çalışır. */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h2 className="font-display text-xl font-semibold">Benzer ilanlar</h2>
-            <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
-              <span>Paket adı farklı olabilir</span>
-              <InfoHint
-                label="Benzerlik hakkında ayrıntı"
-                text="Benzerlik motor, yakıt, vites ve beygire göre belirlenir; donanım seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et."
-              />
-            </div>
+            <details className="group">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-2.5 text-sm font-semibold text-amber-300 [&::-webkit-details-marker]:hidden">
+                <span>Paket adı farklı olabilir</span>
+                <span aria-hidden className="grid h-8 w-8 place-items-center rounded-full bg-amber-400 text-lg font-bold text-slate-950">
+                  !
+                </span>
+              </summary>
+              <p className="mt-2 max-w-md rounded-lg border border-amber-400/40 bg-slate-900 p-3 text-sm leading-relaxed text-amber-100">
+                Benzerlik motor, yakıt, vites ve beygire göre belirlenir; donanım seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et.
+              </p>
+            </details>
           </div>
           <div className="listing-grid">
             {similarCars.map((similar) => (

@@ -1,6 +1,7 @@
 
 
 import { outOfScopeReason } from "@/lib/vehicle-scope";
+import { MAX_PLAUSIBLE_PRICE } from "@/lib/price-plausibility";
 
 export interface ListingInput {
   brand?: string;
@@ -16,7 +17,8 @@ export interface ListingInput {
 
 
 export const ABSOLUTE_PRICE_FLOOR = 20_000;
-export const ABSOLUTE_PRICE_CEILING = 200_000_000;
+/** Kullanıcı ilanında en yüksek fiyat: tarayıcı tarafındaki en üst makul fiyatla aynı (100 milyon TL). */
+export const ABSOLUTE_PRICE_CEILING = MAX_PLAUSIBLE_PRICE;
 
 export const RELATIVE_PRICE_FLOOR_RATIO = 0.4;
 const CURRENT_YEAR = new Date().getFullYear();

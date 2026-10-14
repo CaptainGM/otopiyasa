@@ -177,6 +177,11 @@ export default function RootLayout({
           </div>
         </footer>
         <CompareTray />
+        {/* Her sayfada sol altta sabit (Asistan gibi): şikayet, bildirim ve kişisel veri talepleri, giriş gerekmez.
+            Mobilde alt menünün üstünde durur. */}
+        <Link href="/talep" className="chat-fab fixed bottom-20 left-4 z-40 md:bottom-6 md:left-6" aria-label="Talep oluştur">
+          Talep oluştur
+        </Link>
         <ChatWidget />
         <MobileBottomNav />
       </body>

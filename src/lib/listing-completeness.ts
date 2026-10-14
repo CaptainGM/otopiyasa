@@ -56,9 +56,17 @@ export interface ListingCompleteness {
   items: ListingCompletenessItem[];
 }
 
+/**
+ * Kasa tipi bu sınıflarda yoktur (motosiklet, karavan): ölçülmez ve puan, ölçülen ölçütlere göre orantılanır. Böylece bu
+ * ilanlar yalnızca "olmayan" bir alan yüzünden puan kaybetmez.
+ */
+const BODY_TYPE_NOT_APPLICABLE: ReadonlySet<string> = new Set(["motosiklet", "karavan"]);
+
 export interface ListingCompletenessInput {
   /** İlan başlığı: motor hacmi yapısal alanda yoksa başlıktan okunur ("Renault Clio 1.0 TCE" → 1.0). */
   title?: string | null;
+  /** Araç sınıfı (otomobil, suv-pickup, motosiklet, karavan…). Kasa tipinin uygulanıp uygulanmadığını belirler. */
+  vehicleClass?: string | null;
   images?: readonly unknown[] | null;
   description?: string | null;
   paintChange?: string | null;
@@ -91,14 +99,16 @@ export function listingCompleteness(input: ListingCompletenessInput): ListingCom
   const f = input.features ?? {};
   // Motor hacmi: yapısal alan ya da başlık metni (fiyat skalasının okuduğu ile aynı kaynak).
   const engineKnown = (f.engineSize ?? 0) > 0 || engineFromText(input.title) !== null;
+  const bodyApplicable = !BODY_TYPE_NOT_APPLICABLE.has(input.vehicleClass ?? "");
   const featureList = [
     { label: "Yakıt", known: isKnownValue(f.fuelType) },
     { label: "Vites", known: isKnownValue(f.transmission) },
-    { label: "Kasa tipi", known: isKnownValue(f.bodyType) },
+    ...(bodyApplicable ? [{ label: "Kasa tipi", known: isKnownValue(f.bodyType) }] : []),
     { label: "Renk", known: isKnownValue(f.color) },
     { label: "Motor hacmi", known: engineKnown },
   ];
   const featureEarned = featureList.reduce((sum, item) => sum + (item.known ? 6 : 0), 0);
+  const featureMax = featureList.length * 6;
   const featureMissing = featureList.filter((item) => !item.known).map((item) => item.label);
 
   const items: ListingCompletenessItem[] = [
@@ -121,10 +131,15 @@ export function listingCompleteness(input: ListingCompletenessInput): ListingCom
       key: "ozellikler",
       label: "Temel özellikler",
       earned: featureEarned,
-      max: 30,
-      note: featureMissing.length > 0 ? `Eksik: ${featureMissing.join(", ")}` : "Yakıt, vites, kasa tipi, renk ve motor hacmi belli",
+      max: featureMax,
+      note: featureMissing.length > 0
+        ? `Eksik: ${featureMissing.join(", ")}`
+        : `${featureList.map((item) => item.label.toLocaleLowerCase("tr-TR")).join(", ")} belli`,
     },
   ];
 
-  return { score: items.reduce((sum, item) => sum + item.earned, 0), items };
+  // Toplam, uygulanan ölçütlerin maksimumuna göre 0–100: kasa tipi olmayan sınıflarda da puan adil kalır.
+  const maxTotal = items.reduce((sum, item) => sum + item.max, 0);
+  const earnedTotal = items.reduce((sum, item) => sum + item.earned, 0);
+  return { score: Math.round((earnedTotal / maxTotal) * 100), items };
 }

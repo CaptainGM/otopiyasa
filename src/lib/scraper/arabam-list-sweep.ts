@@ -6,6 +6,7 @@ import { brandStorageAliases, normalizeBrand } from "@/lib/normalize-brand";
 import { turkishSearchRegex } from "@/lib/utils";
 import { normalizeBodyType } from "@/lib/vehicle-attrs";
 import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
+import { isAcceptableScrapedPrice } from "@/lib/scraper/price-guard";
 import { fetchPageWithBrowser, isCloudflareChallenge } from "@/lib/scraper/browser-scrape";
 import { waitForArabamTurn } from "@/lib/scraper/verify-listing";
 import { ArabamListDoc, ArabamListPage, dominantBodyType, parseArabamListPage } from "@/lib/scraper/arabam-list";
@@ -208,7 +209,7 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
   if (docs.length === 0) return out;
   const byExternal = new Map(docs.map((d) => [`arabam-${d.id}`, d]));
   const cars = await Car.find({ sourceSite: "arabam", externalId: { $in: [...byExternal.keys()] } })
-    .select("_id externalId status removedReason price mileage features.transmission")
+    .select("_id externalId status removedReason price mileage features.transmission priceHistory")
     .lean<
       Array<{
         _id: Types.ObjectId;
@@ -218,6 +219,7 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
         price: number;
         mileage: number;
         features?: { transmission?: string };
+        priceHistory?: Array<{ price: number }>;
       }>
     >();
 
@@ -255,7 +257,7 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
     const cls = classFromSourceCategory(doc.modelPath);
     if (cls && cls !== "excluded") set.vehicleClass = cls;
     // Fiyat ayrıştırma hatasına karşı aynı alt/üst sınır (bkz. verify-listing sanitizeRefresh).
-    if (doc.price && car.price > 0 && doc.price !== car.price && doc.price >= car.price * 0.2 && doc.price <= car.price * 5) {
+    if (doc.price && car.price > 0 && doc.price !== car.price && isAcceptableScrapedPrice(car.price, car.priceHistory?.[0]?.price, doc.price)) {
       priceUpdates.push({ id: car._id, price: doc.price, oldPrice: car.price });
     }
     ops.push({

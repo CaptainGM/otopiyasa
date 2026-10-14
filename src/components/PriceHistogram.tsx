@@ -47,7 +47,7 @@ export function PriceHistogram({ prices, currentPrice, segmentLabel, brand }: Pr
   }
 
   return (
-    <div>
+    <div className="flex flex-1 flex-col">
       <h3 className="text-lg font-semibold">Bu araç piyasada nerede?</h3>
       <p className="mb-3 text-xs leading-relaxed text-slate-500">
         Her çubuk bir <strong className="text-slate-300">fiyat aralığını</strong>,
@@ -57,8 +57,9 @@ export function PriceHistogram({ prices, currentPrice, segmentLabel, brand }: Pr
         {currentBin ? ` (${currentBin.label})` : ""}.
         {brand && " Bir çubuğa tıklayınca o aralıktaki ilanları listeler."}
       </p>
-      <div className="min-h-[13rem] flex-1">
-        <ResponsiveContainer width="100%" height="100%">
+      {/* Grafik kutunun ölçüsünü absolute ile alır: sütun yüksekliği çözülmese bile en az kutu yüksekliğinde çizilir. */}
+      <div className="relative h-64 lg:h-auto lg:min-h-[13rem] lg:flex-1">
+        <ResponsiveContainer width="100%" height="100%" className="absolute inset-0">
           <BarChart data={data} margin={{ top: 22, right: 4, bottom: 4, left: 4 }}>
             <XAxis
               dataKey="label"
@@ -69,13 +70,6 @@ export function PriceHistogram({ prices, currentPrice, segmentLabel, brand }: Pr
               angle={-24}
               height={52}
               textAnchor="end"
-              label={{
-                value: "Fiyat aralığı",
-                position: "insideBottom",
-                offset: -2,
-                fill: "#64748b",
-                fontSize: 11,
-              }}
             />
             <YAxis
               allowDecimals={false}

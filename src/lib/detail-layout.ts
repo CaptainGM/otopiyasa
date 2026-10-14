@@ -1,7 +1,8 @@
 /**
  * İlan sayfasının üst bölümü iki sütundur: sol sütunda galeri, açıklama ve hasar durumu; sağda başlık, fiyat, analiz ve eylemler.
  * Sağ sütun 1650–1800 px'e uzarken sol 920–1250 px'te kalıyor, altında 400–875 px boşluk oluşuyordu. Boşluk bırakmamak için
- * ikincil kartlar (teknik özellikler, harita, piyasa temposu, yakıt maliyeti) kısa sütuna konur.
+ * ikincil kartlar (teknik özellikler, harita, yakıt maliyeti) kısa sütuna konur. Piyasa temposu bu sütunlara girmez: veri yoksa
+ * hiç çizilmez, yüksekliği önceden bilinmez; alt kartta gösterilir.
  *
  * Yükseklikler 1440 px genişlikte (kap 1280 px) gerçek sayfadan ölçüldü (13 Ekim 2026) ve verilerden tahmin edilir: tam doğru olması
  * gerekmez, amaç iki sütunun farkını bir kartın boyunun altında tutmaktır. Telefonda tek sütun olduğundan yerleşim görünmez.
@@ -48,10 +49,9 @@ export function specsHeight(groupRows: number[], safetyItems: number, hasSource:
   return 88 + groups + safety + (hasSource ? 24 : 0);
 }
 
-/** Konum haritası bloğu (başlık + harita). */
+/** Konum haritası bloğu (başlık + harita). Sütunun son bloğu olduğu için sütundaki kalan boyu doldurur. */
 export const MAP_BLOCK = 261;
-/** Piyasa temposu kartı ve yakıt maliyeti kartı (ölçülen ortalama). */
-export const TEMPO_CARD = 190;
+/** Yakıt maliyeti kartı (ölçülen ortalama). */
 export const FUEL_CARD = 150;
 
 export interface LayoutBlock {

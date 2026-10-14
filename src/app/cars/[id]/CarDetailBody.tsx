@@ -39,7 +39,7 @@ import { MiniMap } from "@/components/MiniMap";
 import { FuelCostCard } from "@/components/FuelCostCard";
 import { ListingDescription } from "@/components/ListingDescription";
 import { formatListingDescription } from "@/lib/listing-description";
-import { assignColumns, FUEL_CARD, leftBaseHeight, MAP_BLOCK, rightBaseHeight, specsHeight, TEMPO_CARD } from "@/lib/detail-layout";
+import { assignColumns, FUEL_CARD, leftBaseHeight, MAP_BLOCK, rightBaseHeight, specsHeight } from "@/lib/detail-layout";
 import { getFuelCostForCar } from "@/lib/fuel-cost-data";
 import { resolvePlacement } from "@/lib/district-coords";
 import {
@@ -242,8 +242,9 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
       />
     </div>
   ) : null;
+  // Piyasa temposu bu sütunlarda değil: veri yoksa hiç çizilmez, yüksekliği önceden bilinmez; alt kartta gösterilir.
+  const showTempo = car.status === "active" && !isUserListing;
   const movable: Array<{ key: string; height: number; node: ReactNode }> = [];
-  if (car.status === "active" && !isUserListing) movable.push({ key: "tempo", height: TEMPO_CARD, node: <MarketTempoCard carId={car._id} /> });
   if (fuelCost) movable.push({ key: "fuel", height: FUEL_CARD, node: <FuelCostCard cost={fuelCost} /> });
   movable.push({
     key: "specs",
@@ -256,10 +257,10 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
     leftBaseHeight(car.images && car.images.length > 0 ? car.images.length : 1, (formatListingDescription(car.description) ?? "").length),
     rightBaseHeight(isUserListing, isAdmin && Boolean(priceScale))
   );
-  // Harita, sütunun en altına kadar uzar: iki sütunun boyu farklıysa boşluk harita ile kapanır.
+  // Sütunun son bloğu (çoğunlukla harita) kalan boyu doldurur: iki sütun aynı çizgide biter. Telefonda tek sütun, uygulanmaz.
   const placed = (keys: string[]) =>
-    keys.map((key) => (
-      <div key={key} className={key === "map" ? "flex flex-1 flex-col" : undefined}>
+    keys.map((key, index) => (
+      <div key={key} className={index === keys.length - 1 ? "lg:flex lg:flex-1 lg:flex-col lg:[&>*]:flex-1" : undefined}>
         {movable.find((block) => block.key === key)?.node}
       </div>
     ));
@@ -524,7 +525,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           {placed(columns.right)}
         </div>
 
-        <div className="space-y-5 lg:col-start-1 lg:row-start-2">
+        <div className="flex flex-col gap-5 lg:col-start-1 lg:row-start-2 lg:self-stretch">
           <ListingDescription value={car.description} />
           {/* Hasar/boya görsel özeti */}
           <DamageDiagram paintChange={car.paintChange} damageFlag={car.damageFlag} damageParts={car.damageParts} />
@@ -539,6 +540,11 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         </div>
         <div className="card flex flex-col p-5">
           <PriceHistogram prices={segmentPrices} currentPrice={car.price} segmentLabel={segmentLabel} brand={car.brand} />
+          {showTempo && (
+            <div className="mt-4">
+              <MarketTempoCard carId={car._id} />
+            </div>
+          )}
         </div>
       </div>
 

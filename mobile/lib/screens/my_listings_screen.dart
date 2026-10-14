@@ -261,14 +261,7 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
                       MaterialPageRoute(
                         builder: (_) => SellScreen(
                           listingId: listing.id,
-                          initial: {
-                            'brand': listing.brand,
-                            'model': listing.model,
-                            'year': listing.year,
-                            'price': listing.price,
-                            'mileage': listing.mileage,
-                            'city': listing.city,
-                          },
+                          initial: listing.raw,
                         ),
                       ),
                     );

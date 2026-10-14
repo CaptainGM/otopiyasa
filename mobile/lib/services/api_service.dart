@@ -8,6 +8,7 @@ import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/models/account.dart';
 import 'package:otopiyasa/models/offer.dart';
 import 'package:otopiyasa/models/price_scale.dart';
+import 'package:otopiyasa/models/sell_estimate.dart';
 import 'package:otopiyasa/services/device_abi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -831,6 +832,10 @@ class ApiService {
     String color = 'Belirtilmemiş',
     int minOffer = 0,
     List<String> images = const [],
+    /// orijinal | boyali | hasarli. Null: bilinmiyor (sunucu kayıtlı değeri korur).
+    String? damage,
+    /// Motor hacmi (litre). Null: boş ya da elektrikli.
+    double? engineSize,
   }) async {
     final payload = {
       'brand': brand,
@@ -848,6 +853,8 @@ class ApiService {
       'color': color,
       'minOffer': minOffer,
       'images': images,
+      'damage': damage,
+      'engineSize': engineSize,
     };
 
     final uri = _uri(
@@ -861,6 +868,19 @@ class ApiService {
       throw Exception(_errorOf(response, 'İlan kaydedilemedi'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Satış formu fiyat aralığı. Fiyat gönderilmez: aralık araç özelliklerine bağlıdır, fiyat kuralı istemcide uygulanır.
+  Future<SellEstimate> estimateSell(Map<String, dynamic> body) async {
+    final response = await _http.post(
+      _uri('/api/sell/estimate'),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Fiyat aralığı alınamadı'));
+    }
+    return SellEstimate.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<void> deleteListing(String listingId) async {

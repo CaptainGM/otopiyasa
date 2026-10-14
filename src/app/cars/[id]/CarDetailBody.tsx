@@ -19,6 +19,7 @@ import { SourceBadge } from "@/components/SourceBadge";
 import { Icon } from "@/components/Icon";
 import { MarketGauge } from "@/components/MarketGauge";
 import { PriceScaleCard } from "@/components/PriceScaleCard";
+import { getNavbarUser } from "@/lib/auth";
 import { loadPriceScale } from "@/lib/price-scale-data";
 import { MarketTempoCard } from "@/components/MarketTempoCard";
 import { carHeadline } from "@/lib/car-headline";
@@ -84,6 +85,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const status = carDoc.moderationStatus;
 
   const { brand, model, year, price } = carDoc;
+  // Fiyat skalası kartı yalnızca yöneticiye gösterilir (kullanıcı için bilgi katmaz); fiyat analizindeki emsal medyanı herkese açık kalır.
+  const isAdmin = (await getNavbarUser())?.role === "admin";
 
 
   // Tek ölçü: üstteki gösterge, fiyat analizi ve listelerdeki kart aynı adil değere bakar (bkz. lib/market-fair.ts;
@@ -104,9 +107,9 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
   const targetPrice = prediction?.predictedPrice || price;
   const similarCars = await cached(
-    `similar:${brand}|${model}|${Math.round(targetPrice / 50000)}|${carDoc.title.slice(0, 30)}`,
+    `similar:${carDoc._id.toString()}|${brand}|${model}|${year}|${carDoc.mileage}|${Math.round(targetPrice / 50000)}|${carDoc.title.slice(0, 30)}`,
     CACHE_TTL.medium,
-    () => getSimilarCars(carDoc._id.toString(), brand, model, price, 12, carDoc.title, carDoc.year, carDoc.mileage, targetPrice, carDoc.vehicleClass)
+    () => getSimilarCars(carDoc._id.toString(), brand, model, price, 12, carDoc.title, carDoc.year, carDoc.mileage, targetPrice, carDoc.vehicleClass, carDoc)
   );
 
   const market = marketMap.get(segmentKey(brand, model, year, carDoc.vehicleClass));
@@ -387,7 +390,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
             marketBasisLabel={scaleTier ? scaleTier.label : undefined}
           />
 
-          {priceScale && <PriceScaleCard scale={priceScale} />}
+          {priceScale && isAdmin && <PriceScaleCard scale={priceScale} />}
 
 
           {(() => {
@@ -546,13 +549,17 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
       {similarCars.length > 0 && (
         <div className="space-y-4">
-          <div className="space-y-1">
+          {/* Paket adı ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. Uyarı simgede durur. */}
+          <div className="flex items-center justify-between gap-3">
             <h2 className="font-display text-xl font-semibold">Benzer ilanlar</h2>
-            {/* Paket adı (Vision Plus, Flame X-Pack, GT Line…) ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. */}
-            <p className="text-xs text-amber-300/90">
-              Bu ilanların paket adı farklı olabilir (ör. Vision Plus ile Flame X-Pack). Benzerlik motor, yakıt, vites ve beygire göre; donanım
-              seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et.
-            </p>
+            <span
+              role="img"
+              title="Bu ilanların paket adı farklı olabilir. Benzerlik motor, yakıt, vites ve beygire göre; donanım seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et."
+              aria-label="Uyarı: paket adı farklı olabilir. Benzerlik motor, yakıt, vites ve beygire göre."
+              className="grid h-6 w-6 shrink-0 cursor-help place-items-center rounded-full bg-amber-400 text-sm font-bold text-slate-950"
+            >
+              !
+            </span>
           </div>
           <div className="listing-grid">
             {similarCars.map((similar) => (

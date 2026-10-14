@@ -231,7 +231,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
                   <dd className="num board-value">+{board.addedLastDay.toLocaleString("tr-TR")}</dd>
                 </div>
                 <div className="board-cell">
-                  <dt className="eyebrow">Piyasanın altında</dt>
+                  <dt className="eyebrow">Adil değerin %6+ altı</dt>
                   <dd className="num board-value text-[var(--cheap)]">{board.belowMarket.toLocaleString("tr-TR")}</dd>
                 </div>
                 <div className="board-cell">

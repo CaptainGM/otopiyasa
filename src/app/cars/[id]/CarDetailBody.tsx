@@ -20,6 +20,7 @@ import { Icon } from "@/components/Icon";
 import { MarketGauge } from "@/components/MarketGauge";
 import { PriceScaleCard } from "@/components/PriceScaleCard";
 import { getNavbarUser } from "@/lib/auth";
+import { InfoHint } from "@/components/InfoHint";
 import { loadPriceScale } from "@/lib/price-scale-data";
 import { MarketTempoCard } from "@/components/MarketTempoCard";
 import { carHeadline } from "@/lib/car-headline";
@@ -549,17 +550,13 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
       {similarCars.length > 0 && (
         <div className="space-y-4">
-          {/* Paket adı ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. Uyarı simgede durur. */}
-          <div className="flex items-center justify-between gap-3">
+          {/* Paket adı ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. Uyarı simgeye dokununca açılır. */}
+          <div className="flex items-center gap-2.5">
             <h2 className="font-display text-xl font-semibold">Benzer ilanlar</h2>
-            <span
-              role="img"
-              title="Bu ilanların paket adı farklı olabilir. Benzerlik motor, yakıt, vites ve beygire göre; donanım seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et."
-              aria-label="Uyarı: paket adı farklı olabilir. Benzerlik motor, yakıt, vites ve beygire göre."
-              className="grid h-6 w-6 shrink-0 cursor-help place-items-center rounded-full bg-amber-400 text-sm font-bold text-slate-950"
-            >
-              !
-            </span>
+            <InfoHint
+              label="Paket adı uyarısı"
+              text="Bu ilanların paket adı farklı olabilir. Benzerlik motor, yakıt, vites ve beygire göre; donanım seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et."
+            />
           </div>
           <div className="listing-grid">
             {similarCars.map((similar) => (

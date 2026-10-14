@@ -310,7 +310,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="eyebrow">
-              {filters.deals ? "Adil değerinin %18–30 altındaki ilanlar" : isFeed ? "Keşfet · karışık sıra" : "Liste"}
+              {filters.deals ? "Adil değerinin %10–40 altındaki ilanlar" : isFeed ? "Keşfet · karışık sıra" : "Liste"}
             </p>
             <h2 className="font-display text-2xl font-semibold">
               {listHeading} <span className="num text-lg font-normal text-[var(--muted)]">{total.toLocaleString("tr-TR")}</span>

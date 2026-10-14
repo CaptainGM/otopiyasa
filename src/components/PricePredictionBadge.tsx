@@ -85,7 +85,10 @@ export function PricePredictionBadge({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="eyebrow flex items-center gap-1.5">
-            <Icon name="thermo" size={14} />
+            {/* Küçük termometre, fiyatın bandına göre renklenir (ucuz yeşil, adil mavi, pahalı mercan). */}
+            <span className={style.text} aria-hidden>
+              <Icon name="thermo" size={14} />
+            </span>
             Fiyat analizi
           </p>
           <p className="mt-1 text-xs text-[var(--muted)]">

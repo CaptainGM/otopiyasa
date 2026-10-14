@@ -9,7 +9,7 @@ vi.mock("@/lib/price-prediction", () => ({
 
 import { conditionOf, fairFields, isDealCandidate } from "./market-fair";
 
-const base = { year: 2019, mileage: 90_000, price: 820_000, title: "Temiz araç" };
+const base = { year: 2019, mileage: 90_000, price: 820_000, title: "Temiz araç", vehicleClass: "otomobil" };
 
 describe("fairFields", () => {
   it("adil değer, indirim oranı ve fiyat damgası", () => {
@@ -36,11 +36,19 @@ describe("isDealCandidate", () => {
   });
 
   it("çok ucuz (şüpheli), az indirimli ya da kusurlu araç fırsat değildir", () => {
-    expect(isDealCandidate(base, 0.35, 12)).toBe(false);
+    expect(isDealCandidate(base, 0.45, 12)).toBe(false);
     expect(isDealCandidate(base, 0.05, 12)).toBe(false);
     expect(isDealCandidate({ ...base, damageFlag: true }, 0.18, 12)).toBe(false);
     expect(isDealCandidate({ ...base, title: "PERTLİ araç" }, 0.18, 12)).toBe(false);
     expect(isDealCandidate({ ...base, year: 2005 }, 0.18, 12)).toBe(false);
+  });
+
+  it("en az 12 emsal, en az 500 bin TL ve motosiklet/karavan dışarıda", () => {
+    expect(isDealCandidate(base, 0.18, 11)).toBe(false);
+    expect(isDealCandidate({ ...base, price: 499_000 }, 0.18, 12)).toBe(false);
+    expect(isDealCandidate({ ...base, price: 500_000 }, 0.18, 12)).toBe(true);
+    expect(isDealCandidate({ ...base, vehicleClass: "motosiklet" }, 0.18, 12)).toBe(false);
+    expect(isDealCandidate({ ...base, vehicleClass: "karavan" }, 0.18, 12)).toBe(false);
   });
 });
 
@@ -53,10 +61,10 @@ describe("conditionOf", () => {
 });
 
 describe("isDealCandidate sınırı", () => {
-  it("göstergede %30 (şüpheli ucuz) görünen ilan fırsat değildir", () => {
-    expect(isDealCandidate(base, 0.296, 12)).toBe(false);
-    expect(isDealCandidate(base, 0.294, 12)).toBe(true);
-    expect(isDealCandidate(base, 0.175, 12)).toBe(true);
-    expect(isDealCandidate(base, 0.174, 12)).toBe(false);
+  it("göstergede %40 (şüpheli ucuz) görünen ilan fırsat değildir; alt sınır %10", () => {
+    expect(isDealCandidate(base, 0.396, 12)).toBe(false);
+    expect(isDealCandidate(base, 0.394, 12)).toBe(true);
+    expect(isDealCandidate(base, 0.105, 12)).toBe(true);
+    expect(isDealCandidate(base, 0.094, 12)).toBe(false);
   });
 });

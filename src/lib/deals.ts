@@ -17,7 +17,7 @@ export const DEAL_MAX_MILEAGE = 150_000;
  * kapora/dolandırıcılık amaçlı ilandır (ör. 2023 C5 Aircross %41 ucuz "haftanın fırsatı" olarak öne çıkıyordu).
  * İlan sayfasında "Dikkat" uyarısı gösterilir (bkz. PricePredictionBadge, mobil market_badge).
  */
-export const SUSPICIOUS_DISCOUNT = 0.3;
+export const SUSPICIOUS_DISCOUNT = 0.4;
 
 export const DEAL_MAX_DISCOUNT = SUSPICIOUS_DISCOUNT;
 

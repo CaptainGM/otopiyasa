@@ -188,7 +188,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         car.listingDate ? { label: "İlan tarihi", value: car.listingDate } : null,
         car.sellerType ? { label: "Satıcı", value: car.sellerType } : null,
         car.paintChange ? { label: "Boya / değişen", value: car.paintChange } : null,
-        { label: "Hasar durumu", value: car.damageFlag ? "Hasar kaydı var" : "Belirtilmemiş" },
+        // Üye ilanında boya bilgisi girildiyse hasar kaydı da bilinir: "Belirtilmemiş" yanlış görünürdü.
+        { label: "Hasar durumu", value: car.damageFlag ? "Hasar kaydı var" : car.sourceSite === "user" && car.paintChange ? "Hasar kaydı yok" : "Belirtilmemiş" },
         { label: "Görüntülenme", value: formatNumber(car.viewCount || 0) },
         { label: "Favori sayısı", value: formatNumber(favoriteCount) },
       ].filter((r): r is { label: string; value: string } => r !== null),

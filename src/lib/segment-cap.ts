@@ -43,3 +43,10 @@ export function segmentCapFrom(familyPrices: number[], brandPrices: number[]): S
 export function isAboveSegmentCap(price: number, cap: SegmentCap | null): boolean {
   return cap !== null && price > cap.cap;
 }
+
+/** Tavanın üstündeki fiyat için kullanıcıya gösterilecek mesaj; tavanın altındaysa null. Kayıt ve düzenleme aynı mesajı kullanır. */
+export function segmentCapMessage(price: number, cap: SegmentCap | null): string | null {
+  if (!isAboveSegmentCap(price, cap)) return null;
+  const limit = Math.round(cap?.cap ?? 0).toLocaleString("tr-TR");
+  return `Bu marka ve model için girilen fiyat benzer ilanların normal fiyat düzeyinin çok üstünde (en fazla ${limit} TL). Fiyatı kontrol edin.`;
+}

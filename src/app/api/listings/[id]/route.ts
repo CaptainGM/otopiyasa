@@ -11,6 +11,18 @@ import { moderateNewListing } from "@/lib/listing-moderation";
 import { validateMinOffer } from "@/lib/offers";
 import { logAudit } from "@/lib/audit-log";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { loadSegmentCap } from "@/lib/segment-cap-data";
+import { segmentCapMessage } from "@/lib/segment-cap";
+import { loadSellEstimate } from "@/lib/sell-estimate-data";
+import {
+  damageToFields,
+  isElectricFuel,
+  parseEngineSize,
+  parseListingDamage,
+  priceGuard,
+  storedDamage,
+  type SellDamage,
+} from "@/lib/sell-estimate";
 
 export const dynamic = "force-dynamic";
 
@@ -86,7 +98,58 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return NextResponse.json({ error: minCheck.error }, { status: 400 });
     }
 
-    const outcome = await moderateNewListing(input);
+    // Hasar ve motor hacmi gönderilmediyse kayıtlı değer korunur (eski mobil sürümler bu alanları göndermez).
+    const damageInput = parseListingDamage(body.damage);
+    if (!damageInput.ok) return NextResponse.json({ error: damageInput.error }, { status: 400 });
+    const engineInput = body.engineSize === undefined ? null : parseEngineSize(body.engineSize);
+    if (engineInput && !engineInput.ok) return NextResponse.json({ error: engineInput.error }, { status: 400 });
+
+    const damageGiven: SellDamage | null = damageInput.value;
+    const fuelAfter = input.fuelType ?? car.features?.fuelType ?? "";
+    const transmissionAfter = input.transmission ?? car.features?.transmission ?? "";
+    const storedEngine = car.features?.engineSize ?? null;
+    const engineAfter = isElectricFuel(fuelAfter) ? null : engineInput?.ok ? engineInput.value : storedEngine;
+    const damageAfter: SellDamage | null = damageGiven ?? storedDamage(car);
+
+    const priceChanged = input.price !== car.price;
+    const subjectChanged =
+      input.brand !== car.brand ||
+      input.model !== car.model ||
+      input.year !== car.year ||
+      input.mileage !== car.mileage ||
+      fuelAfter !== (car.features?.fuelType ?? "") ||
+      transmissionAfter !== (car.features?.transmission ?? "") ||
+      engineAfter !== storedEngine ||
+      damageAfter !== storedDamage(car);
+
+    // Fiyat ya da araç bilgisi değiştiyse kayıttaki kuralların aynısı: segment tavanı ve fiyat aralığı. Yalnızca açıklama
+    // değişiyorsa atlanır; yoksa piyasa kaymasıyla eski bir ilan düzenlenemez hâle gelirdi.
+    let sell: Awaited<ReturnType<typeof loadSellEstimate>> | null = null;
+    if (priceChanged || subjectChanged) {
+      const capError = segmentCapMessage(input.price, await loadSegmentCap(input.brand, input.model));
+      if (capError) return NextResponse.json({ error: capError }, { status: 400 });
+
+      sell = await loadSellEstimate({
+        brand: input.brand,
+        model: input.model,
+        year: input.year,
+        mileage: input.mileage,
+        fuelType: fuelAfter,
+        transmission: transmissionAfter,
+        engineSize: engineAfter,
+        damage: damageAfter,
+        // Kendi eski ilanı emsal sayılmaz.
+        excludeId: String(car._id),
+      });
+      const priceCheck = priceGuard(input.price, sell.estimate, { damageKnown: sell.damageKnown });
+      if (priceCheck.level === "block") return NextResponse.json({ error: priceCheck.message }, { status: 400 });
+    }
+
+    const outcome = await moderateNewListing({
+      ...input,
+      damaged: damageAfter === null ? null : damageAfter === "hasarli",
+      skipRelativeFloor: Boolean(sell?.estimate.confident && sell.damageKnown),
+    });
 
     car.brand = input.brand;
     car.model = input.model;
@@ -98,6 +161,12 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     car.contactPhone = input.contactPhone;
     car.minOffer = input.minOffer;
     car.title = `${input.brand} ${input.model} ${input.year}`.trim();
+    if (damageGiven) {
+      const fields = damageToFields(damageGiven);
+      car.damageFlag = fields.damageFlag;
+      car.paintChange = fields.paintChange;
+    }
+    car.set("features.engineSize", engineAfter ?? undefined);
     if (input.fuelType) car.set("features.fuelType", input.fuelType);
     if (input.transmission) car.set("features.transmission", input.transmission);
     if (input.bodyType) car.set("features.bodyType", input.bodyType);

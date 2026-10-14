@@ -25,7 +25,7 @@ function ComparePageInner() {
 
   useEffect(() => {
     const ids = idsFromUrl.length > 0 ? idsFromUrl : getCompareIds();
-    if (ids.length < 2) {
+    if (ids.length < 1) {
       setItems([]);
       return;
     }
@@ -42,7 +42,7 @@ function ComparePageInner() {
   useEffect(() => subscribeCompare(() => {
     if (idsFromUrl.length > 0) return; // URL modundaysak dokunma
     const ids = getCompareIds();
-    if (ids.length < 2) return setItems([]);
+    if (ids.length < 1) return setItems([]);
     fetch(`/api/compare?ids=${encodeURIComponent(ids.join(","))}`)
       .then((r) => r.json())
       .then((data) => setItems(data.items || []));
@@ -57,7 +57,7 @@ function ComparePageInner() {
     return <p className="py-10 text-center text-red-300">{error}</p>;
   }
 
-  if (!items || items.length < 2) {
+  if (!items || items.length === 0) {
     return (
       <div className="space-y-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">Araç Karşılaştırma</h1>
@@ -136,7 +136,13 @@ function ComparePageInner() {
         <span className="text-sm text-slate-500">{items.length} araç</span>
       </div>
 
-      <CompareAiSummary items={items} />
+      {items.length >= 2 && <CompareAiSummary items={items} />}
+
+      {items.length === 1 && (
+        <p className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200">
+          Karşılaştırmak için en az 2 araç gerekli. Sağ tarafa bir araç daha ekle; ilan kartlarındaki karşılaştır ikonunu kullan.
+        </p>
+      )}
 
       <p className="-mt-3 text-xs leading-relaxed text-slate-500">
         Ortalama, karşılaştırdığın araçlar hariç aktif ilanlardan hesaplanır. Donanım ve kilometre farkları bu ortalamaya dahil değildir; en az 3 ilan yoksa gösterilmez.

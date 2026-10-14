@@ -49,6 +49,10 @@ export function PricePredictionBadge({
 
   const diff = actualPrice - prediction.predictedPrice;
   const pct = prediction.predictedPrice ? Math.round((diff / prediction.predictedPrice) * 100) : 0;
+  // Termometre ibresi: fiyatın adil değere oranı; %70 (çok ucuz) soldan, %130 (çok pahalı) sağdan.
+  const thermoPos = prediction.predictedPrice
+    ? Math.min(100, Math.max(0, ((actualPrice / prediction.predictedPrice - 0.7) / 0.6) * 100))
+    : 50;
 
 
   let band: Band = "fair";
@@ -81,7 +85,10 @@ export function PricePredictionBadge({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="eyebrow flex items-center gap-1.5">
-            <Icon name="thermo" size={14} />
+            {/* Küçük termometre, fiyatın bandına göre renklenir (ucuz yeşil, adil mavi, pahalı mercan). */}
+            <span className={style.text} aria-hidden>
+              <Icon name="thermo" size={14} />
+            </span>
             Fiyat analizi
           </p>
           <p className="mt-1 text-xs text-[var(--muted)]">
@@ -130,6 +137,23 @@ export function PricePredictionBadge({
           </div>
         ) : null}
       </dl>
+
+      <div className="space-y-1.5" aria-hidden>
+        <div
+          className="relative h-2.5 rounded-full"
+          style={{ background: "linear-gradient(90deg, var(--cheap), var(--fair) 50%, var(--pricey))" }}
+        >
+          <span
+            className="absolute top-1/2 h-4 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_0_2px_rgba(0,0,0,0.35)]"
+            style={{ left: `${thermoPos}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[0.7rem] font-semibold">
+          <span style={{ color: "var(--cheap)" }}>Ucuz</span>
+          <span style={{ color: "var(--fair)" }}>Adil</span>
+          <span style={{ color: "var(--pricey)" }}>Pahalı</span>
+        </div>
+      </div>
 
       <p className={`border-t border-[var(--border)] pt-3 text-[0.82rem] leading-relaxed ${band === "suspicious" ? "text-[var(--danger)]" : "text-[var(--muted)]"}`}>{analysisDesc}</p>
 

@@ -3,6 +3,8 @@ import { User } from "@/models/User";
 import { getMarketMap } from "@/lib/market-price";
 import { attachMarketToCars, isLeanCarDoc, LeanCarDoc } from "@/lib/serialize-car";
 import { similarQuery, rankSimilar } from "@/lib/comparables";
+import { matchesTier, packageKey, SCALE_TIERS } from "@/lib/price-scale";
+import { toScaleCar } from "@/lib/price-scale-data";
 import { Car as CarType } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 
@@ -115,7 +117,8 @@ export async function getSimilarCars(
   year?: number,
   mileage?: number,
   _targetPrice?: number,
-  vehicleClass?: string
+  vehicleClass?: string,
+  subjectDoc?: Parameters<typeof toScaleCar>[0]
 ): Promise<CarType[]> {
   const subject = { brand, model, year, mileage, vehicleClass };
   const candidates = await Car.find({
@@ -129,7 +132,18 @@ export async function getSimilarCars(
     .lean();
 
   const pool = (candidates as unknown[]).filter(isLeanCarDoc) as LeanCarDoc[];
-  const picked = rankSimilar(pool, { year, mileage }, limit);
+  // Asıl benzer araçlar önce: aynı yıl, km, hasar, motor, yakıt ve vites (fiyat skalasının "tam" kademesi). Geri kalanlar
+  // onlardan sonra gelir; her grup kendi içinde yıl ve km yakınlığına göre sıralanır.
+  const subjectScale = subjectDoc ? toScaleCar(subjectDoc) : null;
+  const subjectPackage = subjectScale ? packageKey(subjectScale) : null;
+  const isExact = (doc: LeanCarDoc) =>
+    Boolean(subjectScale && subjectPackage && matchesTier(SCALE_TIERS[0], subjectScale, subjectPackage, toScaleCar(doc as Parameters<typeof toScaleCar>[0])));
+  const exact = pool.filter(isExact);
+  const rest = pool.filter((doc) => !isExact(doc));
+  const picked = [
+    ...rankSimilar(exact, { year, mileage }, limit),
+    ...rankSimilar(rest, { year, mileage }, limit),
+  ].slice(0, limit);
 
   // Benzer ilan kartları piyasa ortalamalarını render etmez; gereksiz DB agregasyonunu atla
   return attachMarketToCars(picked, new Map());

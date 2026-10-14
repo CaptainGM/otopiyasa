@@ -382,8 +382,9 @@ async function loadTrainingRows(
  *
  * Dayanak (8 Eki 2026, 2.200 aktif ilanı tek tek gizleyip tahmin ettirerek, iki ayrı rastgele örnek): bu takvimle medyan hata %8,9 → %8,2
  * ve ±%10 içinde %54 → %58; 3–7 ilanlı modellerde ±%10 içinde %43 → %51, 8–29 ilanlı modellerde %55 → %60. Eski davranışta marka ve genel
- * katmanlar arşivi yaşa bakmadan tam ağırlıkla karıştırıyordu ve kazanç sağlamıyordu. (Veritabanındaki tüm arşiv şu an 90 günden genç;
- * 4–6. ay basamakları ilerideki veriyle devreye girer.)
+ * katmanlar arşivi yaşa bakmadan tam ağırlıkla karıştırıyordu ve kazanç sağlamıyordu. Arşiv tarihi (removedAt) 30 Eylül'den önce
+ * yazılmadığı için eski kayıtların yaşı oluşturulma tarihinden sayılır (bkz. archiveAgeDays); önceden güncelleme tarihi kullanıldığı için
+ * tüm arşiv yeni görünüyordu.
  */
 export const ARCHIVE_MAX_AGE_DAYS = 180;
 export const ARCHIVE_MIN_KM = 1000;
@@ -397,7 +398,18 @@ export function archiveWeight(ageDays: number, maxAgeDays = ARCHIVE_MAX_AGE_DAYS
   return Math.max(0, Math.round((1 - ARCHIVE_MONTHLY_DROP * months) * 100) / 100);
 }
 
-type ArchivedDoc = TrainingDoc & { removedAt?: Date; updatedAt?: Date };
+/**
+ * Arşiv yaşı (gün). Arşive alınma tarihi (removedAt) varsa o kullanılır. 30 Eylül'den önce arşivlenen eski kayıtlarda bu alan yok ve
+ * arşiv anı bilinmiyor: yaş, ilanın oluşturulma tarihinden (createdAt) sayılır. Arşiv anı oluşturulmadan sonradır; bu yüzden tarihsiz
+ * kayıt gerçekte olduğundan eski sayılır ve ağırlığı hep düşük kalır (yaşı olduğundan genç göstermez).
+ */
+export function archiveAgeDays(doc: { removedAt?: Date | null; createdAt?: Date | null }, now = Date.now()): number {
+  const when = doc.removedAt ?? doc.createdAt;
+  if (!when) return Infinity;
+  return (now - new Date(when).getTime()) / DAY_MS;
+}
+
+type ArchivedDoc = TrainingDoc & { removedAt?: Date; createdAt?: Date };
 
 async function loadArchivedRows(identity: Record<string, unknown>, limit: number, now = Date.now()): Promise<TrainingRow[]> {
   const since = new Date(now - ARCHIVE_MAX_AGE_DAYS * DAY_MS);
@@ -408,11 +420,12 @@ async function loadArchivedRows(identity: Record<string, unknown>, limit: number
     status: "removed",
     price: { $gt: 0 },
     mileage: { $gte: ARCHIVE_MIN_KM },
-    // Arşive girme tarihi: removedAt (yeni kayıtlarda); eski kayıtlarda yoksa son güncelleme zamanı.
-    $and: [{ $or: [{ removedAt: { $gte: since } }, { removedAt: { $exists: false }, updatedAt: { $gte: since } }] }],
+    // Arşive girme tarihi: removedAt (yeni kayıtlarda); eski kayıtlarda yoksa oluşturulma tarihi (bkz. archiveAgeDays).
+    $and: [{ $or: [{ removedAt: { $gte: since } }, { removedAt: { $exists: false }, createdAt: { $gte: since } }] }],
   })
-    .sort({ updatedAt: -1 })
-    .select("year mileage price city damageFlag paintChange features removedAt updatedAt")
+    // Sıralama yaşın kullandığı tarihle aynı: önce arşiv tarihi olanlar (yeniden eskiye), sonra tarihsizler (oluşturulmaya göre).
+    .sort({ removedAt: -1, createdAt: -1 })
+    .select("year mileage price city damageFlag paintChange features removedAt createdAt")
     .limit(limit);
   // Marka filtresi varken planlayıcı updatedAt sıralama indeksini seçip nadir markada (3 kayıt) 28 bin arşiv kaydını tek tek
   // tarıyordu (2,4 sn); marka+model indeksi regex'i anahtarlar üzerinde süzer.
@@ -421,8 +434,7 @@ async function loadArchivedRows(identity: Record<string, unknown>, limit: number
   const rows: TrainingRow[] = [];
   for (const d of docs) {
     if (!(d.price > 0) || !(d.year > 1900) || !(d.mileage >= ARCHIVE_MIN_KM)) continue;
-    const when = (d.removedAt ?? d.updatedAt) as Date | undefined;
-    const weight = archiveWeight(when ? (now - new Date(when).getTime()) / DAY_MS : Infinity);
+    const weight = archiveWeight(archiveAgeDays(d, now));
     if (weight <= 0) continue;
     rows.push({
       year: d.year,

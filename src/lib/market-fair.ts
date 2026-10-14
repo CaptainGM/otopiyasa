@@ -20,8 +20,10 @@ const STALE_MS = 24 * 60 * 60 * 1000;
  * Adil değer hesabının mantık sürümü. Tahmin mantığı değişince (donanım, emsal sayımı, km penceresi...) artırılır: yenileme işi
  * sürümü farklı her ilanı yeniden hesaplar, önce eski mantıkla "emsalsiz" diye temizlenmiş olanları. Aksi halde 24 saat boyunca
  * kartlarda "PİYASA VERİSİ AZ" yazıyordu (13 Ekim 2026: aktif ilanların %24,6'sı; bunların %95'i bugünkü mantıkla hesaplanabiliyordu).
+ * Sürüm 3 (14 Ekim 2026): arşiv yaşı, arşiv tarihi olmayan eski kayıtlarda güncelleme tarihi yerine oluşturulma tarihinden sayılır
+ * (bkz. archiveAgeDays); bu kayıtların ağırlığı önceden hep tam (1,0) kalıyordu.
  */
-export const FAIR_LOGIC_VERSION = 2;
+export const FAIR_LOGIC_VERSION = 3;
 
 /**
  * Fırsat bandı: adil değerin %10–%40 altı (üst sınır SUSPICIOUS_DISCOUNT, bkz. deals.ts). Adil değer tahmini olduğu için

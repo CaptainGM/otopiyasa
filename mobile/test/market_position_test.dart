@@ -18,7 +18,9 @@ void main() {
     test('ucuz, pahalı ve şüpheli ucuz bantları', () {
       expect(MarketPosition.of(880_000, 1_000_000, 5)!.band, MarketBand.cheap);
       expect(MarketPosition.of(1_150_000, 1_000_000, 5)!.band, MarketBand.pricey);
-      expect(MarketPosition.of(650_000, 1_000_000, 5)!.band, MarketBand.suspicious);
+      // Şüpheli eşiği %40: %35 altı hâlâ ucuz, %45 altı şüpheli ucuz.
+      expect(MarketPosition.of(650_000, 1_000_000, 5)!.band, MarketBand.cheap);
+      expect(MarketPosition.of(550_000, 1_000_000, 5)!.band, MarketBand.suspicious);
     });
 
     test('ortalamanın kat be kat üstündeki fiyat veri hatası olarak işaretlenir', () {

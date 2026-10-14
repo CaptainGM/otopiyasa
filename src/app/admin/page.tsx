@@ -3,6 +3,7 @@ import Link from "next/link";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { AdminDeleteCarButton } from "@/components/AdminDeleteCarButton";
+import { AdminTabs, AdminTabPanel } from "@/components/AdminTabs";
 import { BusinessApprovals } from "@/components/BusinessApprovals";
 import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
@@ -369,266 +370,277 @@ export default async function AdminPage() {
         </Link>
       </div>
 
-      {/* GÜNLÜK ÖZET: bekçi + otonom + manuel, kaynak bazında (tam genişlik) */}
-      <DailySummaryPanel />
+      <AdminTabs defaultTab="genel">
+        <AdminTabPanel id="genel" label="Genel">
+          {/* GÜNLÜK ÖZET: bekçi + otonom + manuel, kaynak bazında (tam genişlik) */}
+          <DailySummaryPanel />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-        {stats.map((stat) => (
-          stat.href ? (
-            <a
-              key={stat.label}
-              href={stat.href}
-              className="card p-4 hover:border-amber-500/50 transition block cursor-pointer group"
-            >
-              <p className="text-xs uppercase tracking-widest text-amber-400 font-bold group-hover:text-amber-300">
-                {stat.label} →
-              </p>
-              <p
-                id={stat.label === "Piyasa Arşivi" ? "admin-stat-archive" : undefined}
-                className="mt-1 text-2xl font-black text-amber-300"
-              >
-                {stat.value}
-              </p>
-            </a>
-          ) : (
-            <div key={stat.label} className="card p-4">
-              <p className="text-xs uppercase tracking-widest text-slate-500">{stat.label}</p>
-              <p
-                id={stat.label === "Aktif İlan" ? "admin-stat-active" : undefined}
-                className="mt-1 text-2xl font-black"
-              >
-                {stat.value}
-              </p>
-            </div>
-          )
-        ))}
-      </div>
-
-      <SystemHealthCard issues={healthIssues} checkedAt={healthAt} />
-
-      {/* 1. SIRADA: 7/24 OTONOM MOTOR & SAATLİK TAKİP */}
-      <DaemonStatsPanel
-        initialDaemon={initialDaemon}
-        initialToday={initialToday}
-        initialHourly={initialHourly}
-      />
-
-      {/* 1b. EVDEKİ BİLGİSAYARDA ÇALIŞAN ARABAM BEKÇİSİ (günlük + saat saat) */}
-      <HomeWatcherPanel />
-
-      {/* 2. SIRADA: MANUEL VERİ ÇEKME & DENETİM PANELİ */}
-      <ScrapePanel
-        initialLogs={initialManualLogs}
-        initialToday={initialManualToday}
-      />
-
-      {/* 3. SIRADA: KULLANICI YORUMLARI MODERASYONU */}
-      <AdminCommentsSection
-        initialComments={rawComments.map((c: any) => ({
-          _id: c._id.toString(),
-          text: c.text,
-          rating: c.rating,
-          createdAt: c.createdAt ? new Date(c.createdAt).toISOString() : "",
-          car: c.car
-            ? {
-                _id: c.car._id?.toString(),
-                title: c.car.title,
-                price: c.car.price,
-                imageUrl: c.car.imageUrl,
-              }
-            : null,
-          user: c.user
-            ? {
-                _id: c.user._id?.toString(),
-                name: c.user.name,
-                email: c.user.email,
-              }
-            : null,
-        }))}
-      />
-
-      <BusinessApprovals
-        initial={pendingBusiness.map((u) => ({
-          _id: u._id.toString(),
-          name: u.name,
-          email: u.email,
-          businessName: u.businessName || "",
-          businessPhone: u.businessPhone || "",
-        }))}
-      />
-
-      <ReportQueue
-        initial={openReports
-          .filter((r) => !!r.car)
-          .map(
-            (r): PendingReport => ({
-              _id: r._id.toString(),
-              carId: r.car!._id.toString(),
-              carTitle: r.car!.title || "(silinmiş ilan)",
-              reason: r.reason,
-              note: r.note,
-              reporterName: r.reporter?.name || "Bilinmiyor",
-              createdAt: r.createdAt?.toISOString?.() || "",
-              chatSnapshot: r.chatSnapshot || null,
-              reportedUserId: r.reportedUser?._id?.toString() || null,
-              reportedUserName: r.reportedUser?.name || null,
-              reportedUserMuteCount: r.reportedUser?.muteCount || 0,
-            })
-          )}
-      />
-
-      <div className="card p-5">
-        <h2 className="mb-3 text-xl font-semibold">Gece scrape günlüğü</h2>
-        {logLines.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Henüz log yok — zamanlanmış görev ilk kez 03:30&apos;da çalıştığında burada
-            görünecek. Elle denemek için: <code>node scripts/scheduled-scrape.mjs</code>
-          </p>
-        ) : (
-          <pre className="overflow-x-auto rounded-lg bg-black/30 p-3 text-xs leading-relaxed text-slate-300">
-            {logLines.join("\n")}
-          </pre>
-        )}
-      </div>
-
-      <div className="card p-5">
-        <h2 className="mb-3 text-xl font-semibold">Son aktiviteler</h2>
-        {auditRows.length === 0 ? (
-          <p className="text-sm text-slate-500">Henüz kayıt yok.</p>
-        ) : (
-          <div className="max-h-80 space-y-2 overflow-y-auto text-sm">
-            {auditRows.map((row) => (
-              <div
-                key={row._id.toString()}
-                className="flex flex-wrap items-baseline gap-x-2 border-b border-white/5 pb-2"
-              >
-                <span className={`font-semibold ${AUDIT_TONE[row.action] || ""}`}>
-                  {AUDIT_LABEL[row.action] || row.action}
-                </span>
-                <span className="text-slate-300">{row.targetLabel}</span>
-                {row.reason && <span className="text-xs text-slate-500">— {row.reason}</span>}
-                <span className="ml-auto text-xs text-slate-600">
-                  {row.actor} • {new Date(row.createdAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
-                </span>
-              </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+            {stats.map((stat) => (
+              stat.href ? (
+                <a
+                  key={stat.label}
+                  href={stat.href}
+                  className="card p-4 hover:border-amber-500/50 transition block cursor-pointer group"
+                >
+                  <p className="text-xs uppercase tracking-widest text-amber-400 font-bold group-hover:text-amber-300">
+                    {stat.label} →
+                  </p>
+                  <p
+                    id={stat.label === "Piyasa Arşivi" ? "admin-stat-archive" : undefined}
+                    className="mt-1 text-2xl font-black text-amber-300"
+                  >
+                    {stat.value}
+                  </p>
+                </a>
+              ) : (
+                <div key={stat.label} className="card p-4">
+                  <p className="text-xs uppercase tracking-widest text-slate-500">{stat.label}</p>
+                  <p
+                    id={stat.label === "Aktif İlan" ? "admin-stat-active" : undefined}
+                    className="mt-1 text-2xl font-black"
+                  >
+                    {stat.value}
+                  </p>
+                </div>
+              )
             ))}
           </div>
-        )}
-      </div>
 
-      <div className="card p-5">
-        <h2 className="mb-4 text-xl font-semibold">Kullanıcılar ({userCount})</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-slate-500">
-                <th className="p-2.5">Ad</th>
-                <th className="p-2.5">E-posta</th>
-                <th className="p-2.5">Rol</th>
-                <th className="p-2.5">Favori</th>
-                <th className="p-2.5">Kayıt</th>
-                <th className="p-2.5">Fotoğraf</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user._id.toString()} className="border-b border-white/5">
-                  <td className="p-2.5 font-medium">{user.name}</td>
-                  <td className="p-2.5 text-slate-400">{user.email}</td>
-                  <td className="p-2.5">
-                    {user.role === "admin" ? (
-                      <span className="badge badge-accent">admin</span>
-                    ) : (
-                      <span className="badge">kullanıcı</span>
-                    )}
-                  </td>
-                  <td className="p-2.5">{user.favorites?.length || 0}</td>
-                  <td className="p-2.5 text-slate-500">
-                    {user.createdAt
-                      ? new Date(user.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })
-                      : "-"}
-                  </td>
-                  <td className="p-2.5">
-                    {user.avatarType === "photo" ? <RemoveAvatarButton userId={user._id.toString()} /> : <span className="text-slate-600">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          <SystemHealthCard issues={healthIssues} checkedAt={healthAt} />
 
-      <div className="card p-5">
-        <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Son İşlem Gören İlanlar (50)</h2>
-            <p className="text-xs text-slate-400">
-              Scraper tarafından en son taranan, fiyatı veya detayları güncellenen canlı ilanlar.
-            </p>
+          <div className="card p-5">
+            <h2 className="mb-3 text-xl font-semibold">Son aktiviteler</h2>
+            {auditRows.length === 0 ? (
+              <p className="text-sm text-slate-500">Henüz kayıt yok.</p>
+            ) : (
+              <div className="max-h-80 space-y-2 overflow-y-auto text-sm">
+                {auditRows.map((row) => (
+                  <div
+                    key={row._id.toString()}
+                    className="flex flex-wrap items-baseline gap-x-2 border-b border-white/5 pb-2"
+                  >
+                    <span className={`font-semibold ${AUDIT_TONE[row.action] || ""}`}>
+                      {AUDIT_LABEL[row.action] || row.action}
+                    </span>
+                    <span className="text-slate-300">{row.targetLabel}</span>
+                    {row.reason && <span className="text-xs text-slate-500">— {row.reason}</span>}
+                    <span className="ml-auto text-xs text-slate-600">
+                      {row.actor} • {new Date(row.createdAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-slate-500">
-                <th className="p-2.5">İlan</th>
-                <th className="p-2.5">Kaynak</th>
-                <th className="p-2.5">Fiyat</th>
-                <th className="p-2.5">Şehir</th>
-                <th className="p-2.5">Son Tarama / İşlem</th>
-                <th className="p-2.5">İlk Kayıt</th>
-                <th className="p-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {cars.map((car) => (
-                <tr key={car._id.toString()} className="border-b border-white/5 hover:bg-white/[0.02] transition">
-                  <td className="max-w-72 p-2.5">
-                    <Link
-                      href={`/cars/${car._id.toString()}`}
-                      className="line-clamp-1 font-medium hover:text-amber-300"
-                    >
-                      {car.title}
-                    </Link>
-                    {car.externalId?.startsWith("demo-") && (
-                      <span className="text-[10px] font-bold uppercase text-slate-500">
-                        demo
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2.5">
-                    <SourceBadge source={(car.sourceSite || "demo") as ListingSource} />
-                  </td>
-                  <td className="p-2.5 font-semibold">{formatPrice(car.price)}</td>
-                  <td className="p-2.5 text-slate-400">{car.city}</td>
-                  <td className="p-2.5 font-medium text-emerald-400">
-                    {car.updatedAt
-                      ? new Date(car.updatedAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul",
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "-"}
-                  </td>
-                  <td className="p-2.5 text-slate-500 text-xs">
-                    {car.createdAt
-                      ? new Date(car.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })
-                      : "-"}
-                  </td>
-                  <td className="p-2.5 text-right">
-                    <AdminDeleteCarButton carId={car._id.toString()} title={car.title} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        </AdminTabPanel>
 
-      {/* En Eski İlanlar Denetim Masası & Çoklu Kaynak Ölü İlan Avcısı */}
-      <OldestListingsPanel />
+        <AdminTabPanel id="motor" label="Motor & Tarama">
+          {/* 1. SIRADA: 7/24 OTONOM MOTOR & SAATLİK TAKİP */}
+          <DaemonStatsPanel
+            initialDaemon={initialDaemon}
+            initialToday={initialToday}
+            initialHourly={initialHourly}
+          />
+
+          {/* 1b. EVDEKİ BİLGİSAYARDA ÇALIŞAN ARABAM BEKÇİSİ (günlük + saat saat) */}
+          <HomeWatcherPanel />
+
+          {/* 2. SIRADA: MANUEL VERİ ÇEKME & DENETİM PANELİ */}
+          <ScrapePanel
+            initialLogs={initialManualLogs}
+            initialToday={initialManualToday}
+          />
+
+          <div className="card p-5">
+            <h2 className="mb-3 text-xl font-semibold">Gece scrape günlüğü</h2>
+            {logLines.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Henüz log yok — zamanlanmış görev ilk kez 03:30&apos;da çalıştığında burada
+                görünecek. Elle denemek için: <code>node scripts/scheduled-scrape.mjs</code>
+              </p>
+            ) : (
+              <pre className="overflow-x-auto rounded-lg bg-black/30 p-3 text-xs leading-relaxed text-slate-300">
+                {logLines.join("\n")}
+              </pre>
+            )}
+          </div>
+
+          {/* En Eski İlanlar Denetim Masası & Çoklu Kaynak Ölü İlan Avcısı */}
+          <OldestListingsPanel />
+        </AdminTabPanel>
+
+        <AdminTabPanel id="mod" label="Kullanıcılar & Moderasyon">
+          {/* 3. SIRADA: KULLANICI YORUMLARI MODERASYONU */}
+          <AdminCommentsSection
+            initialComments={rawComments.map((c: any) => ({
+              _id: c._id.toString(),
+              text: c.text,
+              rating: c.rating,
+              createdAt: c.createdAt ? new Date(c.createdAt).toISOString() : "",
+              car: c.car
+                ? {
+                    _id: c.car._id?.toString(),
+                    title: c.car.title,
+                    price: c.car.price,
+                    imageUrl: c.car.imageUrl,
+                  }
+                : null,
+              user: c.user
+                ? {
+                    _id: c.user._id?.toString(),
+                    name: c.user.name,
+                    email: c.user.email,
+                  }
+                : null,
+            }))}
+          />
+
+          <BusinessApprovals
+            initial={pendingBusiness.map((u) => ({
+              _id: u._id.toString(),
+              name: u.name,
+              email: u.email,
+              businessName: u.businessName || "",
+              businessPhone: u.businessPhone || "",
+            }))}
+          />
+
+          <div className="card p-5">
+            <h2 className="mb-4 text-xl font-semibold">Kullanıcılar ({userCount})</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="p-2.5">Ad</th>
+                    <th className="p-2.5">E-posta</th>
+                    <th className="p-2.5">Rol</th>
+                    <th className="p-2.5">Favori</th>
+                    <th className="p-2.5">Kayıt</th>
+                    <th className="p-2.5">Fotoğraf</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user._id.toString()} className="border-b border-white/5">
+                      <td className="p-2.5 font-medium">{user.name}</td>
+                      <td className="p-2.5 text-slate-400">{user.email}</td>
+                      <td className="p-2.5">
+                        {user.role === "admin" ? (
+                          <span className="badge badge-accent">admin</span>
+                        ) : (
+                          <span className="badge">kullanıcı</span>
+                        )}
+                      </td>
+                      <td className="p-2.5">{user.favorites?.length || 0}</td>
+                      <td className="p-2.5 text-slate-500">
+                        {user.createdAt
+                          ? new Date(user.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })
+                          : "-"}
+                      </td>
+                      <td className="p-2.5">
+                        {user.avatarType === "photo" ? <RemoveAvatarButton userId={user._id.toString()} /> : <span className="text-slate-600">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </AdminTabPanel>
+
+        <AdminTabPanel id="sikayet" label="Şikayetler" badge={openReports.length}>
+          <ReportQueue
+            initial={openReports.map(
+              (r): PendingReport => ({
+                _id: r._id.toString(),
+                // Silinmiş ilanın şikayeti de kaybolmasın: ilan bağlantısı yoksa başlık yalnızca metin olarak gösterilir.
+                carId: r.car?._id?.toString() || "",
+                carTitle: r.car?.title || "(silinmiş ilan)",
+                reason: r.reason,
+                note: r.note,
+                reporterName: r.reporter?.name || "Bilinmiyor",
+                createdAt: r.createdAt?.toISOString?.() || "",
+                chatSnapshot: r.chatSnapshot || null,
+                reportedUserId: r.reportedUser?._id?.toString() || null,
+                reportedUserName: r.reportedUser?.name || null,
+                reportedUserMuteCount: r.reportedUser?.muteCount || 0,
+              })
+            )}
+          />
+        </AdminTabPanel>
+
+        <AdminTabPanel id="ilan" label="İlanlar">
+          <div className="card p-5">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Son İşlem Gören İlanlar (50)</h2>
+                <p className="text-xs text-slate-400">
+                  Scraper tarafından en son taranan, fiyatı veya detayları güncellenen canlı ilanlar.
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-slate-500">
+                    <th className="p-2.5">İlan</th>
+                    <th className="p-2.5">Kaynak</th>
+                    <th className="p-2.5">Fiyat</th>
+                    <th className="p-2.5">Şehir</th>
+                    <th className="p-2.5">Son Tarama / İşlem</th>
+                    <th className="p-2.5">İlk Kayıt</th>
+                    <th className="p-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {cars.map((car) => (
+                    <tr key={car._id.toString()} className="border-b border-white/5 hover:bg-white/[0.02] transition">
+                      <td className="max-w-72 p-2.5">
+                        <Link
+                          href={`/cars/${car._id.toString()}`}
+                          className="line-clamp-1 font-medium hover:text-amber-300"
+                        >
+                          {car.title}
+                        </Link>
+                        {car.externalId?.startsWith("demo-") && (
+                          <span className="text-[10px] font-bold uppercase text-slate-500">
+                            demo
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2.5">
+                        <SourceBadge source={(car.sourceSite || "demo") as ListingSource} />
+                      </td>
+                      <td className="p-2.5 font-semibold">{formatPrice(car.price)}</td>
+                      <td className="p-2.5 text-slate-400">{car.city}</td>
+                      <td className="p-2.5 font-medium text-emerald-400">
+                        {car.updatedAt
+                          ? new Date(car.updatedAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul",
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "-"}
+                      </td>
+                      <td className="p-2.5 text-slate-500 text-xs">
+                        {car.createdAt
+                          ? new Date(car.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })
+                          : "-"}
+                      </td>
+                      <td className="p-2.5 text-right">
+                        <AdminDeleteCarButton carId={car._id.toString()} title={car.title} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </AdminTabPanel>
+      </AdminTabs>
     </div>
   );
 }

@@ -80,9 +80,13 @@ export function ReportQueue({ initial }: { initial: PendingReport[] }) {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <Link href={`/cars/${r.carId}`} className="truncate font-semibold hover:text-amber-300">
-                      {r.carTitle}
-                    </Link>
+                    {r.carId ? (
+                      <Link href={`/cars/${r.carId}`} className="truncate font-semibold hover:text-amber-300">
+                        {r.carTitle}
+                      </Link>
+                    ) : (
+                      <span className="truncate font-semibold text-slate-400">{r.carTitle}</span>
+                    )}
                     <span className="badge">{REASON_LABELS[r.reason] || r.reason}</span>
                     {r.chatSnapshot && <span className="badge border-white/15 bg-white/10 text-slate-300">Sohbet</span>}
                   </div>

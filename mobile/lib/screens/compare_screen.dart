@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/services/shell_tabs.dart';
 import 'package:otopiyasa/utils/relative_time.dart';
 import 'package:otopiyasa/widgets/compare_add_slot.dart';
 import 'package:otopiyasa/widgets/listing_image.dart';
@@ -179,6 +180,13 @@ class _CompareScreenState extends State<CompareScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => DetailScreen(carId: car.id, initialCar: car)),
     );
+  }
+
+  /// Boş kutu Keşfet'e götürür: araç ilan kartlarından eklenir. Karşılaştırma bir ilan detayından açıldıysa yığın
+  /// kök ekrana (ana kabuk) kadar kapanır; sonra Keşfet sekmesi açılır.
+  void _goToDiscover() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    ShellTabs.request.value = ShellTabs.discover;
   }
 
   @override
@@ -582,6 +590,7 @@ class _CompareScreenState extends State<CompareScreen> {
                   imageWidth: imageWidth,
                   imageHeight: imageHeight,
                   headerHeight: headerHeight,
+                  onTap: _goToDiscover,
                 ),
                 for (var r = 0; r < rows.length; r++)
                   Container(

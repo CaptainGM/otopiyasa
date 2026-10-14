@@ -25,6 +25,7 @@ void main() {
                       imageWidth: imageWidth,
                       imageHeight: imageHeight,
                       headerHeight: headerHeight,
+                      onTap: () {},
                     ),
                   ],
                 ),
@@ -39,4 +40,29 @@ void main() {
       });
     }
   }
+
+  testWidgets('kutuya dokununca verilen geri çağrı bir kez çalışır', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              CompareAddSlot(
+                width: 123,
+                imageWidth: 117,
+                imageHeight: 84,
+                headerHeight: 124,
+                onTap: () => taps++,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Sağ tarafa bir araç daha ekle'));
+    await tester.pump();
+    expect(taps, 1);
+  });
 }

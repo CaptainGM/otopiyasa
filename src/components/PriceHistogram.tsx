@@ -57,7 +57,7 @@ export function PriceHistogram({ prices, currentPrice, segmentLabel, brand }: Pr
         {currentBin ? ` (${currentBin.label})` : ""}.
         {brand && " Bir çubuğa tıklayınca o aralıktaki ilanları listeler."}
       </p>
-      <div className="h-52">
+      <div className="min-h-[13rem] flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 22, right: 4, bottom: 4, left: 4 }}>
             <XAxis

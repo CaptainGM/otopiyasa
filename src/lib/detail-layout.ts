@@ -33,9 +33,10 @@ export function leftBaseHeight(imageCount: number, descriptionLength: number): n
 }
 
 /** Sağ sütunun sabit kısmı: başlık, fiyat, analiz, fiyat skalası, eylemler (+ üye ilanında iletişim ve teklif kutusu). */
-export function rightBaseHeight(userListing: boolean): number {
+export function rightBaseHeight(userListing: boolean, showScale = true): number {
   const fixed = 800 + (userListing ? 0 : 80);
-  const scale = 430;
+  // Fiyat skalası yalnızca yöneticiye çizilir; kullanıcıda bu yükseklik yoksa sağ sütun olduğundan uzun tahmin edilmemeli.
+  const scale = showScale ? 430 : 0;
   const contactAndOffer = userListing ? 370 : 0;
   return fixed + scale + contactAndOffer;
 }

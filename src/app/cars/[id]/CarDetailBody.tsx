@@ -87,7 +87,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
   const { brand, model, year, price } = carDoc;
   // Fiyat skalası kartı yalnızca yöneticiye gösterilir (kullanıcı için bilgi katmaz); fiyat analizindeki emsal medyanı herkese açık kalır.
-  const isAdmin = (await getNavbarUser())?.role === "admin";
+  const viewer = await getNavbarUser();
+  const isAdmin = viewer?.role === "admin";
 
 
   // Tek ölçü: üstteki gösterge, fiyat analizi ve listelerdeki kart aynı adil değere bakar (bkz. lib/market-fair.ts;
@@ -230,9 +231,10 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
     </div>
   );
   const mapCard = mapPoint ? (
-    <div className="card p-5">
+    <div className="card flex flex-1 flex-col p-5">
       <h3 className="mb-2 text-sm text-slate-500">Konum</h3>
       <MiniMap
+        fill
         lat={mapPoint.lat}
         lng={mapPoint.lng}
         zoom={mapPoint.level === "province" ? 9 : mapPoint.level === "district" ? 12 : 14}
@@ -252,14 +254,20 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const columns = assignColumns(
     movable.map(({ key, height }) => ({ key, height })),
     leftBaseHeight(car.images && car.images.length > 0 ? car.images.length : 1, (formatListingDescription(car.description) ?? "").length),
-    rightBaseHeight(isUserListing)
+    rightBaseHeight(isUserListing, isAdmin && Boolean(priceScale))
   );
-  const placed = (keys: string[]) => keys.map((key) => <div key={key}>{movable.find((block) => block.key === key)?.node}</div>);
+  // Harita, sütunun en altına kadar uzar: iki sütunun boyu farklıysa boşluk harita ile kapanır.
+  const placed = (keys: string[]) =>
+    keys.map((key) => (
+      <div key={key} className={key === "map" ? "flex flex-1 flex-col" : undefined}>
+        {movable.find((block) => block.key === key)?.node}
+      </div>
+    ));
 
   return (
     <div className="space-y-8 pb-10">
       <ScrollToTop id={car._id} />
-      <RecentlyViewedTracker carId={car._id} />
+      <RecentlyViewedTracker carId={car._id} owner={viewer?.userId ?? "guest"} />
       <ViewCounter carId={car._id} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Link href="/" className="btn btn-ghost -ml-2 text-sm">
@@ -321,7 +329,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           />
         </div>
 
-        <div className="space-y-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+        <div className="flex flex-col gap-5 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-stretch">
           <div className="flex flex-wrap gap-2">
             <SourceBadge source={car.sourceSite} />
             {car.damageFlag && <span className="badge badge-danger">Hasar kaydı</span>}
@@ -524,12 +532,12 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
         <div className="card p-5">
           <h2 className="font-display mb-4 text-xl font-semibold">Fiyat geçmişi</h2>
           <CarPriceHistoryChart data={chartData} />
         </div>
-        <div className="card p-5">
+        <div className="card flex flex-col p-5">
           <PriceHistogram prices={segmentPrices} currentPrice={car.price} segmentLabel={segmentLabel} brand={car.brand} />
         </div>
       </div>
@@ -551,12 +559,15 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
       {similarCars.length > 0 && (
         <div className="space-y-4">
           {/* Paket adı ilanın başlığındaki serbest metin: yapısal veri değil, eşleşmede kullanılmaz. Uyarı simgeye dokununca açılır. */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-display text-xl font-semibold">Benzer ilanlar</h2>
-            <InfoHint
-              label="Paket adı uyarısı"
-              text="Bu ilanların paket adı farklı olabilir. Benzerlik motor, yakıt, vites ve beygire göre; donanım seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et."
-            />
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+              <span>Paket adı farklı olabilir</span>
+              <InfoHint
+                label="Benzerlik hakkında ayrıntı"
+                text="Benzerlik motor, yakıt, vites ve beygire göre belirlenir; donanım seviyesine göre değil. Fiyatı karşılaştırırken paket farkını kendin de kontrol et."
+              />
+            </div>
           </div>
           <div className="listing-grid">
             {similarCars.map((similar) => (

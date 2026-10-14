@@ -15,13 +15,15 @@ interface Props {
   zoom?: number;
   /** Haritanın altındaki not (ör. "yaklaşık konum"). */
   note?: string;
+  /** Harita, bulunduğu kartın kalan yüksekliğini doldurur (sütunlar dengelenirken boşluk kalmaz). */
+  fill?: boolean;
 }
 
 /**
  * Küçük önizleme harita; tıklayınca tam ekran, sürüklenebilir büyük harita açılır
  * (Esc, ✕ ya da boşluğa tıklama kapatır).
  */
-export function MiniMap({ lat, lng, zoom = 12, note }: Props) {
+export function MiniMap({ lat, lng, zoom = 12, note, fill = false }: Props) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -40,7 +42,7 @@ export function MiniMap({ lat, lng, zoom = 12, note }: Props) {
 
   return (
     <>
-      <div className="relative h-48 overflow-hidden rounded-xl border border-white/10">
+      <div className={`relative overflow-hidden rounded-xl border border-white/10 ${fill ? "min-h-[12rem] flex-1" : "h-48"}`}>
         <MiniMapInner lat={lat} lng={lng} zoom={zoom} interactive={false} />
         <button
           type="button"

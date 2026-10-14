@@ -3,11 +3,11 @@
 import { useEffect } from "react";
 import { addRecentlyViewed } from "@/lib/recently-viewed-store";
 
-
-export function RecentlyViewedTracker({ carId }: { carId: string }) {
+/** İlan sayfasında son baktıklara ekler. owner sunucudan gelir (giriş yapmış kullanıcı kimliği ya da "guest"). */
+export function RecentlyViewedTracker({ carId, owner }: { carId: string; owner: string }) {
   useEffect(() => {
-    addRecentlyViewed(carId);
-  }, [carId]);
+    addRecentlyViewed(carId, owner);
+  }, [carId, owner]);
 
   return null;
 }

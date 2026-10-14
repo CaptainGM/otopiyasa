@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadSegmentCap } from "@/lib/segment-cap-data";
-import { isAboveSegmentCap } from "@/lib/segment-cap";
+import { segmentCapMessage } from "@/lib/segment-cap";
 import { readJson } from "@/lib/http";
 import { randomUUID } from "node:crypto";
 import { connectDB } from "@/lib/mongodb";
@@ -17,6 +17,15 @@ import { appBaseUrl } from "@/lib/app-url";
 import { isMailerConfigured, sendListingRejectedEmail, sendListingPublishedEmail } from "@/lib/mailer";
 import { logAudit } from "@/lib/audit-log";
 import { normalizeFuelType } from "@/lib/normalize-fuel";
+import { loadSellEstimate } from "@/lib/sell-estimate-data";
+import {
+  damageToFields,
+  isElectricFuel,
+  parseEngineSize,
+  parseListingDamage,
+  priceGuard,
+  storedDamage,
+} from "@/lib/sell-estimate";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +37,23 @@ export async function GET() {
   await connectDB();
   const items = await Car.find({ ownerId: authUser.userId })
     .sort({ createdAt: -1 })
-    .select("title brand model year price mileage city imageUrl images moderationStatus rejectionReason status viewCount createdAt")
+    .select(
+      "title brand model year price mileage city imageUrl images moderationStatus rejectionReason status viewCount createdAt damageFlag paintChange features.fuelType features.transmission features.bodyType features.color features.engineSize"
+    )
     .lean();
 
+  // Düzenleme formu kayıtlı değerleri geri doldurabilsin diye hasar durumu ve donanım alanları da dönüyor.
   return NextResponse.json({
-    items: items.map((c) => ({ ...c, _id: (c._id as { toString(): string }).toString() })),
+    items: items.map((c) => ({
+      ...c,
+      _id: (c._id as { toString(): string }).toString(),
+      damage: storedDamage({ damageFlag: c.damageFlag, paintChange: c.paintChange }),
+      fuelType: c.features?.fuelType ?? "",
+      transmission: c.features?.transmission ?? "",
+      bodyType: c.features?.bodyType ?? "",
+      color: c.features?.color ?? "",
+      engineSize: c.features?.engineSize ?? null,
+    })),
   });
 }
 
@@ -78,19 +99,41 @@ export async function POST(request: Request) {
     if (!minCheck.valid) {
       return NextResponse.json({ error: minCheck.error }, { status: 400 });
     }
+
     // Segment tavanı: aynı modelin normal fiyat düzeyinin çok üstündeki fiyat (yazım hatası gibi) kabul edilmez.
-    const segmentCap = await loadSegmentCap(input.brand, input.model);
-    if (isAboveSegmentCap(input.price, segmentCap)) {
-      const limit = Math.round(segmentCap?.cap ?? 0).toLocaleString("tr-TR");
-      return NextResponse.json(
-        { error: `Bu marka ve model için girilen fiyat benzer ilanların normal fiyat düzeyinin çok üstünde (en fazla ${limit} TL). Fiyatı kontrol edin.` },
-        { status: 400 }
-      );
-    }
+    const capError = segmentCapMessage(input.price, await loadSegmentCap(input.brand, input.model));
+    if (capError) return NextResponse.json({ error: capError }, { status: 400 });
+
+    // Hasar durumu ve motor hacmi isteğe bağlı: eski mobil sürümler göndermez (bilinmiyor). Yeni istemciler zorunlu tutar.
+    const damageInput = parseListingDamage(body.damage);
+    if (!damageInput.ok) return NextResponse.json({ error: damageInput.error }, { status: 400 });
+    const engineInput = parseEngineSize(body.engineSize);
+    if (!engineInput.ok) return NextResponse.json({ error: engineInput.error }, { status: 400 });
+    const damage = damageInput.value;
+    const engineSize = isElectricFuel(input.fuelType) ? null : engineInput.value;
+
+    // Fiyat aralığı: yalnızca güvenilir aralık varken, çok yüksek fiyatı engeller (bkz. sell-estimate.ts).
+    const sell = await loadSellEstimate({
+      brand: input.brand,
+      model: input.model,
+      year: input.year,
+      mileage: input.mileage,
+      fuelType: input.fuelType,
+      transmission: input.transmission,
+      engineSize,
+      damage,
+      excludeId: null,
+    });
+    const priceCheck = priceGuard(input.price, sell.estimate, { damageKnown: sell.damageKnown });
+    if (priceCheck.level === "block") return NextResponse.json({ error: priceCheck.message }, { status: 400 });
 
     await connectDB();
 
-    const outcome = await moderateNewListing(input);
+    const outcome = await moderateNewListing({
+      ...input,
+      damaged: damage === null ? null : damage === "hasarli",
+      skipRelativeFloor: sell.estimate.confident && sell.damageKnown,
+    });
 
     const owner = await User.findById(authUser.userId).select("businessStatus businessName email name").lean<{
       businessStatus?: string; businessName?: string; email: string; name: string;
@@ -114,11 +157,13 @@ export async function POST(request: Request) {
       minOffer: input.minOffer,
       imageUrl: input.images[0] || "",
       images: input.images,
+      ...(damage ? damageToFields(damage) : {}),
       features: {
         fuelType: input.fuelType,
         transmission: input.transmission,
         bodyType: input.bodyType,
         color: input.color,
+        ...(engineSize !== null ? { engineSize } : {}),
       },
       source: "user",
       sourceSite: "user",

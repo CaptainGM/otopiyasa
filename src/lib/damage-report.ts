@@ -78,9 +78,18 @@ export function parseDamageReport(raw: string | undefined | null): DamageReport 
       summary: "Aracın tamamı orijinal — boyalı ya da değişen parça yok.",
     };
   }
+  // Adet yazılmadan "boyalı veya değişen parça var" (satış formu): sayı olmadığı için yukarıda okunamıyordu ve
+  // "belirtilmemiş" görünüyordu. Yoğunluk bilinmediğinden seviye de bilinmiyor.
+  if (affected === 0 && /boyal|değişen|degisen|lokal/.test(lower)) {
+    return {
+      ...empty,
+      unknown: false,
+      summary: "Boyalı veya değişen parça bildirilmiş; adedi belirtilmemiş.",
+    };
+  }
   if (affected === 0) return empty;
 
-  
+
   const score = changed * 3 + painted * 2 + localPainted;
   const level: DamageLevel = score >= 12 ? "heavy" : score >= 5 ? "moderate" : "light";
 

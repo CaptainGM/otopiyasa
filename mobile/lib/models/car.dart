@@ -218,6 +218,43 @@ class DamagePart {
       );
 }
 
+/// İlan kalitesi (bilgi tamlığı, 0–100) ve kalemleri. Puanı sunucu hesaplar (ilan detay yanıtı); uygulama yeniden hesaplamaz.
+class ListingCompleteness {
+  const ListingCompleteness({required this.score, required this.items});
+
+  final int score;
+  final List<CompletenessItem> items;
+
+  static ListingCompleteness? fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    final score = (json['score'] as num?)?.toInt();
+    if (score == null) return null;
+    return ListingCompleteness(
+      score: score,
+      items: (json['items'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(CompletenessItem.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class CompletenessItem {
+  const CompletenessItem({required this.label, required this.earned, required this.max, required this.note});
+
+  final String label;
+  final int earned;
+  final int max;
+  final String note;
+
+  factory CompletenessItem.fromJson(Map<String, dynamic> json) => CompletenessItem(
+        label: json['label'] as String? ?? '',
+        earned: (json['earned'] as num?)?.toInt() ?? 0,
+        max: (json['max'] as num?)?.toInt() ?? 0,
+        note: json['note'] as String? ?? '',
+      );
+}
+
 class CarListing {
   CarListing({
     required this.id,
@@ -265,6 +302,7 @@ class CarListing {
     this.damageParts = const [],
     this.similarCars = const [],
     this.mapPoint,
+    this.quality,
   });
 
   final String id;
@@ -329,6 +367,8 @@ class CarListing {
 
   /// Haritada gösterilecek konum (yalnızca ilan detay yanıtında gelir).
   final MapPoint? mapPoint;
+  /// İlan kalitesi: yalnızca yayındaki ilanın detay yanıtında gelir; liste kartlarında null.
+  final ListingCompleteness? quality;
 
   bool get isActive => status == 'active';
 
@@ -416,6 +456,7 @@ class CarListing {
           .map(CarListing.fromJson)
           .toList(),
       mapPoint: MapPoint.fromJson(json['mapPoint']),
+      quality: ListingCompleteness.fromJson(json['quality']),
     );
   }
 }

@@ -188,7 +188,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
         car.listingDate ? { label: "İlan tarihi", value: car.listingDate } : null,
         car.sellerType ? { label: "Satıcı", value: car.sellerType } : null,
         car.paintChange ? { label: "Boya / değişen", value: car.paintChange } : null,
-        { label: "Hasar durumu", value: car.damageFlag ? "Hasar kaydı var" : "Belirtilmemiş" },
+        // Üye ilanında boya bilgisi girildiyse hasar kaydı da bilinir: "Belirtilmemiş" yanlış görünürdü.
+        { label: "Hasar durumu", value: car.damageFlag ? "Hasar kaydı var" : car.sourceSite === "user" && car.paintChange ? "Hasar kaydı yok" : "Belirtilmemiş" },
         { label: "Görüntülenme", value: formatNumber(car.viewCount || 0) },
         { label: "Favori sayısı", value: formatNumber(favoriteCount) },
       ].filter((r): r is { label: string; value: string } => r !== null),
@@ -338,6 +339,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
           fiyat, analiz, eylemler. Telefonda sıra: galeri → bilgiler → açıklama. */}
       <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:grid-rows-[auto_1fr] lg:items-start">
         <div className="lg:col-start-1 lg:row-start-1">
+          {/* Rozet fotoğrafın dışında, sol üstte (siyah alanda). */}
+          {quality && <div className="mb-3"><ListingQualityBadge quality={quality} /></div>}
           <CarGallery
             images={car.images && car.images.length > 0 ? car.images : [car.imageUrl]}
             title={car.title}
@@ -352,7 +355,6 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
               {car.status === "sold" && <span className="badge">Satıldı</span>}
               {car.status === "removed" && <span className="badge badge-danger">Yayından kaldırıldı</span>}
             </div>
-            {quality && <ListingQualityBadge quality={quality} />}
           </div>
 
           <div>

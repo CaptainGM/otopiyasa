@@ -9,6 +9,7 @@ import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/widgets/fuel_cost_card.dart';
 import 'package:otopiyasa/widgets/listing_description.dart';
 import 'package:otopiyasa/widgets/listing_map.dart';
+import 'package:otopiyasa/widgets/listing_quality_panel.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/widgets/listing_interaction.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
@@ -539,6 +540,10 @@ class _DetailScreenState extends State<DetailScreen> {
                   if (!car.isActive) PhotoBadge(text: car.statusLabel, color: Colors.black87),
                 ],
               ),
+              if (car.quality != null) ...[
+                const SizedBox(height: 8),
+                ListingQualityPanel(quality: car.quality!),
+              ],
               const SizedBox(height: 12),
               Text.rich(
                 TextSpan(children: [

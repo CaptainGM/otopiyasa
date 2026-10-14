@@ -166,9 +166,14 @@ export default function RootLayout({
               kaynak sitelerden yalnızca akademik amaçla derlenmiştir ve tüm hakları
               kaynaklarına aittir — her ilan orijinal kaynağına bağlantı verir.
             </p>
-            <Link href="/gizlilik" className="text-xs text-[var(--muted)] hover:text-[var(--text)] hover:underline">
-              Gizlilik politikası
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <Link href="/talep" className="btn btn-ghost text-xs">
+                Talep oluştur
+              </Link>
+              <Link href="/gizlilik" className="text-xs text-[var(--muted)] hover:text-[var(--text)] hover:underline">
+                Gizlilik politikası
+              </Link>
+            </div>
           </div>
         </footer>
         <CompareTray />

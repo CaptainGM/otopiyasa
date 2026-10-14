@@ -197,7 +197,8 @@ function ComparePageInner() {
               <tr key={row.label} className="border-t border-white/5">
                 <td className="p-1 text-[10px] leading-tight text-slate-500 sm:p-3 sm:text-sm">{row.label}</td>
                 {items.map((c) => {
-                  const isBest = row.best?.(c);
+                  // Tek araçta karşılaştırma yok: "en iyi" işareti anlamsız olur.
+                  const isBest = items.length >= 2 && row.best?.(c);
                   return (
                     <td
                       key={c._id}

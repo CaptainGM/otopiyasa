@@ -40,7 +40,7 @@ describe("listingCompleteness", () => {
     expect(result.earned).toBe(1 + 3);
     expect(result.note).toContain("Eksik:");
     // Not yalnızca eksik konuları listeler: 'Tek sahipli' kullanım geçmişini karşılar.
-    expect(itemOf({ description: "Tek sahipli, garaj." }, "aciklama").note).not.toContain("kullanım geçmişi");
+    expect(itemOf({ description: "Tek sahipli, garaj." }, "aciklama").note).not.toContain("kullanım");
   });
 
   it("açıklama yalnız boşluktan oluşuyorsa bilgi sayılmaz", () => {
@@ -67,6 +67,12 @@ describe("listingCompleteness", () => {
     expect(features({ engineSize: null }).earned).toBe(24);
     expect(features({ engineSize: null }).note).toBe("Eksik: Motor hacmi");
     expect(features({ fuelType: "Bilinmiyor" }).note).toBe("Eksik: Yakıt");
+  });
+
+  it("motor hacmi yapısal alanda yoksa başlıktan okunur (ör. 'Renault Clio 1.0 TCE')", () => {
+    const noStructured = { fuelType: "Benzin", transmission: "Manuel", bodyType: "Hatchback", color: "Gri", engineSize: null };
+    expect(itemOf({ title: "Renault Clio 1.0 TCE Evolution", features: noStructured }, "ozellikler").earned).toBe(30);
+    expect(itemOf({ title: "Renault Clio Evolution", features: noStructured }, "ozellikler").note).toBe("Eksik: Motor hacmi");
   });
 
   it("puan dökümü toplamı skoru verir ve her kalem en fazla kendi maksimumunu alır", () => {

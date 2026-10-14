@@ -202,6 +202,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const quality =
     showsListingQuality(car)
       ? listingCompleteness({
+          title: car.title,
           images: car.images,
           description: car.description,
           paintChange: car.paintChange,

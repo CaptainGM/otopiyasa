@@ -1,4 +1,5 @@
 import { PENDING_FEATURE_LABEL } from "@/lib/scraper/feature-merge";
+import { engineFromText } from "@/lib/fuel-cost";
 
 /**
  * İlan kalitesi (ekranda bu adla görünür), kodda "bilgi tamlığı": ilanın 0–100 arası ne kadar eksiksiz bilgi verdiği.
@@ -34,12 +35,12 @@ export function showsListingQuality(listing: { status?: string | null; sourceSit
 
 /** Açıklamada aranan bilgi konuları. Kökler Türkçe çekim eklerini kapsar; bu yüzden sona sınır (\b) konmadı. */
 export const DESCRIPTION_TOPICS: ReadonlyArray<{ key: string; label: string; pattern: RegExp }> = [
-  { key: "bakim", label: "bakım geçmişi", pattern: /bakım|bakim|servis|periyodik|yağ değişim|yag degisim|fatura/ },
-  { key: "parca", label: "parça ve boya durumu", pattern: /boya|değişen|degisen|değişim|degisim|lokal|orijinal|orjinal|tramer|hasar/ },
+  { key: "bakim", label: "bakım", pattern: /bakım|bakim|servis|periyodik|yağ değişim|yag degisim|fatura/ },
+  { key: "parca", label: "parça/boya", pattern: /boya|değişen|degisen|değişim|degisim|lokal|orijinal|orjinal|tramer|hasar/ },
   { key: "donanim", label: "donanım", pattern: /donanım|donanim|paket|deri|navigasyon|sunroof|tavan|kamera|sensör|sensor|ısıtma|isitma|hafıza|hafiza|bluetooth|xenon|cruise|koltuk/ },
-  { key: "kullanim", label: "kullanım geçmişi", pattern: /tek sahip|ilk sahip|tek el|ilk el|garaj|kapalı otopark|kapali otopark|sigara|kazasız|kazasiz|kaza yok/ },
-  { key: "belge", label: "belge ve muayene", pattern: /muayene|ruhsat|noter|belge|ekspertiz|kayıt|kayit/ },
-  { key: "lastik", label: "lastik, fren ve yedek parça", pattern: /lastik|fren|balata|akü|aku|triger|kayış|kayis|amortis|süspansiyon|suspansiyon/ },
+  { key: "kullanim", label: "kullanım", pattern: /tek sahip|ilk sahip|tek el|ilk el|garaj|kapalı otopark|kapali otopark|sigara|kazasız|kazasiz|kaza yok/ },
+  { key: "belge", label: "belge/muayene", pattern: /muayene|ruhsat|noter|belge|ekspertiz|kayıt|kayit/ },
+  { key: "lastik", label: "lastik/fren", pattern: /lastik|fren|balata|akü|aku|triger|kayış|kayis|amortis|süspansiyon|suspansiyon/ },
 ];
 
 export interface ListingCompletenessItem {
@@ -56,6 +57,8 @@ export interface ListingCompleteness {
 }
 
 export interface ListingCompletenessInput {
+  /** İlan başlığı: motor hacmi yapısal alanda yoksa başlıktan okunur ("Renault Clio 1.0 TCE" → 1.0). */
+  title?: string | null;
   images?: readonly unknown[] | null;
   description?: string | null;
   paintChange?: string | null;
@@ -86,7 +89,8 @@ export function listingCompleteness(input: ListingCompletenessInput): ListingCom
   const damageKnown = isKnownValue(input.paintChange) || (input.damageParts?.length ?? 0) > 0 || input.damageFlag === true;
 
   const f = input.features ?? {};
-  const engineKnown = (f.engineSize ?? 0) > 0;
+  // Motor hacmi: yapısal alan ya da başlık metni (fiyat skalasının okuduğu ile aynı kaynak).
+  const engineKnown = (f.engineSize ?? 0) > 0 || engineFromText(input.title) !== null;
   const featureList = [
     { label: "Yakıt", known: isKnownValue(f.fuelType) },
     { label: "Vites", known: isKnownValue(f.transmission) },
@@ -98,15 +102,13 @@ export function listingCompleteness(input: ListingCompletenessInput): ListingCom
   const featureMissing = featureList.filter((item) => !item.known).map((item) => item.label);
 
   const items: ListingCompletenessItem[] = [
-    { key: "fotograf", label: "Fotoğraf", earned: photoPoints, max: 25, note: `${photos} fotoğraf (en az 10 tam puan)` },
+    { key: "fotograf", label: "Fotoğraf", earned: photoPoints, max: 25, note: `${photos} fotoğraf${photos < 10 ? ` · ${10 - photos} daha ekle` : ""}` },
     {
       key: "aciklama",
       label: "Açıklama",
       earned: lengthPoints + topicPoints,
       max: 30,
-      note: missingTopics.length > 0
-        ? `${length} karakter, ${topics.length}/6 bilgi konusu. Eksik: ${missingTopics.join(", ")}`
-        : `${length} karakter, 6/6 bilgi konusu`,
+      note: missingTopics.length > 0 ? `${length} karakter · Eksik: ${missingTopics.join(", ")}` : `${length} karakter`,
     },
     {
       key: "hasar",

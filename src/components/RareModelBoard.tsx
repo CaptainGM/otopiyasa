@@ -27,8 +27,10 @@ interface PageData {
 }
 
 /** Yönetim paneli sol sütunu: sitede en az ilanı olan marka/modeller (sayfa başına 15, altta sayfa kaydırma). Web'e özel. */
-export function RareModelBoard() {
-  const wide = useWideScreen();
+export function RareModelBoard({ fixedOpen = false }: { fixedOpen?: boolean } = {}) {
+  // fixedOpen: kendi sekmesinde her zaman açık (dar ekranda da katlanmaz).
+  const screenWide = useWideScreen();
+  const wide = fixedOpen || screenWide;
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [scope, setScope] = useState<Scope>("missing");

@@ -343,17 +343,7 @@ export default async function AdminPage() {
 
   return (
     <div className="relative space-y-8 pb-10">
-      {/* Site özelliklerinin canlı durumu: geniş ekranda ana içeriğin SAĞINDAKİ boş kenar boşluğunda (kaydırınca yapışık),
-          dar ekranda üstte katlanabilir tek satır. */}
-      {/* En az ilanlı modeller: solda boş kenar boşluğunda (geniş ekran), dar ekranda katlanabilir. */}
-      {/* Yan paneller sayfayla birlikte kayar (yapışkan değil): yalnızca sayfanın en üstündeyken görünür. Çok geniş ekranda biraz daha geniştir. */}
-      <aside className="min-[2160px]:absolute min-[2160px]:right-full min-[2160px]:top-0 min-[2160px]:mr-5 min-[2160px]:!mt-0 min-[2160px]:w-[340px] min-[2400px]:w-[420px]">
-        <RareModelBoard />
-      </aside>
-
-      <aside className="min-[2160px]:absolute min-[2160px]:left-full min-[2160px]:top-0 min-[2160px]:ml-5 min-[2160px]:!mt-0 min-[2160px]:w-[340px] min-[2400px]:w-[420px]">
-        <FeatureStatusPanel />
-      </aside>
+      {/* Site özellikleri yalnızca Genel sekmesinde, en az ilanlı modeller kendi sekmesinde (bkz. aşağıda). */}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -411,6 +401,9 @@ export default async function AdminPage() {
           </div>
 
           <SystemHealthCard issues={healthIssues} checkedAt={healthAt} />
+
+          {/* Site özelliklerinin canlı durumu: yalnızca Genel sekmesinde (diğer sekmelerde gösterilmez). */}
+          <FeatureStatusPanel fixedOpen />
 
           <div className="card p-5">
             <h2 className="mb-3 text-xl font-semibold">Son aktiviteler</h2>
@@ -644,6 +637,10 @@ export default async function AdminPage() {
               </table>
             </div>
           </div>
+        </AdminTabPanel>
+        <AdminTabPanel id="modeller" label="Modeller">
+          {/* En az ilanlı modeller: kendi sekmesinde (eskiden her sekmenin üstünde duran yan panel idi). */}
+          <RareModelBoard fixedOpen />
         </AdminTabPanel>
       </AdminTabs>
     </div>

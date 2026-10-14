@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:otopiyasa/screens/admin_screen.dart';
 import 'package:otopiyasa/screens/assistant_screen.dart';
 import 'package:otopiyasa/screens/map_screen.dart';
@@ -23,6 +24,14 @@ class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
   static final _api = ApiService();
+
+  /// Genel talep ve şikayet formu web'de (/talep); mobilde ayrı bir form yok, tarayıcıda açılır.
+  Future<void> _openRequestForm(BuildContext context) async {
+    final opened = await launchUrl(Uri.parse('https://otopiyasa.app/talep'), mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bağlantı açılamadı')));
+    }
+  }
 
   void _push(BuildContext context, Widget screen) =>
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
@@ -142,6 +151,12 @@ class MoreScreen extends StatelessWidget {
                       title: mode == ThemeMode.dark ? 'Aydınlık tema' : 'Karanlık tema',
                       onTap: themeController.toggle,
                     ),
+                  ),
+                  _Row(
+                    icon: Icons.support_agent_outlined,
+                    title: 'Talep oluştur',
+                    subtitle: 'Şikayet, bildirim ve kişisel veri talepleri',
+                    onTap: () => _openRequestForm(context),
                   ),
                   FutureBuilder(
                     future: UpdateService.packageInfo(),

@@ -38,7 +38,7 @@ export async function GET() {
   const items = await Car.find({ ownerId: authUser.userId })
     .sort({ createdAt: -1 })
     .select(
-      "title brand model year price mileage city imageUrl images moderationStatus rejectionReason status viewCount createdAt damageFlag paintChange features.fuelType features.transmission features.bodyType features.color features.engineSize"
+      "title brand model year price mileage city imageUrl images moderationStatus rejectionReason status viewCount createdAt contactPhone description minOffer damageFlag paintChange features.fuelType features.transmission features.bodyType features.color features.engineSize"
     )
     .lean();
 

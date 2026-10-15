@@ -23,7 +23,9 @@ import 'package:otopiyasa/services/data_saver.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/services/push_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
+import 'package:otopiyasa/screens/google_login_return_screen.dart';
 import 'package:otopiyasa/utils/deep_link.dart';
+import 'package:otopiyasa/utils/google_login_link.dart';
 
 /// Bildirime dokunulduğunda (FCM ya da yerel yoklama) ilanı açabilmek için:
 /// servisler Navigator'a doğrudan erişemez, bu anahtar üzerinden gidilir.
@@ -125,6 +127,14 @@ class OtoPiyasaApp extends StatelessWidget {
         themeMode: mode,
         home: const MainShell(),
                 onGenerateRoute: (settings) {
+          // Google ile girişin dönüşü (https://otopiyasa.app/mobil-giris?code=...): bilet oturuma çevrilir.
+          final googleLink = parseGoogleLoginLink(settings.name);
+          if (googleLink != null) {
+            return MaterialPageRoute(
+              builder: (_) => GoogleLoginReturnScreen(link: googleLink),
+              settings: settings,
+            );
+          }
           // https://otopiyasa.app/cars/<id> ve otopiyasa://cars/<id> biçimlerinin ikisi de
           // utils/deep_link.dart içinde çözülür (bildirim dokunuşu da aynı fonksiyonu kullanır).
           final carId = carIdFromDeepLink(settings.name);

@@ -13,11 +13,13 @@ export const dynamic = "force-dynamic";
  * sürümler ve tanınmayan mimariler güncelleme alabilmeye devam eder.
  *
  * GitHub'a ulaşılamazsa ortam değişkenleri (APP_LATEST_*) ya da son bilinen sürüm döner.
- * Yanıt 10 dk CDN'de tutulur: her açılışta GitHub'a sorulmaz (kimliksiz GitHub API sınırı saatte 60 istek).
+ * Yanıt 2 dk CDN'de, GitHub yanıtı sunucu belleğinde 10 dk tutulur: her açılışta GitHub'a sorulmaz
+ * (kimliksiz GitHub API sınırı saatte 60 istek), ama yeni yayın en geç ~12 dk içinde görünür. Önceden
+ * 30 dk + 1 saatlik "eskiyi göster" süresi vardı; yeni sürüm telefonlara yaklaşık bir saat geç ulaşıyordu.
  * Önbellek adres bazlı olduğu için abi parametresi yanıtı doğru şekilde ayırır.
  */
 const REPO = "CaptainGM/otopiyasa";
-const CACHE_MS = 30 * 60 * 1000;
+const CACHE_MS = 10 * 60 * 1000;
 
 /** Yayının ham hâli önbelleklenir; APK seçimi isteğe göre yapılır (abi başına ayrı önbellek gerekmesin). */
 type Release = Parameters<typeof parseRelease>[0];
@@ -72,6 +74,6 @@ export async function GET(request: Request) {
   const parsed = release ? parseRelease(release, { abi }) : null;
 
   return NextResponse.json(parsed ?? fallback(abi), {
-    headers: { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=3600" },
+    headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=60" },
   });
 }

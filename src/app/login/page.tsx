@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AuthForm } from "@/components/AuthForm";
 import { AuthShell } from "@/components/AuthShell";
+import { isGoogleConfigured } from "@/lib/google-auth";
+
+// Google yapılandırması ortam değişkeninden okunur; derleme anında sabitlenmesin.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Giriş Yap | OtoPiyasa",
@@ -19,7 +23,7 @@ export default function LoginPage() {
     >
       {/* AuthForm useSearchParams (?next=) kullanır → Suspense sınırı gerekir */}
       <Suspense fallback={<p className="text-sm text-slate-400">Yükleniyor…</p>}>
-        <AuthForm mode="login" />
+        <AuthForm mode="login" googleEnabled={isGoogleConfigured()} />
       </Suspense>
     </AuthShell>
   );

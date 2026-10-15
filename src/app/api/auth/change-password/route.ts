@@ -41,6 +41,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Kullanıcı bulunamadı." }, { status: 404 });
     }
 
+    // Google ile açılmış hesapta henüz şifre yok: mevcut şifre sorulamaz, sıfırlama akışı kullanılır.
+    if (!user.passwordHash) {
+      return NextResponse.json(
+        { error: "Bu hesapta henüz şifre yok. Şifremi unuttum bağlantısıyla şifre belirleyebilirsin." },
+        { status: 400 }
+      );
+    }
+
     const valid = await verifyPassword(currentPassword, user.passwordHash);
     if (!valid) {
       return NextResponse.json(

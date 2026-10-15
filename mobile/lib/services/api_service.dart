@@ -444,6 +444,51 @@ class ApiService {
     return null;
   }
 
+  /// Sunucuda Google girişi yapılandırılmış mı (bkz. api/auth/google/status). Ulaşılamazsa düğme gizlenir.
+  Future<bool> googleLoginEnabled() async {
+    try {
+      final response = await _http.get(_uri('/api/auth/google/status'), headers: _headers);
+      if (response.statusCode != 200) return false;
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return body['enabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Tarayıcıda açılacak Google giriş adresi. İşlem bitince sonuç uygulamaya bağlantıyla döner.
+  Uri googleLoginStartUri() => _uri('/api/auth/google/start', {'app': '1'});
+
+  /// Google dönüşündeki tek kullanımlık bileti oturuma çevirir. Token, [auth] ile aynı şekilde saklanır.
+  Future<void> exchangeGoogleTicket(String code) async {
+    final response = await _http.post(
+      _uri('/api/auth/google/exchange'),
+      headers: _headers,
+      body: jsonEncode({'code': code}),
+    );
+
+    if (response.statusCode != 200) {
+      Map<String, dynamic> failure = {};
+      try {
+        failure = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        // gövde JSON değilse varsayılan mesaj
+      }
+      throw Exception(failure['error'] as String? ?? 'Google ile giriş tamamlanamadı.');
+    }
+
+    final setCookie = response.headers['set-cookie'] ?? '';
+    final match = RegExp('$_tokenKey=([^;]+)').firstMatch(setCookie);
+    if (match != null) {
+      await _saveToken(match.group(1)!);
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    currentUser = body['user'] as Map<String, dynamic>?;
+    currentUser ??= await me();
+    authRevision.value++;
+  }
+
   /// Giriş yapmadan şifre sıfırlama: e-postaya 6 haneli kod gider (web bağlantı gönderir).
   Future<String> requestPasswordResetCode(String email) async {
     final response = await _http.post(

@@ -1,6 +1,10 @@
 import { Suspense } from "react";
 import { AuthForm } from "@/components/AuthForm";
 import { AuthShell } from "@/components/AuthShell";
+import { isGoogleConfigured } from "@/lib/google-auth";
+
+// Google yapılandırması ortam değişkeninden okunur; derleme anında sabitlenmesin.
+export const dynamic = "force-dynamic";
 
 export default function RegisterPage() {
   return (
@@ -9,7 +13,7 @@ export default function RegisterPage() {
       subtitle="Ücretsiz üye ol; favori ekle, ilan ver ve fiyat alarmları kur."
     >
       <Suspense fallback={<p className="text-sm text-slate-400">Yükleniyor…</p>}>
-        <AuthForm mode="register" />
+        <AuthForm mode="register" googleEnabled={isGoogleConfigured()} />
       </Suspense>
     </AuthShell>
   );

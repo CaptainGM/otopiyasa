@@ -6,7 +6,10 @@ const UserSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
    
     canonicalEmail: { type: String, index: true, sparse: true },
-    passwordHash: { type: String, required: true },
+    // Google ile açılan hesapların şifresi yoktur (null); "Şifremi unuttum" ile sonradan belirlenebilir.
+    passwordHash: { type: String, default: null },
+    // Google hesap kimliği (OIDC "sub"). Yalnızca Google ile giriş yapanlarda vardır; seyrek benzersiz indeks.
+    googleSub: { type: String, unique: true, sparse: true },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     favorites: [{ type: Schema.Types.ObjectId, ref: "Car" }],
     // Kullanıcının kendi favori listeleri (sedan, SUV...); "Favori Listem" varsayılan listesi saklanmaz, hesaplanır. Bir ilan en fazla tek listededir ve her zaman `favorites` içindedir:

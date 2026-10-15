@@ -41,7 +41,7 @@ export default function PrivacyPage() {
           items={[
             [
               "Hesap bilgileri",
-              "Ad soyad, e-posta adresi ve şifren. Şifre asla düz metin olarak saklanmaz; geri döndürülemez şekilde (bcrypt) şifrelenir. İsteğe bağlı olarak profil fotoğrafı ve işletme adı ekleyebilirsin.",
+              "Ad soyad, e-posta adresi ve şifren. Şifre asla düz metin olarak saklanmaz; geri döndürülemez şekilde (bcrypt) şifrelenir. Google ile girersen şifren olmaz; Google'dan yalnızca ad, e-posta adresi ve Google hesabının kimlik numarası alınır. İsteğe bağlı olarak profil fotoğrafı ve işletme adı ekleyebilirsin.",
             ],
             [
               "İlan bilgileri",

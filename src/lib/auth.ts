@@ -79,23 +79,61 @@ export async function verifyToken(token: string): Promise<AuthPayload | null> {
   }
 }
 
+/**
+ * Girişte yazılan çerezler. Yönlendirme yanıtına da (Google dönüşü) eklenebilsin diye ayrı çıkarıldı.
+ */
+export function authCookies(token: string) {
+  const secure = process.env.NODE_ENV === "production";
+  const maxAge = 60 * 60 * 24 * 7;
+  return [
+    {
+      name: COOKIE_NAME,
+      value: token,
+      options: { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge },
+    },
+    // Tarayıcının "giriş yapılmış mı" diye sunucuya sormadan bilmesi için okunabilir işaret (gizli bilgi yok).
+    {
+      name: SESSION_FLAG_COOKIE,
+      value: "1",
+      options: { httpOnly: false, sameSite: "lax" as const, secure, path: "/", maxAge },
+    },
+  ];
+}
+
 export async function setAuthCookie(token: string) {
   const cookieStore = await cookies();
-  cookieStore.set(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-  // Tarayıcının "giriş yapılmış mı" diye sunucuya sormadan bilmesi için okunabilir işaret (gizli bilgi yok).
-  cookieStore.set(SESSION_FLAG_COOKIE, "1", {
-    httpOnly: false,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
+  for (const cookie of authCookies(token)) {
+    cookieStore.set(cookie.name, cookie.value, cookie.options);
+  }
+}
+
+/**
+ * Kısa ömürlü, amaca bağlı imzalı belirteç (ör. Google girişinde CSRF durumu).
+ * Oturum belirteci `purpose` taşımaz; bu yüzden oturum yerine kullanılamaz.
+ */
+export async function signPurposeToken(
+  claims: Record<string, unknown>,
+  purpose: string,
+  expiresIn: string
+): Promise<string> {
+  return new SignJWT({ ...claims, purpose })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(expiresIn)
+    .sign(secret);
+}
+
+export async function verifyPurposeToken(
+  token: string | undefined,
+  purpose: string
+): Promise<Record<string, unknown> | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    return payload.purpose === purpose ? payload : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Tarayıcıdaki giriş işareti (bkz. components/useViewer.ts). */

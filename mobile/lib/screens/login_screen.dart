@@ -4,6 +4,7 @@ import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/widgets/app_logo.dart';
+import 'package:otopiyasa/widgets/google_logo.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -184,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (_googleEnabled) ...[
             OutlinedButton.icon(
               onPressed: _loading ? null : _continueWithGoogle,
-              icon: const Icon(Icons.account_circle_outlined),
+              icon: const GoogleLogo(),
               label: Text(_registerMode ? 'Google ile kayıt ol' : 'Google ile giriş yap'),
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
             ),

@@ -9,6 +9,11 @@ export const GOOGLE_STATE_COOKIE_PATH = "/api/auth/google";
 export const GOOGLE_STATE_PURPOSE = "google-oauth";
 export const GOOGLE_STATE_TTL = "10m";
 export const GOOGLE_CALLBACK_PATH = "/api/auth/google/callback";
+/**
+ * Mobil uygulamadan başlatılan girişin dönüş adresi. Android App Link olarak doğrulanmıştır
+ * (AndroidManifest.xml), bu yola gidilince bağlantı doğrudan uygulamayı açar.
+ */
+export const GOOGLE_APP_RETURN_PATH = "/mobil-giris";
 
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";

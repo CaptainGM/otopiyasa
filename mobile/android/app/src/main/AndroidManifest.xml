@@ -35,6 +35,11 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Bağlantılar (App Link) Flutter'a rota olarak iletilsin: onGenerateRoute bunları çözer. -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="true"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -48,6 +53,11 @@
                     android:scheme="https"
                     android:host="otopiyasa.app"
                     android:pathPrefix="/cars/"/>
+                <!-- Google ile giriş dönüşü: tek kullanımlık bilet bu adrese gelir (bkz. GoogleLoginReturnScreen). -->
+                <data
+                    android:scheme="https"
+                    android:host="otopiyasa.app"
+                    android:pathPrefix="/mobil-giris"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>

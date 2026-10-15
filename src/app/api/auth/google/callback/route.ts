@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { authCookies, createSessionAndToken, verifyPurposeToken } from "@/lib/auth";
 import {
+  GOOGLE_APP_RETURN_PATH,
   GOOGLE_STATE_COOKIE,
   GOOGLE_STATE_COOKIE_PATH,
   GOOGLE_STATE_PURPOSE,
@@ -13,15 +14,20 @@ import {
   verifyGoogleIdToken,
 } from "@/lib/google-auth";
 import { GoogleAccountConflictError, findOrLinkGoogleUser } from "@/lib/google-account";
+import { issueGoogleLoginTicket } from "@/lib/google-ticket";
 
 function clearStateCookie(response: NextResponse) {
   response.cookies.delete({ name: GOOGLE_STATE_COOKIE, path: GOOGLE_STATE_COOKIE_PATH });
   return response;
 }
 
-/** Hata kodu giriş sayfasında gösterilir (bkz. components/AuthForm.tsx). */
-function failure(origin: string, code: string) {
-  return clearStateCookie(NextResponse.redirect(new URL(`/login?error=${code}`, origin)));
+/**
+ * Hata kodu: web'de giriş sayfasında, uygulama akışında dönüş sayfasında gösterilir
+ * (bkz. components/AuthForm.tsx ve mobile LoginScreen).
+ */
+function failure(origin: string, code: string, appMode = false) {
+  const target = appMode ? `${GOOGLE_APP_RETURN_PATH}?hata=${code}` : `/login?error=${code}`;
+  return clearStateCookie(NextResponse.redirect(new URL(target, origin)));
 }
 
 export async function GET(request: Request) {
@@ -43,6 +49,7 @@ export async function GET(request: Request) {
   if (!code || !state || !stored || stored.state !== state) {
     return failure(origin, "google_state");
   }
+  const appMode = stored.app === true;
 
   let profile;
   try {
@@ -50,12 +57,22 @@ export async function GET(request: Request) {
     profile = await verifyGoogleIdToken(idToken, config.clientId);
   } catch (error) {
     console.error("Google girişi doğrulanamadı:", error);
-    return failure(origin, "google");
+    return failure(origin, "google", appMode);
   }
 
   try {
     await connectDB();
     const user = await findOrLinkGoogleUser(profile);
+
+    // Uygulama: oturum burada açılmaz. Tarayıcı ile uygulama çerez paylaşmaz; uygulama
+    // bu tek kullanımlık bileti sunucuya verip oturumu kendisi alır (bkz. api/auth/google/exchange).
+    if (appMode) {
+      const ticket = await issueGoogleLoginTicket(user._id.toString());
+      return clearStateCookie(
+        NextResponse.redirect(new URL(`${GOOGLE_APP_RETURN_PATH}?code=${encodeURIComponent(ticket)}`, origin))
+      );
+    }
+
     const token = await createSessionAndToken(
       {
         userId: user._id.toString(),
@@ -72,8 +89,8 @@ export async function GET(request: Request) {
     }
     return response;
   } catch (error) {
-    if (error instanceof GoogleAccountConflictError) return failure(origin, "google_conflict");
+    if (error instanceof GoogleAccountConflictError) return failure(origin, "google_conflict", appMode);
     console.error("Google girişi tamamlanamadı:", error);
-    return failure(origin, "google");
+    return failure(origin, "google", appMode);
   }
 }

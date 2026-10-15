@@ -4,6 +4,7 @@ import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/notification_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/widgets/app_logo.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -26,6 +27,33 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _needsVerification = false;
   /// Kayıt kipinde ad alanı ve şifre kuralları gösterilir.
   bool _registerMode = false;
+  /// Sunucuda Google girişi açık mı; yanıt gelene kadar düğme gizli kalır.
+  bool _googleEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _api.googleLoginEnabled().then((enabled) {
+      if (mounted && enabled) setState(() => _googleEnabled = true);
+    });
+  }
+
+  /// Google girişi tarayıcıda yapılır; dönüşte uygulama bağlantıyla açılır (bkz. GoogleLoginReturnScreen).
+  Future<void> _continueWithGoogle() async {
+    setState(() {
+      _error = null;
+      _info = null;
+    });
+    final opened = await launchUrl(_api.googleLoginStartUri(), mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    setState(() {
+      if (opened) {
+        _info = 'Tarayıcıda Google hesabını seç. Giriş bitince uygulama otomatik açılır.';
+      } else {
+        _error = 'Tarayıcı açılamadı. Tekrar dene.';
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -153,6 +181,26 @@ class _LoginScreenState extends State<LoginScreen> {
             }),
           ),
           const SizedBox(height: 16),
+          if (_googleEnabled) ...[
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _continueWithGoogle,
+              icon: const Icon(Icons.account_circle_outlined),
+              label: Text(_registerMode ? 'Google ile kayıt ol' : 'Google ile giriş yap'),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('veya', style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12)),
+                ),
+                const Expanded(child: Divider()),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
           if (_registerMode) ...[
             TextField(
               controller: _nameController,

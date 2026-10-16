@@ -465,6 +465,7 @@ export async function runScrapeJob(options: {
   limit?: number;
   pageOffset?: number;
   knownPageTolerance?: number;
+  refreshAfterDays?: number;
 }): Promise<ScrapeJobResult> {
   const adapters =
     options.source === "demo"
@@ -510,6 +511,8 @@ export async function runScrapeJob(options: {
           });
         }
       }
+      // Arabam'ın tur bütçesi yalnızca yeni ilanları sayar (bkz. fetchAndSaveArabamDetails): sonucu geri ver.
+      return result;
     };
 
     try {
@@ -518,7 +521,7 @@ export async function runScrapeJob(options: {
         options.limit || 12,
         onListing,
         options.pageOffset,
-        { knownPageTolerance: options.knownPageTolerance }
+        { knownPageTolerance: options.knownPageTolerance, refreshAfterDays: options.refreshAfterDays }
       );
       sources.push({ source: adapter.id as ListingSource, fetched, saved, inserted: adapterInserted, updated: adapterUpdated });
     } catch (error) {

@@ -95,7 +95,7 @@ export interface ScrapeAdapter {
     limit: number,
     onListing: OnListing,
     pageOffset?: number,
-    options?: { knownPageTolerance?: number }
+    options?: { knownPageTolerance?: number; refreshAfterDays?: number }
   ): Promise<{ fetched: number }>;
 }
 

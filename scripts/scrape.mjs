@@ -557,7 +557,11 @@ function limitJob(job) {
   // Doğrulama turu: bu kadar ilan doğrulanınca döner (bkz. runPriceRefreshLoop).
   if (job.mode === "price-refresh-loop") limited.roundListings = roundListings;
   // Genel Arabam taraması: bu turda zaten kayıtlı sayfalar yüzünden erken durmasın (bkz. scrapeArabamListings).
-  if (job.source === "arabam" && job.mode === undefined) limited.knownPageTolerance = 30;
+  // Bizde olan ve 3 gündür güncellenmemiş ilanlar yeniden okunur (fiyat/açıklama tazelenir); yeni ilanlar yine bütçeye sayılır.
+  if (job.source === "arabam" && job.mode === undefined) {
+    limited.knownPageTolerance = 30;
+    limited.refreshAfterDays = 3;
+  }
   return limited;
 }
 

@@ -266,7 +266,13 @@ export async function POST(request: Request) {
         ? Math.min(Math.trunc(body.knownPageTolerance), 60)
         : undefined;
 
-    const result = await runScrapeJob({ source: source || "all", query, limit, knownPageTolerance });
+    // Zamanlı tur: bizde olan ve bu kadar gündür güncellenmemiş Arabam ilanları yeniden okunur (fiyat/açıklama tazelenir).
+    const refreshAfterDays =
+      typeof body.refreshAfterDays === "number" && body.refreshAfterDays > 0
+        ? Math.min(Math.trunc(body.refreshAfterDays), 30)
+        : undefined;
+
+    const result = await runScrapeJob({ source: source || "all", query, limit, knownPageTolerance, refreshAfterDays });
 
     const sourceName = source === "all" ? "8 Kurumsal Kaynak (Tümü)" : (source?.toUpperCase() || "Tümü");
     await recordLog(result, source || "all", `${sourceName} Yeni İlan Çekimi`);

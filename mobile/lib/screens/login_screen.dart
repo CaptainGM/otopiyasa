@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:otopiyasa/screens/forgot_password_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
@@ -182,7 +184,8 @@ class _LoginScreenState extends State<LoginScreen> {
             }),
           ),
           const SizedBox(height: 16),
-          if (_googleEnabled) ...[
+          // iOS'ta dönüş bağlantısı uygulamayı açmaz (Universal Link kurulumu bekliyor); düğme orada gizli.
+          if (_googleEnabled && !Platform.isIOS) ...[
             OutlinedButton.icon(
               onPressed: _loading ? null : _continueWithGoogle,
               icon: const GoogleLogo(),

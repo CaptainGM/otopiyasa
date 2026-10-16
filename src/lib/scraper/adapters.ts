@@ -1017,6 +1017,34 @@ async function dueArabamRefreshHrefs(brand: string, model: string, years: number
     .filter((href) => href.startsWith("/ilan/"));
 }
 
+/**
+ * Yeni ilan bütçesi dolmadıysa kalan bütçe bizde olan ilanların kontrolüne gider: en eski doğrulanan ilanlar önce, fiyat,
+ * açıklama ve durum kaydetme güncellemesiyle tazelenir. Yeni ilan sayısına girmez; dönen değer kontrol edilen ilan sayısıdır.
+ */
+export async function verifyKnownArabamListings(
+  families: Array<{ brand: string; model: string; years?: number[] }>,
+  limit: number,
+  onListing: OnListing
+): Promise<number> {
+  if (limit <= 0 || families.length === 0) return 0;
+  const or = families.slice(0, 500).map((f) => ({
+    brand: f.brand,
+    model: f.model,
+    ...(f.years && f.years.length > 0 ? { year: { $in: f.years } } : {}),
+  }));
+  const docs = await Car.find({ sourceSite: "arabam", status: "active", $or: or }, { listingUrl: 1 })
+    .sort({ updatedAt: 1 })
+    .limit(limit)
+    .lean<Array<{ listingUrl?: string }>>();
+  const hrefs = docs
+    .map((d) => (d.listingUrl || "").replace(/^https?:\/\/www\.arabam\.com/, ""))
+    .filter((href) => href.startsWith("/ilan/"));
+  if (hrefs.length === 0) return 0;
+  // skipExisting=false: bizde olanlar da okunur; kaydetme güncellemesi fiyat/açıklama/durum farkını yazar.
+  await fetchAndSaveArabamDetails(hrefs, onListing, false, undefined, 0, hrefs.length);
+  return hrefs.length;
+}
+
 /** Model ve yıl aralığına göre hedefli Arabam taraması; hedef dışı yıllar kaydedilmez. */
 /** Seyrek segment başına en fazla bu kadar ilan adayı: ortalama için 3 emsal yeter, bütçe çok segmente yayılsın. */
 export const MARKET_YEAR_CANDIDATES = 12;

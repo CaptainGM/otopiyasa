@@ -180,7 +180,7 @@ export async function POST(request: Request) {
         typeof body.maxListings === "number" && body.maxListings > 0
           ? Math.min(body.maxListings, 5000)
           : 1500;
-      const result = await runRareModelScrape(threshold, perModelPages, maxSegments, maxListings);
+      const result = await runRareModelScrape(threshold, perModelPages, maxSegments, maxListings, body.verifyLeftover === true);
       await recordLog(result, "rare-model", "Nadir Model Doldurma");
       return NextResponse.json(result);
     }
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
         typeof body.maxListings === "number" && body.maxListings > 0
           ? Math.min(Math.trunc(body.maxListings), 2500)
           : 500;
-      const result = await runSparseMarketSegmentScrape(maxSegments, pagesPerYear, maxListings);
+      const result = await runSparseMarketSegmentScrape(maxSegments, pagesPerYear, maxListings, body.verifyLeftover === true);
       await recordLog(result, "sparse-market-segments", "Seyrek Marka/Model/Yıl Emsali");
       return NextResponse.json(result);
     }

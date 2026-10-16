@@ -450,8 +450,10 @@ async function fetchAndSaveArabamDetails(
         } else {
           const listing = parseArabamDetailHtml(detail.html, listingUrl);
           if (listing) {
-            await onListing(enrichListing(listing));
-            fetched += 1;
+            const outcome = await onListing(enrichListing(listing));
+            // Yalnızca gerçekten yeni kaydedilenler sayılır: kapsam/fiyat denetiminden atlananlar ve değişmeyenler
+            // tur bütçesini tüketmesin (eskiden her okunan ilan sayılıyordu; aynı adaylar her turda tekrar okunuyordu).
+            if (outcome !== "skipped" && outcome !== "unchanged") fetched += 1;
           } else {
             stats?.onUnparsed?.(href);
           }
@@ -1019,7 +1021,9 @@ export async function scrapeArabamForMarketYears(
 
     const before = await Car.countDocuments({ brand: segment.brand, model: segment.model, status: "active" }).catch(() => undefined);
     const added = await fetchAndSaveArabamDetails(fresh, async (listing) => {
-      if (years.has(listing.year)) await onListing(listing);
+      // Hedef dışı yıl bütçeye sayılmaz: "skipped" döner (bkz. fetchAndSaveArabamDetails).
+      if (!years.has(listing.year)) return "skipped";
+      return onListing(listing);
     });
     fetched += added;
     reportEvent({

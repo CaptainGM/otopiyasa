@@ -1111,7 +1111,7 @@ export async function runSparseMarketSegmentScrape(
   const allowedSegmentKeys = new Set<string>();
   const segmentsForInvalidation: Array<{ brand: string; model: string; year: number; vehicleClass: string }> = [];
   for (const segment of sparseSegments) {
-    const targetKey = `${segment.brand}::${segment.vehicleClass}::${segment.familyKey}`;
+    const targetKey = `${segment.brand}::${segment.familyKey}`;
     const existing = familyTargets.get(targetKey) || {
       brand: segment.brand,
       model: segment.model,
@@ -1120,7 +1120,7 @@ export async function runSparseMarketSegmentScrape(
     };
     existing.years.add(segment.year);
     familyTargets.set(targetKey, existing);
-    allowedSegmentKeys.add(`${segment.brand}::${segment.vehicleClass}::${segment.familyKey}::${segment.year}`);
+    allowedSegmentKeys.add(`${segment.brand}::${segment.familyKey}::${segment.year}`);
     segmentsForInvalidation.push(segment);
   }
 
@@ -1130,8 +1130,9 @@ export async function runSparseMarketSegmentScrape(
   const onListing = async (listing: ScrapedListing) => {
     const normalized = normalizeBrandModel(listing.brand, listing.model);
     const familyKey = modelFamilyKey(normalized.model, normalized.brand);
-    const vehicleClass = vehicleClassOf({ brand: normalized.brand, model: normalized.model, title: listing.title, bodyType: listing.features?.bodyType, sourceCategory: listing.sourceCategory });
-    if (!allowedSegmentKeys.has(`${normalized.brand}::${vehicleClass}::${familyKey}::${listing.year}`)) return;
+    // Araç sınıfı liste ilanında (kaynak kategorisine göre) ve veritabanında farklı olabiliyor (Audi Q2 2026: hem
+    // 'otomobil' hem 'suv-pickup'); eşleşme yalnız marka, aile ve yıl ile yapılır. Kapsam dışı ilanları saveListing eler.
+    if (!allowedSegmentKeys.has(`${normalized.brand}::${familyKey}::${listing.year}`)) return "skipped";
     const result = await saveListing(listing);
     counter.add(result);
     if (result !== "skipped" && sampleVehicles.length < 20) {
@@ -1145,6 +1146,7 @@ export async function runSparseMarketSegmentScrape(
         imageUrl: listing.imageUrl || listing.images?.[0],
       });
     }
+    return result;
   };
 
   let fetched = 0;

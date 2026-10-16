@@ -151,12 +151,12 @@ export function pageSlice<T>(items: T[], page: number, pageSize: number): { item
  */
 function nearbyCandidates(point: { lat: number; lng: number }, radiusKm: number, vehicleClass?: NearbyVehicleClass) {
   const key = `nearby:${point.lat.toFixed(3)}:${point.lng.toFixed(3)}:${radiusKm}:${vehicleClass ?? "all"}`;
-  return cached(key, CACHE_TTL.medium, async (): Promise<NearbyCandidate[]> => {
+  return cached(key, CACHE_TTL.medium, async (): Promise<NearbyPool> => {
     const { clusters } = await getDefaultMapClusters();
     const inRadius = clusters
       .map((cluster) => ({ cluster, distanceKm: distanceKm(point, cluster) }))
       .filter((item) => item.distanceKm <= radiusKm);
-    if (inRadius.length === 0) return [];
+    if (inRadius.length === 0) return { candidates: [], withoutDistrict: 0 };
 
     const byKey = new Map(inRadius.map((p) => [p.cluster.key, p]));
     const cities = [...new Set(inRadius.map((p) => p.cluster.city))];
@@ -173,22 +173,34 @@ function nearbyCandidates(point: { lat: number; lng: number }, radiusKm: number,
       createdAt?: Date;
     }>;
 
-    return light.flatMap((car) => {
+    const pool: NearbyPool = { candidates: [], withoutDistrict: 0 };
+    for (const car of light) {
       const placed = clusterKeyFor({ city: car.city, address: car.address, price: 0 });
       const hit = placed ? byKey.get(placed.key) : undefined;
-      if (!hit) return [];
-      return [
-        {
-          id: String(car._id),
-          distanceKm: hit.distanceKm,
-          approximate: hit.cluster.level === "province",
-          district: hit.cluster.district ? prettyDistrict(hit.cluster.district) : "",
-          price: car.price,
-          created: car.createdAt ? new Date(car.createdAt).getTime() : 0,
-        },
-      ];
-    });
+      if (!hit) continue;
+      // İlçesi bilinmeyen ilanın "mesafesi" il merkezine göredir. Bu bir yakınlık bilgisi değil; 10 km sonucuna
+      // alınırsa İstanbul'un tamamı merkezde "0 km" görünür. Bu yüzden sayılır ama listelenmez.
+      if (hit.cluster.level === "province") {
+        pool.withoutDistrict += 1;
+        continue;
+      }
+      pool.candidates.push({
+        id: String(car._id),
+        distanceKm: hit.distanceKm,
+        approximate: false,
+        district: hit.cluster.district ? prettyDistrict(hit.cluster.district) : "",
+        price: car.price,
+        created: car.createdAt ? new Date(car.createdAt).getTime() : 0,
+      });
+    }
+    return pool;
   });
+}
+
+/** Yarıçap havuzu: mesafesi güvenilir ilanlar ve mesafesi hesaplanamayan (ilçesiz) ilan sayısı. */
+interface NearbyPool {
+  candidates: NearbyCandidate[];
+  withoutDistrict: number;
 }
 
 export interface NearbyPageOptions {
@@ -202,10 +214,10 @@ export interface NearbyPageOptions {
 export async function findNearbyPage(
   point: { lat: number; lng: number },
   options: NearbyPageOptions
-): Promise<{ items: NearbyItem[]; total: number; hasMore: boolean }> {
-  const candidates = await nearbyCandidates(point, options.radiusKm, options.vehicleClass);
-  const slice = pageSlice(rankNearbyCandidates(candidates, options.sort), options.page, options.pageSize);
-  if (slice.items.length === 0) return { items: [], total: slice.total, hasMore: false };
+): Promise<{ items: NearbyItem[]; total: number; hasMore: boolean; withoutDistrict: number }> {
+  const pool = await nearbyCandidates(point, options.radiusKm, options.vehicleClass);
+  const slice = pageSlice(rankNearbyCandidates(pool.candidates, options.sort), options.page, options.pageSize);
+  if (slice.items.length === 0) return { items: [], total: slice.total, hasMore: false, withoutDistrict: pool.withoutDistrict };
 
   const docs = (await Car.find({ _id: { $in: slice.items.map((c) => c.id) } })
     .select("title year city price mileage imageUrl images")
@@ -232,5 +244,5 @@ export async function findNearbyPage(
       },
     ];
   });
-  return { items, total: slice.total, hasMore: slice.hasMore };
+  return { items, total: slice.total, hasMore: slice.hasMore, withoutDistrict: pool.withoutDistrict };
 }

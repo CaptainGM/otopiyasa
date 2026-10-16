@@ -46,6 +46,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
   final List<Map<String, dynamic>> _items = [];
   int _page = 0;
   int _total = 0;
+
+  /// Mesafesi hesaplanamayan (yalnızca il düzeyinde konumlu) ilan sayısı; listede yer almaz.
+  int _withoutDistrict = 0;
   bool _hasMore = false;
   bool _loading = true;
   bool _loadingMore = false;
@@ -102,6 +105,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
           ..addAll(page.items);
         _page = 1;
         _total = page.total;
+        _withoutDistrict = page.withoutDistrict;
         _hasMore = page.hasMore;
       });
     } on LocationServiceDisabledException {
@@ -154,24 +158,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Yakınımdaki ilanlar'),
-        actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Sırala',
-            icon: const Icon(Icons.sort),
-            initialValue: _sort,
-            onSelected: (value) {
-              if (value == _sort) return;
-              setState(() => _sort = value);
-              _reload(refreshLocation: false);
-            },
-            itemBuilder: (_) => [
-              for (final (label, value) in _sortOptions) PopupMenuItem(value: value, child: Text(label)),
-            ],
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Yakınımdaki ilanlar')),
       body: Column(
         children: [
           _filterBar(),
@@ -247,12 +234,65 @@ class _NearbyScreenState extends State<NearbyScreen> {
     );
   }
 
+  /// Özet satırı: sayı solda, sıralama düğmesi sağda (filtre çubuğunun hemen altında).
   Widget _summary() {
+    final sortLabel = _sortOptions.firstWhere((o) => o.$2 == _sort).$1;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        '10 km içinde ${_money.format(_total)} ilan. Mesafeler ilçe (bilinmiyorsa il) merkezine göre yaklaşıktır.',
-        style: const TextStyle(fontSize: 12, color: Colors.white54),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '10 km içinde ${_money.format(_total)} ilan',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Sırala',
+                initialValue: _sort,
+                onSelected: (value) {
+                  if (value == _sort) return;
+                  setState(() => _sort = value);
+                  _reload(refreshLocation: false);
+                },
+                itemBuilder: (_) => [
+                  for (final (label, value) in _sortOptions) PopupMenuItem(value: value, child: Text(label)),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.sort, size: 16),
+                      const SizedBox(width: 6),
+                      Text(sortLabel, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                      const Icon(Icons.arrow_drop_down, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Mesafeler ilçe (bilinmiyorsa il) merkezine göre yaklaşıktır.',
+            style: TextStyle(fontSize: 12, color: Colors.white54),
+          ),
+          if (_withoutDistrict > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              'İlçesi belirtilmeyen ${_money.format(_withoutDistrict)} ilanın mesafesi hesaplanamadığı için listelenmiyor.',
+              style: const TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ],
+        ],
       ),
     );
   }

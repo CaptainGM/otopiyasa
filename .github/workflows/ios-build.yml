@@ -1,0 +1,34 @@
+# iOS derleme kontrolü. Yalnızca elle çalışır (Actions > iOS derleme > Run workflow): macOS çalışanı
+# GitHub'da dakika başına daha pahalıdır. Amaç, Mac olmadan iOS derlemesinin bozulup bozulmadığını görmek.
+# Kod imzalama yoktur; mağazaya yüklenebilir bir IPA üretmez (o için Apple Developer hesabı gerekir).
+name: iOS derleme
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.41.7
+          cache: true
+
+      - name: Bağımlılıklar
+        run: flutter pub get
+
+      - name: Analiz
+        run: flutter analyze --no-fatal-infos
+
+      - name: iOS derle (imzasız)
+        run: flutter build ios --release --no-codesign

@@ -9,6 +9,7 @@ import {
   parseSahibindenHtml,
 } from "@/lib/scraper/browser-scrape";
 import { scrapeOtomerkeziListings } from "@/lib/scraper/otomerkezi";
+import { pickUnknownArabamHrefs } from "@/lib/scraper/arabam-new-hrefs";
 import { scrapeVavaCarsListings } from "@/lib/scraper/vavacars";
 import { scrapeOtoplusListings } from "@/lib/scraper/otoplus";
 import { scrapeCarvakListings } from "@/lib/scraper/carvak";
@@ -261,7 +262,8 @@ export async function collectArabamHrefsForModel(
   model: string,
   pages: number,
   year?: number,
-  maxHrefs = Number.MAX_SAFE_INTEGER
+  maxHrefs = Number.MAX_SAFE_INTEGER,
+  keepNew?: (hrefs: string[]) => Promise<string[]>
 ): Promise<string[]> {
   const base = await resolveArabamModelBase(brand, model);
   if (!base) return [];
@@ -292,7 +294,9 @@ export async function collectArabamHrefsForModel(
     }
     if (pageSize === 0) break;
     const before = hrefs.size;
-    found.forEach((h) => hrefs.add(h));
+    // Yalnızca yeni adaylar sayılır: kayıtlı ilanlar maxHrefs'i doldurup sayfa taramasını erken kesmesin.
+    const kept = keepNew ? await keepNew(found) : found;
+    kept.forEach((h) => hrefs.add(h));
 
     if (!wantYear && hrefs.size === before) break;
   }
@@ -480,7 +484,10 @@ async function scrapeArabamListings(
   query: string,
   limit: number,
   onListing: OnListing,
-  pageOffset = 1
+  pageOffset = 1,
+  // Üst üste kaç kayıtlı (yeni olmayan) sayfa görülünce genel listeden / markadan çıkılır. Zamanlı turda daha yüksek:
+  // her tur en baştan başlar; küçük bir eşikle üst sayfalar (hep kayıtlı) turu bitirir ve yeni ilanlar hiç okunmaz.
+  knownPageTolerance = 3
 ): Promise<number> {
   const q = (query || "otomobil").trim();
   const isGeneral = !q || q.toLowerCase() === "otomobil" || q.toLowerCase() === "en-yeniler";
@@ -540,7 +547,7 @@ async function scrapeArabamListings(
     if (savedThisPage === 0) {
       consecutiveZeroSaves++;
       // Eğer üst üste 3 sayfada da sıfır yeni araç çıktıysa, genel listede mevcut ilanların sınırına ulaştık!
-      if (consecutiveZeroSaves >= 3 && isGeneral) {
+      if (consecutiveZeroSaves >= knownPageTolerance && isGeneral) {
         console.log(`\n  ℹ️ [Akıllı Rotasyon] Genel en yeniler listesinde mevcut ilanlara ulaşıldı (Sf.${page}).`);
         console.log(`  🚗 Henüz keşfedilmemiş taze ilanlar için popüler marka havuzuna (Renault, Fiat, VW, Ford, BMW...) geçiliyor...\n`);
         break;
@@ -559,6 +566,7 @@ async function scrapeArabamListings(
 
       console.log(`  🔍 [Marka Taraması] ${brand.toUpperCase()} taranıyor...`);
       let brandZeroSaves = 0;
+      const brandTolerance = Math.max(2, Math.ceil(knownPageTolerance / 3));
       const brandStartSaved = totalSaved;
 
       for (let brandPage = 1; brandPage <= 30; brandPage++) {
@@ -590,7 +598,7 @@ async function scrapeArabamListings(
 
         if (savedThisPage === 0) {
           brandZeroSaves++;
-          if (brandZeroSaves >= 2) break; // Bu markada mevcutlara gelince bir sonraki markaya geç
+          if (brandZeroSaves >= brandTolerance) break; // Bu markada mevcutlara gelince bir sonraki markaya geç
         } else {
           brandZeroSaves = 0;
         }
@@ -949,6 +957,20 @@ export async function scrapeArabamForModels(
   return fetched;
 }
 
+/** Veritabanında olmayan Arabam bağlantıları (seyrek emsal adayları için). */
+async function keepUnknownArabamHrefs(hrefs: string[]): Promise<string[]> {
+  const ids = hrefs.map(arabamIdFromHref).filter((id): id is string => Boolean(id));
+  if (ids.length === 0) return [];
+  const known = new Set(
+    (
+      await Car.find({ externalId: { $in: ids.map((id) => `arabam-${id}`) } }, { externalId: 1 }).lean<
+        { externalId: string }[]
+      >()
+    ).map((d) => d.externalId)
+  );
+  return pickUnknownArabamHrefs(hrefs, arabamIdFromHref, known);
+}
+
 /** Model ve yıl aralığına göre hedefli Arabam taraması; hedef dışı yıllar kaydedilmez. */
 /** Seyrek segment başına en fazla bu kadar ilan adayı: ortalama için 3 emsal yeter, bütçe çok segmente yayılsın. */
 export const MARKET_YEAR_CANDIDATES = 12;
@@ -977,7 +999,14 @@ export async function scrapeArabamForMarketYears(
     const candidates = new Set<string>();
     for (const year of years) {
       try {
-        const hrefs = await collectArabamHrefsForModel(segment.brand, segment.model, pagesPerYear, year, perYearCandidates);
+        const hrefs = await collectArabamHrefsForModel(
+          segment.brand,
+          segment.model,
+          pagesPerYear,
+          year,
+          perYearCandidates,
+          keepUnknownArabamHrefs
+        );
         hrefs.forEach((href) => candidates.add(href));
       } catch {
         // Bir yılın arama sonucu hata verirse kalan hedef yıl grupları devam eder.
@@ -1009,8 +1038,8 @@ export { POPULAR_BRANDS };
 export const arabamAdapter: ScrapeAdapter = {
   id: "arabam",
   label: "Arabam.com",
-  async scrape(query, limit = 12, onListing, pageOffset = 1) {
-    const fetched = await scrapeArabamListings(query, limit, onListing, pageOffset);
+  async scrape(query, limit = 12, onListing, pageOffset = 1, options) {
+    const fetched = await scrapeArabamListings(query, limit, onListing, pageOffset, options?.knownPageTolerance ?? 3);
     return { fetched };
   },
 };

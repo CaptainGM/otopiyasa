@@ -464,6 +464,7 @@ export async function runScrapeJob(options: {
   query: string;
   limit?: number;
   pageOffset?: number;
+  knownPageTolerance?: number;
 }): Promise<ScrapeJobResult> {
   const adapters =
     options.source === "demo"
@@ -516,7 +517,8 @@ export async function runScrapeJob(options: {
         options.query,
         options.limit || 12,
         onListing,
-        options.pageOffset
+        options.pageOffset,
+        { knownPageTolerance: options.knownPageTolerance }
       );
       sources.push({ source: adapter.id as ListingSource, fetched, saved, inserted: adapterInserted, updated: adapterUpdated });
     } catch (error) {

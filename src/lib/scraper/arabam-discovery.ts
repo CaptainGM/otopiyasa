@@ -26,6 +26,8 @@ export interface DiscoveryResult {
   message: string;
   blocked?: boolean;
   failed?: number;
+  /** Partide zaten veritabanında olan (yeni eklenmeyen ama işlenmiş) aday sayısı. */
+  known?: number;
 }
 
 async function runPacedBrowserDiscovery(
@@ -190,16 +192,19 @@ export async function runRecentArabamScrape(days = 3, maxCandidates = 600): Prom
   let read = 0;
   let inserted = 0;
   let idle = 0;
-  while (read < planned) {
-    const r = await runSitemapDiscovery(Math.min(RECENT_BATCH, planned - read), { sinceDays: days });
+  // Bütçe (maxCandidates) YENİ eklenen ilanlardır: bizde zaten olan adaylar kuyruktan çıkar ama bütçeyi tüketmez.
+  while (inserted < maxCandidates) {
+    const r = await runSitemapDiscovery(RECENT_BATCH, { sinceDays: days });
     if (r.picked === 0) break;
     read += r.picked;
     inserted += r.inserted;
-    reportProgress(`Son ${days} gün ilanları`, Math.min(read, planned), planned);
+    reportProgress(`Son ${days} gün ilanları`, Math.min(inserted, maxCandidates), maxCandidates);
     if (r.inserted > 0) reportEvent({ label: `Son ${days} gün`, added: r.inserted });
-    idle = r.inserted === 0 ? idle + 1 : 0;
+    // Durma yalnızca hiçbir adayın işlenemediği partide sayılır (engel, araç olmayan ilanlar). Kayıtlı adaylar başarısızlık değildir.
+    const progressed = r.inserted + (r.known ?? 0) > 0;
+    idle = progressed ? 0 : idle + 1;
     if (idle >= RECENT_MAX_IDLE_BATCHES) {
-      notes.push(`art arda ${RECENT_MAX_IDLE_BATCHES} partide yeni ilan gelmedi (araç olmayan ilanlar ya da engel), durduruldu`);
+      notes.push(`art arda ${RECENT_MAX_IDLE_BATCHES} partide hiçbir aday işlenemedi (engel ya da araç olmayan ilanlar), durduruldu`);
       break;
     }
   }
@@ -292,6 +297,7 @@ export async function runSitemapDiscovery(
       inserted: counter.counts.inserted,
       dropped,
       remaining,
+      known: Math.max(0, done.length - counter.counts.inserted),
       message: `Sitemap keşfi: ${batch.length} aday okundu, ${counter.counts.inserted} yeni ilan eklendi, ${dropped} aday elendi; kuyrukta ${remaining} aday kaldı.`,
     };
   } finally {

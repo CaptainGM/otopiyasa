@@ -260,7 +260,13 @@ export async function POST(request: Request) {
         ? Math.min(body.limit, maxLimit)
         : (isVercel ? 12 : undefined);
 
-    const result = await runScrapeJob({ source: source || "all", query, limit });
+    // Zamanlı tur: genel Arabam listesinde bu kadar üst üste kayıtlı sayfa görülünce tur bitmez (bkz. scrapeArabamListings).
+    const knownPageTolerance =
+      typeof body.knownPageTolerance === "number" && body.knownPageTolerance > 0
+        ? Math.min(Math.trunc(body.knownPageTolerance), 60)
+        : undefined;
+
+    const result = await runScrapeJob({ source: source || "all", query, limit, knownPageTolerance });
 
     const sourceName = source === "all" ? "8 Kurumsal Kaynak (Tümü)" : (source?.toUpperCase() || "Tümü");
     await recordLog(result, source || "all", `${sourceName} Yeni İlan Çekimi`);

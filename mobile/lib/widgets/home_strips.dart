@@ -275,6 +275,12 @@ class _RecentlyViewedStripState extends State<RecentlyViewedStrip> {
     }
   }
 
+  /// Hesabın bakma geçmişini siler; şerit (changes bildirimiyle) hemen boşalır.
+  Future<void> _clear() async {
+    await RecentlyViewedStore.clear();
+    if (mounted) setState(() => _items = []);
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = _items;
@@ -283,6 +289,7 @@ class _RecentlyViewedStripState extends State<RecentlyViewedStrip> {
       context,
       eyebrow: 'Geçmiş',
       title: 'Son baktıkların',
+      action: TextButton(onPressed: _clear, child: const Text('Geçmişi temizle')),
       children: items.map((car) => _miniCard(context, car)).toList(),
     );
   }

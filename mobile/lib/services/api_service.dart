@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/models/account.dart';
+import 'package:otopiyasa/models/nearby_page.dart';
 import 'package:otopiyasa/models/offer.dart';
 import 'package:otopiyasa/models/price_scale.dart';
 import 'package:otopiyasa/models/sell_estimate.dart';
@@ -992,22 +993,33 @@ class ApiService {
   // YAKINIMDAKİ İLANLAR
   // ---------------------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> fetchNearby(
-    double lat,
-    double lng, {
-    int limit = 24,
+  /// Yarıçap içindeki ilanların bir sayfası (bkz. api/nearby: radiusKm modu). [vehicleClass] null ise tüm sınıflar.
+  Future<NearbyPage> fetchNearbyPage({
+    required double lat,
+    required double lng,
+    required int page,
+    double radiusKm = 10,
+    int pageSize = 24,
+    String? vehicleClass,
+    String sort = 'distance',
   }) async {
     final response = await _http.get(
-      _uri('/api/nearby', {'lat': '$lat', 'lng': '$lng', 'limit': '$limit'}),
+      _uri('/api/nearby', {
+        'lat': '$lat',
+        'lng': '$lng',
+        'radiusKm': '$radiusKm',
+        'page': '$page',
+        'pageSize': '$pageSize',
+        'sort': sort,
+        'vehicleClass': ?vehicleClass,
+      }),
       headers: _headers,
     );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Yakındaki ilanlar alınamadı'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
+    return NearbyPage.fromJson(body);
   }
 
   // ---------------------------------------------------------------------------

@@ -25,6 +25,14 @@ class RecentlyViewedStore {
     changes.value++;
   }
 
+  /// Oturumdaki hesabın geçmişini siler (yalnızca bu hesabın anahtarı; diğer hesaplara dokunulmaz).
+  static Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _purgeLegacy(prefs);
+    await prefs.remove(_key());
+    changes.value++;
+  }
+
   static Future<List<String>> list() async {
     final prefs = await SharedPreferences.getInstance();
     await _purgeLegacy(prefs);

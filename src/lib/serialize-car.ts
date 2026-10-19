@@ -3,6 +3,7 @@ import { MarketSegmentStats, segmentKey } from "@/lib/market-price";
 import { enrichFeatures } from "@/lib/derive-specs";
 import { withPendingLabels } from "@/lib/scraper/feature-merge";
 import { displayTransmission } from "@/lib/transmission-label";
+import { isPlausibleListingPrice } from "@/lib/price-plausibility";
 
 /** Ekranda "Yarı Otomatik" ile "Otomatik" ayrı gösterilmez (bkz. transmission-label.ts). */
 function withDisplayTransmission<T extends { transmission?: string }>(features: T): T {
@@ -117,7 +118,8 @@ export function serializeCar(
     priceVsMarket,
     createdAt: doc.createdAt?.toISOString?.() || "",
     updatedAt: doc.updatedAt?.toISOString?.() || "",
-    priceHistory: (doc.priceHistory || []).map((point) => ({
+    // Ayrıştırma hatasıyla kaydedilmiş fiyatlar (aralık dışı) arayüze hiç gitmez.
+    priceHistory: (doc.priceHistory || []).filter((point) => isPlausibleListingPrice(point.price, (doc as { vehicleClass?: string | null }).vehicleClass)).map((point) => ({
       price: point.price,
       recordedAt:
         point.recordedAt instanceof Date

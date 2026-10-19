@@ -1,6 +1,6 @@
 /// Fiyatın kendi segmentindeki yeri — web ile aynı kural (bkz. src/lib/market-position.ts):
 ///  - ±%6 içinde: piyasa değerinde
-///  - %6+ altında: ucuz; %30+ altında: şüpheli ucuz (hatalı fiyat ya da kapora dolandırıcılığı olabilir)
+///  - %6+ altında: ucuz; %40+ altında: şüpheli ucuz (hatalı fiyat ya da kapora dolandırıcılığı olabilir)
 ///  - %6+ üstünde: pahalı; ortalamanın 5 katından fazlaysa: olası veri hatası
 /// Gösterge ibresi 0 farkta ortada, her %1 fark için %2,5 kayar (uçlarda %6–%94 arasında kalır).
 ///
@@ -8,7 +8,7 @@
 /// Uygulama web API'sinden yalnızca fiyat/ortalama/emsal sayısını aldığı için eşikler istemcide
 /// hesaplanır; bir eşiği değiştirirken İKİ dosya birlikte güncellenmelidir.
 const int fairBandPct = 6;
-const int suspiciousPct = 30;
+const int suspiciousPct = 40;
 const int minMarketComparables = 3;
 /// Ortalamanın bu katından pahalı ilan veri hatası sayılır ("%74453 pahalı" gibi anlamsız
 /// etiketler yerine "Piyasa dışı fiyat" yazılır).

@@ -1,6 +1,7 @@
 import { Car, CarListItem } from "@/types";
 import { displayTransmission } from "@/lib/transmission-label";
 import { withPendingLabels } from "@/lib/scraper/feature-merge";
+import { isPlausibleListingPrice } from "@/lib/price-plausibility";
 
 /** Strip fields the listing row never renders before sending it to a client. */
 type CarListSource = Pick<Car, "title" | "year" | "price" | "mileage" | "city"> & {
@@ -53,7 +54,7 @@ export function serializeCarListItem(car: CarListSource): CarListItem {
       },
       car
     ),
-    priceHistory: (car.priceHistory ?? []).slice(-2).map((point) => ({
+    priceHistory: (car.priceHistory ?? []).filter((point) => isPlausibleListingPrice(point.price, (car as { vehicleClass?: string | null }).vehicleClass)).slice(-2).map((point) => ({
       price: point.price,
       recordedAt: point.recordedAt.toString(),
     })),

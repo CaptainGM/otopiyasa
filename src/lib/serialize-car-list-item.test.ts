@@ -16,13 +16,13 @@ describe("serializeCarListItem", () => {
       description: "large description should not be sent",
       features: { fuelType: "Benzin", transmission: "Otomatik", bodyType: "Sedan", color: "Beyaz" },
       sourceSite: "arabam",
-      priceHistory: [1, 2, 3].map((price) => ({ price, recordedAt: "2026-01-01" })),
+      priceHistory: [1_000_000, 2_000_000, 3_000_000].map((price) => ({ price, recordedAt: "2026-01-01" })),
     } as unknown as Car;
 
     const item = serializeCarListItem(car);
     expect(item.images).toHaveLength(CARD_PHOTO_LIMIT);
     expect(item.images).toEqual(["one", "two", "three", "four", "five", "six"]);
-    expect(item.priceHistory.map((point) => point.price)).toEqual([2, 3]);
+    expect(item.priceHistory.map((point) => point.price)).toEqual([2_000_000, 3_000_000]);
     expect(item.features).toEqual({ fuelType: "Benzin", transmission: "Otomatik" });
     expect(item).not.toHaveProperty("description");
     expect(item).not.toHaveProperty("listingUrl");

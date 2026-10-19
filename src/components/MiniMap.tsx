@@ -15,13 +15,15 @@ interface Props {
   zoom?: number;
   /** Haritanın altındaki not (ör. "yaklaşık konum"). */
   note?: string;
+  /** Masaüstünde harita, bulunduğu sütunun kalan yüksekliğini doldurur (sütunlar dengelenirken boşluk kalmaz); telefonda sabit yükseklik. */
+  fill?: boolean;
 }
 
 /**
  * Küçük önizleme harita; tıklayınca tam ekran, sürüklenebilir büyük harita açılır
  * (Esc, ✕ ya da boşluğa tıklama kapatır).
  */
-export function MiniMap({ lat, lng, zoom = 12, note }: Props) {
+export function MiniMap({ lat, lng, zoom = 12, note, fill = false }: Props) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -40,8 +42,11 @@ export function MiniMap({ lat, lng, zoom = 12, note }: Props) {
 
   return (
     <>
-      <div className="relative h-48 overflow-hidden rounded-xl border border-white/10">
-        <MiniMapInner lat={lat} lng={lng} zoom={zoom} interactive={false} />
+      <div className={`relative overflow-hidden rounded-xl border border-white/10 ${fill ? "h-64 lg:h-auto lg:min-h-[12rem] lg:flex-1" : "h-48"}`}>
+        {/* Harita kutunun ölçüsünü absolute ile alır: kutu en az yüksekliğinde kalsa bile Leaflet 0 px çizmez. */}
+        <div className="absolute inset-0">
+          <MiniMapInner lat={lat} lng={lng} zoom={zoom} interactive={false} />
+        </div>
         <button
           type="button"
           onClick={() => setOpen(true)}

@@ -40,12 +40,14 @@ function Mark({ ok }: { ok: boolean }) {
 }
 
 /** Yönetim paneli sağ sütunu: site özelliklerinin canlı durumu (yeşil tik / kırmızı çarpı). Web'e özel. */
-export function FeatureStatusPanel() {
+export function FeatureStatusPanel({ fixedOpen = false }: { fixedOpen?: boolean } = {}) {
   const [data, setData] = useState<StatusData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Geniş ekranda sağ kenar boşluğunda hep açık; dar ekranda başlığa tıklayınca açılır (sayfayı aşağı itmesin).
-  const wide = useWideScreen();
+  // fixedOpen: sekmenin içinde her zaman açık (Genel sekmesi).
+  const screenWide = useWideScreen();
+  const wide = fixedOpen || screenWide;
   const [expanded, setExpanded] = useState(false);
 
   async function load(force = false) {

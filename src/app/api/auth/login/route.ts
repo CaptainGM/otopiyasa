@@ -42,8 +42,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) {
+    // Google ile açılmış hesapların şifresi yok; yanıt süresi farkı da ele verilmesin diye yine karşılaştırılır.
+    const valid = await bcrypt.compare(password, user.passwordHash || getDummyHash());
+    if (!user.passwordHash || !valid) {
       return NextResponse.json(
         { error: "E-posta veya şifre hatalı." },
         { status: 401 }

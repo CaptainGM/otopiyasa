@@ -25,7 +25,7 @@ function ComparePageInner() {
 
   useEffect(() => {
     const ids = idsFromUrl.length > 0 ? idsFromUrl : getCompareIds();
-    if (ids.length < 2) {
+    if (ids.length < 1) {
       setItems([]);
       return;
     }
@@ -42,7 +42,7 @@ function ComparePageInner() {
   useEffect(() => subscribeCompare(() => {
     if (idsFromUrl.length > 0) return; // URL modundaysak dokunma
     const ids = getCompareIds();
-    if (ids.length < 2) return setItems([]);
+    if (ids.length < 1) return setItems([]);
     fetch(`/api/compare?ids=${encodeURIComponent(ids.join(","))}`)
       .then((r) => r.json())
       .then((data) => setItems(data.items || []));
@@ -57,7 +57,7 @@ function ComparePageInner() {
     return <p className="py-10 text-center text-red-300">{error}</p>;
   }
 
-  if (!items || items.length < 2) {
+  if (!items || items.length === 0) {
     return (
       <div className="space-y-4 py-8">
         <h1 className="text-2xl font-bold tracking-tight">Araç Karşılaştırma</h1>
@@ -136,7 +136,8 @@ function ComparePageInner() {
         <span className="text-sm text-slate-500">{items.length} araç</span>
       </div>
 
-      <CompareAiSummary items={items} />
+      {items.length >= 2 && <CompareAiSummary items={items} />}
+
 
       <p className="-mt-3 text-xs leading-relaxed text-slate-500">
         Ortalama, karşılaştırdığın araçlar hariç aktif ilanlardan hesaplanır. Donanım ve kilometre farkları bu ortalamaya dahil değildir; en az 3 ilan yoksa gösterilmez.
@@ -178,6 +179,17 @@ function ComparePageInner() {
                   </div>
                 </th>
               ))}
+              {items.length === 1 && (
+                <th className="p-0.5 align-bottom sm:p-3">
+                  <Link href="/" className="flex min-h-[14rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/50 bg-amber-400/5 p-4 text-center transition hover:bg-amber-400/10">
+                    <span className="text-2xl leading-none text-amber-300" aria-hidden>
+                      +
+                    </span>
+                    <span className="text-sm font-semibold text-amber-200">Sağ tarafa bir araç daha ekle</span>
+                    <span className="text-xs text-slate-400">Karşılaştırmak için en az 2 araç gerekli. İlan kartındaki karşılaştır ikonuna dokun.</span>
+                  </Link>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -185,7 +197,8 @@ function ComparePageInner() {
               <tr key={row.label} className="border-t border-white/5">
                 <td className="p-1 text-[10px] leading-tight text-slate-500 sm:p-3 sm:text-sm">{row.label}</td>
                 {items.map((c) => {
-                  const isBest = row.best?.(c);
+                  // Tek araçta karşılaştırma yok: "en iyi" işareti anlamsız olur.
+                  const isBest = items.length >= 2 && row.best?.(c);
                   return (
                     <td
                       key={c._id}
@@ -204,6 +217,7 @@ function ComparePageInner() {
                     </td>
                   );
                 })}
+                {items.length === 1 && <td className="p-1 sm:p-3" aria-hidden />}
               </tr>
             ))}
           </tbody>

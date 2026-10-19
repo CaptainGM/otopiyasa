@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -5,11 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:otopiyasa/data/tr_geo.dart';
+import 'package:otopiyasa/models/sell_estimate.dart';
 import 'package:otopiyasa/services/api_service.dart';
+import 'package:otopiyasa/widgets/sell_estimate_card.dart';
 
 /// İLAN VER / DÜZENLE — web'deki `/sell` formunun mobil karşılığı.
 ///
-/// Aynı uç noktayı kullanır, aynı kurallara tabidir (fiyat tabanı, yapay zeka
+/// Aynı uç noktayı kullanır, aynı kurallara tabidir (fiyat aralığı, yapay zeka
 /// denetimi, fotoğraf-marka uyumu). Fotoğraflar web ile AYNI biçimde
 /// gönderilir: 1280 px'e küçültülüp `data:image/jpeg;base64,...`
 class SellScreen extends StatefulWidget {
@@ -31,14 +34,17 @@ class _SellScreenState extends State<SellScreen> {
   final _year = TextEditingController();
   final _price = TextEditingController();
   final _mileage = TextEditingController();
+  final _engine = TextEditingController();
   final _minOffer = TextEditingController();
   final _phone = TextEditingController();
   final _description = TextEditingController();
 
   String? _province;
   String? _district;
-  String _fuel = 'Benzin';
-  String _transmission = 'Manuel';
+  // Yakıt, vites ve hasar varsayılan almaz: fiyat aralığı yanlış seçimle yanlış araç grubunu kıyaslardı.
+  String? _fuel;
+  String? _transmission;
+  String? _damage;
   String _bodyType = 'Sedan';
   String _color = 'Beyaz';
 
@@ -46,8 +52,21 @@ class _SellScreenState extends State<SellScreen> {
   bool _saving = false;
   bool _pickingImage = false;
 
+  Timer? _estimateTimer;
+  int _estimateSeq = 0;
+  String _estimateKey = '';
+  SellEstimate? _estimate;
+  String? _estimateError;
+  bool _estimateLoading = false;
+
   static const _fuels = ['Benzin', 'Dizel', 'LPG & Benzin', 'Elektrik', 'Hibrit'];
   static const _transmissions = ['Manuel', 'Otomatik'];
+  static const _damageOptions = ['orijinal', 'boyali', 'hasarli'];
+  static const _damageLabels = {
+    'orijinal': 'Hasar kaydı yok, boyasız (orijinal)',
+    'boyali': 'Hasar kaydı yok, boyalı veya değişen parça var',
+    'hasarli': 'Hasar kaydı var (tramer veya ağır hasar)',
+  };
   static const _bodyTypes = [
     'Sedan', 'Hatchback', 'SUV', 'Station Wagon', 'Coupe',
     'Cabrio', 'MPV', 'Pickup', 'Panelvan', 'Belirtilmemiş',
@@ -68,20 +87,38 @@ class _SellScreenState extends State<SellScreen> {
       _year.text = init['year']?.toString() ?? '';
       _price.text = _group(init['price']?.toString() ?? '');
       _mileage.text = _group(init['mileage']?.toString() ?? '');
+      _engine.text = init['engineSize'] == null ? '' : init['engineSize'].toString().replaceAll('.', ',');
       _minOffer.text = _group(init['minOffer']?.toString() ?? '');
       _phone.text = init['contactPhone']?.toString() ?? '';
       _description.text = init['description']?.toString() ?? '';
       final city = init['city']?.toString();
       if (city != null && trProvinces.contains(city)) _province = city;
+      _fuel = _pick(init['fuelType'], _fuels);
+      _transmission = _pick(init['transmission'], _transmissions);
+      _damage = _pick(init['damage'], _damageOptions);
+      _bodyType = _pick(init['bodyType'], _bodyTypes) ?? _bodyType;
+      _color = _pick(init['color'], _colors) ?? _color;
     }
+    for (final c in [_brand, _model, _year, _mileage, _engine]) {
+      c.addListener(_onEstimateFieldChanged);
+    }
+    _price.addListener(_refresh);
+    _scheduleEstimate();
   }
 
   @override
   void dispose() {
-    for (final c in [_brand, _model, _year, _price, _mileage, _minOffer, _phone, _description]) {
+    _estimateTimer?.cancel();
+    for (final c in [_brand, _model, _year, _price, _mileage, _engine, _minOffer, _phone, _description]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// Listede olan değer ise onu, değilse null (eski veya bilinmeyen değer seçili gelmesin).
+  String? _pick(dynamic value, List<String> options) {
+    final text = value?.toString();
+    return text != null && options.contains(text) ? text : null;
   }
 
   /// "1600000" → "1.600.000" (web'deki formatNumberInput ile aynı davranış).
@@ -98,6 +135,90 @@ class _SellScreenState extends State<SellScreen> {
 
   int _num(TextEditingController c) =>
       int.tryParse(c.text.replaceAll(RegExp(r'\D'), '')) ?? 0;
+
+  /// Motor hacmi: "1,6" ya da "1.6" → 1.6. Boş ya da geçersizse null.
+  double? _parseEngine(String text) {
+    final normalized = text.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    final value = double.tryParse(normalized);
+    if (value == null || value < 0.6 || value > 8) return null;
+    return (value * 10).round() / 10;
+  }
+
+  bool get _engineValid => _engine.text.trim().isEmpty || _parseEngine(_engine.text) != null;
+
+  bool get _isElectric => _fuel == 'Elektrik';
+
+  void _onEstimateFieldChanged() => setState(_scheduleEstimate);
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  /// Aralık isteği. Fiyat yoktur: aralık yalnızca araç özelliklerine bağlıdır. Eksikse null.
+  Map<String, dynamic>? _estimateRequest() {
+    final brand = _brand.text.trim();
+    final model = _model.text.trim();
+    final year = int.tryParse(_year.text.trim());
+    final mileage = _num(_mileage);
+    final fuel = _fuel;
+    final transmission = _transmission;
+    final damage = _damage;
+    if (brand.isEmpty || model.isEmpty || year == null || mileage <= 0) return null;
+    if (year < 1950 || year > DateTime.now().year + 1) return null;
+    if (fuel == null || transmission == null || damage == null || !_engineValid) return null;
+    return {
+      'brand': brand,
+      'model': model,
+      'year': year,
+      'mileage': mileage,
+      'fuelType': fuel,
+      'transmission': transmission,
+      'engineSize': _isElectric ? null : _parseEngine(_engine.text),
+      'damage': damage,
+      'excludeId': widget.listingId,
+    };
+  }
+
+  /// İstek değişince aralığı yeniden ister. Yazarken her tuşta değil, 500 ms sonra; eski yanıt yenisinin yerine geçmez.
+  void _scheduleEstimate() {
+    final request = _estimateRequest();
+    if (request == null) {
+      _estimateTimer?.cancel();
+      _estimateKey = '';
+      _estimate = null;
+      _estimateError = null;
+      _estimateLoading = false;
+      return;
+    }
+    final key = jsonEncode(request);
+    if (key == _estimateKey) return;
+    _estimateTimer?.cancel();
+    _estimateKey = key;
+    _estimate = null;
+    _estimateError = null;
+    _estimateLoading = true;
+    final seq = ++_estimateSeq;
+    _estimateTimer = Timer(const Duration(milliseconds: 500), () => _fetchEstimate(request, seq));
+  }
+
+  Future<void> _fetchEstimate(Map<String, dynamic> request, int seq) async {
+    try {
+      final estimate = await _api.estimateSell(request);
+      if (!mounted || seq != _estimateSeq) return;
+      setState(() {
+        _estimate = estimate;
+        _estimateLoading = false;
+      });
+    } catch (e) {
+      if (!mounted || seq != _estimateSeq) return;
+      setState(() {
+        _estimate = null;
+        _estimateError = e.toString().replaceFirst('Exception: ', '');
+        _estimateLoading = false;
+      });
+    }
+  }
 
   /// Fotoğrafı 1280 px'e küçültüp data URI'ye çevirir — web ile aynı boyut.
   /// Küçültme şart: ham telefon fotoğrafı 5-10 MB, sunucu gövde sınırını aşar.
@@ -133,6 +254,13 @@ class _SellScreenState extends State<SellScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  SellPriceGuard get _guard {
+    final price = _num(_price);
+    final estimate = _estimate;
+    if (estimate == null || price <= 0) return SellPriceGuard.none;
+    return sellPriceGuard(price, estimate);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_province == null) {
@@ -144,6 +272,11 @@ class _SellScreenState extends State<SellScreen> {
     // Sunucu da doğruluyor ama kullanıcı göndermeden görsün.
     if (minOffer > 0 && minOffer > price) {
       _toast('En düşük teklif, ilan fiyatından yüksek olamaz');
+      return;
+    }
+    final guard = _guard;
+    if (guard.level == SellGuardLevel.block) {
+      _toast(guard.message ?? 'Fiyatı kontrol et');
       return;
     }
 
@@ -160,12 +293,14 @@ class _SellScreenState extends State<SellScreen> {
         district: _district ?? '',
         contactPhone: _phone.text.trim(),
         description: _description.text.trim(),
-        fuelType: _fuel,
-        transmission: _transmission,
+        fuelType: _fuel!,
+        transmission: _transmission!,
         bodyType: _bodyType,
         color: _color,
         minOffer: minOffer,
         images: _images,
+        damage: _damage,
+        engineSize: _isElectric ? null : _parseEngine(_engine.text),
       );
 
       final status = result['status']?.toString();
@@ -186,6 +321,8 @@ class _SellScreenState extends State<SellScreen> {
   @override
   Widget build(BuildContext context) {
     final districts = _province == null ? <String>[] : trDistrictsOf(_province!);
+    final guard = _guard;
+    final blocked = guard.level == SellGuardLevel.block;
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.listingId == null ? 'İlan Ver' : 'İlanı Düzenle')),
@@ -205,7 +342,7 @@ class _SellScreenState extends State<SellScreen> {
                 _province = v;
                 _district = null; // il değişti → eski ilçe geçersiz
               });
-            }),
+            }, required: true),
             _dropdown(
               'İlçe',
               _district,
@@ -213,9 +350,46 @@ class _SellScreenState extends State<SellScreen> {
               districts.isEmpty ? null : (v) => setState(() => _district = v),
             ),
 
-            _dropdown('Yakıt', _fuel, _fuels, (v) => setState(() => _fuel = v!)),
-            _dropdown('Vites', _transmission, _transmissions,
-                (v) => setState(() => _transmission = v!)),
+            _dropdown('Yakıt', _fuel, _fuels, (v) => setState(() {
+                  _fuel = v;
+                  _scheduleEstimate();
+                }), required: true),
+            _dropdown('Vites', _transmission, _transmissions, (v) => setState(() {
+                  _transmission = v;
+                  _scheduleEstimate();
+                }), required: true),
+            if (!_isElectric)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TextFormField(
+                  controller: _engine,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Motor hacmi (litre) — isteğe bağlı',
+                    hintText: '1,6',
+                    helperText: 'Girilirse benzer ilanlar daha dar seçilir.',
+                  ),
+                  validator: (v) => _engineValid ? null : '0,6 ile 8,0 litre arasında olmalı',
+                ),
+              ),
+            _dropdown('Hasar durumu', _damage, _damageOptions, (v) => setState(() {
+                  _damage = v;
+                  _scheduleEstimate();
+                }),
+                required: true,
+                labelFor: (v) => _damageLabels[v] ?? v,
+                helper: 'Tramer kaydı da hasar kaydıdır. Emin değilsen tramer kaydını kontrol et.'),
+
+            SellEstimateCard(
+              ready: _estimateRequest() != null,
+              loading: _estimateLoading,
+              error: _estimateError,
+              estimate: _estimate,
+              damage: _damage,
+              guard: guard,
+            ),
+            const SizedBox(height: 12),
+
             _dropdown('Kasa tipi', _bodyType, _bodyTypes, (v) => setState(() => _bodyType = v!)),
             _dropdown('Renk', _color, _colors, (v) => setState(() => _color = v!)),
 
@@ -280,8 +454,8 @@ class _SellScreenState extends State<SellScreen> {
 
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _saving ? null : _submit,
-              child: Text(_saving ? 'Gönderiliyor…' : 'İlanı yayınla'),
+              onPressed: _saving || blocked ? null : _submit,
+              child: Text(_saving ? 'Gönderiliyor…' : blocked ? 'Fiyatı düzelt' : 'İlanı yayınla'),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -341,15 +515,23 @@ class _SellScreenState extends State<SellScreen> {
     String label,
     String? value,
     List<String> options,
-    void Function(String?)? onChanged,
-  ) {
+    void Function(String?)? onChanged, {
+    bool required = false,
+    String Function(String)? labelFor,
+    String? helper,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
         initialValue: options.contains(value) ? value : null,
-        decoration: InputDecoration(labelText: label),
-        items: options.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+        isExpanded: true,
+        hint: required ? const Text('Seçiniz') : null,
+        decoration: InputDecoration(labelText: label, helperText: helper, helperMaxLines: 2),
+        items: options
+            .map((o) => DropdownMenuItem(value: o, child: Text(labelFor?.call(o) ?? o)))
+            .toList(),
         onChanged: onChanged,
+        validator: required ? (v) => v == null ? 'Zorunlu alan' : null : null,
       ),
     );
   }

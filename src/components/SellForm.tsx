@@ -1,9 +1,9 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fuelTypes, transmissions } from "@/lib/seed-data";
+import { FUEL_TYPES } from "@/lib/normalize-fuel";
 import {
   SELL_COLORS,
   BODY_TYPES,
@@ -12,7 +12,20 @@ import {
   formatNumberInput,
   parseNumberInput,
 } from "@/lib/form-options";
+import {
+  parseEngineSize,
+  parseSellDamage,
+  priceGuard,
+  SELL_DAMAGE_LABELS,
+  SELL_DAMAGE_OPTIONS,
+  type SellDamage,
+} from "@/lib/sell-estimate";
+import { SellEstimateCard, type EstimateView } from "@/components/SellEstimateCard";
+
 const CURRENT_YEAR = new Date().getFullYear();
+const TRANSMISSIONS = ["Manuel", "Otomatik"] as const;
+/** Fiyat aralığı isteğinin debounce süresi: yazarken her tuşta sunucuya gitmemek için. */
+const ESTIMATE_DELAY_MS = 500;
 
 interface Props {
   initial?: Record<string, string | number | string[]>;
@@ -26,7 +39,7 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ status: string; reason?: string } | null>(null);
-  
+
   const [images, setImages] = useState<string[]>(
     Array.isArray(initial?.images) ? (initial!.images as string[]) : []
   );
@@ -44,6 +57,12 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
     initialModel ? (availableModels.length === 0 || !availableModels.includes(initialModel)) : false
   );
 
+  const [year, setYear] = useState(init("year"));
+  const [fuel, setFuel] = useState(init("fuelType"));
+  const [transmission, setTransmission] = useState(init("transmission"));
+  const [damage, setDamage] = useState<SellDamage | "">(parseSellDamage(init("damage")) ?? "");
+  const [engine, setEngine] = useState(initial?.engineSize ? String(initial.engineSize).replace(".", ",") : "");
+
   const [price, setPrice] = useState(formatNumberInput(init("price")));
   const [mileage, setMileage] = useState(formatNumberInput(init("mileage")));
   const [minOffer, setMinOffer] = useState(formatNumberInput(init("minOffer")));
@@ -52,8 +71,75 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
 
   const priceValue = parseNumberInput(price);
   const minOfferValue = parseNumberInput(minOffer);
+  const mileageValue = parseNumberInput(mileage);
+  // Model alanı metin kutusuysa (özel model ya da marka seçilmemiş) yazılan değer, listedeyse seçilen değer geçerlidir.
+  const modelValue = isCustomModel || availableModels.length === 0 ? customModel.trim() : selectedModel.trim();
+  const isElectric = fuel === "Elektrik";
+  const engineParsed = isElectric ? { ok: true as const, value: null } : parseEngineSize(engine);
 
   const minOfferTooHigh = minOfferValue > 0 && priceValue > 0 && minOfferValue > priceValue;
+
+  // Fiyat aralığı: fiyat istek anahtarında yok (yalnızca araç özellikleri belirler). Anahtar değişmedikçe istek atılmaz.
+  const estimateRequest =
+    selectedBrand && modelValue && Number.isInteger(Number(year)) && Number(year) >= 1950 && Number(year) <= CURRENT_YEAR + 1 &&
+    mileageValue > 0 && fuel && transmission && damage && engineParsed.ok
+      ? {
+          brand: selectedBrand,
+          model: modelValue,
+          year: Number(year),
+          mileage: mileageValue,
+          fuelType: fuel,
+          transmission,
+          engineSize: engineParsed.value,
+          damage,
+          excludeId: listingId ?? null,
+        }
+      : null;
+  const estimateKey = estimateRequest ? JSON.stringify(estimateRequest) : "";
+
+  const [estimate, setEstimate] = useState<{ key: string; view: EstimateView }>({ key: "", view: { status: "idle" } });
+
+  useEffect(() => {
+    if (!estimateKey) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setEstimate({ key: estimateKey, view: { status: "loading" } });
+      try {
+        const res = await fetch("/api/sell/estimate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: estimateKey,
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setEstimate({ key: estimateKey, view: { status: "error", error: data.error || "Fiyat aralığı alınamadı." } });
+          return;
+        }
+        setEstimate({ key: estimateKey, view: { status: "ready", data } });
+      } catch {
+        if (!controller.signal.aborted) {
+          setEstimate({ key: estimateKey, view: { status: "error", error: "Fiyat aralığı alınamadı." } });
+        }
+      }
+    }, ESTIMATE_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [estimateKey]);
+
+  // Görünen görünüm yalnızca mevcut anahtarla eşleşiyorsa kullanılır: eski aralık yeni bilgiye yapıştırılmaz.
+  // Anahtar var ama henüz yanıt yoksa (zamanlayıcı bekleniyor) "yükleniyor" gösterilir.
+  const view: EstimateView = !estimateKey
+    ? { status: "idle" }
+    : estimate.key === estimateKey
+      ? estimate.view
+      : { status: "loading" };
+  const guard =
+    view.status === "ready" && view.data && priceValue > 0
+      ? priceGuard(priceValue, view.data, { damageKnown: view.data.damageKnown })
+      : null;
 
   async function fileToDataUrl(file: File): Promise<string> {
     const bitmap = await createImageBitmap(file);
@@ -78,7 +164,7 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
       setImages((prev) => [...prev, ...dataUrls].slice(0, 12));
     } finally {
       setImgLoading(false);
-      e.target.value = ""; 
+      e.target.value = "";
     }
   }
 
@@ -92,36 +178,41 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
       setError("Kabul ettiğin en düşük teklif, ilan fiyatından yüksek olamaz.");
       return;
     }
+    if (!modelValue) {
+      setError("Lütfen aracın modelini seçin veya yazın.");
+      return;
+    }
+    if (!engineParsed.ok) {
+      setError(engineParsed.error);
+      return;
+    }
+    if (!damage) {
+      setError("Hasar durumunu seç.");
+      return;
+    }
     setLoading(true);
     setError("");
     setResult(null);
 
     const fd = new FormData(e.currentTarget);
-    const finalModel = isCustomModel
-      ? customModel.trim()
-      : (selectedModel === "__custom__" ? customModel.trim() : (selectedModel.trim() || String(fd.get("model") || "").trim()));
-
-    if (!finalModel) {
-      setError("Lütfen aracın modelini seçin veya yazın.");
-      setLoading(false);
-      return;
-    }
 
     const payload = {
       brand: selectedBrand || fd.get("brand"),
-      model: finalModel,
-      year: Number(fd.get("year")),
+      model: modelValue,
+      year: Number(year),
       price: priceValue,
-      mileage: parseNumberInput(mileage),
+      mileage: mileageValue,
       city: province,
       district,
       contactPhone: fd.get("contactPhone"),
       minOffer: minOfferValue,
-      fuelType: fd.get("fuelType"),
-      transmission: fd.get("transmission"),
+      fuelType: fuel,
+      transmission,
       bodyType: fd.get("bodyType"),
       color: fd.get("color"),
       description: fd.get("description"),
+      damage,
+      engineSize: engineParsed.value,
       images,
     };
 
@@ -161,6 +252,8 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
       </div>
     );
   }
+
+  const blocked = guard?.level === "block";
 
   return (
     <form onSubmit={handleSubmit} className="card space-y-5 p-6">
@@ -254,9 +347,21 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
           )}
         </div>
 
-        <Field label="Yıl" name="year" type="number" min={1950} max={CURRENT_YEAR + 1} defaultValue={g("year")} required />
+        <div>
+          <label className="label" htmlFor="year">Yıl</label>
+          <input
+            id="year"
+            name="year"
+            type="number"
+            className="input"
+            min={1950}
+            max={CURRENT_YEAR + 1}
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            required
+          />
+        </div>
 
-        
         <NumberField
           label="Fiyat (₺)"
           value={price}
@@ -272,7 +377,6 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
           required
         />
 
-      
         <div>
           <label className="label" htmlFor="province">İl</label>
           <select
@@ -281,7 +385,7 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
             value={province}
             onChange={(e) => {
               setProvince(e.target.value);
-              setDistrict(""); 
+              setDistrict("");
             }}
             required
           >
@@ -307,15 +411,86 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
           </select>
         </div>
 
-        <Select label="Yakıt" name="fuelType" options={fuelTypes} defaultValue={g("fuelType")} />
-        <Select label="Vites" name="transmission" options={transmissions} defaultValue={g("transmission")} />
+        <div>
+          <label className="label" htmlFor="fuelType">Yakıt</label>
+          <select
+            id="fuelType"
+            name="fuelType"
+            className="select"
+            value={fuel}
+            onChange={(e) => setFuel(e.target.value)}
+            required
+          >
+            <option value="">Seçiniz</option>
+            {FUEL_TYPES.map((f) => (
+              <option key={f} value={f}>{f}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="transmission">Vites</label>
+          <select
+            id="transmission"
+            name="transmission"
+            className="select"
+            value={transmission}
+            onChange={(e) => setTransmission(e.target.value)}
+            required
+          >
+            <option value="">Seçiniz</option>
+            {TRANSMISSIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+
+        {!isElectric && (
+          <div>
+            <label className="label" htmlFor="engineSize">Motor hacmi (litre) — isteğe bağlı</label>
+            <input
+              id="engineSize"
+              name="engineSize"
+              type="text"
+              inputMode="decimal"
+              className="input"
+              value={engine}
+              onChange={(e) => setEngine(e.target.value)}
+              placeholder="1,6"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Girilirse benzer ilanlar daha dar seçilir. Boş bırakılırsa aralık daha geniş emsallerle hesaplanır.
+            </p>
+          </div>
+        )}
+
+        <div className={isElectric ? "" : "sm:col-span-2"}>
+          <label className="label" htmlFor="damage">Hasar durumu</label>
+          <select
+            id="damage"
+            name="damage"
+            className="select"
+            value={damage}
+            onChange={(e) => setDamage(parseSellDamage(e.target.value) ?? "")}
+            required
+          >
+            <option value="">Seçiniz</option>
+            {SELL_DAMAGE_OPTIONS.map((option) => (
+              <option key={option} value={option}>{SELL_DAMAGE_LABELS[option]}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500">
+            Tramer kaydı da hasar kaydıdır. Emin değilsen tramer kaydını kontrol et.
+          </p>
+        </div>
+
         <Select label="Kasa Tipi" name="bodyType" options={BODY_TYPES} defaultValue={g("bodyType")} />
         <Select label="Renk" name="color" options={SELL_COLORS} defaultValue={g("color")} />
       </div>
 
+      <SellEstimateCard view={view} damage={damage} guard={guard} />
+
       <Field label="İletişim Telefonu" name="contactPhone" defaultValue={g("contactPhone")} required placeholder="05xx xxx xx xx" />
 
-      
       <div>
         <NumberField
           label="Kabul ettiğin en düşük teklif (₺) — isteğe bağlı"
@@ -382,8 +557,8 @@ export function SellForm({ initial, listingId, brands = [], brandModels = {} }: 
 
       {error && <p className="text-sm text-rose-300">{error}</p>}
 
-      <button type="submit" disabled={loading} className="btn btn-primary w-full">
-        {loading ? "Denetleniyor…" : listingId ? "İlanı Güncelle" : "İlanı Yayınla"}
+      <button type="submit" disabled={loading || blocked} className="btn btn-primary w-full">
+        {loading ? "Denetleniyor…" : blocked ? "Fiyatı düzelt" : listingId ? "İlanı Güncelle" : "İlanı Yayınla"}
       </button>
     </form>
   );

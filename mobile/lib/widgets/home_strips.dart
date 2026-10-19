@@ -242,33 +242,55 @@ class RecentlyViewedStrip extends StatefulWidget {
 }
 
 class _RecentlyViewedStripState extends State<RecentlyViewedStrip> {
-  late Future<List<CarListing>> _future;
+  List<CarListing> _items = [];
+
+  // Art arda gelen yenilemelerde eski sonuç yenisinin üstüne yazmasın diye.
+  int _generation = 0;
 
   @override
   void initState() {
     super.initState();
-    _future = _load();
+    _reload();
+    // Giriş/çıkış (hesap değişimi) ve yeni görüntüleme olunca liste o hesaba göre yeniden okunur.
+    ApiService().authRevision.addListener(_reload);
+    RecentlyViewedStore.changes.addListener(_reload);
   }
 
-  Future<List<CarListing>> _load() async {
-    final ids = await RecentlyViewedStore.list();
-    return ApiService().fetchCarsByIds(ids);
+  @override
+  void dispose() {
+    ApiService().authRevision.removeListener(_reload);
+    RecentlyViewedStore.changes.removeListener(_reload);
+    super.dispose();
+  }
+
+  /// Eski öğeler yenisi gelene kadar yerinde kalır; şerit boşalıp yeniden dolmaz.
+  Future<void> _reload() async {
+    final generation = ++_generation;
+    try {
+      final ids = await RecentlyViewedStore.list();
+      final items = await ApiService().fetchCarsByIds(ids);
+      if (mounted && generation == _generation) setState(() => _items = items);
+    } catch (_) {
+      // Ağ yoksa şerit eski haliyle kalır; ana sayfa açılışını bozmaz.
+    }
+  }
+
+  /// Hesabın bakma geçmişini siler; şerit (changes bildirimiyle) hemen boşalır.
+  Future<void> _clear() async {
+    await RecentlyViewedStore.clear();
+    if (mounted) setState(() => _items = []);
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<CarListing>>(
-      future: _future,
-      builder: (context, snapshot) {
-        final items = snapshot.data ?? [];
-        if (items.isEmpty) return const SizedBox.shrink();
-        return _stripShell(
-          context,
-          eyebrow: 'Geçmiş',
-          title: 'Son baktıkların',
-          children: items.map((car) => _miniCard(context, car)).toList(),
-        );
-      },
+    final items = _items;
+    if (items.isEmpty) return const SizedBox.shrink();
+    return _stripShell(
+      context,
+      eyebrow: 'Geçmiş',
+      title: 'Son baktıkların',
+      action: TextButton(onPressed: _clear, child: const Text('Geçmişi temizle')),
+      children: items.map((car) => _miniCard(context, car)).toList(),
     );
   }
 }

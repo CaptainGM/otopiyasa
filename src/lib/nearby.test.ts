@@ -2,8 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/models/Car", () => ({ Car: {} }));
 
-import { pickNearestClusters } from "./nearby";
+import { pageSlice, pickNearestClusters, rankNearbyCandidates, type NearbyCandidate } from "./nearby";
 import type { MapCluster } from "./map-clusters";
+
+const candidate = (id: string, distanceKm: number, price: number, created: number): NearbyCandidate => ({
+  id,
+  distanceKm,
+  approximate: false,
+  district: "",
+  price,
+  created,
+});
 
 const cluster = (key: string, lat: number, lng: number, count: number): MapCluster => ({
   key,
@@ -37,5 +46,52 @@ describe("pickNearestClusters", () => {
 
   it("küme sayısını sınırlar", () => {
     expect(pickNearestClusters(clusters, { lat: 41, lng: 29 }, 10_000, 2)).toHaveLength(2);
+  });
+});
+
+describe("rankNearbyCandidates", () => {
+  const items = [
+    candidate("a", 4, 900_000, 100),
+    candidate("b", 2, 1_500_000, 50),
+    candidate("c", 2, 1_200_000, 200),
+  ];
+
+  it("mesafede yakından uzağa; eşitlikte en yeni ilan önce", () => {
+    expect(rankNearbyCandidates(items, "distance").map((c) => c.id)).toEqual(["c", "b", "a"]);
+  });
+
+  it("fiyatta ucuzdan pahalıya ve tersi", () => {
+    expect(rankNearbyCandidates(items, "priceAsc").map((c) => c.id)).toEqual(["a", "c", "b"]);
+    expect(rankNearbyCandidates(items, "priceDesc").map((c) => c.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("girdiyi değiştirmez", () => {
+    const before = items.map((c) => c.id).join();
+    rankNearbyCandidates(items, "priceAsc");
+    expect(items.map((c) => c.id).join()).toBe(before);
+  });
+});
+
+describe("pageSlice", () => {
+  const all = Array.from({ length: 50 }, (_, i) => i);
+
+  it("sayfa dilimini ve daha var mı bilgisini döner", () => {
+    const first = pageSlice(all, 1, 24);
+    expect(first.items).toHaveLength(24);
+    expect(first.items[0]).toBe(0);
+    expect(first.total).toBe(50);
+    expect(first.hasMore).toBe(true);
+  });
+
+  it("son sayfada hasMore false olur", () => {
+    const last = pageSlice(all, 3, 24);
+    expect(last.items).toEqual([48, 49]);
+    expect(last.hasMore).toBe(false);
+  });
+
+  it("listenin ötesindeki sayfa boş ve hasMore false", () => {
+    const beyond = pageSlice(all, 9, 24);
+    expect(beyond.items).toEqual([]);
+    expect(beyond.hasMore).toBe(false);
   });
 });

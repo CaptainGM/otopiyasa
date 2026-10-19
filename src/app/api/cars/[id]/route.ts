@@ -6,6 +6,7 @@ import { Car } from "@/models/Car";
 import { User } from "@/models/User";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
 import { isLeanCarDoc, serializeCar, serializeCarPublic } from "@/lib/serialize-car";
+import { listingCompleteness, showsListingQuality } from "@/lib/listing-completeness";
 import { getCurrentUser, requireAdmin } from "@/lib/auth";
 import { logAudit } from "@/lib/audit-log";
 import { buildPriceBins } from "@/lib/price-bins";
@@ -104,6 +105,20 @@ export async function GET(
       {
         ...car,
       mapPoint: mapPlacement ? { lat: mapPlacement.lat, lng: mapPlacement.lng, level: mapPlacement.level } : null,
+      // İlan kalitesi yalnızca yayındaki ve güvenilir çekilen ilanın detayında (liste yanıtlarında yok): arşivde fotoğraf kısaltılır.
+      quality:
+        showsListingQuality(carDoc)
+          ? listingCompleteness({
+              title: carDoc.title,
+              vehicleClass: carDoc.vehicleClass,
+              images: carDoc.images,
+              description: carDoc.description,
+              paintChange: carDoc.paintChange,
+              damageParts: carDoc.damageParts,
+              damageFlag: carDoc.damageFlag,
+              features: carDoc.features,
+            })
+          : null,
       favoriteCount,
       fairPrice: live?.fields?.["market.fair"] ?? null,
       fairSample: live?.fields?.["market.fairN"] ?? null,

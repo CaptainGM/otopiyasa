@@ -76,5 +76,8 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<!-- Uygulama yalnızca standart HTTPS kullanır; dışa aktarım uyum sorusu yanıtı App Store Connect'te sorulmaz. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

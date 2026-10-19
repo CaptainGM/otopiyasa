@@ -30,7 +30,8 @@ export function CarFilters({
   const [model, setModel] = useState(searchParams.get("model") || "");
   const models = (brand && brandModels?.[brand]) || [];
   // Gelişmiş filtrelerden biri seçiliyse katlanmış bölüm açık gelsin (seçili değer görünür kalsın).
-  const hasAdvanced = ["sort", "yearMin", "yearMax", "priceMin", "priceMax", "mileageMin", "mileageMax", "seller", "noDamage", "fuelType", "vehicleClass", "transmission", "color"].some(
+  // Fırsat listesinde sıralama (en çok indirim, fiyat, yıl, km) ve filtreler her zaman açık gelsin.
+  const hasAdvanced = searchParams.get("firsat") === "1" || ["sort","yearMin", "yearMax", "priceMin", "priceMax", "mileageMin", "mileageMax", "seller", "noDamage", "fuelType", "vehicleClass", "transmission", "color"].some(
     (key) => !!searchParams.get(key)
   );
 

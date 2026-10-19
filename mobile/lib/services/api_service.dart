@@ -6,8 +6,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/models/account.dart';
+import 'package:otopiyasa/models/nearby_page.dart';
 import 'package:otopiyasa/models/offer.dart';
 import 'package:otopiyasa/models/price_scale.dart';
+import 'package:otopiyasa/models/sell_estimate.dart';
 import 'package:otopiyasa/services/device_abi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -443,6 +445,51 @@ class ApiService {
     return null;
   }
 
+  /// Sunucuda Google girişi yapılandırılmış mı (bkz. api/auth/google/status). Ulaşılamazsa düğme gizlenir.
+  Future<bool> googleLoginEnabled() async {
+    try {
+      final response = await _http.get(_uri('/api/auth/google/status'), headers: _headers);
+      if (response.statusCode != 200) return false;
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return body['enabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Tarayıcıda açılacak Google giriş adresi. İşlem bitince sonuç uygulamaya bağlantıyla döner.
+  Uri googleLoginStartUri() => _uri('/api/auth/google/start', {'app': '1'});
+
+  /// Google dönüşündeki tek kullanımlık bileti oturuma çevirir. Token, [auth] ile aynı şekilde saklanır.
+  Future<void> exchangeGoogleTicket(String code) async {
+    final response = await _http.post(
+      _uri('/api/auth/google/exchange'),
+      headers: _headers,
+      body: jsonEncode({'code': code}),
+    );
+
+    if (response.statusCode != 200) {
+      Map<String, dynamic> failure = {};
+      try {
+        failure = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        // gövde JSON değilse varsayılan mesaj
+      }
+      throw Exception(failure['error'] as String? ?? 'Google ile giriş tamamlanamadı.');
+    }
+
+    final setCookie = response.headers['set-cookie'] ?? '';
+    final match = RegExp('$_tokenKey=([^;]+)').firstMatch(setCookie);
+    if (match != null) {
+      await _saveToken(match.group(1)!);
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    currentUser = body['user'] as Map<String, dynamic>?;
+    currentUser ??= await me();
+    authRevision.value++;
+  }
+
   /// Giriş yapmadan şifre sıfırlama: e-postaya 6 haneli kod gider (web bağlantı gönderir).
   Future<String> requestPasswordResetCode(String email) async {
     final response = await _http.post(
@@ -831,6 +878,10 @@ class ApiService {
     String color = 'Belirtilmemiş',
     int minOffer = 0,
     List<String> images = const [],
+    /// orijinal | boyali | hasarli. Null: bilinmiyor (sunucu kayıtlı değeri korur).
+    String? damage,
+    /// Motor hacmi (litre). Null: boş ya da elektrikli.
+    double? engineSize,
   }) async {
     final payload = {
       'brand': brand,
@@ -848,6 +899,8 @@ class ApiService {
       'color': color,
       'minOffer': minOffer,
       'images': images,
+      'damage': damage,
+      'engineSize': engineSize,
     };
 
     final uri = _uri(
@@ -861,6 +914,19 @@ class ApiService {
       throw Exception(_errorOf(response, 'İlan kaydedilemedi'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Satış formu fiyat aralığı. Fiyat gönderilmez: aralık araç özelliklerine bağlıdır, fiyat kuralı istemcide uygulanır.
+  Future<SellEstimate> estimateSell(Map<String, dynamic> body) async {
+    final response = await _http.post(
+      _uri('/api/sell/estimate'),
+      headers: _headers,
+      body: jsonEncode(body),
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Fiyat aralığı alınamadı'));
+    }
+    return SellEstimate.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<void> deleteListing(String listingId) async {
@@ -927,22 +993,33 @@ class ApiService {
   // YAKINIMDAKİ İLANLAR
   // ---------------------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> fetchNearby(
-    double lat,
-    double lng, {
-    int limit = 24,
+  /// Yarıçap içindeki ilanların bir sayfası (bkz. api/nearby: radiusKm modu). [vehicleClass] null ise tüm sınıflar.
+  Future<NearbyPage> fetchNearbyPage({
+    required double lat,
+    required double lng,
+    required int page,
+    double radiusKm = 10,
+    int pageSize = 24,
+    String? vehicleClass,
+    String sort = 'distance',
   }) async {
     final response = await _http.get(
-      _uri('/api/nearby', {'lat': '$lat', 'lng': '$lng', 'limit': '$limit'}),
+      _uri('/api/nearby', {
+        'lat': '$lat',
+        'lng': '$lng',
+        'radiusKm': '$radiusKm',
+        'page': '$page',
+        'pageSize': '$pageSize',
+        'sort': sort,
+        'vehicleClass': ?vehicleClass,
+      }),
       headers: _headers,
     );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Yakındaki ilanlar alınamadı'));
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['items'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .toList();
+    return NearbyPage.fromJson(body);
   }
 
   // ---------------------------------------------------------------------------

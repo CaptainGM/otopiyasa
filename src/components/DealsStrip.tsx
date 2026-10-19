@@ -9,7 +9,7 @@ export async function DealsStrip() {
 
   return (
     <CarStrip
-      eyebrow={`Piyasanın altında · ${total.toLocaleString("tr-TR")} ilan`}
+      eyebrow={`Adil değerin %10–40 altı · ${total.toLocaleString("tr-TR")} ilan`}
       title="Haftanın fırsatları"
       aside={
         total > items.length ? (

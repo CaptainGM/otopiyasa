@@ -12,6 +12,7 @@ export const AUDIT_ACTIONS = [
   "comment_deleted",
   "user_warned",
   "user_muted",
+  "request_updated",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

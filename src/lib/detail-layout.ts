@@ -1,7 +1,8 @@
 /**
  * İlan sayfasının üst bölümü iki sütundur: sol sütunda galeri, açıklama ve hasar durumu; sağda başlık, fiyat, analiz ve eylemler.
  * Sağ sütun 1650–1800 px'e uzarken sol 920–1250 px'te kalıyor, altında 400–875 px boşluk oluşuyordu. Boşluk bırakmamak için
- * ikincil kartlar (teknik özellikler, harita, piyasa temposu, yakıt maliyeti) kısa sütuna konur.
+ * ikincil kartlar (teknik özellikler, harita, yakıt maliyeti) kısa sütuna konur. Piyasa temposu bu sütunlara girmez: veri yoksa
+ * hiç çizilmez, yüksekliği önceden bilinmez; alt kartta gösterilir.
  *
  * Yükseklikler 1440 px genişlikte (kap 1280 px) gerçek sayfadan ölçüldü (13 Ekim 2026) ve verilerden tahmin edilir: tam doğru olması
  * gerekmez, amaç iki sütunun farkını bir kartın boyunun altında tutmaktır. Telefonda tek sütun olduğundan yerleşim görünmez.
@@ -33,24 +34,23 @@ export function leftBaseHeight(imageCount: number, descriptionLength: number): n
 }
 
 /** Sağ sütunun sabit kısmı: başlık, fiyat, analiz, fiyat skalası, eylemler (+ üye ilanında iletişim ve teklif kutusu). */
-export function rightBaseHeight(userListing: boolean): number {
+export function rightBaseHeight(userListing: boolean, showScale = true): number {
   const fixed = 800 + (userListing ? 0 : 80);
-  const scale = 430;
+  // Fiyat skalası yalnızca yöneticiye çizilir; kullanıcıda bu yükseklik yoksa sağ sütun olduğundan uzun tahmin edilmemeli.
+  const scale = showScale ? 430 : 0;
   const contactAndOffer = userListing ? 370 : 0;
   return fixed + scale + contactAndOffer;
 }
 
 /** Teknik özellikler kartı (haritasız): özellik grupları (satır sayıları) ve varsa güvenlik donanımı etiketleri. */
-export function specsHeight(groupRows: number[], safetyItems: number, hasSource: boolean): number {
+export function specsHeight(groupRows: number[], hasSource: boolean): number {
   const groups = groupRows.reduce((sum, rows) => sum + 28 + (39 * Math.ceil(rows / 2) - 10), 0) + BLOCK_GAP * Math.max(0, groupRows.length - 1);
-  const safety = safetyItems > 0 ? BLOCK_GAP + 28 + 34 * Math.ceil(safetyItems / 5) : 0;
-  return 88 + groups + safety + (hasSource ? 24 : 0);
+  return 88 + groups + (hasSource ? 24 : 0);
 }
 
-/** Konum haritası bloğu (başlık + harita). */
+/** Konum haritası bloğu (başlık + harita). Sütunun son bloğu olduğu için sütundaki kalan boyu doldurur. */
 export const MAP_BLOCK = 261;
-/** Piyasa temposu kartı ve yakıt maliyeti kartı (ölçülen ortalama). */
-export const TEMPO_CARD = 190;
+/** Yakıt maliyeti kartı (ölçülen ortalama). */
 export const FUEL_CARD = 150;
 
 export interface LayoutBlock {

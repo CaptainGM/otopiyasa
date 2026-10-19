@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { SellForm } from "@/components/SellForm";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { isNonCarBrand } from "@/lib/normalize-brand";
+import { storedDamage } from "@/lib/sell-estimate";
 
 export const metadata = { title: "İlanı Düzenle | OtoPiyasa" };
 export const dynamic = "force-dynamic";
@@ -20,11 +21,12 @@ export default async function EditListingPage({
   const { id } = await params;
   await connectDB();
   const car = await Car.findById(id)
-    .select("brand model year price mileage city address description contactPhone minOffer images features ownerId")
+    .select("brand model year price mileage city address description contactPhone minOffer images features damageFlag paintChange ownerId")
     .lean<{
       brand: string; model: string; year: number; price: number; mileage: number;
       city: string; address?: string; description?: string; contactPhone?: string; minOffer?: number; images?: string[];
-      features?: { fuelType?: string; transmission?: string; bodyType?: string; color?: string };
+      features?: { fuelType?: string; transmission?: string; bodyType?: string; color?: string; engineSize?: number | null };
+      damageFlag?: boolean; paintChange?: string;
       ownerId?: { toString(): string };
     }>();
 
@@ -53,6 +55,8 @@ export default async function EditListingPage({
     transmission: car.features?.transmission || "",
     bodyType: car.features?.bodyType || "",
     color: car.features?.color || "",
+    damage: storedDamage(car) ?? "",
+    engineSize: car.features?.engineSize ?? "",
     images: car.images || [],
   };
 

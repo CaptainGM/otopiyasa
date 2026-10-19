@@ -9,6 +9,7 @@ import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/widgets/fuel_cost_card.dart';
 import 'package:otopiyasa/widgets/listing_description.dart';
 import 'package:otopiyasa/widgets/listing_map.dart';
+import 'package:otopiyasa/widgets/listing_quality_badge.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/widgets/listing_interaction.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
@@ -483,6 +484,12 @@ class _DetailScreenState extends State<DetailScreen> {
   Widget _buildContent(CarListing car) {
     return ListView(
       children: [
+        // Rozet fotoğrafın dışında, sol üstte (siyah alanda).
+        if (car.quality != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: ListingQualityBadge(quality: car.quality!),
+          ),
         _buildImageGallery(car),
         if (!car.isActive)
           Container(
@@ -615,7 +622,8 @@ class _DetailScreenState extends State<DetailScreen> {
               ),
               const SizedBox(height: 16),
               MarketBadge(car: car),
-              if (_priceScale != null) ...[
+              // Fiyat skalası kartı yalnızca yöneticiye: kullanıcı için bilgi katmaz (web ile aynı kural).
+              if (_priceScale != null && _api.isAdmin) ...[
                 const SizedBox(height: 12),
                 PriceScaleCard(scale: _priceScale!),
               ],

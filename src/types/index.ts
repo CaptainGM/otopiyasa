@@ -16,7 +16,6 @@ export interface CarFeatures {
   topSpeed?: number; 
   acceleration?: number; 
   torque?: number; 
-  safetyFeatures?: string[];
   specSource?: string; 
 }
 

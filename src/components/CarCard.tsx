@@ -9,6 +9,9 @@ import { ImageLightboxButton } from "@/components/ImageLightboxButton";
 import { MarketGauge } from "@/components/MarketGauge";
 import { carHeadline } from "@/lib/car-headline";
 
+/** Fotoğraftaki "fiyat düştü" rozeti yalnızca anlamlı düşüşte çıkar (%1'lik indirim rozet olarak yanıltıcıydı). */
+const PRICE_DROP_BADGE_MIN_PCT = 5;
+
 function priceDropPercent(car: CarListItem): number | null {
   const history = car.priceHistory;
   if (!history || history.length < 2) return null;
@@ -52,7 +55,11 @@ export function CarCard({
         <div className="pointer-events-none absolute left-2.5 top-2.5 flex flex-wrap gap-1.5">
           <SourceBadge source={car.sourceSite} overlay />
           {car.damageFlag && <span className="badge badge-photo-danger">Hasar kaydı</span>}
-          {priceDrop !== null && <span className="badge badge-photo-drop num">↓ %{priceDrop}</span>}
+          {priceDrop !== null && priceDrop >= PRICE_DROP_BADGE_MIN_PCT && (
+            <span className="badge badge-photo-drop num whitespace-nowrap" title="Son fiyat düşüşü">
+              Fiyat ↓ %{priceDrop}
+            </span>
+          )}
         </div>
 
         <div className="absolute right-2.5 top-2.5 flex gap-1.5">

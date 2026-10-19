@@ -224,8 +224,8 @@ export function buildCarSort(sort?: CarFilters["sort"]): Record<string, SortOrde
      
       return { viewCount: -1 as SortOrder };
     case "deal":
-      // Adil değerin en çok altında olan önce (bkz. lib/market-fair.ts).
-      return { "market.disc": -1 as SortOrder, _id: 1 as SortOrder };
+      // Adil değerin altındaki indirim, emsal güveniyle tartılmış puana göre (bkz. lib/market-fair.ts dealScore).
+      return { "market.dealScore": -1 as SortOrder, _id: 1 as SortOrder };
     case "newest":
     default:
       return { createdAt: -1 as SortOrder };

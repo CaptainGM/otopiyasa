@@ -9,6 +9,7 @@ import 'package:otopiyasa/screens/notifications_screen.dart';
 import 'package:otopiyasa/screens/sell_screen.dart';
 import 'package:otopiyasa/screens/assistant_screen.dart';
 import 'package:otopiyasa/widgets/home_strips.dart';
+import 'package:otopiyasa/widgets/market_board_panel.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
@@ -756,6 +757,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(16),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
+            const MarketBoardPanel(),
             Row(
               children: [
                 Expanded(

@@ -30,13 +30,15 @@ export interface RecentTarget extends FamilyStanding {
 /**
  * Hedefi eksik popüler aileleri, en az ilanlıdan başlayıp en popülere doğru seçer (yeni nesil ilanı en az olan aileler önce
  * tamamlanır; hedefi tutanlar her turda otomatik düşer, böylece çalışmalar birikerek en popülerlere ulaşır). [blocked]: son
- * denemesi "bekle" dediği için bu turda atlananlar (aile kimliği: "marka::aileAnahtarı").
+ * denemesi "bekle" dediği için bu turda atlananlar (aile kimliği: "marka::aileAnahtarı"). [roundCap]: aileye bu turda en çok
+ * kaç yeni ilan (tam çekimde büyük aileler için yüksek tutulur).
  */
 export function planPopularRecent(
   families: FamilyStanding[],
   targetRecent: number,
   maxFamilies: number,
-  blocked: ReadonlySet<string> = new Set()
+  blocked: ReadonlySet<string> = new Set(),
+  roundCap = RECENT_ROUND_CAP
 ): RecentTarget[] {
   // Marka toplamı: eşitlikte az ilanlı markanın (ör. Porsche) modeli, kalabalık markanın (ör. Hyundai) modelinden önce gelir.
   const brandTotal = new Map<string, number>();
@@ -51,5 +53,5 @@ export function planPopularRecent(
         a.label.localeCompare(b.label, "tr")
     )
     .slice(0, maxFamilies)
-    .map((f) => ({ ...f, quota: Math.min(targetRecent - f.recent, RECENT_ROUND_CAP) }));
+    .map((f) => ({ ...f, quota: Math.min(targetRecent - f.recent, roundCap) }));
 }

@@ -56,4 +56,9 @@ describe("planPopularRecent", () => {
     const plan = planPopularRecent([f], 150, 10, new Set([`Toyota::${f.familyKey}`]));
     expect(plan).toEqual([]);
   });
+
+  it("tur tavanı verilirse aile başına kota ona göre sınırlanır (tam çekimde büyük aileler için)", () => {
+    const plan = planPopularRecent([fam("Renault", "Clio", 900, 20)], 1000, 10, new Set(), 400);
+    expect(plan[0].quota).toBe(400);
+  });
 });

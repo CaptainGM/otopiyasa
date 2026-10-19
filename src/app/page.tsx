@@ -231,8 +231,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
                   <dd className="num board-value">+{board.addedLastDay.toLocaleString("tr-TR")}</dd>
                 </div>
                 <div className="board-cell">
-                  <dt className="eyebrow">Adil değerin %6+ altı</dt>
-                  <dd className="num board-value text-[var(--cheap)]">{board.belowMarket.toLocaleString("tr-TR")}</dd>
+                  <dt className="eyebrow">Fırsat ve kıyas ilanı</dt>
+                  <dd className="num board-value text-[var(--cheap)]">{board.featured.toLocaleString("tr-TR")}</dd>
+                  <p className="mt-1 text-[0.72rem] leading-snug text-[var(--muted)]">Haftanın fırsatları ile her marka, model ve yılın en düşük fiyatlı ilanı (en az 12 emsal), tekrarsız</p>
                 </div>
                 <div className="board-cell">
                   <dt className="eyebrow">Kaynak site</dt>

@@ -155,7 +155,7 @@ const MODES = {
     jobs: [{ source: "ikinciyeni", limit: 400, label: "İkinciyeni tam kurumsal envanter" }],
   },
   20: {
-    name: "Seyrek marka/model/yıl emsallerini tamamla (aykırı değer sonrası 3'ten az ilan)",
+    name: "AZ EMSALLI SEGMENTLER: marka/model/yıl başına 12'den az ilanı olanları 12'ye tamamlar (en azlılar önce)",
     jobs: [
       { mode: "sparse-market-segments", maxSegments: 100, pagesPerYear: 4, maxListings: 500, label: "Seyrek piyasa emsalleri" },
     ],
@@ -164,6 +164,12 @@ const MODES = {
   23: {
     name: "POPULER AILELER: 2020 ve sonrasi ilanlar, 100+ ilani olan modellerde aile basina hedefe kadar",
     jobs: [{ mode: "popular-recent", minYear: 2020, targetRecent: 150, maxListings: 1200, maxFamilies: 80, label: "Az emsalli aileler (yeni yillar, once en az ilanlilar)" }],
+  },
+  // Yeni nesil TAM cekim: 2020 ve sonrasi ilanlarin tum aileleri, aile basina 1000 ilana kadar (liste sayfasindan yil suzulur).
+  // Z zamanli modda tur tur calisir; en az ilanli aileler once gelir.
+  24: {
+    name: "YENI NESIL TAM: 2020 ve sonrasi tum ilanlar (tum aileler, aile basina 1000'e kadar)",
+    jobs: [{ mode: "popular-recent", minYear: 2020, targetRecent: 1000, maxListings: 1200, maxFamilies: 300, roundCap: 400, label: "Yeni nesil tam cekim (2020+)" }],
   },
   // Sitemap'ten yalnizca SON GUNLERIN ilanlarini, en yeniden baslayarak ceker (site taze kalsin).
   21: {

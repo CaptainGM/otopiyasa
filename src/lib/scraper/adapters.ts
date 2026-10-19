@@ -63,6 +63,7 @@ export function enrichListing(listing: ScrapedListing): ScrapedListing {
     brand: listing.brand,
     model: listing.model,
     title: listing.title,
+    description: listing.description,
   });
   return {
     ...listing,

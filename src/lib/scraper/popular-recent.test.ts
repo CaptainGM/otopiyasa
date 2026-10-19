@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planPopularRecent, RECENT_ROUND_CAP } from "./popular-recent";
+import { DEAD_FAMILY_RETRY_DAYS, planPopularRecent, RECENT_ROUND_CAP, recentAttemptRetryDays } from "./popular-recent";
 
 const fam = (brand: string, label: string, total: number, recent: number) => ({
   brand,
@@ -55,5 +55,29 @@ describe("planPopularRecent", () => {
     const f = fam("Toyota", "Corolla", 447, 0);
     const plan = planPopularRecent([f], 150, 10, new Set([`Toyota::${f.familyKey}`]));
     expect(plan).toEqual([]);
+  });
+
+  it("tur tavanı verilirse aile başına kota ona göre sınırlanır (tam çekimde büyük aileler için)", () => {
+    const plan = planPopularRecent([fam("Renault", "Clio", 900, 20)], 1000, 10, new Set(), 400);
+    expect(plan[0].quota).toBe(400);
+  });
+});
+
+describe("recentAttemptRetryDays", () => {
+  it("aile önceden de şimdi de hiç 2020+ ilan bulamadıysa normal süre yerine uzun beklemeye alınır", () => {
+    expect(recentAttemptRetryDays(3, 0, 0)).toBe(DEAD_FAMILY_RETRY_DAYS);
+    expect(recentAttemptRetryDays(14, 0, 0)).toBe(DEAD_FAMILY_RETRY_DAYS);
+  });
+
+  it("normal süre zaten uzunsa kısaltmaz", () => {
+    expect(recentAttemptRetryDays(90, 0, 0)).toBe(90);
+  });
+
+  it("önceden 0 ama bu turda ilan bulunduysa normal süre kullanılır", () => {
+    expect(recentAttemptRetryDays(3, 0, 5)).toBe(3);
+  });
+
+  it("aile zaten 2020+ ilana sahipse (recentBefore > 0) normal süre kullanılır", () => {
+    expect(recentAttemptRetryDays(14, 12, 0)).toBe(14);
   });
 });

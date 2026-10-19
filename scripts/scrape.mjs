@@ -302,6 +302,8 @@ async function runPriceRefreshLoop(job) {
   log(`Basliyor: ${job.label} (parti boyutu ${job.batchSize})`);
   const stateFile = path.join(projectRoot, "logs", `sync-state-mod${modeNum}.json`);
   let batchNum = 0;
+  // Zamanlı modda bu çağrının doğrulama bütçesi (job.roundListings): dolunca döner, durum dosyası sayesinde sonraki turda devam edilir.
+  let verifiedThisRound = 0;
   let maxBatches = null; // ilk durum sorgusundan sonra hesaplanir
 
   try {
@@ -382,6 +384,11 @@ async function runPriceRefreshLoop(job) {
       break;
     }
 
+    if (job.roundListings && verifiedThisRound >= job.roundListings) {
+      log(`Tur tamam: bu turda ${verifiedThisRound} ilan doğrulandı; sonraki turda kaldığı yerden devam edilecek.`);
+      break;
+    }
+
     batchNum += 1;
     const currentOffset = (batchNum - 1) * job.batchSize;
     const displayOffset = Math.min(currentOffset, status.total);
@@ -429,6 +436,9 @@ async function runPriceRefreshLoop(job) {
             log(`  ✓ Parti ${batchNum} sonuç:  güncellenen=${upd}  kaldırılan=${del}  yeni=${ins}`);
           }
           success = true;
+          const verifiedNow = Math.min(job.batchSize, status.total - displayOffset);
+          verifiedThisRound += verifiedNow;
+          totalVerified += verifiedNow;
           if (parseOk && upd === 0 && del === 0 && ins === 0) {
             log(`  ℹ Parti ${batchNum}: Hiçbir ilan değişmedi veya geçici engel. Devam ediliyor...`);
           }
@@ -544,10 +554,21 @@ function limitJob(job) {
   const limited = { ...job };
   if ("maxListings" in limited) limited.maxListings = roundListings;
   if ("limit" in limited && limited.mode !== "price-refresh") limited.limit = roundListings;
+  // Doğrulama turu: bu kadar ilan doğrulanınca döner (bkz. runPriceRefreshLoop).
+  if (job.mode === "price-refresh-loop") limited.roundListings = roundListings;
+  // Genel Arabam taraması: bu turda zaten kayıtlı sayfalar yüzünden erken durmasın (bkz. scrapeArabamListings).
+  // Nadir model ve seyrek emsal: yeni ilan bütçesi dolmazsa kalan kısım bizde olan ilanların kontrolüne gider (zamanlı modda).
+  if (job.mode === "rare-model" || job.mode === "sparse-market-segments") limited.verifyLeftover = true;
+  // Bizde olan ve 3 gündür güncellenmemiş ilanlar yeniden okunur (fiyat/açıklama tazelenir); yeni ilanlar yine bütçeye sayılır.
+  if (job.source === "arabam" && job.mode === undefined) {
+    limited.knownPageTolerance = 30;
+    limited.refreshAfterDays = 3;
+  }
   return limited;
 }
 
 let totalInserted = 0;
+let totalVerified = 0;
 
 async function runJobsOnce() {
   for (const baseJob of mode.jobs) {
@@ -593,15 +614,16 @@ if (!timed) {
   log(`Zamanli mod: tur basina ~${roundListings} ilan, turlar arasi ${breakMinutes} dk mola, ${maxRounds ? maxRounds + " tur" : "sen durdurana kadar (Ctrl+C)"}.`);
   let emptyRounds = 0;
   for (let round = 1; !maxRounds || round <= maxRounds; round++) {
-    const before = totalInserted;
+    // İlerleme: yeni eklenen ilanlar ve doğrulanan ilanlar birlikte sayılır (doğrulama modunda yeni ilan olmayabilir).
+    const before = totalInserted + totalVerified;
     const startedAt = Date.now();
     await ensureServer();
     log(`──── TUR ${round}${maxRounds ? "/" + maxRounds : ""} basliyor ────`);
     await runJobsOnce();
     drainEvents();
-    const added = totalInserted - before;
+    const added = totalInserted + totalVerified - before;
     clearLine();
-    log(`TUR ${round} bitti: +${added} yeni ilan, ${Math.round((Date.now() - startedAt) / 60000)} dk surdu (toplam +${totalInserted}).`);
+    log(`TUR ${round} bitti: +${added} ilan (yeni ve doğrulanan), ${Math.round((Date.now() - startedAt) / 60000)} dk surdu (toplam yeni +${totalInserted}, doğrulanan ${totalVerified}).`);
     emptyRounds = added === 0 ? emptyRounds + 1 : 0;
     if (emptyRounds >= 2) {
       log("Art arda 2 turda yeni ilan gelmedi: bu tarama icin eklenecek ilan kalmamis ya da Arabam engel veriyor. Durduruluyor.");

@@ -9,6 +9,7 @@ import {
   parseSahibindenHtml,
 } from "@/lib/scraper/browser-scrape";
 import { scrapeOtomerkeziListings } from "@/lib/scraper/otomerkezi";
+import { pickUnknownArabamHrefs } from "@/lib/scraper/arabam-new-hrefs";
 import { scrapeVavaCarsListings } from "@/lib/scraper/vavacars";
 import { scrapeOtoplusListings } from "@/lib/scraper/otoplus";
 import { scrapeCarvakListings } from "@/lib/scraper/carvak";
@@ -261,7 +262,8 @@ export async function collectArabamHrefsForModel(
   model: string,
   pages: number,
   year?: number,
-  maxHrefs = Number.MAX_SAFE_INTEGER
+  maxHrefs = Number.MAX_SAFE_INTEGER,
+  keepNew?: (hrefs: string[]) => Promise<string[]>
 ): Promise<string[]> {
   const base = await resolveArabamModelBase(brand, model);
   if (!base) return [];
@@ -292,7 +294,9 @@ export async function collectArabamHrefsForModel(
     }
     if (pageSize === 0) break;
     const before = hrefs.size;
-    found.forEach((h) => hrefs.add(h));
+    // Yalnızca yeni adaylar sayılır: kayıtlı ilanlar maxHrefs'i doldurup sayfa taramasını erken kesmesin.
+    const kept = keepNew ? await keepNew(found) : found;
+    kept.forEach((h) => hrefs.add(h));
 
     if (!wantYear && hrefs.size === before) break;
   }
@@ -375,6 +379,9 @@ export const createDetailFetchStats = (): DetailFetchStats => ({ attempted: new 
 /** Bu kadar ilan üst üste engelli okunamazsa parti bırakılır (her biri ~30 sn sürer; 5 engel ≈ 2-3 dk). */
 const ABORT_AFTER_CONSECUTIVE_BLOCKS = 5;
 
+/** Bizde olan bir ilanın yeniden okunması için son güncellemeden bu kadar süre geçmiş olmalı. */
+export const ARABAM_REFRESH_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+
 async function fetchAndSaveArabamDetails(
   hrefs: string[],
   onListing: OnListing,
@@ -382,7 +389,8 @@ async function fetchAndSaveArabamDetails(
   onGone?: (href: string) => void,
   progressOffset = 0,
   progressTotal?: number,
-  stats?: DetailFetchStats
+  stats?: DetailFetchStats,
+  refresh?: { afterMs: number; cap: number }
 ): Promise<number> {
   let toFetch = hrefs;
   const tTotal = progressTotal ?? toFetch.length;
@@ -391,19 +399,30 @@ async function fetchAndSaveArabamDetails(
     const wanted = [...new Set(hrefs.map(arabamIdFromHref).filter(Boolean))].map(
       (id) => `arabam-${id}`
     );
-    const existing = new Set(
+    const seenAt = new Map(
       (
-        await Car.find({ externalId: { $in: wanted } }, { externalId: 1 }).lean<
-          { externalId: string }[]
+        await Car.find({ externalId: { $in: wanted } }, { externalId: 1, updatedAt: 1 }).lean<
+          { externalId: string; updatedAt?: Date }[]
         >()
-      ).map((d) => d.externalId)
+      ).map((d) => [d.externalId, d.updatedAt ? new Date(d.updatedAt).getTime() : 0] as const)
     );
+    // Bizde olan ilanlar atlanır; yalnızca son güncellemesi `refresh.afterMs` öncesinde kalanlar (tur başına `refresh.cap`
+    // kadar) yeniden okunur ve kaydetme güncellemesiyle fiyat/açıklama tazelenir. Yeni ilanlar her zaman çekilir.
+    const dueBefore = refresh ? Date.now() - refresh.afterMs : null;
+    let refreshLeft = refresh?.cap ?? 0;
     toFetch = hrefs.filter((h) => {
       const id = arabamIdFromHref(h);
-      return id && !existing.has(`arabam-${id}`);
+      if (!id) return false;
+      const updated = seenAt.get(`arabam-${id}`);
+      if (updated === undefined) return true;
+      if (dueBefore !== null && refreshLeft > 0 && updated < dueBefore) {
+        refreshLeft -= 1;
+        return true;
+      }
+      return false;
     });
     reportProgress(
-      `2/2 ${hrefs.length - toFetch.length} mevcut atlandı, ${toFetch.length} yeni ilan çekiliyor`,
+      `2/2 ${hrefs.length - toFetch.length} mevcut atlandı, ${toFetch.length} çekiliyor (yeni ya da güncellenecek)`,
       progressOffset,
       tTotal
     );
@@ -446,8 +465,10 @@ async function fetchAndSaveArabamDetails(
         } else {
           const listing = parseArabamDetailHtml(detail.html, listingUrl);
           if (listing) {
-            await onListing(enrichListing(listing));
-            fetched += 1;
+            const outcome = await onListing(enrichListing(listing));
+            // Tur bütçesi yalnızca YENİ (eklenen ya da arşivden açılan) ilanları sayar. Güncellenen, değişmeyen ve
+            // kapsam/fiyat denetiminden atlanan ilanlar bütçeye girmez; sonuç döndürmeyen geri çağrılar eskisi gibi sayılır.
+            if (outcome === undefined || outcome === "inserted" || outcome === "reactivated") fetched += 1;
           } else {
             stats?.onUnparsed?.(href);
           }
@@ -480,8 +501,14 @@ async function scrapeArabamListings(
   query: string,
   limit: number,
   onListing: OnListing,
-  pageOffset = 1
+  pageOffset = 1,
+  // Üst üste kaç kayıtlı (yeni olmayan) sayfa görülünce genel listeden / markadan çıkılır. Zamanlı turda daha yüksek:
+  // her tur en baştan başlar; küçük bir eşikle üst sayfalar (hep kayıtlı) turu bitirir ve yeni ilanlar hiç okunmaz.
+  knownPageTolerance = 3,
+  // Zamanlı turda: bizde olan ve bu kadar gündür güncellenmemiş ilanlar yeniden okunur (fiyat/açıklama tazelenir).
+  refreshAfterDays = 0
 ): Promise<number> {
+  const refresh = refreshAfterDays > 0 ? { afterMs: refreshAfterDays * 24 * 60 * 60 * 1000, cap: 30 } : undefined;
   const q = (query || "otomobil").trim();
   const isGeneral = !q || q.toLowerCase() === "otomobil" || q.toLowerCase() === "en-yeniler";
 
@@ -528,10 +555,12 @@ async function scrapeArabamListings(
     const savedThisPage = await fetchAndSaveArabamDetails(
       hrefsToProcess,
       onListing,
-      true, // skipExisting: Zaten DB'de olanları atla
+      true, // skipExisting: Zaten DB'de olanları atla (yalnızca eskiyse yeniden oku)
       undefined,
       totalSaved,
-      limit
+      limit,
+      undefined,
+      refresh
     );
 
     totalSaved += savedThisPage;
@@ -540,7 +569,7 @@ async function scrapeArabamListings(
     if (savedThisPage === 0) {
       consecutiveZeroSaves++;
       // Eğer üst üste 3 sayfada da sıfır yeni araç çıktıysa, genel listede mevcut ilanların sınırına ulaştık!
-      if (consecutiveZeroSaves >= 3 && isGeneral) {
+      if (consecutiveZeroSaves >= knownPageTolerance && isGeneral) {
         console.log(`\n  ℹ️ [Akıllı Rotasyon] Genel en yeniler listesinde mevcut ilanlara ulaşıldı (Sf.${page}).`);
         console.log(`  🚗 Henüz keşfedilmemiş taze ilanlar için popüler marka havuzuna (Renault, Fiat, VW, Ford, BMW...) geçiliyor...\n`);
         break;
@@ -559,6 +588,7 @@ async function scrapeArabamListings(
 
       console.log(`  🔍 [Marka Taraması] ${brand.toUpperCase()} taranıyor...`);
       let brandZeroSaves = 0;
+      const brandTolerance = Math.max(2, Math.ceil(knownPageTolerance / 3));
       const brandStartSaved = totalSaved;
 
       for (let brandPage = 1; brandPage <= 30; brandPage++) {
@@ -582,7 +612,9 @@ async function scrapeArabamListings(
           true,
           undefined,
           totalSaved,
-          limit
+          limit,
+          undefined,
+          refresh
         );
 
         totalSaved += savedThisPage;
@@ -590,7 +622,7 @@ async function scrapeArabamListings(
 
         if (savedThisPage === 0) {
           brandZeroSaves++;
-          if (brandZeroSaves >= 2) break; // Bu markada mevcutlara gelince bir sonraki markaya geç
+          if (brandZeroSaves >= brandTolerance) break; // Bu markada mevcutlara gelince bir sonraki markaya geç
         } else {
           brandZeroSaves = 0;
         }
@@ -949,6 +981,70 @@ export async function scrapeArabamForModels(
   return fetched;
 }
 
+/** Veritabanında olmayan Arabam bağlantıları (seyrek emsal adayları için). */
+async function keepUnknownArabamHrefs(hrefs: string[]): Promise<string[]> {
+  const ids = hrefs.map(arabamIdFromHref).filter((id): id is string => Boolean(id));
+  if (ids.length === 0) return [];
+  const known = new Set(
+    (
+      await Car.find({ externalId: { $in: ids.map((id) => `arabam-${id}`) } }, { externalId: 1 }).lean<
+        { externalId: string }[]
+      >()
+    ).map((d) => d.externalId)
+  );
+  return pickUnknownArabamHrefs(hrefs, arabamIdFromHref, known);
+}
+
+/** Bizde olan, son güncellemesi eski Arabam ilanlarının bağlantıları (en eskiden başlayarak). */
+async function dueArabamRefreshHrefs(brand: string, model: string, years: number[], limit: number): Promise<string[]> {
+  if (limit <= 0 || years.length === 0) return [];
+  const docs = await Car.find(
+    {
+      sourceSite: "arabam",
+      brand,
+      model,
+      year: { $in: years },
+      status: "active",
+      updatedAt: { $lt: new Date(Date.now() - ARABAM_REFRESH_AFTER_MS) },
+    },
+    { listingUrl: 1 }
+  )
+    .sort({ updatedAt: 1 })
+    .limit(limit)
+    .lean<Array<{ listingUrl?: string }>>();
+  return docs
+    .map((d) => (d.listingUrl || "").replace(/^https?:\/\/www\.arabam\.com/, ""))
+    .filter((href) => href.startsWith("/ilan/"));
+}
+
+/**
+ * Yeni ilan bütçesi dolmadıysa kalan bütçe bizde olan ilanların kontrolüne gider: en eski doğrulanan ilanlar önce, fiyat,
+ * açıklama ve durum kaydetme güncellemesiyle tazelenir. Yeni ilan sayısına girmez; dönen değer kontrol edilen ilan sayısıdır.
+ */
+export async function verifyKnownArabamListings(
+  families: Array<{ brand: string; model: string; years?: number[] }>,
+  limit: number,
+  onListing: OnListing
+): Promise<number> {
+  if (limit <= 0 || families.length === 0) return 0;
+  const or = families.slice(0, 500).map((f) => ({
+    brand: f.brand,
+    model: f.model,
+    ...(f.years && f.years.length > 0 ? { year: { $in: f.years } } : {}),
+  }));
+  const docs = await Car.find({ sourceSite: "arabam", status: "active", $or: or }, { listingUrl: 1 })
+    .sort({ updatedAt: 1 })
+    .limit(limit)
+    .lean<Array<{ listingUrl?: string }>>();
+  const hrefs = docs
+    .map((d) => (d.listingUrl || "").replace(/^https?:\/\/www\.arabam\.com/, ""))
+    .filter((href) => href.startsWith("/ilan/"));
+  if (hrefs.length === 0) return 0;
+  // skipExisting=false: bizde olanlar da okunur; kaydetme güncellemesi fiyat/açıklama/durum farkını yazar.
+  await fetchAndSaveArabamDetails(hrefs, onListing, false, undefined, 0, hrefs.length);
+  return hrefs.length;
+}
+
 /** Model ve yıl aralığına göre hedefli Arabam taraması; hedef dışı yıllar kaydedilmez. */
 /** Seyrek segment başına en fazla bu kadar ilan adayı: ortalama için 3 emsal yeter, bütçe çok segmente yayılsın. */
 export const MARKET_YEAR_CANDIDATES = 12;
@@ -977,7 +1073,14 @@ export async function scrapeArabamForMarketYears(
     const candidates = new Set<string>();
     for (const year of years) {
       try {
-        const hrefs = await collectArabamHrefsForModel(segment.brand, segment.model, pagesPerYear, year, perYearCandidates);
+        const hrefs = await collectArabamHrefsForModel(
+          segment.brand,
+          segment.model,
+          pagesPerYear,
+          year,
+          perYearCandidates,
+          keepUnknownArabamHrefs
+        );
         hrefs.forEach((href) => candidates.add(href));
       } catch {
         // Bir yılın arama sonucu hata verirse kalan hedef yıl grupları devam eder.
@@ -986,12 +1089,28 @@ export async function scrapeArabamForMarketYears(
 
     const fresh = [...candidates].filter((href) => !seen.has(href)).slice(0, maxListings - fetched);
     fresh.forEach((href) => seen.add(href));
-    if (fresh.length === 0) continue;
+    // Bizde olan, son güncellemesi eski ilanlar da okunur (fiyat/açıklama tazelenir); yeni ilan bütçesini etkilemez.
+    const dueKnown = (await dueArabamRefreshHrefs(segment.brand, segment.model, [...years], perYearCandidates * years.size))
+      .filter((href) => !seen.has(href));
+    dueKnown.forEach((href) => seen.add(href));
+    const batch = [...fresh, ...dueKnown];
+    if (batch.length === 0) continue;
 
     const before = await Car.countDocuments({ brand: segment.brand, model: segment.model, status: "active" }).catch(() => undefined);
-    const added = await fetchAndSaveArabamDetails(fresh, async (listing) => {
-      if (years.has(listing.year)) await onListing(listing);
-    });
+    const added = await fetchAndSaveArabamDetails(
+      batch,
+      async (listing) => {
+        // Hedef dışı yıl bütçeye sayılmaz: "skipped" döner (bkz. fetchAndSaveArabamDetails).
+        if (!years.has(listing.year)) return "skipped";
+        return onListing(listing);
+      },
+      true,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      { afterMs: ARABAM_REFRESH_AFTER_MS, cap: dueKnown.length }
+    );
     fetched += added;
     reportEvent({
       label: `${segment.brand} ${segment.model} (${[...years].join(", ")})`,
@@ -1009,8 +1128,15 @@ export { POPULAR_BRANDS };
 export const arabamAdapter: ScrapeAdapter = {
   id: "arabam",
   label: "Arabam.com",
-  async scrape(query, limit = 12, onListing, pageOffset = 1) {
-    const fetched = await scrapeArabamListings(query, limit, onListing, pageOffset);
+  async scrape(query, limit = 12, onListing, pageOffset = 1, options) {
+    const fetched = await scrapeArabamListings(
+      query,
+      limit,
+      onListing,
+      pageOffset,
+      options?.knownPageTolerance ?? 3,
+      options?.refreshAfterDays ?? 0
+    );
     return { fetched };
   },
 };

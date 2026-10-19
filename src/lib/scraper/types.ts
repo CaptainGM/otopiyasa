@@ -90,7 +90,13 @@ export interface ScrapeAdapter {
   id: ListingSource;
   label: string;
   
-  scrape(query: string, limit: number, onListing: OnListing, pageOffset?: number): Promise<{ fetched: number }>;
+  scrape(
+    query: string,
+    limit: number,
+    onListing: OnListing,
+    pageOffset?: number,
+    options?: { knownPageTolerance?: number; refreshAfterDays?: number }
+  ): Promise<{ fetched: number }>;
 }
 
 export interface ScrapeJobResult {

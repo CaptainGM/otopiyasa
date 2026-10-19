@@ -30,6 +30,7 @@ import {
   createDetailFetchStats,
   arabamModelSlug,
   POPULAR_BRANDS,
+  verifyKnownArabamListings,
 } from "@/lib/scraper/adapters";
 import { judgeAttempt, lastSlug, RETRY_DAYS, type AttemptReason } from "@/lib/scraper/model-page";
 import { collectFamilyCandidates, type FamilySlugTarget } from "@/lib/scraper/sitemap-family";
@@ -464,6 +465,8 @@ export async function runScrapeJob(options: {
   query: string;
   limit?: number;
   pageOffset?: number;
+  knownPageTolerance?: number;
+  refreshAfterDays?: number;
 }): Promise<ScrapeJobResult> {
   const adapters =
     options.source === "demo"
@@ -509,6 +512,8 @@ export async function runScrapeJob(options: {
           });
         }
       }
+      // Arabam'ın tur bütçesi yalnızca yeni ilanları sayar (bkz. fetchAndSaveArabamDetails): sonucu geri ver.
+      return result;
     };
 
     try {
@@ -516,7 +521,8 @@ export async function runScrapeJob(options: {
         options.query,
         options.limit || 12,
         onListing,
-        options.pageOffset
+        options.pageOffset,
+        { knownPageTolerance: options.knownPageTolerance, refreshAfterDays: options.refreshAfterDays }
       );
       sources.push({ source: adapter.id as ListingSource, fetched, saved, inserted: adapterInserted, updated: adapterUpdated });
     } catch (error) {
@@ -723,7 +729,8 @@ export async function runRareModelScrape(
   threshold = RARE_MODEL_CEILING,
   perModelPages = RARE_MODEL_PAGES,
   maxSegments = RARE_MODEL_LIMIT,
-  maxListings = RARE_MODEL_MAX_LISTINGS
+  maxListings = RARE_MODEL_MAX_LISTINGS,
+  verifyLeftover = false
 ): Promise<ScrapeJobResult> {
   setArabamPace(SERVER_ARABAM_PACE_MS);
   // Kaynağın kendi model listesi: bizde hiç ilanı olmayan modeller de sıraya girer (sayıları 0). Yalnızca ad olarak kendi ailesini
@@ -772,6 +779,8 @@ export async function runRareModelScrape(
   const errors: string[] = [];
   // Kaynakta model sayfası olmayan (markanın sayfasına yönlenen) aileler: tur sonunda site haritasından aranır.
   const unavailable = new Map<string, SitemapFill>();
+  // Bu turda işlenen aileler: bütçe yeni ilanla dolmazsa kalan kısım bunların bizde olan ilanlarını kontrol eder.
+  const touchedFamilies = new Map<string, { brand: string; model: string }>();
 
   // Bütçe bitene ya da uygun model kalmayana kadar kademe kademe ilerler: 5'in altındakiler 5'e çıkınca aynı tur 10. kademeye geçer.
   // Her taranan model ya kademesine ulaşır ya da bekleme listesine girer, bu yüzden her tur ilerleme sağlar.
@@ -804,6 +813,7 @@ export async function runRareModelScrape(
     if (!plan) break;
 
     const targets = plan.targets;
+    for (const t of targets) touchedFamilies.set(`${t.brand}::${t.model}`, { brand: t.brand, model: t.model });
     const familyKeyOf = new Map(targets.map((t) => [familyId(t.brand, t.model), t.familyKey]));
     let processedThisRound = 0;
     let roundFetched = 0;
@@ -857,6 +867,16 @@ export async function runRareModelScrape(
     if (processedThisRound === 0) break;
   }
 
+  // Yeni ilan bütçesi dolmadıysa kalanı bizde olan ilanların kontrolüne harcanır (yalnız zamanlı modda).
+  let verifiedKnown = 0;
+  if (verifyLeftover && !blocked && fetched < maxListings) {
+    try {
+      verifiedKnown = await verifyKnownArabamListings([...touchedFamilies.values()], maxListings - fetched, onListing);
+    } catch (error) {
+      errors.push(`kontrol: ${error instanceof Error ? error.message : "bilinmeyen hata"}`);
+    }
+  }
+
   // Model sayfası olmayan ailelerin ilanları site haritasından (ilan adresindeki marka-model adıyla) bulunur.
   let sitemapNote = "";
   if (unavailable.size > 0 && !blocked) {
@@ -892,6 +912,7 @@ export async function runRareModelScrape(
     success: true,
     message:
       `Nadir-model taraması (en azdan başlayıp kademe kademe): ${levelText}` +
+      (verifiedKnown > 0 ? ` Bütçenin kalanıyla bizde olan ${verifiedKnown} ilan kontrol edildi.` : "") +
       sitemapNote +
       (waiting > 0 ? ` (${waiting} aile bekleme süresinde: kaynakta yeni ilan çıkmış olabilir diye 1-14 gün sonra yeniden denenir)` : "") +
       (blocked ? " Kaynak hız sınırı koydu, tur erken durduruldu; hiçbir model 'tükendi' diye işaretlenmedi, biraz sonra yeniden çalıştırın." : "") +
@@ -1064,7 +1085,8 @@ export async function runPopularRecentScrape(
 export async function runSparseMarketSegmentScrape(
   maxSegments = 100,
   pagesPerYear = 4,
-  maxListings = 500
+  maxListings = 500,
+  verifyLeftover = false
 ): Promise<ScrapeJobResult> {
   const groups = await Car.aggregate<{
     _id: { brand: string; model: string; year: number; vehicleClass: string };
@@ -1109,7 +1131,7 @@ export async function runSparseMarketSegmentScrape(
   const allowedSegmentKeys = new Set<string>();
   const segmentsForInvalidation: Array<{ brand: string; model: string; year: number; vehicleClass: string }> = [];
   for (const segment of sparseSegments) {
-    const targetKey = `${segment.brand}::${segment.vehicleClass}::${segment.familyKey}`;
+    const targetKey = `${segment.brand}::${segment.familyKey}`;
     const existing = familyTargets.get(targetKey) || {
       brand: segment.brand,
       model: segment.model,
@@ -1118,7 +1140,7 @@ export async function runSparseMarketSegmentScrape(
     };
     existing.years.add(segment.year);
     familyTargets.set(targetKey, existing);
-    allowedSegmentKeys.add(`${segment.brand}::${segment.vehicleClass}::${segment.familyKey}::${segment.year}`);
+    allowedSegmentKeys.add(`${segment.brand}::${segment.familyKey}::${segment.year}`);
     segmentsForInvalidation.push(segment);
   }
 
@@ -1128,8 +1150,9 @@ export async function runSparseMarketSegmentScrape(
   const onListing = async (listing: ScrapedListing) => {
     const normalized = normalizeBrandModel(listing.brand, listing.model);
     const familyKey = modelFamilyKey(normalized.model, normalized.brand);
-    const vehicleClass = vehicleClassOf({ brand: normalized.brand, model: normalized.model, title: listing.title, bodyType: listing.features?.bodyType, sourceCategory: listing.sourceCategory });
-    if (!allowedSegmentKeys.has(`${normalized.brand}::${vehicleClass}::${familyKey}::${listing.year}`)) return;
+    // Araç sınıfı liste ilanında (kaynak kategorisine göre) ve veritabanında farklı olabiliyor (Audi Q2 2026: hem
+    // 'otomobil' hem 'suv-pickup'); eşleşme yalnız marka, aile ve yıl ile yapılır. Kapsam dışı ilanları saveListing eler.
+    if (!allowedSegmentKeys.has(`${normalized.brand}::${familyKey}::${listing.year}`)) return "skipped";
     const result = await saveListing(listing);
     counter.add(result);
     if (result !== "skipped" && sampleVehicles.length < 20) {
@@ -1143,9 +1166,11 @@ export async function runSparseMarketSegmentScrape(
         imageUrl: listing.imageUrl || listing.images?.[0],
       });
     }
+    return result;
   };
 
   let fetched = 0;
+  let verifiedKnown = 0;
   const errors: string[] = [];
   try {
     fetched = await scrapeArabamForMarketYears(
@@ -1154,6 +1179,19 @@ export async function runSparseMarketSegmentScrape(
       onListing,
       maxListings
     );
+    // Yeni ilan bütçesi dolmadıysa kalanı bu ailelerin bizde olan ilanlarını kontrol etmeye harcanır (yalnız zamanlı modda).
+    if (verifyLeftover && fetched < maxListings) {
+      const families = [...familyTargets.values()].map((target) => ({
+        brand: target.brand,
+        model: target.model,
+        years: [...target.years],
+      }));
+      verifiedKnown = await verifyKnownArabamListings(families, maxListings - fetched, async (listing) => {
+        const result = await saveListing(listing);
+        counter.add(result);
+        return result;
+      });
+    }
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
@@ -1171,6 +1209,7 @@ export async function runSparseMarketSegmentScrape(
     success: true,
     message:
       `Seyrek fiyat taraması: üçten az emsali kalan ${sparseSegments.length} marka/model ailesi/yıl segmenti, ${familyTargets.size} model ailesi tarandı` +
+      (verifiedKnown > 0 ? `; bütçenin kalanıyla bizde olan ${verifiedKnown} ilan kontrol edildi` : "") +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
     inserted: counts.inserted,
     updated: counts.updated,

@@ -180,7 +180,7 @@ export async function POST(request: Request) {
         typeof body.maxListings === "number" && body.maxListings > 0
           ? Math.min(body.maxListings, 5000)
           : 1500;
-      const result = await runRareModelScrape(threshold, perModelPages, maxSegments, maxListings);
+      const result = await runRareModelScrape(threshold, perModelPages, maxSegments, maxListings, body.verifyLeftover === true);
       await recordLog(result, "rare-model", "Nadir Model Doldurma");
       return NextResponse.json(result);
     }
@@ -235,7 +235,7 @@ export async function POST(request: Request) {
         typeof body.maxListings === "number" && body.maxListings > 0
           ? Math.min(Math.trunc(body.maxListings), 2500)
           : 500;
-      const result = await runSparseMarketSegmentScrape(maxSegments, pagesPerYear, maxListings);
+      const result = await runSparseMarketSegmentScrape(maxSegments, pagesPerYear, maxListings, body.verifyLeftover === true);
       await recordLog(result, "sparse-market-segments", "Seyrek Marka/Model/Yıl Emsali");
       return NextResponse.json(result);
     }
@@ -260,7 +260,19 @@ export async function POST(request: Request) {
         ? Math.min(body.limit, maxLimit)
         : (isVercel ? 12 : undefined);
 
-    const result = await runScrapeJob({ source: source || "all", query, limit });
+    // Zamanlı tur: genel Arabam listesinde bu kadar üst üste kayıtlı sayfa görülünce tur bitmez (bkz. scrapeArabamListings).
+    const knownPageTolerance =
+      typeof body.knownPageTolerance === "number" && body.knownPageTolerance > 0
+        ? Math.min(Math.trunc(body.knownPageTolerance), 60)
+        : undefined;
+
+    // Zamanlı tur: bizde olan ve bu kadar gündür güncellenmemiş Arabam ilanları yeniden okunur (fiyat/açıklama tazelenir).
+    const refreshAfterDays =
+      typeof body.refreshAfterDays === "number" && body.refreshAfterDays > 0
+        ? Math.min(Math.trunc(body.refreshAfterDays), 30)
+        : undefined;
+
+    const result = await runScrapeJob({ source: source || "all", query, limit, knownPageTolerance, refreshAfterDays });
 
     const sourceName = source === "all" ? "8 Kurumsal Kaynak (Tümü)" : (source?.toUpperCase() || "Tümü");
     await recordLog(result, source || "all", `${sourceName} Yeni İlan Çekimi`);

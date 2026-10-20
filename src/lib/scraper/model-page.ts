@@ -65,6 +65,24 @@ export interface AttemptFacts {
 export const RETRY_DAYS = { more: 3, exhausted: 14, mismatch: 14, unavailable: 7, empty: 7, unknown: 1, satisfied: 0, sitemap: 7 } as const;
 
 /**
+ * "exhausted"/"empty" (sayfa güvenilir biçimde okundu, kaynakta gerçekten o an ilan yoktu) VE bu denemede hiç yeni ilan
+ * eklenmediyse normal 7-14 günlük bekleme çok kısa kalıyor: aile her birkaç haftada bir aynı maliyetli taramayı (sayfa
+ * başına 6 sn, sayfalarca) boşuna tekrarlıyor. Böyle bir aile uzun süre (DEAD_FAMILY_RETRY_DAYS) beklemeye alınır.
+ * "unknown" (sayfa belirsiz/engel olabilir) ve "mismatch"/"unavailable" bilerek dışarıda bırakılır: bunlar geçici bir
+ * sorunu ya da yanlış sayfa eşleşmesini gösterir, "kaynakta gerçekten yok" demek değildir — kısa sürede yeniden
+ * denenmeleri gerekir (bkz. dosya başındaki not: yanlış "tükendi" sinyalleri geçmişte aileleri gereksiz kilitlemişti).
+ * Büyüyen ama kotayı henüz doldurmamış aile (added > 0) de uzatılmaz: tekrar denendiğinde büyümeye devam edebilir.
+ */
+export const DEAD_FAMILY_RETRY_DAYS = 60;
+
+export function deadFamilyRetryDays(reason: AttemptReason, baseRetryDays: number, added: number): number {
+  if (added === 0 && (reason === "exhausted" || reason === "empty")) {
+    return Math.max(baseRetryDays, DEAD_FAMILY_RETRY_DAYS);
+  }
+  return baseRetryDays;
+}
+
+/**
  * Denemenin sonucu ve ailenin kaç gün sonra yeniden aranacağı. Kural sırası önemli: önce "sayfa güvenilir değil" durumları, sonra
  * eklenen ilanların aileyi artırıp artırmadığı, en son kaynakta kalan ilan.
  */

@@ -1050,6 +1050,14 @@ class ApiService {
     );
   }
 
+  /// Tüm bildirimleri siler ("Bildirimleri temizle").
+  Future<void> clearNotifications() async {
+    final response = await _http.delete(_uri('/api/notifications'), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Bildirimler temizlenemedi'));
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // KAYITLI ARAMALAR (fiyat alarmı)
   // ---------------------------------------------------------------------------
@@ -1384,6 +1392,18 @@ class ApiService {
         .whereType<Map<String, dynamic>>()
         .map(CarListing.fromJson)
         .toList();
+  }
+
+  /// Ana ekranın üst panosu: web ana sayfasıyla aynı veri (aktif ilan, son 24 saat, fırsat ve kıyas ilanı, kaynak
+  /// site sayısı). Hata ya da ağ sorununda null döner; çağıran panoyu gizler, hata göstermez.
+  Future<Map<String, dynamic>?> fetchMarketBoard() async {
+    try {
+      final response = await _http.get(_uri('/api/market-board'), headers: _headers);
+      if (response.statusCode != 200) return null;
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Analiz verileri: markaya ve model yılına göre ortalama fiyat.

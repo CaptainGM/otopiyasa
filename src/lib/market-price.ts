@@ -23,18 +23,25 @@ const segmentCache = new Map<string, { stat: MarketSegmentStats; expires: number
 const SEGMENT_CACHE_TTL = 30 * 60 * 1000; // 30 dakika
 export const MIN_MARKET_SAMPLE = 3;
 
-/**
- * Piyasa ortalaması gösterilemeyen segmentler: aynı yılın tüm donanımları birlikte sayıldığında bile
- * (bkz. computeMarketMap) üçten az emsal kalan marka + model ailesi + yıl grupları.
- * Önce 2 emsalli olanlar gelir (tek yeni ilan ortalamayı açar), sonra yeni yıllar (piyasada daha çok ilanı var).
- */
-export function selectSparseMarketSegments(
-  groups: Array<{ brand: string; model: string; year: number; vehicleClass?: string; prices: number[] }>,
-  limit = 100
+/** Emsalli segment eşiği ve az emsalli segment taramasının hedefi: bir marka/model/yıl bu kadar emsale ulaşınca kıyas güvenilir. */
+export const SEGMENT_TARGET_SAMPLE = 12;
+
+/** Marka + model ailesi + yıl (+ kasa sınıfı) grupları, aykırı değerler temizlendikten sonraki emsal sayısıyla. */
+export function segmentFamilies(
+  groups: Array<{ brand: string; model: string; year: number; vehicleClass?: string; prices: number[]; listings?: Array<{ id: unknown; price: number }> }>
 ) {
   const families = new Map<
     string,
-    { brand: string; model: string; familyKey: string; year: number; vehicleClass: string; prices: number[]; hiddenListings: number }
+    {
+      brand: string;
+      model: string;
+      familyKey: string;
+      year: number;
+      vehicleClass: string;
+      prices: number[];
+      listings: Array<{ id: unknown; price: number }>;
+      hiddenListings: number;
+    }
   >();
   for (const group of groups) {
     if (!group.brand || !group.model || !group.year) continue;
@@ -46,6 +53,7 @@ export function selectSparseMarketSegments(
     const current = families.get(key);
     if (current) {
       current.prices.push(...(group.prices || []));
+      current.listings.push(...(group.listings || []));
       current.hiddenListings += (group.prices || []).length;
       // Aramada kullanılacak ad: karışık harfli ve kısa olan ("Juke" > "JUKE").
       if (current.model === current.model.toLocaleUpperCase("tr-TR") && label !== label.toLocaleUpperCase("tr-TR")) {
@@ -59,14 +67,33 @@ export function selectSparseMarketSegments(
         year: group.year,
         vehicleClass,
         prices: [...(group.prices || [])],
+        listings: [...(group.listings || [])],
         hiddenListings: (group.prices || []).length,
       });
     }
   }
-  return [...families.values()]
-    .map(({ prices, ...family }) => ({ ...family, listingCount: robustTrimmedPrices(prices).length }))
-    .filter((family) => family.listingCount < MIN_MARKET_SAMPLE)
-    .sort((a, b) => b.listingCount - a.listingCount || b.year - a.year)
+  return [...families.values()].map(({ prices, listings, ...family }) => {
+    // Kıyas ilanı: aykırı değerler temizlendikten sonra en düşük fiyatlı ilan (fiyat yazım hatası kıyas seçilmez).
+    const trimmed = robustTrimmedPrices(prices);
+    const low = trimmed.length > 0 ? Math.min(...trimmed) : null;
+    const cheapest = low === null ? undefined : listings.find((listing) => listing.price === low);
+    return { ...family, listingCount: trimmed.length, cheapestId: cheapest?.id };
+  });
+}
+
+/**
+ * Az emsalli segmentler (tarama hedefi): emsal sayısı [minSample]'dan az olanlar. En az ilanlı olanlar önce gelir
+ * (hedef: marka/model/yıl bazında en az olanları tamamlamak). Piyasa ortalaması gösterimi MIN_MARKET_SAMPLE'a bakar.
+ */
+export function selectSparseMarketSegments(
+  groups: Array<{ brand: string; model: string; year: number; vehicleClass?: string; prices: number[] }>,
+  limit = 100,
+  minSample = MIN_MARKET_SAMPLE,
+  exclude: ReadonlySet<string> = new Set()
+) {
+  return segmentFamilies(groups)
+    .filter((family) => family.listingCount < minSample && !exclude.has(`${family.brand}::${family.familyKey}::${family.year}`))
+    .sort((a, b) => a.listingCount - b.listingCount || b.year - a.year)
     .slice(0, Math.max(0, Math.trunc(limit)));
 }
 

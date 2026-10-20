@@ -1386,6 +1386,18 @@ class ApiService {
         .toList();
   }
 
+  /// Ana ekranın üst panosu: web ana sayfasıyla aynı veri (aktif ilan, son 24 saat, fırsat ve kıyas ilanı, kaynak
+  /// site sayısı). Hata ya da ağ sorununda null döner; çağıran panoyu gizler, hata göstermez.
+  Future<Map<String, dynamic>?> fetchMarketBoard() async {
+    try {
+      final response = await _http.get(_uri('/api/market-board'), headers: _headers);
+      if (response.statusCode != 200) return null;
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Analiz verileri: markaya ve model yılına göre ortalama fiyat.
   Future<Map<String, dynamic>> fetchStats() async {
     final response = await _http.get(_uri('/api/stats'), headers: _headers);

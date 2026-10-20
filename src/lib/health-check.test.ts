@@ -27,6 +27,13 @@ describe("evaluateHealth", () => {
     expect(evaluateHealth(s)).toEqual([]);
   });
 
+  it("birkaç dakikalık veritabanı kopması (nabız gecikmesi) motor durdu diye bildirilmez", () => {
+    expect(HEALTH.daemonSilentMs).toBe(3 * HOUR);
+    const s = healthy();
+    s.daemon = { lastHeartbeat: ago(45 * 60_000), command: "run", status: "online" };
+    expect(evaluateHealth(s)).toEqual([]);
+  });
+
   it("bekçi kısa süre kapalıysa (bilgisayar uykuda) uyarmaz, günlerce kapalıysa uyarır", () => {
     const s = healthy();
     s.watcher = { lastHeartbeat: ago(20 * HOUR) };

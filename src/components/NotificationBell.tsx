@@ -63,6 +63,12 @@ export function NotificationBell() {
     if (n.link) router.push(n.link);
   }
 
+  async function clearAll() {
+    await fetch("/api/notifications", { method: "DELETE" }).catch(() => {});
+    setItems([]);
+    setUnread(0);
+  }
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -84,7 +90,14 @@ export function NotificationBell() {
 
       {open && (
         <div className="absolute right-0 top-11 z-50 w-80 max-w-[90vw] overflow-hidden rounded-xl border border-white/10 bg-[rgba(12,14,20,0.98)] shadow-2xl backdrop-blur-xl">
-          <p className="border-b border-white/10 px-4 py-2.5 text-sm font-semibold">Bildirimler</p>
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
+            <p className="text-sm font-semibold">Bildirimler</p>
+            {items.length > 0 && (
+              <button type="button" onClick={clearAll} className="text-xs text-slate-500 transition hover:text-slate-300">
+                Temizle
+              </button>
+            )}
+          </div>
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-slate-500">Bildirim yok.</p>

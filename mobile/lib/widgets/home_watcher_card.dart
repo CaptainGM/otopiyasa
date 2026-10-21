@@ -36,7 +36,8 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+    // 5 dk: ana ekranda açık kaldıkça her 30 sn sunucuya gitmesin (işlemci kotası).
+    _timer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) _load();
     });
   }

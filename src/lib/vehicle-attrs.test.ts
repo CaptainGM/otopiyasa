@@ -26,6 +26,26 @@ describe("normalizeVehicleTransmission", () => {
     expect(normalizeVehicleTransmission("Otomatik", { brand: "CHERY", title: "Tiggo 7 Pro 1.6 TGDI" })).toBe("Otomatik");
     expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Chery", model: "Tiggo 8 Pro" })).toBe("Yarı Otomatik");
   });
+
+  it("başlıkta DSG / DCT / EDC / S-tronic geçen 'yarı otomatik' ilanlar otomatiktir", () => {
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Volkswagen", model: "Passat", title: "Volkswagen Passat 1.6 TDI DSG Comfortline" })).toBe("Otomatik");
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Renault", model: "Megane", title: "Renault Megane 1.5 dCi EDC" })).toBe("Otomatik");
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Audi", model: "A3", title: "Audi A3 1.6 TDI S-tronic" })).toBe("Otomatik");
+  });
+
+  it("gerçek yarı otomatik (Selespeed, Dualogic) yarı otomatik kalır", () => {
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Alfa Romeo", model: "156", title: "Alfa Romeo 156 2.0 TS Selespeed" })).toBe("Yarı Otomatik");
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Fiat", model: "Egea", title: "Fiat Egea 1.3 Multijet Dualogic" })).toBe("Yarı Otomatik");
+  });
+
+  it("açıklamada DSG / DCT geçen 'yarı otomatik' ilanlar da otomatiktir", () => {
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Skoda", model: "Karoq", title: "Skoda Karoq 1.5 TSI Prestige", description: "2020 model, 7 ileri DSG otomatik vites" })).toBe("Otomatik");
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Mercedes-Benz", model: "A", title: "Mercedes-Benz A 180 d", description: "7G-DCT çift kavramalı" })).toBe("Otomatik");
+  });
+
+  it("EPDK gibi şanzıman adının parçası olan sözcükler eşleşmez", () => {
+    expect(normalizeVehicleTransmission("Yarı Otomatik", { brand: "Fiat", model: "Egea", title: "Fiat Egea 1.3 Dualogic", description: "EPDK onaylı LPG'li, bakımlı" })).toBe("Yarı Otomatik");
+  });
 });
 
 describe("transmissionMatch", () => {

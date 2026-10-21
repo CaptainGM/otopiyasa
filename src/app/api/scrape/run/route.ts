@@ -191,7 +191,9 @@ export async function POST(request: Request) {
       const targetRecent = typeof body.targetRecent === "number" && body.targetRecent > 0 ? Math.min(body.targetRecent, 1000) : 150;
       const maxListings = typeof body.maxListings === "number" && body.maxListings > 0 ? Math.min(body.maxListings, 5000) : 1200;
       const maxFamilies = typeof body.maxFamilies === "number" && body.maxFamilies > 0 ? Math.min(body.maxFamilies, 300) : 80;
-      const result = await runPopularRecentScrape(minYear, targetRecent, maxListings, maxFamilies);
+      // Tur tavanı (aile başına bir turda): tam çekimde büyük aileler için yüksek verilir (varsayılan 60).
+      const roundCap = typeof body.roundCap === "number" && body.roundCap > 0 ? Math.min(body.roundCap, 500) : undefined;
+      const result = await runPopularRecentScrape(minYear, targetRecent, maxListings, maxFamilies, roundCap);
       await recordLog(result, "popular-recent", "Popüler aileler (yeni model yılları)");
       return NextResponse.json(result);
     }

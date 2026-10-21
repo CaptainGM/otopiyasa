@@ -3,9 +3,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { imageCandidates } from "@/lib/image-url";
+import {
+  BUTTON_STEP,
+  centroidOf,
+  clampView,
+  DOUBLE_TAP_SCALE,
+  identityView,
+  MAX_SCALE,
+  MIN_SCALE,
+  panView,
+  pinchView,
+  type Point,
+  settleView,
+  spreadOf,
+  type View,
+  zoomAround,
+} from "@/lib/zoom-math";
 import { CarThumbPlaceholder } from "@/components/CarThumb";
 import { FallbackImage } from "@/components/FallbackImage";
 
+/** Çift dokunuş / çift tık en fazla bu aralıkta ve bu mesafede ikinci kez dokunulursa sayılır. */
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_PX = 40;
+/** Yatay kaydırma bu mesafeyi geçerse (ve dikey değilse) önceki/sonraki fotoğraf. */
+const SWIPE_PX = 50;
 
 export function Lightbox({
   images,
@@ -22,7 +43,6 @@ export function Lightbox({
 }) {
   const [mounted, setMounted] = useState(false);
   const stripRef = useRef<HTMLDivElement>(null);
-  const touchStartX = useRef<number | null>(null);
   const count = images.length;
 
   useEffect(() => setMounted(true), []);
@@ -33,7 +53,6 @@ export function Lightbox({
     },
     [count, onIndexChange]
   );
-
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -54,13 +73,11 @@ export function Lightbox({
     };
   }, [index, count, go, onClose]);
 
-
   useEffect(() => {
     stripRef.current
       ?.querySelector<HTMLElement>(`[data-thumb="${index}"]`)
       ?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
   }, [index]);
-
 
   useEffect(() => {
     if (count < 2) return;
@@ -88,18 +105,7 @@ export function Lightbox({
         stop(e);
         onClose();
       }}
-      onTouchStart={(e) => {
-        touchStartX.current = e.touches[0].clientX;
-      }}
-      onTouchEnd={(e) => {
-        const start = touchStartX.current;
-        touchStartX.current = null;
-        if (start === null) return;
-        const delta = e.changedTouches[0].clientX - start;
-        if (Math.abs(delta) > 45) go(delta < 0 ? index + 1 : index - 1);
-      }}
     >
-    
       <div
         className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3"
         onClick={stop}
@@ -123,14 +129,12 @@ export function Lightbox({
         </button>
       </div>
 
-      
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-2 py-3 sm:px-16">
-        
-        <LightboxImage
+        <ZoomableImage
           key={images[index]}
           src={images[index]}
           alt={`${title} — fotoğraf ${index + 1}`}
-          onClick={stop}
+          onSwipe={(step) => go(index + step)}
         />
 
         {count > 1 && (
@@ -141,7 +145,6 @@ export function Lightbox({
         )}
       </div>
 
-      
       {count > 1 && (
         <div
           ref={stripRef}
@@ -209,112 +212,268 @@ function NavArrow({
   );
 }
 
+/** Alanın merkezine göre bir ekran noktası (zoom-math merkez tabanlı koordinat kullanır). */
+function relativeTo(stage: HTMLElement, clientX: number, clientY: number): Point {
+  const rect = stage.getBoundingClientRect();
+  return { x: clientX - (rect.left + rect.width / 2), y: clientY - (rect.top + rect.height / 2) };
+}
 
-const MAX_ZOOM = 4;
+type Gesture = {
+  baseView: View;
+  baseFocal: Point;
+  baseSpread: number;
+  startX: number;
+  startY: number;
+  moved: number;
+  maxPointers: number;
+  swipeable: boolean;
+};
 
-
-function LightboxImage({
-  src,
-  alt,
-  onClick,
-}: {
-  src: string;
-  alt: string;
-  onClick: (e: React.MouseEvent) => void;
-}) {
+/**
+ * Yakınlaştırılabilir fotoğraf. Mobilde iki parmakla büyütülüp küçültülür, yakınlaşmışken tek parmakla gezdirilir; masaüstünde
+ * fare tekerleği (ctrl + tekerlek: dokunmatik yüzey pinch'i de böyle gelir) ve +/−/0 klavye kısayolları. Çift dokunuş ya da
+ * çift tık yerinde yakınlaştırır. Normal boyutta yatay kaydırma önceki/sonraki fotoğrafa geçirir.
+ */
+function ZoomableImage({ src, alt, onSwipe }: { src: string; alt: string; onSwipe: (step: 1 | -1) => void }) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<View>(identityView);
+  const viewRef = useRef<View>(identityView());
+  const [dragging, setDragging] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const pointers = useRef(new Map<number, Point>());
+  const gesture = useRef<Gesture | null>(null);
+  const lastTap = useRef<{ time: number; point: Point } | null>(null);
 
-  const moved = useRef(false);
+  const commit = useCallback((next: View) => {
+    viewRef.current = next;
+    setView(next);
+  }, []);
 
- 
+  /** Öteleme sınırı: görüntünün ölçeksiz (yerleşik) boyutu ve alan boyutu, transform'dan bağımsız okunur. */
+  const clampToStage = useCallback((next: View): View => {
+    const stage = stageRef.current;
+    const img = stage?.querySelector("img");
+    if (!stage || !img) return next;
+    return clampView(next, { width: img.offsetWidth, height: img.offsetHeight }, { width: stage.clientWidth, height: stage.clientHeight });
+  }, []);
+
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const current = viewRef.current;
+      commit(clampToStage(zoomAround(current, { x: 0, y: 0 }, current.scale * factor)));
+    },
+    [clampToStage, commit]
+  );
+
+  const reset = useCallback(() => commit(identityView()), [commit]);
+
+  const toggleAt = useCallback(
+    (point: Point) => {
+      const current = viewRef.current;
+      if (current.scale > 1.01) reset();
+      else commit(clampToStage(zoomAround(current, point, DOUBLE_TAP_SCALE)));
+    },
+    [clampToStage, commit, reset]
+  );
+
+  // Tekerlek ve iOS jest olayları sayfanın kendi zoom/kaydırmasına gitmesin: React'in onWheel'i pasiftir, bu yüzden
+  // native dinleyici (passive: false) gerekir.
   useEffect(() => {
-    setZoom(1);
-    setOffset({ x: 0, y: 0 });
-  }, [src]);
+    const stage = stageRef.current;
+    if (!stage) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const point = relativeTo(stage, e.clientX, e.clientY);
+      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      const current = viewRef.current;
+      commit(clampToStage(zoomAround(current, point, current.scale * factor)));
+    };
+    const preventGesture = (e: Event) => e.preventDefault();
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    stage.addEventListener("gesturestart", preventGesture);
+    stage.addEventListener("gesturechange", preventGesture);
+    return () => {
+      stage.removeEventListener("wheel", onWheel);
+      stage.removeEventListener("gesturestart", preventGesture);
+      stage.removeEventListener("gesturechange", preventGesture);
+    };
+  }, [clampToStage, commit]);
 
-  const zoomed = zoom > 1;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "+" || e.key === "=") zoomBy(BUTTON_STEP);
+      else if (e.key === "-" || e.key === "_") zoomBy(1 / BUTTON_STEP);
+      else if (e.key === "0") reset();
+      else return;
+      e.preventDefault();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [reset, zoomBy]);
 
-  const applyZoom = (next: number) => {
-    const clamped = Math.min(MAX_ZOOM, Math.max(1, next));
-    setZoom(clamped);
-    if (clamped === 1) setOffset({ x: 0, y: 0 });
+  const rebase = () => {
+    const points = [...pointers.current.values()];
+    const gestureNow = gesture.current;
+    if (!gestureNow) return;
+    gestureNow.baseView = viewRef.current;
+    gestureNow.baseFocal = centroidOf(points);
+    gestureNow.baseSpread = points.length >= 2 ? spreadOf(points[0], points[1]) : 0;
   };
 
-  return (
-    <>
-      {!loaded && (
-        <span className="pointer-events-none absolute h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-amber-400" />
-      )}
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    stage.setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, relativeTo(stage, e.clientX, e.clientY));
+    if (!gesture.current) {
+      gesture.current = {
+        baseView: viewRef.current,
+        baseFocal: { x: 0, y: 0 },
+        baseSpread: 0,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: 0,
+        maxPointers: 0,
+        // Kaydırma (sonraki/önceki fotoğraf) yalnızca tek parmakla ve normal boyutta başlarsa geçerlidir.
+        swipeable: viewRef.current.scale === 1,
+      };
+    }
+    gesture.current.maxPointers = Math.max(gesture.current.maxPointers, pointers.current.size);
+    if (pointers.current.size >= 2) gesture.current.swipeable = false;
+    rebase();
+    setDragging(true);
+  };
 
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const stage = stageRef.current;
+    const gestureNow = gesture.current;
+    if (!stage || !gestureNow || !pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, relativeTo(stage, e.clientX, e.clientY));
+    gestureNow.moved = Math.max(gestureNow.moved, Math.hypot(e.clientX - gestureNow.startX, e.clientY - gestureNow.startY));
+    const points = [...pointers.current.values()];
+    if (points.length >= 2) {
+      if (gestureNow.baseSpread <= 0) return;
+      commit(clampToStage(pinchView(gestureNow.baseView, gestureNow.baseFocal, gestureNow.baseSpread, centroidOf(points), spreadOf(points[0], points[1]))));
+    } else if (gestureNow.baseView.scale > 1.01) {
+      commit(clampToStage(panView(gestureNow.baseView, gestureNow.baseFocal, points[0])));
+    }
+  };
+
+  const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    const stage = stageRef.current;
+    if (!stage || !pointers.current.has(e.pointerId)) return;
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size > 0) {
+      // Bir parmak kalktı, kalan parmakla devam: taban yeniden alınır, görüntü zıplamaz.
+      rebase();
+      return;
+    }
+    const finished = gesture.current;
+    gesture.current = null;
+    setDragging(false);
+    commit(clampToStage(settleView(viewRef.current)));
+    if (!finished) return;
+
+    const dx = e.clientX - finished.startX;
+    const dy = e.clientY - finished.startY;
+    if (finished.swipeable && finished.maxPointers === 1 && Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      lastTap.current = null;
+      onSwipe(dx < 0 ? 1 : -1);
+      return;
+    }
+    if (finished.maxPointers === 1 && finished.moved < 8) {
+      const point = relativeTo(stage, e.clientX, e.clientY);
+      const now = Date.now();
+      const previous = lastTap.current;
+      if (previous && now - previous.time < DOUBLE_TAP_MS && Math.hypot(point.x - previous.point.x, point.y - previous.point.y) < DOUBLE_TAP_PX) {
+        lastTap.current = null;
+        toggleAt(point);
+      } else {
+        lastTap.current = { time: now, point };
+      }
+    } else {
+      lastTap.current = null;
+    }
+  };
+
+  const { scale } = view;
+  const atMin = scale <= MIN_SCALE;
+  const atMax = scale >= MAX_SCALE;
+  const isIdentity = scale === 1 && view.x === 0 && view.y === 0;
+
+  return (
+    <div className="relative flex h-full w-full items-center justify-center" onClick={(e) => e.stopPropagation()}>
       <div
-        className="flex h-full w-full items-center justify-center overflow-hidden"
-        onWheel={(e) => {
-          e.stopPropagation();
-          applyZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8));
-        }}
-        onTouchStart={(e) => {
-          
-          if (zoomed) e.stopPropagation();
-        }}
-        onPointerDown={(e) => {
-          moved.current = false;
-          if (!zoomed) return;
-          e.stopPropagation();
-          drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
-          e.currentTarget.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          if (!drag.current) return;
-          const dx = e.clientX - drag.current.x;
-          const dy = e.clientY - drag.current.y;
-          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved.current = true;
-          setOffset({ x: drag.current.ox + dx, y: drag.current.oy + dy });
-        }}
-        onPointerUp={() => {
-          drag.current = null;
-        }}
+        ref={stageRef}
+        className="flex h-full w-full items-center justify-center overflow-hidden select-none"
+        // Tarayıcının kendi kaydırma/yakınlaştırmasını kapatır: iki parmak fotoğrafa gider, sayfaya değil.
+        style={{ touchAction: "none", overscrollBehavior: "contain" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+        onDragStart={(e) => e.preventDefault()}
       >
+        {!loaded && (
+          <span className="pointer-events-none absolute h-9 w-9 animate-spin rounded-full border-2 border-white/20 border-t-amber-400" />
+        )}
         <FallbackImage
           src={src}
           alt={alt}
           loading="eager"
-          onClick={(e) => {
-            onClick(e); 
-            
-            if (!moved.current) applyZoom(zoomed ? 1 : 2.5);
-          }}
           onLoad={() => setLoaded(true)}
-          fallback={
-            <p className="text-sm font-medium text-slate-400">
-              Bu fotoğraf yüklenemedi
-            </p>
-          }
-          className={`max-h-full max-w-full select-none rounded-lg object-contain shadow-2xl ${
-            zoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"
-          } ${loaded ? "opacity-100" : "opacity-0"}`}
+          fallback={<p className="text-sm font-medium text-slate-400">Bu fotoğraf yüklenemedi</p>}
+          className={`max-h-full max-w-full rounded-lg object-contain shadow-2xl ${loaded ? "opacity-100" : "opacity-0"}`}
           style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
-            transition: drag.current ? "none" : "transform 0.15s ease, opacity 0.2s",
+            transform: `translate(${view.x}px, ${view.y}px) scale(${scale})`,
+            transformOrigin: "center",
+            // Parmak basılıyken geçiş kapalı: pinch gecikmesiz izler. Düğme ve çift dokunuş yumuşak geçer.
+            transition: dragging ? "none" : "transform 0.18s ease, opacity 0.2s",
           }}
         />
       </div>
 
-      {zoomed && (
+      <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-black/70 p-1 text-white shadow-lg backdrop-blur">
+        <ZoomButton label="Uzaklaştır" disabled={atMin} onClick={() => zoomBy(1 / BUTTON_STEP)}>
+          −
+        </ZoomButton>
+        <span className="min-w-[3.25rem] text-center text-xs font-bold tabular-nums">%{Math.round(scale * 100)}</span>
+        <ZoomButton label="Yakınlaştır" disabled={atMax} onClick={() => zoomBy(BUTTON_STEP)}>
+          +
+        </ZoomButton>
         <button
           type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            applyZoom(1);
-          }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-black/90"
+          onClick={reset}
+          disabled={isIdentity}
+          className="ml-1 rounded-full px-2.5 py-1 text-xs font-semibold text-white/90 transition hover:bg-white/15 disabled:opacity-35"
         >
-          %{Math.round(zoom * 100)} · sıfırla
+          Sıfırla
         </button>
-      )}
-    </>
+      </div>
+    </div>
+  );
+}
+
+function ZoomButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold transition hover:bg-white/15 disabled:opacity-35"
+    >
+      {children}
+    </button>
   );
 }

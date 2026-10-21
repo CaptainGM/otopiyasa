@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
+import 'package:otopiyasa/screens/photo_viewer_screen.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/car_headline.dart';
 import 'package:otopiyasa/utils/tr_text.dart';
@@ -185,7 +186,8 @@ class _CarCardState extends State<CarCard> {
                 children: [
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: _openDetail,
+                    // Fotoğrafa dokunmak büyütür (o an gösterilen fotoğraftan); ilan sayfası metin alanından açılır.
+                    onTap: () => openPhotoViewer(context, images, initialIndex: _activeImageIndex),
                     child: images.isEmpty
                         ? Container(color: c.surface2, child: Icon(Icons.directions_car_outlined, color: c.faint))
                         : images.length == 1

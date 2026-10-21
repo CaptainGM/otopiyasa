@@ -20,8 +20,12 @@ export interface HealthIssue {
 }
 
 export const HEALTH = {
-  /** Sunucu motoru bu süre sinyal vermezse durmuş sayılır. */
-  daemonSilentMs: 45 * 60 * 1000,
+  /**
+   * Sunucu motoru bu süre sinyal vermezse durmuş sayılır. 3 saat: Oracle motorunun veritabanı bağlantısı (Atlas) birkaç dakikalık
+   * kopmalarla geçici olarak nabız yazamıyor; eskiden 45 dk'lık eşik bunları gereksiz "motor durdu" alarmına çeviriyordu. Gerçek
+   * uzun süreli duruş yine yakalanır.
+   */
+  daemonSilentMs: 3 * 60 * 60 * 1000,
   /** Evdeki bilgisayar her gün açık olmayabilir; bekçi için eşik uzun. */
   watcherSilentMs: 3 * 24 * 60 * 60 * 1000,
   /** Kurumsal kaynak bu süre başarıyla senkronlanmazsa haber verilir. */
@@ -169,6 +173,9 @@ export async function runHealthCheck(options: { notify?: boolean; now?: Date } =
     if (issues.some((i) => i.key === alert.key)) continue;
     await SystemAlert.updateOne({ key: alert.key }, { $set: { resolvedAt: now } });
     resolved.push(alert.key);
+    // Motor sinyali geri gelince "düzeldi" maili gönderilmez: kısa bağlantı kopmalarında bu, her seferinde ikinci bir gereksiz
+    // e-posta demekti. Sorun yalnızca "bildirildi" kaydı olarak kapanır.
+    if (alert.key === "daemon-silent") continue;
     toSend.push({ key: alert.key, severity: "warning", title: `Düzeldi: ${alert.title}`, detail: "Sorun kendiliğinden giderildi.", resolved: true });
   }
 

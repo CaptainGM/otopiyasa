@@ -5,6 +5,7 @@ import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { escapeRegExp } from "@/lib/utils";
+import { familyModelNames } from "@/lib/model-family";
 import { derivePainted } from "@/lib/price-prediction";
 import {
   conditionCurves,
@@ -53,16 +54,27 @@ export async function GET(request: Request) {
       {
         brands: options.brands,
         brandModels: options.brandModels,
+        brandFamilies: options.brandFamilies,
       },
       { headers: LIST_CACHE }
     );
   }
 
+  // Aile düzeyinde süzgeç: "Tiggo 7 Pro" seçilince donanım adlarının (Excellent, Luxury…) hepsi toplanır. Tam ada eşleşme,
+  // tek bir donanımın az ilanıyla etkileri "—" bırakıyordu (bkz. familyModelNames).
+  const brandRegex = new RegExp(`^${escapeRegExp(brand)}$`, "i");
+  const rawNames = (await Car.distinct("model", { ...PUBLIC_LISTING_FILTER, brand: brandRegex })) as unknown[];
+  const modelNames = familyModelNames(
+    rawNames.filter((name): name is string => typeof name === "string" && name.length > 0),
+    brand,
+    model
+  );
+
   const allCars = await Car.find(
     {
       ...PUBLIC_LISTING_FILTER,
-      brand: new RegExp(`^${escapeRegExp(brand)}$`, "i"),
-      model: new RegExp(`^${escapeRegExp(model)}$`, "i"),
+      brand: brandRegex,
+      model: { $in: modelNames },
       price: { $gte: 50_000, $lte: 40_000_000 },
     },
     { year: 1, price: 1, mileage: 1, title: 1, imageUrl: 1, city: 1, damageFlag: 1, paintChange: 1 }
@@ -114,6 +126,7 @@ export async function GET(request: Request) {
       totalBeforeFilters: allCars.length,
       brands: options.brands,
       brandModels: options.brandModels,
+      brandFamilies: options.brandFamilies,
     }, { headers: MODEL_CACHE });
   }
 
@@ -241,5 +254,6 @@ export async function GET(request: Request) {
     },
     brands: options.brands,
     brandModels: options.brandModels,
+    brandFamilies: options.brandFamilies,
   }, { headers: MODEL_CACHE });
 }

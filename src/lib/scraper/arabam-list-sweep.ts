@@ -4,7 +4,7 @@ import { ArabamListSweep, ArabamListSweepDoc } from "@/models/ArabamListSweep";
 import { modelFamily, modelFamilyKey, modelFamilyRegex } from "@/lib/model-family";
 import { brandStorageAliases, normalizeBrand } from "@/lib/normalize-brand";
 import { turkishSearchRegex } from "@/lib/utils";
-import { normalizeBodyType } from "@/lib/vehicle-attrs";
+import { normalizeBodyType, normalizeVehicleTransmission } from "@/lib/vehicle-attrs";
 import { notifyFavoritePriceDrop } from "@/lib/price-alerts";
 import { isAcceptableScrapedPrice } from "@/lib/scraper/price-guard";
 import { fetchPageWithBrowser, isCloudflareChallenge } from "@/lib/scraper/browser-scrape";
@@ -209,7 +209,7 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
   if (docs.length === 0) return out;
   const byExternal = new Map(docs.map((d) => [`arabam-${d.id}`, d]));
   const cars = await Car.find({ sourceSite: "arabam", externalId: { $in: [...byExternal.keys()] } })
-    .select("_id externalId status removedReason price mileage features.transmission priceHistory")
+    .select("_id externalId status removedReason price mileage brand model title description features.transmission priceHistory")
     .lean<
       Array<{
         _id: Types.ObjectId;
@@ -218,6 +218,10 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
         removedReason?: string;
         price: number;
         mileage: number;
+        brand?: string;
+        model?: string;
+        title?: string;
+        description?: string;
         features?: { transmission?: string };
         priceHistory?: Array<{ price: number }>;
       }>
@@ -240,7 +244,8 @@ export async function applyListDocs(docs: ArabamListDoc[], now = new Date()): Pr
     const set: Record<string, unknown> = { lastVerifiedAt: now, lastVerifyAttemptAt: now };
     const keys: string[] = [];
     if (doc.transmission) {
-      set["features.transmission"] = doc.transmission;
+      // Başlıktaki DSG/DCT/EDC gibi adlar liste verisindeki "yarı otomatik" yazımını otomatiğe çevirir (bkz. normalizeVehicleTransmission).
+      set["features.transmission"] = normalizeVehicleTransmission(doc.transmission, { brand: car.brand, model: car.model, title: car.title, description: car.description }) ?? doc.transmission;
       keys.push("transmission");
       // Düzeltme: kayıtlı (bilinen) değer farklıydı. Bilinmiyordu ise yalnızca doğrulanmış sayılır.
       if (!isUnknownFeature(car.features?.transmission) && doc.transmission !== car.features?.transmission) out.corrected++;

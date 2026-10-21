@@ -32,7 +32,7 @@ import {
   POPULAR_BRANDS,
   verifyKnownArabamListings,
 } from "@/lib/scraper/adapters";
-import { judgeAttempt, lastSlug, RETRY_DAYS, type AttemptReason } from "@/lib/scraper/model-page";
+import { deadFamilyRetryDays, judgeAttempt, lastSlug, RETRY_DAYS, type AttemptReason } from "@/lib/scraper/model-page";
 import { collectFamilyCandidates, type FamilySlugTarget } from "@/lib/scraper/sitemap-family";
 import { reportEvent, reportProgress } from "@/lib/scraper/progress";
 import { describeQueueMix, formatVerifyLine, titleFromHref, type QueueMix, type SaveDetail } from "@/lib/scraper/verify-line";
@@ -51,12 +51,12 @@ import { normalizeVehicleTransmission } from "@/lib/vehicle-attrs";
 import { isIncompleteRemoval, lacksGallery } from "@/lib/scraper/listing-quality";
 import { ListingSource } from "@/types";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { invalidateMarketSegments, selectSparseMarketSegments } from "@/lib/market-price";
+import { invalidateMarketSegments, SEGMENT_TARGET_SAMPLE, selectSparseMarketSegments } from "@/lib/market-price";
 import { modelFamily, modelFamilyKey, modelFamilyRegex, modelNameKey } from "@/lib/model-family";
 import { RareModelAttempt } from "@/models/RareModelAttempt";
 import { ArabamCatalog, type ArabamCatalogDoc } from "@/models/ArabamCatalog";
 import { DAY_MS, familyId, planRareLevel, selectRareFamilies, type SegmentCount } from "@/lib/scraper/rare-models";
-import { planPopularRecent, type FamilyStanding } from "@/lib/scraper/popular-recent";
+import { planPopularRecent, RECENT_ROUND_CAP, recentAttemptRetryDays, type FamilyStanding } from "@/lib/scraper/popular-recent";
 import { setArabamPace } from "@/lib/scraper/rate-limit";
 
 /** Sunucu üzerinden yapılan Arabam taramalarında ilan arası temel bekleme (ms); bekçiyle aynı insansı ritim. */
@@ -121,6 +121,7 @@ export async function saveListing(
           brand: listing.brand,
           model: listing.model,
           title: listing.title,
+          description: listing.description,
         }) || listing.features?.transmission,
     },
   };
@@ -842,7 +843,11 @@ export async function runRareModelScrape(
               before: result.before,
               after: result.after,
             });
-            await recordRareAttempt(segment.brand, familyKey, segment.model, verdict, {
+            // Aile gerçekten tükenmiş/boşsa (sayfa güvenilir okundu, bu denemede hiç ilan eklenmedi) normalden çok
+            // daha uzun beklemeye alınır (bkz. deadFamilyRetryDays) — yoksa her birkaç haftada bir aynı maliyetli
+            // taramayı boşuna tekrarlar.
+            const retryDays = deadFamilyRetryDays(verdict.reason, verdict.retryDays, result.added);
+            await recordRareAttempt(segment.brand, familyKey, segment.model, { reason: verdict.reason, retryDays }, {
               found: result.found,
               added: result.added,
               before: result.before ?? 0,
@@ -935,7 +940,8 @@ export async function runPopularRecentScrape(
   minYear = 2020,
   targetRecent = 150,
   maxListings = 1200,
-  maxFamilies = 80
+  maxFamilies = 80,
+  roundCap = RECENT_ROUND_CAP
 ): Promise<ScrapeJobResult> {
   setArabamPace(SERVER_ARABAM_PACE_MS);
   const [cars, catalogDocs, attempts] = await Promise.all([
@@ -987,7 +993,7 @@ export async function runPopularRecentScrape(
       .filter((a) => a.attemptedAt.getTime() + (a.retryAfterDays ?? 1) * DAY_MS > now)
       .map((a) => familyId(a.brand, a.familyKey.slice(0, -"::recent".length)))
   );
-  const plan = planPopularRecent([...standings.values()], targetRecent, maxFamilies, blocked);
+  const plan = planPopularRecent([...standings.values()], targetRecent, maxFamilies, blocked, roundCap);
 
   const counter = createSaveCounter();
   const { counts } = counter;
@@ -1051,11 +1057,14 @@ export async function runPopularRecentScrape(
     done.push(`${target.label} +${gained}`);
 
     const verdict = judgeAttempt({ outcome, added: gained, fresh: fresh.length });
+    // Aile önceden de şimdi de hiç 2020+ ilan bulamadıysa (muhtemelen kaynakta gerçekten yok) normalden çok daha uzun beklemeye alınır;
+    // yoksa her birkaç günde bir aynı maliyetli taramayı boşuna tekrarlar (bkz. recentAttemptRetryDays).
+    const retryDays = recentAttemptRetryDays(verdict.retryDays, target.recent, gained);
     await recordRareAttempt(
       target.brand,
       `${target.familyKey}::recent`,
       target.label,
-      verdict,
+      { reason: verdict.reason, retryDays },
       { found, added: gained, before: target.recent, after: target.recent + gained }
     );
   }
@@ -1110,15 +1119,30 @@ export async function runSparseMarketSegmentScrape(
     // gerekçe runRareModelScrape): sınır yerine diske taşma tercih edilir.
   ]).option({ allowDiskUse: true });
 
+  // Sonuç vermeyen segmentler (bkz. aşağıda) bir hafta beklemeye alınır; yoksa her turda aynı ölü segmentler seçilir.
+  const sparseAttempts = await RareModelAttempt.find({ familyKey: /::sparse::/ }, { brand: 1, familyKey: 1, attemptedAt: 1, retryAfterDays: 1 }).lean<
+    Array<{ brand: string; familyKey: string; attemptedAt: Date; retryAfterDays?: number }>
+  >();
+  const sparseNow = Date.now();
+  const sparseBlocked = new Set(
+    sparseAttempts
+      .filter((attempt) => attempt.attemptedAt.getTime() + (attempt.retryAfterDays ?? 1) * DAY_MS > sparseNow)
+      .map((attempt) => {
+        const [familyKey, year] = attempt.familyKey.split("::sparse::");
+        return `${attempt.brand}::${familyKey}::${year}`;
+      })
+  );
   const sparseSegments = selectSparseMarketSegments(
     groups.map((group) => ({ ...group._id, prices: group.prices || [] })),
-    maxSegments
+    maxSegments,
+    SEGMENT_TARGET_SAMPLE,
+    sparseBlocked
   );
 
   if (sparseSegments.length === 0) {
     return {
       success: true,
-      message: "Aykırı değer temizliğinden sonra tüm donanımlarıyla bile üçten az emsali kalan marka/model ailesi/yıl segmenti bulunamadı.",
+      message: "Aykırı değer temizliğinden sonra tüm donanımlarıyla bile 12'den az emsali kalan marka/model ailesi/yıl segmenti bulunamadı.",
       inserted: 0,
       updated: 0,
       sources: [{ source: "arabam", fetched: 0, saved: 0 }],
@@ -1143,6 +1167,8 @@ export async function runSparseMarketSegmentScrape(
     allowedSegmentKeys.add(`${segment.brand}::${segment.familyKey}::${segment.year}`);
     segmentsForInvalidation.push(segment);
   }
+  // Bu turda her segmentte kaç yeni ilan eklendi (eklenmeyenler sonda deneme kaydı alır).
+  const sparseGained = new Map<string, number>();
 
   const counter = createSaveCounter();
   const { counts } = counter;
@@ -1152,9 +1178,11 @@ export async function runSparseMarketSegmentScrape(
     const familyKey = modelFamilyKey(normalized.model, normalized.brand);
     // Araç sınıfı liste ilanında (kaynak kategorisine göre) ve veritabanında farklı olabiliyor (Audi Q2 2026: hem
     // 'otomobil' hem 'suv-pickup'); eşleşme yalnız marka, aile ve yıl ile yapılır. Kapsam dışı ilanları saveListing eler.
-    if (!allowedSegmentKeys.has(`${normalized.brand}::${familyKey}::${listing.year}`)) return "skipped";
+    const segmentKey = `${normalized.brand}::${familyKey}::${listing.year}`;
+    if (!allowedSegmentKeys.has(segmentKey)) return "skipped";
     const result = await saveListing(listing);
     counter.add(result);
+    if (result === "inserted" || result === "reactivated") sparseGained.set(segmentKey, (sparseGained.get(segmentKey) ?? 0) + 1);
     if (result !== "skipped" && sampleVehicles.length < 20) {
       sampleVehicles.push({
         brand: normalized.brand,
@@ -1196,6 +1224,22 @@ export async function runSparseMarketSegmentScrape(
     errors.push(error instanceof Error ? error.message : "bilinmeyen hata");
   }
 
+  // Bütçe dolmadan tüm aileler tarandıysa, hiç ilan eklenmeyen segmentler uzun süre beklemeye alınır (bütçe dolduysa
+  // bu segmentlere hiç bakılmamış olabilir, o yüzden kayıt yazılmaz). deadFamilyRetryDays ile aynı 60 günlük süre:
+  // o marka/model/yıl kombinasyonu kaynakta genelde büyümüyor, her turda aynı maliyetli taramayı boşuna tekrarlamasın.
+  if (errors.length === 0 && fetched < maxListings) {
+    for (const segment of sparseSegments) {
+      if ((sparseGained.get(`${segment.brand}::${segment.familyKey}::${segment.year}`) ?? 0) > 0) continue;
+      const verdict = judgeAttempt({ outcome: "empty", added: 0, fresh: 0 });
+      await recordRareAttempt(
+        segment.brand,
+        `${segment.familyKey}::sparse::${segment.year}`,
+        segment.model,
+        { reason: verdict.reason, retryDays: deadFamilyRetryDays(verdict.reason, verdict.retryDays, 0) },
+        { found: 0, added: 0, before: segment.listingCount, after: segment.listingCount }
+      );
+    }
+  }
   invalidateMarketSegments(segmentsForInvalidation);
   if (counts.inserted > 0) {
     try {
@@ -1208,7 +1252,7 @@ export async function runSparseMarketSegmentScrape(
   return {
     success: true,
     message:
-      `Seyrek fiyat taraması: üçten az emsali kalan ${sparseSegments.length} marka/model ailesi/yıl segmenti, ${familyTargets.size} model ailesi tarandı` +
+      `Seyrek fiyat taraması: 12'den az emsali kalan ${sparseSegments.length} marka/model ailesi/yıl segmenti, ${familyTargets.size} model ailesi tarandı` +
       (verifiedKnown > 0 ? `; bütçenin kalanıyla bizde olan ${verifiedKnown} ilan kontrol edildi` : "") +
       (errors.length > 0 ? ` (hata: ${errors.join(" | ")})` : "."),
     inserted: counts.inserted,

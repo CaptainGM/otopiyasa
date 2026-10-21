@@ -52,3 +52,13 @@ export async function POST(request: Request) {
   await Notification.updateMany(filter, { $set: { read: true } });
   return NextResponse.json({ success: true });
 }
+
+/** Kullanıcının tüm bildirimlerini siler ("Bildirimleri temizle"). */
+export async function DELETE() {
+  const authUser = await getCurrentUser();
+  if (!authUser) return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
+
+  await connectDB();
+  await Notification.deleteMany({ user: authUser.userId });
+  return NextResponse.json({ success: true });
+}

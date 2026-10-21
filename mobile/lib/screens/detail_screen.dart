@@ -13,6 +13,7 @@ import 'package:otopiyasa/widgets/listing_quality_badge.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/widgets/listing_interaction.dart';
 import 'package:otopiyasa/screens/compare_screen.dart';
+import 'package:otopiyasa/screens/photo_viewer_screen.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/relative_time.dart';
 import 'package:otopiyasa/widgets/market_badge.dart';
@@ -333,12 +334,16 @@ class _DetailScreenState extends State<DetailScreen> {
               final imgUrl = allImages[index];
               final isFirst = index == 0;
               // Tam genişlik galeri: 480 px çözüm yüksek yoğunluklu ekranlarda bulanık görünüyordu.
-              final child = ListingImage(
-                url: imgUrl,
-                fit: BoxFit.cover,
-                cacheWidth: 1080,
-                // İlk fotoğrafın kart varyantı zaten önbellekte; diğerlerinde ~10 KB'lık önizleme.
-                tinyPreview: !isFirst,
+              final child = GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => openPhotoViewer(context, allImages, initialIndex: index),
+                child: ListingImage(
+                  url: imgUrl,
+                  fit: BoxFit.cover,
+                  cacheWidth: 1080,
+                  // İlk fotoğrafın kart varyantı zaten önbellekte; diğerlerinde ~10 KB'lık önizleme.
+                  tinyPreview: !isFirst,
+                ),
               );
               return isFirst
                   ? Hero(tag: 'car-img-${car.id}', child: child)

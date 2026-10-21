@@ -64,10 +64,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         _ => Icons.campaign_outlined,
       };
 
+  Future<void> _clear() async {
+    try {
+      await _api.clearNotifications();
+    } catch (_) {
+      // Sessizce yoksay: liste hâlâ eskisi gibi görünür, kullanıcı yeniden deneyebilir.
+    }
+    if (mounted) setState(() => _future = Future.value(<AppNotification>[]));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Bildirimler')),
+      appBar: AppBar(
+        title: const Text('Bildirimler'),
+        actions: [
+          FutureBuilder<List<AppNotification>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if ((snapshot.data ?? const []).isEmpty) return const SizedBox.shrink();
+              return TextButton(onPressed: _clear, child: const Text('Temizle'));
+            },
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async => setState(() => _future = _load()),
         child: FutureBuilder<List<AppNotification>>(

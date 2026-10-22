@@ -240,6 +240,9 @@ class ApiService {
     int? mileageMax,
     String? seller,
     bool noDamage = false,
+    // Fiyat aralığı (TL): web'deki priceMin / priceMax ile aynı adlar.
+    int? priceMin,
+    int? priceMax,
   }) async {
     final response = await _http.get(
       _uri('/api/cars', {
@@ -262,6 +265,8 @@ class ApiService {
         if (mileageMax != null) 'mileageMax': '$mileageMax',
         if (seller != null && seller.isNotEmpty) 'seller': seller,
         if (noDamage) 'noDamage': 'true',
+        if (priceMin != null) 'priceMin': '$priceMin',
+        if (priceMax != null) 'priceMax': '$priceMax',
         'page': '$page',
         'compact': '1',
       }),
@@ -1050,6 +1055,14 @@ class ApiService {
     );
   }
 
+  /// Tüm bildirimleri siler ("Bildirimleri temizle").
+  Future<void> clearNotifications() async {
+    final response = await _http.delete(_uri('/api/notifications'), headers: _headers);
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Bildirimler temizlenemedi'));
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // KAYITLI ARAMALAR (fiyat alarmı)
   // ---------------------------------------------------------------------------
@@ -1386,6 +1399,18 @@ class ApiService {
         .toList();
   }
 
+  /// Ana ekranın üst panosu: web ana sayfasıyla aynı veri (aktif ilan, son 24 saat, fırsat ve kıyas ilanı, kaynak
+  /// site sayısı). Hata ya da ağ sorununda null döner; çağıran panoyu gizler, hata göstermez.
+  Future<Map<String, dynamic>?> fetchMarketBoard() async {
+    try {
+      final response = await _http.get(_uri('/api/market-board'), headers: _headers);
+      if (response.statusCode != 200) return null;
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Analiz verileri: markaya ve model yılına göre ortalama fiyat.
   Future<Map<String, dynamic>> fetchStats() async {
     final response = await _http.get(_uri('/api/stats'), headers: _headers);
@@ -1412,6 +1437,8 @@ class ApiService {
   Future<Map<String, dynamic>> fetchModelBreakdown({String? brand, String? model, String? condition, int? kmMin, int? kmMax}) async {
     final response = await _http.get(
       _uri('/api/analytics/model-breakdown', {
+        // v: aile düzeyi süzgeç (eski yanıtlar CDN'de 6 saat kalmasın diye adres değişir).
+        'v': '2',
         if (brand != null && brand.isNotEmpty) 'brand': brand,
         if (model != null && model.isNotEmpty) 'model': model,
         if (condition != null && condition.isNotEmpty) 'hasar': condition,

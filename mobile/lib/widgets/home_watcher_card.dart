@@ -36,7 +36,8 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
   void initState() {
     super.initState();
     _load();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+    // 5 dk: ana ekranda açık kaldıkça her 30 sn sunucuya gitmesin (işlemci kotası).
+    _timer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) _load();
     });
   }
@@ -104,30 +105,37 @@ class _HomeWatcherCardState extends State<HomeWatcherCard> {
     return dateStr;
   }
 
+  /// Sayım kutusu. Beş kutu eşit genişlikte ve aynı yükseklikte; sayı ve etiket tek satırda kalır, gerekirse
+  /// küçülerek sığar (sarıp kutuyu uzatmaz, altındaki satırı aşağı itmez).
   Widget _tile(String label, String value, {Color? color}) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        height: 72,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white12),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-                color: color,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color),
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 10.5, color: Colors.white54),
+            const SizedBox(height: 3),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: const TextStyle(fontSize: 10.5, color: Colors.white54),
+              ),
             ),
           ],
         ),

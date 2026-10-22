@@ -40,7 +40,7 @@ dependencies:
   image_picker: ^1.2.4
   # Seçilen fotoğrafı yüklemeden önce küçültmek için — web tarafı da 1280px'e
   # indirip data: URI olarak gönderiyor, mobil aynı biçimi kullanmalı.
-  image: ^4.10.2
+  image: ^4.12.0
   # Harita — OpenStreetMap tabanlı, API anahtarı GEREKTİRMEZ (Google Maps
   # aksine). Web tarafı da aynı Carto döşemelerini kullanıyor.
   flutter_map: ^8.3.2

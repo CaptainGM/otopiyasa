@@ -88,14 +88,16 @@ export function DegerKaybi() {
 
   // Marka ve model listesi (bir kez; varsayılan Renault Megane, yoksa ilk marka)
   useEffect(() => {
-    fetch("/api/analytics/model-breakdown")
+    fetch("/api/analytics/model-breakdown?v=2")
       .then((r) => r.json())
       .then((res) => {
         if (!res.brands?.length) return;
+        // Aile listesi (Tiggo 7 Pro tek seçenek, donanımları ayrı değil); eski yanıtta ham model listesi.
+        const families: Record<string, string[]> = res.brandFamilies || res.brandModels || {};
         setBrands(res.brands);
-        setBrandModels(res.brandModels || {});
+        setBrandModels(families);
         const b = res.brands.includes("Renault") ? "Renault" : res.brands[0];
-        const models: string[] = res.brandModels?.[b] || [];
+        const models: string[] = families[b] || [];
         setBrand(b);
         setModel(models.includes("Megane") ? "Megane" : models[0] || "");
       })
@@ -106,7 +108,7 @@ export function DegerKaybi() {
     if (!brand || !model) return () => {};
     let alive = true;
     const range = KM_RANGES[kmIndex];
-    const params = new URLSearchParams({ brand, model });
+    const params = new URLSearchParams({ brand, model, v: "2" });
     if (condition !== "all") params.set("hasar", condition);
     if (range.min) params.set("kmMin", String(range.min));
     if (range.max) params.set("kmMax", String(range.max));

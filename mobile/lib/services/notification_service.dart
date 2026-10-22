@@ -56,7 +56,8 @@ class NotificationService {
   /// Girişten sonra çağrılır; çıkışta [stop] ile durdurulur.
   void startPolling() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 60), (_) => _check());
+    // 5 dk: her girişli uygulama örneği sunucu fonksiyonunu dakikada bir çağırmasın (işlemci kotası); açılışta yine hemen kontrol edilir.
+    _timer = Timer.periodic(const Duration(minutes: 5), (_) => _check());
     _check();
   }
 

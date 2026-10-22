@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelFamilies, modelFamily, modelFamilyKey, modelFamilyRegex } from "./model-family";
+import { familyModelNames, modelFamilies, modelFamily, modelFamilyKey, modelFamilyRegex } from "./model-family";
 
 describe("modelFamily", () => {
   it("donanımı atıp model adını bırakır", () => {
@@ -123,5 +123,28 @@ describe("marka adıyla başlayan model adları", () => {
     expect(modelFamily("Seat Leon 1.6", "Seat")).toBe("Leon");
     expect(modelFamily("Mini", "Mini")).toBe("Mini");
     expect(modelFamily("Corolla 1.6", "Toyota")).toBe("Corolla");
+  });
+});
+
+describe("familyModelNames", () => {
+  // Gerçek veritabanındaki Chery adları (ölçüm: 34 ham ad, 14 aile; Tiggo 7 için 7 ham ad).
+  const chery = ["TIGGO7 PRO", "Tiggo 7", "Tiggo 7 Pro Max Intelligent", "Tiggo 7 Pro Max", "Tiggo 7 Pro", "Tiggo 7 Pro Excellent", "Tiggo 8 Pro"];
+
+  it("Tiggo 7 Pro seçilince tüm Tiggo 7 Pro donanımlarını toplar, Pro Max ve Tiggo 7'yi katmaz", () => {
+    const names = familyModelNames(chery, "Chery", "Tiggo 7 Pro");
+    expect(names.sort()).toEqual(["TIGGO7 PRO", "Tiggo 7 Pro", "Tiggo 7 Pro Excellent"].sort());
+  });
+
+  it("Pro Max ailesi kendi donanımlarını toplar", () => {
+    expect(familyModelNames(chery, "Chery", "Tiggo 7 Pro Max").sort()).toEqual(["Tiggo 7 Pro Max", "Tiggo 7 Pro Max Intelligent"].sort());
+  });
+
+  it("donanım adıyla da seçilse aynı aileyi bulur (eski istemciler)", () => {
+    expect(familyModelNames(chery, "Chery", "Tiggo 7 Pro Excellent").length).toBe(3);
+  });
+
+  it("ailede olmayan ya da boş model için boş döner", () => {
+    expect(familyModelNames(chery, "Chery", "Arrizo 5")).toEqual([]);
+    expect(familyModelNames(chery, "Chery", "")).toEqual([]);
   });
 });

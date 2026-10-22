@@ -79,7 +79,8 @@ class _DegerKaybiScreenState extends State<DegerKaybiScreen> {
     try {
       final data = await _api.fetchModelBreakdown();
       final brands = (data['brands'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
-      final raw = data['brandModels'] as Map<String, dynamic>? ?? {};
+      // Aile listesi: "Tiggo 7 Pro Excellent" ve "Tiggo 7 Pro Luxury" tek "Tiggo 7 Pro" seçeneği; eski sunucuda ham liste.
+      final raw = (data['brandFamilies'] ?? data['brandModels']) as Map<String, dynamic>? ?? {};
       final brandModels = raw.map((k, v) => MapEntry(k, (v as List<dynamic>).map((e) => e.toString()).toList()));
       if (!mounted) return;
       final brand = brands.contains('Renault') ? 'Renault' : (brands.isNotEmpty ? brands.first : '');
@@ -397,26 +398,41 @@ class _DegerKaybiScreenState extends State<DegerKaybiScreen> {
   }
 
   Widget _kpiGrid(Map<String, dynamic>? e, AppColors c) {
-    final tiles = <Widget>[
-      _Kpi(label: 'Yaşın etkisi', value: _pct(e?['annualLossPct'] as num?), note: 'her ek yıl, aynı km ve durumda', color: AppTheme.accent),
-      _Kpi(label: 'Pratikte yıllık', value: _pct(e?['typicalAnnualLossPct'] as num?), note: 'yaş + yılda ~15 bin km', color: AppTheme.accent),
-      _Kpi(label: '10 bin km', value: _pct(e?['per10kKmLossPct'] as num?), note: 'aynı yaşta her 10.000 km', color: c.fair),
-      _Kpi(label: 'Hasar kayıtlı', value: _pct(e?['damagePct'] as num?, signed: true), note: 'hasarsıza göre fiyat farkı', color: _damaged),
-      _Kpi(label: 'Boyalı / değişen', value: _pct(e?['paintPct'] as num?, signed: true), note: 'hasarsıza göre fiyat farkı', color: _painted),
-    ];
+    // Gruplar: aynı türden etkiler birlikte (yaş, kilometre, hasar ve boya). Eskiden iki sütunlu ızgara türleri karıştırıyordu.
+    Widget group(String title, List<_Kpi> tiles) => Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(trUpper(title), style: AppText.eyebrow(context, size: 10)),
+              const SizedBox(height: 6),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < tiles.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      Expanded(child: tiles[i]),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
     return Column(
       children: [
-        for (var i = 0; i < tiles.length; i += 2)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Expanded(child: tiles[i]),
-                const SizedBox(width: 8),
-                Expanded(child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox.shrink()),
-              ],
-            ),
-          ),
+        group('Yaş', [
+          _Kpi(label: 'Yaşın etkisi', value: _pct(e?['annualLossPct'] as num?), note: 'her ek yıl, aynı km ve durumda', color: AppTheme.accent),
+          _Kpi(label: 'Pratikte yıllık', value: _pct(e?['typicalAnnualLossPct'] as num?), note: 'yaş + yılda ~15 bin km', color: AppTheme.accent),
+        ]),
+        group('Kilometre', [
+          _Kpi(label: '10 bin km', value: _pct(e?['per10kKmLossPct'] as num?), note: 'aynı yaşta her 10.000 km', color: c.fair),
+        ]),
+        group('Hasar ve boya', [
+          _Kpi(label: 'Hasar kayıtlı', value: _pct(e?['damagePct'] as num?, signed: true), note: 'hasarsıza göre fiyat farkı', color: _damaged),
+          _Kpi(label: 'Boyalı / değişen', value: _pct(e?['paintPct'] as num?, signed: true), note: 'hasarsıza göre fiyat farkı', color: _painted),
+        ]),
       ],
     );
   }
@@ -566,7 +582,6 @@ class _Kpi extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = AppColors.of(context);
     return Container(
-      height: 104,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: Theme.of(context).cardTheme.color, borderRadius: BorderRadius.circular(14), border: Border.all(color: c.border)),
       child: Row(
@@ -579,11 +594,11 @@ class _Kpi extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(trUpper(label), maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.eyebrow(context, size: 9.5)),
-                  const Spacer(),
+                  Text(trUpper(label), style: AppText.eyebrow(context, size: 9.5)),
+                  const SizedBox(height: 8),
                   FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(value, style: AppText.num(size: 22, weight: FontWeight.w600, color: value == '—' ? c.faint : color))),
-                  const SizedBox(height: 3),
-                  Text(note, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: c.muted, fontSize: 11.5, height: 1.25)),
+                  const SizedBox(height: 4),
+                  Text(note, style: TextStyle(color: c.muted, fontSize: 11.5, height: 1.25)),
                 ],
               ),
             ),
@@ -617,7 +632,7 @@ class _PickerButton extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label, style: TextStyle(color: c.muted, fontSize: 11.5)),
-                  Text(value.isEmpty ? '—' : value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                  Text(value.isEmpty ? '—' : value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
                 ],
               ),
             ),

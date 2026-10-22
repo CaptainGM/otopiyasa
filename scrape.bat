@@ -30,7 +30,8 @@ echo    6  - Nadir MODEL        (kademeli: once her modeli 5 ilana, sonra 10, 15
 echo    7  - Nadir MODEL genis  (ayni kademeli mantik, tur basina 500 modele kadar)
 echo    23 - Populer aileler    (100+ ilanli modellerde 2020 ve sonrasi ilanlari hedefe kadar tamamlar; yil liste sayfasindan suzulur)
 echo    22 - Marka/Model katalogu (kaynagin kendi model listesini okur; ayri model listesi ve eksik modeller buradan gelir, ~25 dk)
-echo    20 - Seyrek piyasa emsali (Aykiri deger sonrasi 3'ten az marka/model/yil ilani)
+echo    20 - AZ EMSALLI SEGMENT (marka/model/yil, 12'den az ilanli olanlari 12'ye tamamlar; en azlilar once)
+echo    24 - YENI NESIL TAM (2020 ve sonrasi, tum aileler; aile basina 1000'e kadar)
 echo    4  - Nadir MARKA        (^<40 ilanli markalari Arabam'da tarar: Alfa, Jeep vb.)
 echo    5  - En Az Markalar     (^<15 ilanli nadir markalari Arabam'da 20 sayfa tarar)
 echo.
@@ -129,7 +130,8 @@ echo.
 echo   Hangi tarama?
 echo     6  - Nadir MODEL         (en az ilanli model aileleri)
 echo     7  - Nadir MODEL genis   (en az ilanli, daha cok model ailesi)
-echo    20  - Seyrek piyasa emsali (3'ten az ilanli marka/model/yil)
+echo    20  - Az emsalli segment (12'den az ilanli marka/model/yil; en azlilar once, 12'ye tamamlar)
+echo    24  - Yeni nesil TAM    (2020 ve sonrasi, tum aileler; aile basina 1000'e kadar)
 echo    21  - Son 3 gun ilanlari (en yeni ilanlar)
 echo     2  - Genis Arabam taramasi (tum markalar)
 echo    11  - Arabam Dogrula (eski ilanlarin fiyat/km/aciklama kontrolu; 6 sn aralik, tur 600 ilan, mola 15 dk onerilir)

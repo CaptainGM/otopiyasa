@@ -150,6 +150,17 @@ function preferLabel(a: string, b: string): string {
   return a.length <= b.length ? a : b;
 }
 
+/**
+ * Seçilen aileye (ör. "Tiggo 7 Pro") ait ham model adlarını verir: donanım adları ("Tiggo 7 Pro Excellent") aynı aileye
+ * düşer, "Tiggo 7 Pro Max" ayrı ailedir. Değer kaybı gibi ekranlar ham ada tam eşleşme yerine bununla süzer; yoksa tek bir
+ * donanımın az ilanı yüzünden etkiler "—" çıkıyordu.
+ */
+export function familyModelNames(names: string[], brand: string, model: string): string[] {
+  const key = modelFamilyKey(model, brand);
+  if (!key) return [];
+  return [...new Set(names.filter((name) => modelFamilyKey(name, brand) === key))];
+}
+
 /** Model listesini aile listesine indirger (sıralı, tekrar yok). */
 export function modelFamilies(models: string[], brand?: string | null): string[] {
   const byKey = new Map<string, string>();

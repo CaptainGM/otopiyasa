@@ -233,6 +233,9 @@ async function main() {
       const { refreshMarketSnapshot } = await import("@/lib/market-snapshot");
       const res = await refreshMarketSnapshot();
       log(`📊 [PİYASA] ${res.segments} segment, ${res.scanned} ilan; ${res.updated} güncellendi, ${res.cleared} temizlendi.`);
+      // Ana sayfa panosundaki "öne çıkan ilan" sayısı: ağır tarama burada (VM) yapılır, web yalnızca sonucu okur (Vercel kotası).
+      const { refreshFeaturedStat } = await import("@/lib/market-board");
+      log(`⭐ [ÖNE ÇIKAN] ${await refreshFeaturedStat()} ilan.`);
       // Adil piyasa değeri (kart göstergesi, ilan sayfası, fırsatlar): eksik, eski ya da fiyatı değişmiş ilanlar.
       const { refreshFairValues } = await import("@/lib/market-fair");
       // Birikmiş iş varsa (hesap mantığı sürümü artınca tüm ilanlar) aynı saatte birkaç parti: kartlar bir günü beklemesin.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:otopiyasa/screens/notifications_screen.dart';
 import 'package:otopiyasa/screens/sell_screen.dart';
 import 'package:otopiyasa/screens/assistant_screen.dart';
 import 'package:otopiyasa/widgets/home_strips.dart';
+import 'package:otopiyasa/widgets/market_board_panel.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/services/update_service.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
@@ -107,6 +109,13 @@ class _HomeScreenState extends State<HomeScreen> {
   final _mileageMaxController = TextEditingController();
   int? get _mileageMin => int.tryParse(_mileageMinController.text.replaceAll(RegExp(r'[^0-9]'), ''));
   int? get _mileageMax => int.tryParse(_mileageMaxController.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  final _priceMinController = TextEditingController();
+  final _priceMaxController = TextEditingController();
+  int? get _priceMin => int.tryParse(_priceMinController.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  int? get _priceMax => int.tryParse(_priceMaxController.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  // Yazılırken (km, fiyat) yeniden yüklemeyi bekletir; açık filtre sayfasındaki ilan sayısı da yükleme bitince güncellenir.
+  Timer? _reloadTimer;
+  VoidCallback? _sheetRefresh;
 
   List<String> _brands = _fallbackBrands;
   Map<String, List<String>> _brandModels = {};
@@ -126,6 +135,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _seller.isNotEmpty ||
       _mileageMin != null ||
       _mileageMax != null ||
+      _priceMin != null ||
+      _priceMax != null ||
       _vehicleClass.isNotEmpty;
 
   @override
@@ -175,6 +186,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollController.dispose();
     _mileageMinController.dispose();
     _mileageMaxController.dispose();
+    _priceMinController.dispose();
+    _priceMaxController.dispose();
+    _reloadTimer?.cancel();
     super.dispose();
   }
 
@@ -216,6 +230,8 @@ class _HomeScreenState extends State<HomeScreen> {
         excludeOutliers: _excludeOutliers,
         mileageMin: _mileageMin,
         mileageMax: _mileageMax,
+        priceMin: _priceMin,
+        priceMax: _priceMax,
         seller: _seller,
         noDamage: _noDamage,
         page: nextPage,
@@ -243,6 +259,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _loading = false;
           _loadingMore = false;
         });
+        _refreshFilterSheet();
       }
     }
   }
@@ -286,6 +303,8 @@ class _HomeScreenState extends State<HomeScreen> {
       (_seller.isNotEmpty ? 1 : 0) +
       (_mileageMin != null ? 1 : 0) +
       (_mileageMax != null ? 1 : 0) +
+      (_priceMin != null ? 1 : 0) +
+      (_priceMax != null ? 1 : 0) +
       (_sort != 'mixed' ? 1 : 0);
 
   Widget _filterButton() {
@@ -357,6 +376,10 @@ class _HomeScreenState extends State<HomeScreen> {
       isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheet) {
+          // Yükleme bitince sayfadaki "N ilanı göster" sayısı tazelensin (sayfa kapanmışsa dokunma).
+          _sheetRefresh = () {
+            if (sheetContext.mounted) setSheet(() {});
+          };
           void refresh(VoidCallback change) {
             change();
             setSheet(() {});
@@ -366,7 +389,9 @@ class _HomeScreenState extends State<HomeScreen> {
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
+              // Kaydırılabilir: küçük ekranda fiyat/km satırları eklenince alttaki "ilan göster" düğmesi taşmasın.
+              child: SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -395,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           value: _model,
                           options: ['', ..._models],
                           enabled: _models.isNotEmpty,
-                          emptyLabel: _brand.isEmpty ? 'Önce marka seçin' : 'Tümü',
+                          emptyLabel: _brand.isEmpty ? 'Marka seçin' : 'Tümü',
                           onChanged: (value) => refresh(() => _model = value),
                         ),
                       ),
@@ -428,23 +453,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _mileageMinController,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(labelText: 'Min km', isDense: true),
-                        ),
-                      ),
+                      Expanded(child: _numberField(_mileageMinController, 'Min km')),
                       const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _mileageMaxController,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(labelText: 'Maks km', isDense: true),
-                        ),
-                      ),
+                      Expanded(child: _numberField(_mileageMaxController, 'Maks km')),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: _numberField(_priceMinController, 'Min fiyat (₺)')),
+                      const SizedBox(width: 8),
+                      Expanded(child: _numberField(_priceMaxController, 'Maks fiyat (₺)')),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -542,6 +561,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     _seller = '';
                                     _mileageMinController.clear();
                                     _mileageMaxController.clear();
+                                    _priceMinController.clear();
+                                    _priceMaxController.clear();
                                   });
                                   _loadCars(reset: true);
                                 },
@@ -559,12 +580,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
+              ),
             ),
           );
         },
       ),
     );
+    _sheetRefresh = null;
   }
+
+  /// Sayı alanı (km, fiyat): yazarken sonuçlar 500 ms sonra yenilenir, klavyedeki "Bitti" ile hemen yenilenir.
+  Widget _numberField(TextEditingController controller, String label) => TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        textInputAction: TextInputAction.done,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        onChanged: (_) => _scheduleReload(),
+        onSubmitted: (_) {
+          _reloadTimer?.cancel();
+          _loadCars(reset: true);
+        },
+        decoration: InputDecoration(labelText: label, isDense: true),
+      );
+
+  void _scheduleReload() {
+    _reloadTimer?.cancel();
+    _reloadTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) _loadCars(reset: true);
+    });
+  }
+
+  /// Açık filtre sayfasındaki "N ilanı göster" sayısını, yükleme bitince tazeler.
+  void _refreshFilterSheet() => _sheetRefresh?.call();
 
   Widget _resultsHeader() {
     final c = AppColors.of(context);
@@ -655,8 +702,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? (isSelected ? Colors.white : Colors.white60)
                 : Colors.white24,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );
@@ -784,6 +829,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 12),
+            // Pano yalnızca filtre yokken: arama/filtre sonuçları pano kartının altına itilmesin (web ana sayfasıyla aynı).
+            if (!_hasActiveFilters) const MarketBoardPanel(),
             _vehicleClassChips(),
             const SizedBox(height: 18),
             if (!_hasActiveFilters && _vehicleClass.isEmpty) ...[

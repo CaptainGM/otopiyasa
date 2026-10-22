@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRealListPage, isRequestedModelPage, judgeAttempt, lastSlug, reasonLabel } from "./model-page";
+import { DEAD_FAMILY_RETRY_DAYS, deadFamilyRetryDays, isRealListPage, isRequestedModelPage, judgeAttempt, lastSlug, reasonLabel } from "./model-page";
 
 describe("lastSlug", () => {
   it("adresin son yol parçasını verir, sorguyu atar", () => {
@@ -74,5 +74,26 @@ describe("reasonLabel", () => {
   it("bilinen gerekçelere Türkçe açıklama verir, bilinmeyene boş", () => {
     expect(reasonLabel("unavailable")).toContain("model sayfası yok");
     expect(reasonLabel(undefined)).toBe("");
+  });
+});
+
+describe("deadFamilyRetryDays", () => {
+  it("tükendi/boş ve hiç ilan eklenmediyse uzun beklemeye alınır (aynı taramayı boşuna tekrarlamasın)", () => {
+    expect(deadFamilyRetryDays("exhausted", 14, 0)).toBe(DEAD_FAMILY_RETRY_DAYS);
+    expect(deadFamilyRetryDays("empty", 7, 0)).toBe(DEAD_FAMILY_RETRY_DAYS);
+  });
+
+  it("bu denemede ilan eklendiyse (aile büyüyor) süre uzatılmaz", () => {
+    expect(deadFamilyRetryDays("exhausted", 14, 3)).toBe(14);
+  });
+
+  it("belirsiz/yanlış eşleşme gerekçelerinde (unknown, mismatch, unavailable) süre uzatılmaz", () => {
+    expect(deadFamilyRetryDays("unknown", 1, 0)).toBe(1);
+    expect(deadFamilyRetryDays("mismatch", 14, 0)).toBe(14);
+    expect(deadFamilyRetryDays("unavailable", 7, 0)).toBe(7);
+  });
+
+  it("normal süre zaten uzunsa kısaltmaz", () => {
+    expect(deadFamilyRetryDays("exhausted", 90, 0)).toBe(90);
   });
 });

@@ -30,9 +30,15 @@ export function normalizeTransmission(raw?: string | null): "Manuel" | "Otomatik
 }
 
 /** Chery Tiggo 7 Pro'nun Türkiye'de listelenen otomatik sürümlerinde kaynaklar DCT'yi iki adla yazıyor. */
+/**
+ * Başlık ya da açıklamada geçen, otomatik şanzımanı belirten adlar. Yanında ASCII harf olmamalı: "EPDK" içindeki "pdk"
+ * eşleşmemeli. Metin küçük harfe çevrilir (ı/ş/ç olduğu gibi kalır, ASCII'ye katlanmaz). "s-tronic" ve "s tronic" birlikte.
+ */
+const AUTOMATIC_NAME_IN_TEXT = /(?<![a-z])(dsg|dct|edc|pdk|cvt|multitronic|multitronik|tiptronic|tiptronik|s[ -]?tronic)(?![a-z])/;
+
 export function normalizeVehicleTransmission(
   raw?: string | null,
-  vehicle?: { brand?: string | null; model?: string | null; title?: string | null }
+  vehicle?: { brand?: string | null; model?: string | null; title?: string | null; description?: string | null }
 ): "Manuel" | "Otomatik" | "Yarı Otomatik" | null {
   const normalized = normalizeTransmission(raw);
   const foldText = (value?: string | null) => fold(value || "");
@@ -40,6 +46,11 @@ export function normalizeVehicleTransmission(
   if (/\bchery\b/.test(identity) && /tiggo\s*7\s*pro/.test(identity) && normalized === "Yarı Otomatik") {
     return "Otomatik";
   }
+  // Kaynaklar DSG, DCT, EDC, S-tronic gibi çift kavramalı otomatiği "yarı otomatik" diye de yazabiliyor. Başlık ya da
+  // açıklamada bu şanzıman adlarından biri açıkça geçiyorsa otomatiktir ("Selespeed", "Dualogic" gibi gerçek yarı otomatikler kalır).
+  // "İ" önce "i"ye çevrilir; yoksa tr-TR büyük "I"yı "ı" yapar ve "TRONIC" yakalanamaz.
+  const nameText = `${vehicle?.title || ""} ${vehicle?.description || ""}`.replace(/İ/g, "i").toLowerCase();
+  if (normalized === "Yarı Otomatik" && AUTOMATIC_NAME_IN_TEXT.test(nameText)) return "Otomatik";
   return normalized;
 }
 

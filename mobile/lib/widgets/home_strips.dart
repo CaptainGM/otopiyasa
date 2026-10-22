@@ -4,6 +4,7 @@ import 'package:otopiyasa/models/car.dart';
 import 'package:otopiyasa/screens/detail_screen.dart';
 import 'package:otopiyasa/services/api_service.dart';
 import 'package:otopiyasa/screens/nearby_screen.dart';
+import 'package:otopiyasa/screens/photo_viewer_screen.dart';
 import 'package:otopiyasa/screens/search_results_screen.dart';
 import 'package:otopiyasa/services/recently_viewed_store.dart';
 import 'package:otopiyasa/theme/app_theme.dart';
@@ -33,10 +34,15 @@ Widget _miniCard(BuildContext context, CarListing car, {String? badge, bool chea
         children: [
           Stack(
             children: [
-              AspectRatio(
-                aspectRatio: 16 / 10,
-                // İlk fotoğraf kaynakta silinmişse ilanın diğer fotoğrafı denenir.
-                child: ListingImage(url: car.imageUrl, fallbacks: car.images, cacheWidth: 480),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                // Fotoğrafa dokunmak büyütür; kartın geri kalanı ilanı açar.
+                onTap: () => openPhotoViewer(context, [car.imageUrl, ...car.images]),
+                child: AspectRatio(
+                  aspectRatio: 16 / 10,
+                  // İlk fotoğraf kaynakta silinmişse ilanın diğer fotoğrafı denenir.
+                  child: ListingImage(url: car.imageUrl, fallbacks: car.images, cacheWidth: 480),
+                ),
               ),
               if (badge != null)
                 Positioned(

@@ -575,6 +575,8 @@ function limitJob(job) {
 
 let totalInserted = 0;
 let totalVerified = 0;
+// Bu turda Arabam engeli (hız sınırı / Cloudflare) görüldü mü: engelli tur "ilan kalmadı" sayılmaz (bkz. zamanlı döngü).
+let blockedRound = false;
 
 async function runJobsOnce() {
   for (const baseJob of mode.jobs) {
@@ -603,8 +605,13 @@ async function runJobsOnce() {
         const del = data.deleted ?? 0;
         totalInserted += data.inserted ?? 0;
         log(`  ✓ ${job.label || job.source} tamamlandı:  yeni=${data.inserted ?? 0}  güncellenen=${data.updated ?? 0}  kaldırılan=${del}`);
+        if (/hız sınırı|Cloudflare/i.test(data.message ?? "")) {
+          blockedRound = true;
+          log(`  ⛔ ${data.message}`);
+        }
       } else {
         log(`HATA (${job.label || job.source}): HTTP ${response.status} — ${data.error ?? "bilinmeyen"}`);
+        if (/hız sınırı|Cloudflare/i.test(data.error ?? "")) blockedRound = true;
       }
     } catch (error) {
       process.stdout.write("\n");
@@ -619,10 +626,14 @@ if (!timed) {
 } else {
   log(`Zamanli mod: tur basina ~${roundListings} ilan, turlar arasi ${breakMinutes} dk mola, ${maxRounds ? maxRounds + " tur" : "sen durdurana kadar (Ctrl+C)"}.`);
   let emptyRounds = 0;
+  // Engelli turlar sayılmaz; art arda engelde mola iki katına çıkar (en çok 120 dk). Engelsiz tur molayı temel değere indirir.
+  let blockStreak = 0;
+  const maxBreakMinutes = Math.max(120, breakMinutes);
   for (let round = 1; !maxRounds || round <= maxRounds; round++) {
     // İlerleme: yeni eklenen ilanlar ve doğrulanan ilanlar birlikte sayılır (doğrulama modunda yeni ilan olmayabilir).
     const before = totalInserted + totalVerified;
     const startedAt = Date.now();
+    blockedRound = false;
     await ensureServer();
     log(`──── TUR ${round}${maxRounds ? "/" + maxRounds : ""} basliyor ────`);
     await runJobsOnce();
@@ -630,18 +641,28 @@ if (!timed) {
     const added = totalInserted + totalVerified - before;
     clearLine();
     log(`TUR ${round} bitti: +${added} ilan (yeni ve doğrulanan), ${Math.round((Date.now() - startedAt) / 60000)} dk surdu (toplam yeni +${totalInserted}, doğrulanan ${totalVerified}).`);
-    emptyRounds = added === 0 ? emptyRounds + 1 : 0;
-    if (emptyRounds >= 2) {
-      log("Art arda 2 turda yeni ilan gelmedi: bu tarama icin eklenecek ilan kalmamis ya da Arabam engel veriyor. Durduruluyor.");
-      break;
+    if (blockedRound) {
+      blockStreak += 1;
+    } else {
+      blockStreak = 0;
+      emptyRounds = added === 0 ? emptyRounds + 1 : 0;
+      if (emptyRounds >= 2) {
+        log("Art arda 2 turda yeni ilan gelmedi: bu tarama icin eklenecek ilan kalmamis ya da Arabam engel veriyor. Durduruluyor.");
+        break;
+      }
     }
     if (maxRounds && round >= maxRounds) break;
-    const until = new Date(Date.now() + breakMinutes * 60000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    const waitMinutes = blockedRound ? Math.min(breakMinutes * 2 ** (blockStreak - 1), maxBreakMinutes) : breakMinutes;
+    const until = new Date(Date.now() + waitMinutes * 60000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
     stopServer(); // molada sunucu ve Chrome kapalı: işlemci/bellek boşta
-    log(`Mola: ${breakMinutes} dk (saat ${until}'e kadar; sunucu kapatildi). Durdurmak icin pencereyi kapat ya da Ctrl+C.`);
-    for (let left = breakMinutes; left > 0; left--) {
+    if (blockedRound) {
+      log(`Arabam bu bağlantıyı engelliyor (${blockStreak}. engel): ${waitMinutes} dk mola (saat ${until}'e kadar), sonra yeniden denenecek. Engel sürerse mola en çok ${maxBreakMinutes} dk olur.`);
+    } else {
+      log(`Mola: ${waitMinutes} dk (saat ${until}'e kadar; sunucu kapatildi). Durdurmak icin pencereyi kapat ya da Ctrl+C.`);
+    }
+    for (let left = waitMinutes; left > 0; left--) {
       await new Promise((r) => setTimeout(r, 60000));
-      if (left % 10 === 0 && left !== breakMinutes) log(`  mola: ${left} dk kaldi`);
+      if (left % 10 === 0 && left !== waitMinutes) log(`  mola: ${left} dk kaldi`);
     }
   }
 }

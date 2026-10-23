@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isCloudflareChallenge, isListingGone, normalizeArabamGallery } from "./browser-scrape";
+import { isCloudflareChallenge, isCloudflareHardBlock, isHeavyArabamRequest, isListingGone, normalizeArabamGallery } from "./browser-scrape";
 
 describe("isListingGone", () => {
   it("detects search redirect URLs as gone", () => {
@@ -131,6 +131,29 @@ describe("parseArabamDetailHtml etiket yazımı", () => {
     );
     expect(listing?.confirmedFeatures).not.toContain("bodyType");
     expect(listing?.confirmedFeatures).not.toContain("fuelType");
+  });
+});
+
+describe("Arabam engel ve ağır istek filtresi", () => {
+  it("sert IP engelini ayırt eder; JS sınaması ve normal sayfa engel değildir", () => {
+    expect(isCloudflareHardBlock("<html><head><title>Attention Required! | Cloudflare</title></head></html>")).toBe(true);
+    expect(isCloudflareHardBlock("<html><head><title>Just a moment...</title></head></html>")).toBe(false);
+    expect(isCloudflareHardBlock("<html><head><title>BMW 3 Serisi | Arabam</title></head></html>")).toBe(false);
+    expect(isCloudflareHardBlock("")).toBe(false);
+  });
+
+  it("Arabam sayfasında görsel, medya ve yazı tipini keser; betik ve stil dosyalarına dokunmaz", () => {
+    const page = "https://www.arabam.com/ilan/bmw-3-serisi/41921782";
+    const photo = "https://arbstorage.mncdn.com/ilanfotograflari/2026/07/19/1/a_image_for_silan_1_800x600.jpg";
+    expect(isHeavyArabamRequest(photo, "image", page)).toBe(true);
+    expect(isHeavyArabamRequest("https://www.arabam.com/font/x.woff2", "font", page)).toBe(true);
+    expect(isHeavyArabamRequest("https://www.arabam.com/static/app.js", "script", page)).toBe(false);
+    expect(isHeavyArabamRequest("https://www.arabam.com/static/app.css", "stylesheet", page)).toBe(false);
+  });
+
+  it("Arabam dışındaki sayfalara ve belgelere dokunmaz", () => {
+    expect(isHeavyArabamRequest("https://cdn.example.com/a.jpg", "image", "https://www.sahibinden.com/ilan/1")).toBe(false);
+    expect(isHeavyArabamRequest("https://www.arabam.com/ikinci-el", "document", "https://www.arabam.com/ikinci-el")).toBe(false);
   });
 });
 

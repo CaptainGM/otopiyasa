@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import type { Route } from "playwright";
 import { isNonCarBrand, normalizeBrand } from "@/lib/normalize-brand";
 import { cityToCoords } from "@/lib/city-coords";
 import { classFromSourceCategory } from "@/lib/vehicle-scope";
@@ -220,6 +221,15 @@ export async function fetchPageHtml(url: string, options: FetchPageOptions = {})
     }
   }
 
+  // Arabam'ın 403/429 gövdesi okunur: sert IP engeliyse çerez yenileme, yeniden deneme ve tarayıcı zinciri engeli yalnızca uzatır.
+  let body: string | null = null;
+  if ((response.status === 429 || response.status === 403) && hostname.includes("arabam.com")) {
+    body = await response.text();
+    if (isCloudflareHardBlock(body)) {
+      return { ok: false, status: response.status, html: "", finalUrl: response.url || url };
+    }
+  }
+
   if (response.status === 429 || response.status === 403) {
     if (hostname.includes("arabam.com")) {
       // Çerezi sıfırla, taze oturum al ve bir kez daha dene
@@ -269,7 +279,7 @@ export async function fetchPageHtml(url: string, options: FetchPageOptions = {})
     }
   }
 
-  const html = await response.text();
+  const html = body ?? (await response.text());
   if (response.ok && isCloudflareChallenge(html)) {
     return { ok: false, status: 403, html: "", finalUrl: response.url || url };
   }
@@ -279,6 +289,37 @@ export async function fetchPageHtml(url: string, options: FetchPageOptions = {})
     html,
     finalUrl: response.url || url,
   };
+}
+
+/**
+ * Cloudflare'in IP engeli sayfası ("Attention Required! | Cloudflare"): çerez de tarayıcı da bunu aşmaz, her ek istek engeli uzatır.
+ * "Just a moment..." (JS sınaması) bundan ayrıdır.
+ */
+export function isCloudflareHardBlock(html: string): boolean {
+  return !!html && /<title>\s*Attention Required/i.test(html.slice(0, 6000));
+}
+
+/** İlan görsellerinin depolama adresleri (galeri ve küçük resimler). */
+const ARABAM_IMAGE_HOSTS = new Set(["arbstorage.mncdn.com", "arbimg1.mncdn.com"]);
+/** Veri taşımayan ağır istek türleri: ilan bilgisi HTML'den okunur. */
+const HEAVY_RESOURCE_TYPES = new Set(["image", "media", "font"]);
+
+function isArabamUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return /(^|\.)arabam\.com$/.test(host) || ARABAM_IMAGE_HOSTS.has(host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Arabam sayfasının ağır, veri taşımayan istekleri (görsel, medya, yazı tipi) kesilir. Bir ilan sayfası bunlarla onlarca istek ve
+ * yüzlerce KB demekti; trafik Cloudflare'in hacim engelini tetikliyordu (23 Eki 2026). Arabam dışındaki sayfalara dokunulmaz.
+ */
+export function isHeavyArabamRequest(requestUrl: string, resourceType: string, pageUrl: string): boolean {
+  if (!HEAVY_RESOURCE_TYPES.has(resourceType)) return false;
+  return isArabamUrl(pageUrl) || isArabamUrl(requestUrl);
 }
 
 /** Cloudflare "Just a moment..." / challenge sayfası mı? Bu sayfa asla ilan içeriği değildir. */
@@ -335,6 +376,17 @@ async function getSharedContext(hostname: string) {
         locale: "tr-TR",
         viewport: { width: 1440, height: 900 },
         storageState: storageStateByHost.get(hostname),
+      });
+      // Arabam sayfasının ağır istekleri kesilir (bkz. isHeavyArabamRequest); diğer sayfalar aynen geçer.
+      await sharedContext.route("**/*", (route: Route) => {
+        const request = route.request();
+        let pageUrl = "";
+        try {
+          pageUrl = request.frame().page().url();
+        } catch {
+          // sayfa bilinmiyorsa yalnızca isteğin kendi adresine bakılır
+        }
+        return isHeavyArabamRequest(request.url(), request.resourceType(), pageUrl) ? route.abort() : route.continue();
       });
       await sharedContext.addInitScript(() => {
         Object.defineProperty(navigator, "webdriver", { get: () => undefined });

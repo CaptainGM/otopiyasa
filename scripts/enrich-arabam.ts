@@ -123,6 +123,9 @@ async function main() {
     title?: string;
     imageUrl?: string;
     listingUrl?: string;
+    status?: string;
+    action?: "inserted" | "updated" | "deleted";
+    reason?: string;
   }> = [];
 
   // Canlı durumu MongoDB ManualScrapeLog'a senkronize et
@@ -154,7 +157,7 @@ async function main() {
                 deleted: removedCount,
               },
             },
-            sampleVehicles: sampleVehicles.slice(0, 30),
+            sampleVehicles: sampleVehicles.slice(0, 500),
           },
         }
       );
@@ -195,6 +198,22 @@ async function main() {
       if (!detail.ok) {
         if (detail.status === 404 || detail.status === 410) {
           removedCount += await archiveListings([car._id], `arabam: HTTP ${detail.status}`);
+          if (sampleVehicles.length < 500) {
+            sampleVehicles.push({
+              _id: String(car._id),
+              brand: car.brand || "Bilinmiyor",
+              model: car.model || "Bilinmiyor",
+              year: car.year || 0,
+              price: car.price || 0,
+              source: "arabam",
+              title: car.title || `${car.brand} ${car.model}`,
+              imageUrl: car.imageUrl || "",
+              listingUrl: car.listingUrl,
+              status: "removed",
+              action: "deleted",
+              reason: `arabam: HTTP ${detail.status} (Yayından kalkmış)`,
+            });
+          }
         } else {
           errorCount++;
         }
@@ -203,6 +222,22 @@ async function main() {
 
       if (isListingGone(detail.html, detail.finalUrl)) {
         removedCount += await archiveListings([car._id], "arabam: ilan sayfası kaldırılmış / kategoriye yönlendirilmiş");
+        if (sampleVehicles.length < 500) {
+          sampleVehicles.push({
+            _id: String(car._id),
+            brand: car.brand || "Bilinmiyor",
+            model: car.model || "Bilinmiyor",
+            year: car.year || 0,
+            price: car.price || 0,
+            source: "arabam",
+            title: car.title || `${car.brand} ${car.model}`,
+            imageUrl: car.imageUrl || "",
+            listingUrl: car.listingUrl,
+            status: "removed",
+            action: "deleted",
+            reason: "İlan sayfası kaldırılmış / kategoriye yönlendirilmiş",
+          });
+        }
         return;
       }
 
@@ -236,17 +271,19 @@ async function main() {
       enrichedCount++;
 
       // Örnek araç listesine ekle (Admin panelinde görsel kartlar için)
-      if (sampleVehicles.length < 30) {
+      if (sampleVehicles.length < 500) {
         sampleVehicles.push({
           _id: String(car._id),
           brand: car.brand || "Bilinmiyor",
           model: car.model || "Bilinmiyor",
           year: car.year || 0,
-          price: car.price || 0,
+          price: listing.price || car.price || 0,
           source: "arabam",
           title: car.title || `${car.brand} ${car.model}`,
           imageUrl: (listing.images && listing.images.length > 0) ? listing.images[0] : (car.imageUrl || ""),
           listingUrl: car.listingUrl,
+          status: "active",
+          action: "updated",
         });
       }
     } catch {

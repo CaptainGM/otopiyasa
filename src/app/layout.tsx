@@ -10,6 +10,7 @@ import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { appBaseUrl } from "@/lib/app-url";
 import { Logo } from "@/components/Logo";
+import { Analytics } from "@vercel/analytics/next";
 
 // Yazı ailesi (bkz. globals.css): gövde Inter, başlıklar geniş Archivo, rakamlar eş aralıklı IBM Plex Mono.
 // latin-ext: ğ, ş, ı, İ gibi Türkçe harfler yedek yazı tipine düşmesin.
@@ -184,6 +185,7 @@ export default function RootLayout({
         </Link>
         <ChatWidget />
         <MobileBottomNav />
+        <Analytics />
       </body>
     </html>
   );

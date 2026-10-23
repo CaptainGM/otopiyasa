@@ -177,6 +177,12 @@ const MODES = {
     jobs: [{ mode: "recent", days: 3, maxListings: 600, label: "Son 3 gun ilanlari" }],
   },
 };
+if (process.argv[2] === "24") {
+  const { spawnSync } = await import("node:child_process");
+  const subArgs = ["tsx", "scripts/scrape-2020.ts", ...process.argv.slice(3)];
+  const result = spawnSync("npx", subArgs, { stdio: "inherit", cwd: projectRoot, shell: true });
+  process.exit(result.status || 0);
+}
 
 const mode = MODES[process.argv[2]] || MODES[1];
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { requireAdmin } from "@/lib/auth";
 import { ManualScrapeLog } from "@/models/ManualScrapeLog";
+import { Car } from "@/models/Car";
 
 export const dynamic = "force-dynamic";
 
@@ -27,12 +28,44 @@ export async function GET() {
         status: 1,
         message: 1,
         createdAt: 1,
-        sampleVehicles: { $slice: 10 },
+        bySource: 1,
+        sampleVehicles: { $slice: 500 },
       }
     )
       .sort({ createdAt: -1 })
       .limit(30)
       .lean();
+
+    // Eski veya bos kayitlar icin gercek araclari Car koleksiyonundan doldur
+    for (const log of logs as any[]) {
+      if ((!log.sampleVehicles || log.sampleVehicles.length === 0) && (log.inserted > 0 || log.updated > 0)) {
+        try {
+          const src = log.source === "popular-recent" ? "arabam" : (log.source || "arabam");
+          const end = new Date(new Date(log.createdAt).getTime() + (Math.max(log.durationSeconds || 60, 60) + 120) * 1000);
+          
+          const fallbackCars = await Car.find(
+            { sourceSite: src, createdAt: { $lte: end } },
+            { brand: 1, model: 1, year: 1, price: 1, imageUrl: 1, listingUrl: 1, title: 1 }
+          ).sort({ createdAt: -1 }).limit(30).lean();
+
+          if (fallbackCars.length > 0) {
+            log.sampleVehicles = fallbackCars.map((c: any) => ({
+              _id: String(c._id),
+              brand: c.brand || "Bilinmiyor",
+              model: c.model || "Bilinmiyor",
+              year: c.year || 0,
+              price: c.price || 0,
+              source: src,
+              title: c.title || `${c.brand} ${c.model}`,
+              imageUrl: c.imageUrl || "",
+              listingUrl: c.listingUrl,
+              status: "active",
+              action: log.inserted > 0 ? "inserted" : "updated",
+            }));
+          }
+        } catch {}
+      }
+    }
 
     // "Bugün" Türkiye gününe göre (sunucu UTC'de çalışıyor; eskiden gün 03:00'te başlıyordu).
     const trNow = new Date(Date.now() + 3 * 60 * 60 * 1000);

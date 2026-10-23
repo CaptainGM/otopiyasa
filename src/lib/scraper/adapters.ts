@@ -794,7 +794,11 @@ export async function collectRecentArabamHrefs(
     let html = "";
     let finalUrl = base;
     try {
-      ({ html, finalUrl } = await listPageFromUrl(page > 1 ? `${base}?page=${page}` : base));
+      const pageParam = page > 1 ? `page=${page}` : "";
+      const yearParam = minYear ? `minYear=${minYear}` : "";
+      const query = [yearParam, pageParam].filter(Boolean).join("&");
+      const pageUrl = query ? `${base}?${query}` : base;
+      ({ html, finalUrl } = await listPageFromUrl(pageUrl));
     } catch (error) {
       if (isRateLimitError(error)) throw error;
       outcome = fresh.length > 0 ? "more" : "unknown";

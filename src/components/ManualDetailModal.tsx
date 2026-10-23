@@ -40,6 +40,8 @@ export interface ManualScrapeItem {
     listingUrl?: string;
     reason?: string;
     round?: string;
+    status?: string;
+    action?: "inserted" | "updated" | "deleted";
   }>;
   createdAt: string;
 }
@@ -68,9 +70,44 @@ export function ManualDetailModal({ log, onClose }: ManualDetailModalProps) {
     cars: any[];
   } | null>(null);
   const [inspectedCar, setInspectedCar] = useState<any | null>(null);
+  const [actionFilter, setActionFilter] = useState<"all" | "inserted" | "updated" | "deleted">("all");
   const [turFilter, setTurFilter] = useState<"all" | "has_dead" | "all_live">("all");
   const [turSearch, setTurSearch] = useState<string>("");
   const [visibleCount, setVisibleCount] = useState<number>(48);
+  const [carSearch, setCarSearch] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [dynamicVehicles, setDynamicVehicles] = useState<any[] | null>(null);
+  const [loadingVehicles, setLoadingVehicles] = useState<boolean>(false);
+  const CARS_PER_PAGE = 24;
+
+  useEffect(() => {
+    if (!log?._id) return;
+    const logId = log._id;
+    setDynamicVehicles(null);
+    let isCancelled = false;
+
+    async function fetchFullVehicles() {
+      try {
+        setLoadingVehicles(true);
+        const res = await fetch(`/api/admin/manual-scrapes/${logId}/vehicles`);
+        if (res.ok) {
+          const data = await res.json();
+          if (!isCancelled && Array.isArray(data.vehicles) && data.vehicles.length > 0) {
+            setDynamicVehicles(data.vehicles);
+          }
+        }
+      } catch {
+        // sessiz yut
+      } finally {
+        if (!isCancelled) setLoadingVehicles(false);
+      }
+    }
+
+    fetchFullVehicles();
+    return () => {
+      isCancelled = true;
+    };
+  }, [log?._id]);
 
   useEffect(() => {
     if (!log) return;
@@ -105,8 +142,58 @@ export function ManualDetailModal({ log, onClose }: ManualDetailModalProps) {
     });
   }, [log?.bySource]);
 
-  const allVehicles = useMemo(() => log?.sampleVehicles || [], [log?.sampleVehicles]);
+  const allVehicles = useMemo(() => dynamicVehicles || log?.sampleVehicles || [], [dynamicVehicles, log?.sampleVehicles]);
   const isTurScrape = useMemo(() => bySourceEntries.some(([k]) => k.startsWith("Tur")), [bySourceEntries]);
+
+  const getCarAction = (car: any): "inserted" | "updated" | "deleted" => {
+    if (car.action) return car.action;
+    if (car.status === "removed" || car.reason) return "deleted";
+    if (log && log.updated > 0 && log.inserted === 0) return "updated";
+    if (log?.label && (log.label.toLowerCase().includes("zenginleştir") || log.label.toLowerCase().includes("güncelle"))) return "updated";
+    if (log && log.deleted > 0 && log.inserted === 0 && log.updated === 0) return "deleted";
+    return "inserted";
+  };
+
+  const actionCounts = useMemo(() => {
+    let inserted = 0;
+    let updated = 0;
+    let deleted = 0;
+    for (const car of allVehicles) {
+      const act = getCarAction(car);
+      if (act === "inserted") inserted++;
+      else if (act === "updated") updated++;
+      else if (act === "deleted") deleted++;
+    }
+    return { inserted, updated, deleted };
+  }, [allVehicles, log]);
+
+  const filteredVehicles = useMemo(() => {
+    let list = allVehicles;
+    if (actionFilter !== "all") {
+      list = list.filter((c) => getCarAction(c) === actionFilter);
+    }
+    const q = carSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((c) => {
+        const text = `${c.brand || ""} ${c.model || ""} ${c.title || ""}`.toLowerCase();
+        return text.includes(q);
+      });
+    }
+    return list;
+  }, [allVehicles, actionFilter, carSearch, log]);
+
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredVehicles.length / CARS_PER_PAGE));
+  }, [filteredVehicles.length]);
+
+  const validCurrentPage = useMemo(() => {
+    return Math.min(Math.max(1, currentPage), totalPages);
+  }, [currentPage, totalPages]);
+
+  const paginatedVehicles = useMemo(() => {
+    const start = (validCurrentPage - 1) * CARS_PER_PAGE;
+    return filteredVehicles.slice(start, start + CARS_PER_PAGE);
+  }, [filteredVehicles, validCurrentPage]);
 
   // O(1) Pre-index Map: 3.036 aracı bir defa haritalar.
   // Render sırasında her tur için 3000 elemanlık filter dönmesini engeller.
@@ -468,39 +555,237 @@ export function ManualDetailModal({ log, onClose }: ManualDetailModalProps) {
               </div>
             ) : (
               allVehicles.length > 0 && (
-                <div className="pt-2 border-t border-white/10">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-                    <span>🚗</span>
-                    <span>Örnek İşlenen Araçlar ({Math.min(allVehicles.length, 48)} Araç)</span>
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {allVehicles.slice(0, 48).map((car, idx) => (
-                      <div
-                        key={car._id || idx}
-                        onClick={() => setInspectedCar(car)}
-                        className="rounded-xl bg-slate-900/70 border border-white/10 hover:border-amber-500/50 hover:bg-slate-900 p-3 flex gap-3 items-center cursor-pointer transition group shadow-sm"
-                      >
-                        {car.imageUrl ? (
-                          <img
-                            src={car.imageUrl}
-                            alt={car.title || `${car.brand} ${car.model}`}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-16 h-14 object-cover rounded-lg bg-slate-800 shrink-0 border border-white/10"
-                          />
-                        ) : (
-                          <div className="w-16 h-14 rounded-lg bg-slate-800 flex items-center justify-center text-xl shrink-0 border border-white/10">
-                            🚗
-                          </div>
+                <div className="pt-2 border-t border-white/10 space-y-3">
+                  {/* Başlık, Arama ve Filtre Sekmeleri */}
+                  <div className="space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span>🚗</span>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                          İşlenen Araçlar ({filteredVehicles.length} / {allVehicles.length})
+                        </h4>
+                        {loadingVehicles && (
+                          <span className="text-[11px] text-amber-400 font-semibold animate-pulse">
+                            ⏳ Veritabanından tüm liste yükleniyor...
+                          </span>
                         )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-white truncate">{car.brand} {car.model}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{car.year > 0 ? `${car.year} Model` : car.title}</p>
-                          <p className="text-xs font-black text-amber-400 mt-1">{formatPrice(car.price)}</p>
-                        </div>
                       </div>
-                    ))}
+
+                      {/* Araç Arama Kutusu */}
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Marka veya model ara..."
+                          value={carSearch}
+                          onChange={(e) => {
+                            setCarSearch(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="w-full sm:w-56 rounded-lg bg-slate-900 border border-white/10 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition"
+                        />
+                        {carSearch && (
+                          <button
+                            onClick={() => {
+                              setCarSearch("");
+                              setCurrentPage(1);
+                            }}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 4 İnteraktif Filtre Sekmesi */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        onClick={() => {
+                          setActionFilter("all");
+                          setCurrentPage(1);
+                        }}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                          actionFilter === "all"
+                            ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20"
+                            : "bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10"
+                        }`}
+                      >
+                        <span>📋</span>
+                        <span>Tümü ({allVehicles.length})</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setActionFilter("inserted");
+                          setCurrentPage(1);
+                        }}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                          actionFilter === "inserted"
+                            ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                            : actionCounts.inserted > 0
+                            ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                            : "bg-white/[0.02] text-slate-500 border border-white/5"
+                        }`}
+                      >
+                        <span>✨</span>
+                        <span>Yeni Eklenenler ({actionCounts.inserted})</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setActionFilter("updated");
+                          setCurrentPage(1);
+                        }}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                          actionFilter === "updated"
+                            ? "bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20"
+                            : actionCounts.updated > 0
+                            ? "bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30"
+                            : "bg-white/[0.02] text-slate-500 border border-white/5"
+                        }`}
+                      >
+                        <span>🔄</span>
+                        <span>Güncellenenler ({actionCounts.updated})</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setActionFilter("deleted");
+                          setCurrentPage(1);
+                        }}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                          actionFilter === "deleted"
+                            ? "bg-rose-500 text-slate-950 shadow-md shadow-rose-500/20"
+                            : actionCounts.deleted > 0
+                            ? "bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                            : "bg-white/[0.02] text-slate-500 border border-white/5"
+                        }`}
+                      >
+                        <span>🚫</span>
+                        <span>Kaldırılanlar ({actionCounts.deleted})</span>
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Araç Kartları Grid */}
+                  {filteredVehicles.length === 0 ? (
+                    <div className="rounded-xl bg-white/[0.02] border border-white/5 p-8 text-center text-xs text-slate-400 space-y-1">
+                      <p className="text-xl">🔍</p>
+                      <p className="font-semibold text-white">Bu filtreye uygun araç bulunamadı.</p>
+                      <p className="text-slate-500">Arama kelimesini değiştirebilir veya başka bir sekmeyi seçebilirsiniz.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {paginatedVehicles.map((car, idx) => {
+                        const act = getCarAction(car);
+                        const isDead = act === "deleted";
+                        const isUpd = act === "updated";
+                        return (
+                          <div
+                            key={car._id || idx}
+                            onClick={() => setInspectedCar(car)}
+                            className={`rounded-xl bg-slate-900/70 border p-3 flex gap-3 items-center cursor-pointer transition group shadow-sm ${
+                              isDead
+                                ? "border-white/10 hover:border-rose-500/50 hover:bg-slate-900"
+                                : isUpd
+                                ? "border-white/10 hover:border-sky-500/50 hover:bg-slate-900"
+                                : "border-white/10 hover:border-emerald-500/50 hover:bg-slate-900"
+                            }`}
+                          >
+                            {car.imageUrl ? (
+                              <img
+                                src={car.imageUrl}
+                                alt={car.title || `${car.brand} ${car.model}`}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-16 h-14 object-cover rounded-lg bg-slate-800 shrink-0 border border-white/10 group-hover:scale-105 transition duration-200"
+                              />
+                            ) : (
+                              <div className="w-16 h-14 rounded-lg bg-slate-800 flex items-center justify-center text-xl shrink-0 border border-white/10">
+                                🚗
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <p className="text-xs font-bold text-white truncate">{car.brand} {car.model}</p>
+                                <span
+                                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                    isDead
+                                      ? "text-rose-300 bg-rose-500/15 border-rose-500/30"
+                                      : isUpd
+                                      ? "text-sky-300 bg-sky-500/15 border-sky-500/30"
+                                      : "text-emerald-300 bg-emerald-500/15 border-emerald-500/30"
+                                  }`}
+                                >
+                                  {isDead ? "🚫 Kaldırıldı" : isUpd ? "🔄 Güncellendi" : "✨ Yeni İlan"}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 truncate">{car.year > 0 ? `${car.year} Model` : car.title}</p>
+                              <p className={`text-xs font-black mt-1 ${isDead ? "text-rose-400" : isUpd ? "text-sky-400" : "text-amber-400"}`}>
+                                {formatPrice(car.price)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Sayfalama (Pagination) Kontrolleri */}
+                  {totalPages > 1 && (
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-white/5 text-xs">
+                      <span className="text-slate-400">
+                        Toplam <strong className="text-white">{filteredVehicles.length}</strong> araç •{" "}
+                        Sayfa <strong className="text-amber-400">{validCurrentPage}</strong> / {totalPages}
+                      </span>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={validCurrentPage <= 1}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none text-slate-300 transition text-xs font-semibold cursor-pointer"
+                        >
+                          ◀ Önceki
+                        </button>
+
+                        {/* Akıllı Sayfa Numaraları */}
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter((p) => {
+                            if (totalPages <= 7) return true;
+                            if (p === 1 || p === totalPages) return true;
+                            if (Math.abs(p - validCurrentPage) <= 1) return true;
+                            return false;
+                          })
+                          .map((p, idx, arr) => {
+                            const prev = arr[idx - 1];
+                            const showEllipsis = prev && p - prev > 1;
+                            return (
+                              <span key={p} className="flex items-center gap-1">
+                                {showEllipsis && <span className="text-slate-600 px-1">...</span>}
+                                <button
+                                  onClick={() => setCurrentPage(p)}
+                                  className={`w-7 h-7 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
+                                    p === validCurrentPage
+                                      ? "bg-amber-500 text-slate-950 shadow"
+                                      : "bg-white/5 hover:bg-white/10 text-slate-300"
+                                  }`}
+                                >
+                                  {p}
+                                </button>
+                              </span>
+                            );
+                          })}
+
+                        <button
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={validCurrentPage >= totalPages}
+                          className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none text-slate-300 transition text-xs font-semibold cursor-pointer"
+                        >
+                          Sonraki ▶
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             )}
@@ -509,12 +794,15 @@ export function ManualDetailModal({ log, onClose }: ManualDetailModalProps) {
           {/* Alt Kapat Barı */}
           <div className="border-t border-white/10 px-5 py-3 bg-slate-900/80 flex items-center justify-between text-xs text-slate-400">
             <span>
-              Kayıt ID: <span className="font-mono text-slate-500">{log._id}</span> • Toplam Arşivlenen Araç:{" "}
-              <strong className="text-rose-400">{allVehicles.length}</strong>
+              Kayıt ID: <span className="font-mono text-slate-500">{log._id}</span> • Toplam Kayıtlı Araç:{" "}
+              <strong className="text-white">{allVehicles.length}</strong>
+              {actionCounts.inserted > 0 && <span className="text-emerald-400 ml-2">+{actionCounts.inserted} Yeni</span>}
+              {actionCounts.updated > 0 && <span className="text-sky-400 ml-2">~{actionCounts.updated} Güncel</span>}
+              {actionCounts.deleted > 0 && <span className="text-rose-400 ml-2">-{actionCounts.deleted} Kaldırılan</span>}
             </span>
             <button
               onClick={onClose}
-              className="rounded-lg bg-white/10 hover:bg-white/15 px-4 py-1.5 font-semibold text-white transition"
+              className="rounded-lg bg-white/10 hover:bg-white/15 px-4 py-1.5 font-semibold text-white transition cursor-pointer"
             >
               Kapat
             </button>
@@ -641,110 +929,188 @@ export function ManualDetailModal({ log, onClose }: ManualDetailModalProps) {
       )}
 
       {/* İNCELENEN ARAÇ DETAY POPUP MODALI */}
-      {inspectedCar && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 animate-fade-in"
-          onClick={() => setInspectedCar(null)}
-        >
+      {inspectedCar && (() => {
+        const act = getCarAction(inspectedCar);
+        const isDead = act === "deleted";
+        const isUpd = act === "updated";
+        return (
           <div
-            className="relative w-full max-w-lg rounded-2xl border border-rose-500/30 bg-slate-950 p-6 shadow-2xl space-y-4"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 animate-fade-in"
+            onClick={() => setInspectedCar(null)}
           >
-            {/* Araç Başlığı */}
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-black px-2 py-0.5">
-                    🚫 PİYASA ARŞİVİNE KALDIRILDI
-                  </span>
-                  <SourceBadge source={inspectedCar.source as any} />
-                  {inspectedCar.round && (
-                    <span className="rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-bold px-1.5 py-0.5">
-                      {inspectedCar.round}
+            <div
+              className={`relative w-full max-w-lg rounded-2xl border bg-slate-950 p-6 shadow-2xl space-y-4 ${
+                isDead ? "border-rose-500/30" : isUpd ? "border-sky-500/40" : "border-emerald-500/40"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Araç Başlığı */}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded text-[11px] font-black px-2 py-0.5 border ${
+                        isDead
+                          ? "bg-rose-500/20 border-rose-500/40 text-rose-300"
+                          : isUpd
+                          ? "bg-sky-500/20 border-sky-500/40 text-sky-300"
+                          : "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
+                      }`}
+                    >
+                      {isDead
+                        ? "🚫 PİYASA ARŞİVİNE KALDIRILDI"
+                        : isUpd
+                        ? "🔄 BİLGİ & GALERİ GÜNCELLENDİ"
+                        : "🟢 VERİTABANINDA AKTİF & CANLI İLAN"}
                     </span>
+                    <SourceBadge source={inspectedCar.source as any} />
+                    {inspectedCar.round && (
+                      <span className="rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[11px] font-bold px-1.5 py-0.5">
+                        {inspectedCar.round}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-base font-bold text-white mt-2">
+                    {inspectedCar.title || `${inspectedCar.brand} ${inspectedCar.model}`}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setInspectedCar(null)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/10 text-lg transition cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Fotoğraf */}
+              {inspectedCar.imageUrl ? (
+                <div className="w-full h-56 rounded-xl overflow-hidden bg-slate-900 border border-white/10 relative">
+                  <img
+                    src={inspectedCar.imageUrl}
+                    alt={inspectedCar.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-full h-40 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-4xl">
+                  🚗
+                </div>
+              )}
+
+              {/* Bilgi Kutuları */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-slate-900 border border-white/10 p-2.5">
+                  <p className="text-[11px] text-slate-400">Fiyat</p>
+                  <p className={`text-base font-black mt-0.5 ${isDead ? "text-rose-400" : isUpd ? "text-sky-400" : "text-amber-400"}`}>
+                    {formatPrice(inspectedCar.price)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-900 border border-white/10 p-2.5">
+                  <p className="text-[11px] text-slate-400">Model Yılı</p>
+                  <p className="text-base font-bold text-white mt-0.5">{inspectedCar.year || "-"}</p>
+                </div>
+              </div>
+
+              {/* Durum / Açıklama Kutusu */}
+              {isDead ? (
+                <div className="rounded-xl bg-rose-950/30 border border-rose-500/30 p-3 text-xs">
+                  <p className="font-semibold text-rose-300 flex items-center gap-1.5">
+                    <span>⚠️</span>
+                    <span>Arşivleme / Yayından Kalkma Nedeni:</span>
+                  </p>
+                  <p className="text-slate-300 mt-1">
+                    {inspectedCar.reason || "İlan yayından kaldırılmış veya arama sayfasına yönlendirilmiştir."}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Bu araç veritabanından tamamen silinmemiş, piyasa değerleme geçmişini bozmamak adına <strong>status: removed</strong> ile Piyasa Arşivi&apos;ne çekilmiştir.
+                  </p>
+                </div>
+              ) : isUpd ? (
+                <div className="rounded-xl bg-sky-950/30 border border-sky-500/30 p-3 text-xs space-y-2">
+                  <p className="font-semibold text-sky-300 flex items-center gap-1.5">
+                    <span>🔄</span>
+                    <span>Neler Güncellendi & Zenginleştirildi?</span>
+                  </p>
+                  <div className="space-y-1.5">
+                    {inspectedCar.changes && inspectedCar.changes.length > 0 ? (
+                      inspectedCar.changes.map((ch: string, i: number) => (
+                        <div key={i} className="flex items-center gap-2 text-slate-200">
+                          <span className="text-sky-400 font-bold">✓</span>
+                          <span>{ch}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 text-slate-200">
+                          <span className="text-sky-400 font-bold">✓</span>
+                          <span>📸 <strong>Tam Galeri:</strong> 15-35 adet yüksek çözünürlüklü HD fotoğraf eklendi</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-200">
+                          <span className="text-sky-400 font-bold">✓</span>
+                          <span>📝 <strong>Satıcı Açıklaması:</strong> Araç sahibinin detaylı ilan metni eşitlendi</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-200">
+                          <span className="text-sky-400 font-bold">✓</span>
+                          <span>🛠️ <strong>Hasar & Ekspertiz:</strong> Boyalı/değişen parça ve tramer matrisi eşitlendi</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-200">
+                          <span className="text-sky-400 font-bold">✓</span>
+                          <span>💰 <strong>Fiyat Doğrulaması:</strong> Güncel satış bedeli kontrol edilip aktif tutuldu</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {inspectedCar.reason && (
+                    <p className="text-[11px] text-slate-400 pt-1.5 border-t border-white/10 font-mono">
+                      {inspectedCar.reason}
+                    </p>
                   )}
                 </div>
-                <h3 className="text-base font-bold text-white mt-2">
-                  {inspectedCar.title || `${inspectedCar.brand} ${inspectedCar.model}`}
-                </h3>
-              </div>
-              <button
-                onClick={() => setInspectedCar(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/10 text-lg transition"
-              >
-                ✕
-              </button>
-            </div>
+              ) : (
+                <div className="rounded-xl bg-emerald-950/30 border border-emerald-500/30 p-3 text-xs space-y-1">
+                  <p className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                    <span>✅</span>
+                    <span>Canlı Yayında & Veritabanında Kayıtlı</span>
+                  </p>
+                  <p className="text-slate-300">
+                    Bu araç başarıyla taranarak veritabanına eklenmiştir. Aşağıdaki butonlardan OtoPiyasa detay sayfasını veya kaynak sitedeki orijinal ilanı inceleyebilirsiniz.
+                  </p>
+                </div>
+              )}
 
-            {/* Fotoğraf */}
-            {inspectedCar.imageUrl ? (
-              <div className="w-full h-56 rounded-xl overflow-hidden bg-slate-900 border border-white/10 relative">
-                <img
-                  src={inspectedCar.imageUrl}
-                  alt={inspectedCar.title}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ) : (
-              <div className="w-full h-40 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-4xl">
-                🚗
-              </div>
-            )}
-
-            {/* Bilgi Kutuları */}
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg bg-slate-900 border border-white/10 p-2.5">
-                <p className="text-[11px] text-slate-400">Fiyat</p>
-                <p className="text-base font-black text-rose-400 mt-0.5">{formatPrice(inspectedCar.price)}</p>
-              </div>
-              <div className="rounded-lg bg-slate-900 border border-white/10 p-2.5">
-                <p className="text-[11px] text-slate-400">Model Yılı</p>
-                <p className="text-base font-bold text-white mt-0.5">{inspectedCar.year || "-"}</p>
-              </div>
-            </div>
-
-            {/* Kaldırılma Nedeni */}
-            <div className="rounded-xl bg-rose-950/30 border border-rose-500/30 p-3 text-xs">
-              <p className="font-semibold text-rose-300 flex items-center gap-1.5">
-                <span>⚠️</span>
-                <span>Arşivleme / Yayından Kalkma Nedeni:</span>
-              </p>
-              <p className="text-slate-300 mt-1">
-                {inspectedCar.reason || "İlan yayından kaldırılmış veya arama sayfasına yönlendirilmiştir."}
-              </p>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Bu araç veritabanından tamamen silinmemiş, piyasa değerleme geçmişini bozmamak adına <strong>status: removed</strong> ile Piyasa Arşivi&apos;ne çekilmiştir.
-              </p>
-            </div>
-
-            {/* Doğrudan Bağlantılar */}
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              {inspectedCar._id && (
+              {/* Doğrudan Bağlantılar */}
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
                 <a
-                  href={`/cars/${inspectedCar._id}`}
+                  href={inspectedCar._id ? `/cars/${inspectedCar._id}` : `/cars?q=${encodeURIComponent(`${inspectedCar.brand || ""} ${inspectedCar.model || ""}`.trim())}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-center py-2 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  className={`flex-1 rounded-xl text-center py-2.5 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm ${
+                    isDead
+                      ? "bg-amber-500 hover:bg-amber-400 text-slate-950"
+                      : isUpd
+                      ? "bg-sky-500 hover:bg-sky-400 text-slate-950"
+                      : "bg-emerald-500 hover:bg-emerald-400 text-slate-950"
+                  }`}
                 >
                   <span>🚗</span>
-                  <span>OtoPiyasa Arşiv Kaydını Aç</span>
+                  <span>{isDead ? "OtoPiyasa Arşiv Kaydını Aç" : "OtoPiyasa'da İlanı Görüntüle"}</span>
                 </a>
-              )}
-              {inspectedCar.listingUrl && (
-                <a
-                  href={inspectedCar.listingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 rounded-xl bg-white/10 hover:bg-white/15 text-white text-center py-2 text-xs font-bold transition flex items-center justify-center gap-1.5"
-                >
-                  <span>🔗</span>
-                  <span>Orijinal İlan Sayfasını Aç</span>
-                </a>
-              )}
+                {inspectedCar.listingUrl && (
+                  <a
+                    href={inspectedCar.listingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-center py-2.5 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <span>🔗</span>
+                    <span>Orijinal İlanı Aç</span>
+                  </a>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }

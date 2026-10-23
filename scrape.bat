@@ -78,6 +78,7 @@ if /i "%secim%"=="S" goto :sitemap
 if /i "%secim%"=="N" goto :yeniilan
 if "%secim%"=="21" goto :songun
 if "%secim%"=="22" goto :katalog
+if "%secim%"=="24" goto :mod24
 if /i "%secim%"=="E" goto :envanter
 
 rem Sunucu artik scrape.mjs tarafindan ayri pencere acilmadan, bu terminalin arka planinda baslatilir ve kapatilir.
@@ -145,6 +146,8 @@ set /p ztur="Kac tur? (0 = ben durdurana kadar, varsayilan 0): "
 if "%ztur%"=="" set ztur=0
 echo.
 if "%zmod%"=="11" goto :zamanli11
+if "%zmod%"=="21" goto :zamanli21
+if "%zmod%"=="24" goto :zamanli24
 node scripts\scrape.mjs %zmod% --tur-ilan %zilan% --mola %zmola% --tur %ztur%
 echo.
 pause
@@ -233,22 +236,41 @@ goto :eof
 echo.
 echo ====================================================================
 echo   TAM DETAY, GALERI ^& HASAR TAMAMLAMA MOTORU
-echo   1) Kurumsal kaynaklar (Otokoc, Otoplus, DOD, Carvak, Otomerkezi): tum fotograflar,
-echo      tramer, boya/degisen, renk, kasa tipi ve motor hacmi.
-echo   2) Arabam: tum fotograflar, saticinin aciklamasi, boya/degisen hasar matrisi.
-echo   (Bu islem 7/24 motorda da kucuk partilerle kendiliginden yapilir.)
+echo   1 - Arabam.com (Tum fotograflar, saticinin aciklamasi, hasar matrisi)
+echo   2 - Kurumsal Kaynaklar (Otokoc, Otoplus, DOD, Carvak, Otomerkezi)
+echo   3 - Hepsi (Once Arabam, sonra Kurumsal)
 echo ====================================================================
 echo.
+set gsecim=1
+set /p gsecim="Hangi kaynagin detaylari tamamlansin? (1 = Arabam, 2 = Kurumsal, 3 = Hepsi, varsayilan 1): "
+if "%gsecim%"=="" set gsecim=1
 set /p glimit="Kac aracin detaylari tamamlansin? (Varsayilan 35000 - Tum DB, Enter'a bas): "
 if "%glimit%"=="" set glimit=35000
 echo.
-echo [1/2] Kurumsal kaynaklar (Otokoc, Otoplus, DOD, Carvak, Otomerkezi) tamamlaniyor...
+
+if "%gsecim%"=="1" (
+    echo [Arabam.com] Eksik fotograflar, aciklama ve hasar tamamlaniyor...
+    echo.
+    call npx tsx scripts\enrich-arabam.ts %glimit%
+    goto :galerison
+)
+
+if "%gsecim%"=="2" (
+    echo [Kurumsal Kaynaklar] Otokoc, DOD, VavaCars, Otoplus tamamlaniyor...
+    echo.
+    call npx tsx scripts\enrich-details.ts %glimit%
+    goto :galerison
+)
+
+echo [1/2] Arabam.com tamamlaniyor...
 echo.
-npx tsx scripts\enrich-details.ts %glimit%
+call npx tsx scripts\enrich-arabam.ts %glimit%
 echo.
-echo [2/2] Arabam tamamlaniyor (ev IP'si gerekir)...
+echo [2/2] Kurumsal kaynaklar tamamlaniyor...
 echo.
-npx tsx scripts\enrich-arabam.ts %glimit%
+call npx tsx scripts\enrich-details.ts %glimit%
+
+:galerison
 echo.
 pause
 goto :eof
@@ -369,23 +391,28 @@ goto :eof
 :songun
 echo.
 echo ====================================================================
-echo   SON 3 GUN ILANLARI (SITEMAP)
-echo   - Sitemap'ten yalnizca son 3 gunun ilanlari, en yeniden baslayarak okunur.
-echo   - Okunan her adayin yaklasik 4'te 3'u yeni ilan olarak eklenir (gerisi arac degil).
-echo   - Hiz: dakikada ~45 aday. Kuyrukta bu aralikta binlerce aday olabilir.
-echo   - Bekci bu tarama bitene kadar kendiliginden bekler.
+echo   SON 1-3 GUNUN YENI ILANLARI (Arabam Hizli Liste Cekimi)
+echo   Dogrudan https://www.arabam.com/ikinci-el?days=1 veya ?days=3
+echo   uzerinden en taze ilanlari saniyeler icinde yuksek hizla ceker.
+echo   Detay sayfalari acilmaz; 20 ilan tek istekte dogrudan eklenir.
 echo ====================================================================
 echo.
-set /p sgadet="Kac aday okunsun? (Varsayilan 1000, ~22 dk): "
-if "%sgadet%"=="" set sgadet=1000
+set /p sggun="Kac gunluk ilanlar? (1 = Son 24 saat, 3 = Son 3 gun, varsayilan 1): "
+if "%sggun%"=="" set sggun=1
+set /p sghedef="Hedef yeni ilan sayisi (varsayilan 2000): "
+if "%sghedef%"=="" set sghedef=2000
+set /p sgyil="Sadece 2020 ve sonrasi mi olsun? (E/H, varsayilan E): "
+if /i "%sgyil%"=="" set sgyil=E
+set sgyilarg=--minYear 2020
+if /i "%sgyil%"=="H" set sgyilarg=--minYear 0
 echo.
-node scripts\scrape.mjs 21 --adet %sgadet%
+npx tsx scripts\scrape-2020.ts --hedef %sghedef% --days %sggun% %sgyilarg%
 echo.
 pause
 goto :eof
 
 :sitemap
-echo.
+echo. 
 echo ====================================================================
 echo   ARABAM SITEMAP SENKRONU
 echo   - Arabam'in arama motorlari icin yayinladigi 32 sitemap dosyasi okunur.
@@ -411,3 +438,57 @@ npx tsx scripts\reconcile-sources.ts
 echo.
 pause
 goto :eof
+
+:mod24
+echo.
+echo ====================================================================
+echo   2020 VE SONRASI ARABAM TAM DETAYLI ILAN CEKIMI
+echo   Hedef: 20.000 - 30.000 Ilan (Tum fotograflar, aciklama, hasar dahil)
+echo   Dogrudan https://www.arabam.com/ikinci-el?minYear=2020 uzerinden
+echo   tum kategori ve markalardaki 2020+ guncel ilanlari eksiksiz ceker.
+echo   Istedigin zaman Ctrl+C ile durdurabilirsin; kaldigi yeri hatirlar.
+echo ====================================================================
+echo.
+set /p hedef2020="Hedef yeni ilan adedi (Varsayilan 25000, direk baslatmak icin Enter): "
+if "%hedef2020%"=="" set hedef2020=25000
+echo.
+npx tsx scripts\scrape-2020.ts --hedef %hedef2020%
+echo.
+pause
+goto :eof
+
+:zamanli24
+echo.
+echo ====================================================================
+echo   ZAMANLI 2020+ ARABAM TAM DETAYLI CEKIM: Tur basina %zilan% ilan, %zmola% dk mola
+echo   https://www.arabam.com/ikinci-el?minYear=2020 uzerinden
+echo   tum fotograflar, aciklamalar ve hasar bilgileriyle eksiksiz ceker.
+echo   Durdurmak icin: Ctrl+C
+echo ====================================================================
+echo.
+npx tsx scripts\scrape-2020.ts --tur-ilan %zilan% --mola %zmola% --tur %ztur%
+echo.
+pause
+goto :eof
+
+:zamanli21
+echo.
+echo ====================================================================
+echo   ZAMANLI SON GUNLER CEKIMI: Tur basina %zilan% ilan, %zmola% dk mola
+echo   https://www.arabam.com/ikinci-el?days=1 veya ?days=3 uzerinden
+echo   surekli en yeni ilanlari veritabanina taze olarak ekler.
+echo   Durdurmak icin: Ctrl+C
+echo ====================================================================
+echo.
+set /p z21gun="Kac gunluk ilanlar? (1 = Son 24 saat, 3 = Son 3 gun, varsayilan 1): "
+if "%z21gun%"=="" set z21gun=1
+set /p z21yil="Sadece 2020 ve sonrasi mi olsun? (E/H, varsayilan E): "
+if /i "%z21yil%"=="" set z21yil=E
+set z21yilarg=--minYear 2020
+if /i "%z21yil%"=="H" set z21yilarg=--minYear 0
+echo.
+npx tsx scripts\scrape-2020.ts --tur-ilan %zilan% --mola %zmola% --tur %ztur% --days %z21gun% %z21yilarg%
+echo.
+pause
+goto :eof
+

@@ -48,7 +48,7 @@ dependencies:
   # Yerel bildirim: teklif/soru geldiğinde uygulama açıkken/arka plandayken
   # bildirim düşürür. (Uygulama tamamen kapalıyken bildirim için Firebase
   # Cloud Messaging gerekir — ayrı bir hesap/kurulum işi.)
-  flutter_local_notifications: ^22.3.1
+  flutter_local_notifications: ^22.3.2
   firebase_core: ^4.15.0
   firebase_messaging: ^16.7.0
   # İlan paylaşma (WhatsApp vb.) — web'deki ShareButton'ın karşılığı.

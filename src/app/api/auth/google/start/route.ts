@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { checkSharedRateLimit } from "@/lib/api-rate-limit";
 import { signPurposeToken } from "@/lib/auth";
+import { requestOrigin } from "@/lib/app-url";
 import {
   GOOGLE_APP_RETURN_PATH,
   GOOGLE_STATE_COOKIE,
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   if (limited) return limited;
 
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = requestOrigin(request);
   // Mobil uygulama tarayıcıyı bu adresle açar (app=1); sonuç uygulamaya bilet olarak döner.
   const appMode = url.searchParams.get("app") === "1";
   const config = googleConfig();

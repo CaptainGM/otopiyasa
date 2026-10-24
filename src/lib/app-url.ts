@@ -1,11 +1,9 @@
-
-const FALLBACK = "https://otopiyasa.app";
-
+﻿const FALLBACK = "https://otopiyasa.app";
 
 export function sanitizeBaseUrl(raw: string | undefined, fallback = FALLBACK): string {
   const cleaned = (raw || "")
-    .replace(/^[﻿\s]+/, "")
-    .replace(/[﻿\s]+$/, "")
+    .replace(/^[\s]+/, "")
+    .replace(/[\s]+$/, "")
     .replace(/\/+$/, "");
 
   if (!cleaned) return fallback;
@@ -18,10 +16,21 @@ export function sanitizeBaseUrl(raw: string | undefined, fallback = FALLBACK): s
   }
 }
 
-
 export function appBaseUrl(): string {
-
   const fallback =
     process.env.NODE_ENV === "production" ? FALLBACK : "http://localhost:3000";
   return sanitizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL, fallback);
+}
+
+export function requestOrigin(request: Request): string {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
+  if (forwardedHost && !forwardedHost.includes("localhost")) {
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+  const host = request.headers.get("host");
+  if (host && !host.includes("localhost")) {
+    return `https://${host}`;
+  }
+  return appBaseUrl();
 }

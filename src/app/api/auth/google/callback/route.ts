@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+﻿import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { authCookies, createSessionAndToken, verifyPurposeToken } from "@/lib/auth";
@@ -15,6 +15,7 @@ import {
 } from "@/lib/google-auth";
 import { GoogleAccountConflictError, findOrLinkGoogleUser } from "@/lib/google-account";
 import { issueGoogleLoginTicket } from "@/lib/google-ticket";
+import { requestOrigin } from "@/lib/app-url";
 
 function clearStateCookie(response: NextResponse) {
   response.cookies.delete({ name: GOOGLE_STATE_COOKIE, path: GOOGLE_STATE_COOKIE_PATH });
@@ -32,7 +33,7 @@ function failure(origin: string, code: string, appMode = false) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = requestOrigin(request);
 
   const config = googleConfig();
   if (!config) return failure(origin, "google_disabled");

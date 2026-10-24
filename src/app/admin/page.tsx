@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { AdminDeleteCarButton } from "@/components/AdminDeleteCarButton";
 import { AdminTabs, AdminTabPanel } from "@/components/AdminTabs";
+import { VisitorTrafficPanel } from "@/components/VisitorTrafficPanel";
 import { BusinessApprovals } from "@/components/BusinessApprovals";
 import { ReportQueue, PendingReport } from "@/components/ReportQueue";
 import { AdminCommentsSection } from "@/components/AdminCommentsSection";
@@ -122,8 +123,8 @@ export default async function AdminPage() {
   let manualScrapeDocs: any[] = [];
 
   try {
-    const fetchPromise = Promise.all([
-      cached("admin:carStats", CACHE_TTL.short, async () => {
+    const results = await cached("admin:dashboard:overview:v3", 60 * 1000, () => Promise.all([
+      cached("admin:carStats", CACHE_TTL.medium, async () => {
         const [activeCount, removedCount, demoCount] = await Promise.all([
           Car.countDocuments({ status: "active" }),
           Car.countDocuments({ status: "removed" }),
@@ -202,9 +203,7 @@ export default async function AdminPage() {
         .limit(15)
         .lean()
         .catch(() => []),
-    ]);
-
-    const results = await fetchPromise;
+    ]));
 
     const carStats = (results[0] as any[])?.[0] || { activeCount: 0, demoCount: 0, removedCount: 0 };
     carCount = carStats.activeCount || 0;
@@ -339,7 +338,7 @@ export default async function AdminPage() {
 
   // Anlık sistem sağlığı (yalnızca okuma; bildirim saatlik denetimde gider).
   const healthAt = new Date();
-  const healthIssues = await collectHealthSnapshot(healthAt).then(evaluateHealth).catch(() => []);
+  const healthIssues = await cached("admin:healthIssues", 60 * 1000, () => collectHealthSnapshot(healthAt).then(evaluateHealth)).catch(() => []);
 
   return (
     <div className="relative space-y-8 pb-10">
@@ -429,6 +428,10 @@ export default async function AdminPage() {
               </div>
             )}
           </div>
+        </AdminTabPanel>
+
+        <AdminTabPanel id="trafik" label="Canlı Trafik & Ziyaretçiler">
+          <VisitorTrafficPanel />
         </AdminTabPanel>
 
         <AdminTabPanel id="motor" label="Motor & Tarama">

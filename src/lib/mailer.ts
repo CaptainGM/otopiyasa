@@ -94,10 +94,20 @@ export function isMailerConfigured() {
 }
 
 /** SMTP sunucusuna bağlanıp kimlik doğrular; e-posta GÖNDERMEZ (günlük kotayı harcamaz). */
-export async function verifyMailerConnection(): Promise<void> {
+export async function verifyMailerConnection(timeoutMs = 4000): Promise<void> {
   const t = getTransporter();
   if (!t) throw new Error("SMTP ayarları yok");
-  await t.verify();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      t.verify(),
+      new Promise<void>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("SMTP sunucusu 4 sn içinde yanıt vermedi")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function sendVerifyEmail(to: string, verifyUrl: string) {

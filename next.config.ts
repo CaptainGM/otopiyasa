@@ -40,6 +40,14 @@ const nextConfig: NextConfig = {
     // (ilan ayrıntısı, profil, ilanlarım...) burada YOK.
     const cdnPage = (seconds: number, stale: number) => [
       {
+        key: "Cache-Control",
+        value: `public, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
+      },
+      {
+        key: "CDN-Cache-Control",
+        value: `public, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
+      },
+      {
         key: "Vercel-CDN-Cache-Control",
         value: `public, s-maxage=${seconds}, stale-while-revalidate=${stale}`,
       },

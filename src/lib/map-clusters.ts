@@ -13,8 +13,8 @@ export interface ClusterInput {
   city: string;
   address?: string;
   price: number;
- 
   description?: string;
+  count?: number;
 }
 
 export interface MapCluster {
@@ -62,16 +62,19 @@ export function buildClusters(cars: ClusterInput[]): {
 } {
   const map = new Map<string, MapCluster>();
   let unmapped = 0;
+  let totalCount = 0;
 
   for (const car of cars) {
+    const addCount = car.count ?? 1;
+    totalCount += addCount;
     const placed = clusterKeyFor(car);
     if (!placed) {
-      unmapped += 1;
+      unmapped += addCount;
       continue;
     }
     const existing = map.get(placed.key);
     if (existing) {
-      existing.count += 1;
+      existing.count += addCount;
       if (car.price > 0 && car.price < existing.minPrice) existing.minPrice = car.price;
     } else {
       map.set(placed.key, {
@@ -81,7 +84,7 @@ export function buildClusters(cars: ClusterInput[]): {
         districtLabel: placed.district ? prettyDistrict(placed.district) : "",
         lat: placed.lat,
         lng: placed.lng,
-        count: 1,
+        count: addCount,
         minPrice: car.price > 0 ? car.price : Infinity,
         level: placed.level,
       });
@@ -96,7 +99,7 @@ export function buildClusters(cars: ClusterInput[]): {
   clusters.sort((a, b) => b.count - a.count);
 
   // total counts matching listings, including records without usable map coordinates.
-  return { clusters, total: cars.length, unmapped };
+  return { clusters, total: totalCount, unmapped };
 }
 
 

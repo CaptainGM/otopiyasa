@@ -11,6 +11,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { appBaseUrl } from "@/lib/app-url";
 import { Logo } from "@/components/Logo";
 import { Analytics } from "@vercel/analytics/next";
+import { VisitorTracker } from "@/components/VisitorTracker";
 
 // Yazı ailesi (bkz. globals.css): gövde Inter, başlıklar geniş Archivo, rakamlar eş aralıklı IBM Plex Mono.
 // latin-ext: ğ, ş, ı, İ gibi Türkçe harfler yedek yazı tipine düşmesin.
@@ -178,6 +179,7 @@ export default function RootLayout({
           </div>
         </footer>
         <CompareTray />
+        <VisitorTracker />
         {/* Her sayfada sol altta sabit (Asistan gibi): şikayet, bildirim ve kişisel veri talepleri, giriş gerekmez.
             Mobilde alt menünün üstünde durur. */}
         <Link href="/talep" className="chat-fab fixed bottom-20 left-4 z-40 md:bottom-6 md:left-6" aria-label="Talep oluştur">

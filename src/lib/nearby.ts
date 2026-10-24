@@ -6,9 +6,28 @@ import { LIST_IMAGE_LIMIT } from "@/lib/serialize-car";
 
 /** Haritanın varsayılan kümeleri; harita ve "yakınımdaki ilanlar" aynı önbelleği paylaşır. */
 export function getDefaultMapClusters() {
-  return cached("map:default_clusters", CACHE_TTL.long, async () => {
-    const cars = (await Car.find(PUBLIC_LISTING_FILTER, { _id: 0, city: 1, address: 1, price: 1 }).lean()) as unknown as ClusterInput[];
-    return buildClusters(cars);
+  return cached("map:default_clusters:v3", CACHE_TTL.long, async () => {
+    const rows = await Car.aggregate<{
+      _id: { city?: string; address?: string };
+      count: number;
+      minPrice: number;
+    }>([
+      { $match: PUBLIC_LISTING_FILTER },
+      {
+        $group: {
+          _id: { city: "$city", address: "$address" },
+          count: { $sum: 1 },
+          minPrice: { $min: "$price" },
+        },
+      },
+    ]);
+    const input: ClusterInput[] = rows.map((r) => ({
+      city: r._id.city || "",
+      address: r._id.address,
+      price: r.minPrice || 0,
+      count: r.count,
+    }));
+    return buildClusters(input);
   });
 }
 

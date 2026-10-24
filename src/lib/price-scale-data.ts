@@ -3,6 +3,7 @@ import { Car } from "@/models/Car";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { familyQuery } from "@/lib/comparables";
 import { buildPriceScale, dedupeCandidates, type PriceScale, type ScaleCar } from "@/lib/price-scale";
+import { cached, CACHE_TTL } from "@/lib/cache";
 
 /** Bir kademe için en fazla bu kadar aday okunur; model ailesi ve yıl penceresi zaten dar tutar. */
 const CANDIDATE_LIMIT = 1500;
@@ -38,22 +39,24 @@ export function toScaleCar(doc: {
  * model ailesinden (familyQuery, emsal kuralının tek yeri) ±3 yıl içinde seçilir. İlan yoksa ya da yayında değilse null.
  */
 export async function loadPriceScale(carId: string): Promise<PriceScale | null> {
-  await connectDB();
-  const subject = (await Car.findOne({ _id: carId, ...PUBLIC_LISTING_FILTER })
-    .select("brand model title year mileage price vehicleClass damageFlag city features")
-    .lean()) as unknown as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
-  if (!subject) return null;
+  return cached(`pricescale:${carId}`, CACHE_TTL.medium, async () => {
+    await connectDB();
+    const subject = (await Car.findOne({ _id: carId, ...PUBLIC_LISTING_FILTER })
+      .select("brand model title year mileage price vehicleClass damageFlag city features")
+      .lean()) as unknown as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
+    if (!subject) return null;
 
-  const candidates = (await Car.find({
-    ...PUBLIC_LISTING_FILTER,
-    ...familyQuery({ brand: subject.brand, model: subject.model, vehicleClass: subject.vehicleClass }),
-    _id: { $ne: subject._id },
-    year: { $gte: subject.year - 3, $lte: subject.year + 3 },
-  })
-    .select("price year mileage damageFlag city model title features.engineSize features.fuelType features.transmission features.horsepower")
-    .limit(CANDIDATE_LIMIT)
-    .lean()) as unknown as Array<Parameters<typeof toScaleCar>[0]>;
+    const candidates = (await Car.find({
+      ...PUBLIC_LISTING_FILTER,
+      ...familyQuery({ brand: subject.brand, model: subject.model, vehicleClass: subject.vehicleClass }),
+      _id: { $ne: subject._id },
+      year: { $gte: subject.year - 3, $lte: subject.year + 3 },
+    })
+      .select("price year mileage damageFlag city model title features.engineSize features.fuelType features.transmission features.horsepower")
+      .limit(CANDIDATE_LIMIT)
+      .lean()) as unknown as Array<Parameters<typeof toScaleCar>[0]>;
 
-  const subjectScale = toScaleCar(subject);
-  return buildPriceScale(subjectScale, dedupeCandidates(subjectScale, candidates.map(toScaleCar)));
+    const subjectScale = toScaleCar(subject);
+    return buildPriceScale(subjectScale, dedupeCandidates(subjectScale, candidates.map(toScaleCar)));
+  });
 }

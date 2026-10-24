@@ -7,23 +7,25 @@ import { pickTrending } from "@/lib/trending";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { Car as CarType } from "@/types";
 
-async function findTrending(): Promise<CarType[]> {
-  try {
-    await connectDB();
-    const docs = ((await Car.find({ ...PUBLIC_LISTING_FILTER, viewCount: { $gt: 0 } })
-      .sort({ viewCount: -1 })
-      .limit(100)
-      .slice("images", 2)
-      .lean()) as unknown[]).filter(isLeanCarDoc);
+function findTrending(): Promise<CarType[]> {
+  return cached("home:trending:v2", CACHE_TTL.medium, async () => {
+    try {
+      await connectDB();
+      const docs = ((await Car.find({ ...PUBLIC_LISTING_FILTER, viewCount: { $gt: 0 } })
+        .sort({ viewCount: -1 })
+        .limit(100)
+        .slice("images", 2)
+        .lean()) as unknown[]).filter(isLeanCarDoc);
 
-    // This strip shows only views/title/year/city/price; market aggregates were
-    // never rendered here and caused an unnecessary multi-segment DB scan.
-    const cars = attachMarketToCars(docs, new Map());
+      // This strip shows only views/title/year/city/price; market aggregates were
+      // never rendered here and caused an unnecessary multi-segment DB scan.
+      const cars = attachMarketToCars(docs, new Map());
 
-    return pickTrending(cars, 30);
-  } catch {
-    return [];
-  }
+      return pickTrending(cars, 30);
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** Şeritte gösterilen kart sayısı (ana sayfa HTML'i şişmesin). */

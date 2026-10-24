@@ -157,12 +157,12 @@ function rscVehicleToListing(vehicle: RscVehicle): ScrapedListing | null {
   const city = resolvableCity(dealer);
   const engineSize = parseFloat((vehicle.specs?.engineSize || "").replace(",", "."));
 
-  const externalId = vehicle.slug;
-  const legacyId = vehicle.id ? `${vehicle.slug}-${vehicle.id}` : undefined;
+  const photoIdMatch = (vehicle.image || vehicle.images?.[0] || "").match(/\/(\d{3,8})_/);
+  const photoId = vehicle.id || (photoIdMatch ? photoIdMatch[1] : undefined);
+  const externalId = photoId ? `${vehicle.slug}-${photoId}` : vehicle.slug;
 
   return {
     externalId,
-    identityAliases: legacyId ? [legacyId] : undefined,
     sourceSite: "otomerkezi",
     listingUrl: `https://www.otomerkezi.net/ikinci-el/araba/${vehicle.slug}`,
     title: titleFromDescription(description, vehicle.name || vehicle.model || ""),
@@ -259,12 +259,10 @@ function parseOtomerkeziLdJson(html: string): { listings: ScrapedListing[]; unsa
       const match = item.image[0].match(/\/(\d{3,8})_/);
       if (match) photoId = match[1];
     }
-    const externalId = slug;
-    const legacyId = photoId ? `${slug}-${photoId}` : undefined;
+    const externalId = photoId ? `${slug}-${photoId}` : slug;
 
     listings.push({
       externalId,
-      identityAliases: legacyId ? [legacyId] : undefined,
       sourceSite: "otomerkezi",
       listingUrl: url,
       title: titleFromDescription(description, item.name || rawModel),

@@ -1,3 +1,4 @@
+import { Notification } from "@/models/Notification";
 import { User } from "@/models/User";
 import { FavoriteMeta } from "@/models/FavoriteMeta";
 import { appBaseUrl } from "@/lib/app-url";
@@ -22,7 +23,20 @@ export async function notifyFavoritePriceDrop(car: {
     .lean<{ _id: { toString(): string }; email?: string; name?: string }[]>();
   if (users.length === 0) return;
 
-  const metas = await FavoriteMeta.find({ carId: car._id, userId: { $in: users.map((u) => u._id) } }).lean<
+  // 24 saat içinde bu araç için zaten bildirim almış kullanıcıları filtrele (dalgalanma koruması)
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const recentNotifs = await Notification.find({
+    user: { $in: users.map((u) => u._id) },
+    type: "listing",
+    link: `/cars/${car._id.toString()}`,
+    createdAt: { $gte: oneDayAgo },
+  }).select("user").lean<Array<{ user: unknown }>>();
+
+  const recentlyNotifiedUserIds = new Set(recentNotifs.map((n) => String(n.user)));
+  const eligibleUsers = users.filter((u) => !recentlyNotifiedUserIds.has(String(u._id)));
+  if (eligibleUsers.length === 0) return;
+
+  const metas = await FavoriteMeta.find({ carId: car._id, userId: { $in: eligibleUsers.map((u) => u._id) } }).lean<
     Array<{ userId: { toString(): string } }>
   >();
   const metaByUser = new Map(metas.map((m) => [m.userId.toString(), toMetaDTO(m as never)]));
@@ -30,7 +44,7 @@ export async function notifyFavoritePriceDrop(car: {
   const emailTo: typeof users = [];
   const pushTo: typeof users = [];
   const inApp: typeof users = [];
-  for (const user of users) {
+  for (const user of eligibleUsers) {
     const channels = alertChannels(metaByUser.get(user._id.toString()) ?? toMetaDTO(null), car.price);
     if (channels.email) emailTo.push(user);
     if (channels.push) pushTo.push(user);

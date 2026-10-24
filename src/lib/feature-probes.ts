@@ -171,6 +171,7 @@ export const PROBES: ProbeDefinition[] = [
     label: "Harita",
     group: "Site özellikleri",
     ttlMs: 5 * MINUTE,
+    timeoutMs: 25_000,
     async run() {
       const { GET } = await import("@/app/api/map/route");
       const { status, json } = await callRoute(GET, "/api/map");
@@ -256,15 +257,18 @@ export const PROBES: ProbeDefinition[] = [
   // ---- Hesap
   {
     key: "register",
+    timeoutMs: 20_000,
     label: "Hesap açma (kayıt)",
     group: "Hesap",
     ttlMs: 5 * MINUTE,
     async run() {
-      const [{ passwordError }, { isDisposableEmail, canonicalEmail }, { isMailerConfigured, verifyMailerConnection }] = await Promise.all([
+      const [{ passwordError }, { isDisposableEmail, canonicalEmail }, { isMailerConfigured, verifyMailerConnection }, { connectDB }] = await Promise.all([
         import("@/lib/password-policy"),
         import("@/lib/email-policy"),
         import("@/lib/mailer"),
+        import("@/lib/mongodb"),
       ]);
+      await connectDB();
       const problems: string[] = [];
       if (!passwordError("zayif")) problems.push("şifre kuralı çalışmıyor");
       if (!isDisposableEmail("x@mailinator.com")) problems.push("geçici e-posta engeli çalışmıyor");

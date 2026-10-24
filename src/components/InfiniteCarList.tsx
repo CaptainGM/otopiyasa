@@ -120,15 +120,20 @@ export function InfiniteCarList({
 
     // Bu dönemin ilk açılışı: sunucunun hazırladığı ilk sayfa zaten ekranda, ağ isteği yok. Aynı dönemde yenilemede (önceki dilim
     // bu) istemci başka bir dilim seçip yükler; böylece her yenileme farklı ilanları gösterir.
-    const previousSlot = readPreviousSlot();
-    if (feedStartSlot !== undefined && feedStartBucket !== undefined && previousSlot !== feedStartSlot) {
-      rememberSlot(feedStartSlot);
-      activeQueryRef.current = feedSliceQuery(query, feedStartSlot, feedStartBucket);
+    // Sunucudan dolu gelen ilk sayfa: ekrandaki ilanlari bosaltip tekrar ag istegi atmiyoruz.
+    // Bu sayede Kesfet veya sayfa gecislerinde ekran asla bosalmaz, gecikme (delay) yasanmaz.
+    if (initialItemsRef.current && initialItemsRef.current.length > 0) {
+      if (feedStartSlot !== undefined) {
+        rememberSlot(feedStartSlot);
+        activeQueryRef.current = feedSliceQuery(query, feedStartSlot, feedStartBucket ?? feedBucket());
+      }
       setItems(initialItemsRef.current);
-      setPage(initialPage);
+      setPage(initialPage || 1);
       setLoading(false);
       return;
     }
+
+    const previousSlot = readPreviousSlot();
 
     const slot = randomFeedSlot(previousSlot);
     rememberSlot(slot);

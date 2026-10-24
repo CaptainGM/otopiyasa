@@ -122,7 +122,7 @@ export async function collectHealthSnapshot(now = new Date()): Promise<HealthSna
       .select("checked uncertain blocked")
       .lean<Array<{ checked?: number; uncertain?: number; blocked?: number }>>(),
     SourceSyncState.find({}).select("source lastSuccessAt lastStatus lastMessage").lean<HealthSnapshot["sources"]>(),
-    Car.findOne({}).sort({ createdAt: -1 }).select("createdAt").lean<{ createdAt?: Date } | null>(),
+    Car.findOne({ status: "active" }).sort({ createdAt: -1 }).select("createdAt").lean<{ createdAt?: Date } | null>(),
   ]);
   const sum = (k: "checked" | "uncertain" | "blocked") => hoursRows.reduce((s, r) => s + (r[k] || 0), 0);
   return {

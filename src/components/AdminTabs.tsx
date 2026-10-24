@@ -24,9 +24,11 @@ export function AdminTabs({ children, defaultTab }: { children: ReactNode; defau
   const panels = Children.toArray(children).filter(isValidElement) as ReactElement<PanelProps>[];
   const ids = panels.map((panel) => panel.props.id);
   const [active, setActive] = useState(defaultTab);
+  const [visited, setVisited] = useState<Set<string>>(() => new Set([defaultTab]));
 
   function select(id: string) {
     if (!ids.includes(id)) return;
+    setVisited((prev) => new Set(prev).add(id));
     setActive(id);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", id);
@@ -36,7 +38,10 @@ export function AdminTabs({ children, defaultTab }: { children: ReactNode; defau
   useEffect(() => {
     const hashTab = () => HASH_TO_TAB[window.location.hash.slice(1)];
     const start = hashTab() ?? new URLSearchParams(window.location.search).get("tab") ?? defaultTab;
-    if (ids.includes(start)) setActive(start);
+    if (ids.includes(start)) {
+      setActive(start);
+      setVisited((prev) => new Set(prev).add(start));
+    }
     if (hashTab()) {
       // Sekme görünür olduktan sonra çapaya kaydır (gizli iken kaydırma çalışmaz).
       window.setTimeout(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" }), 0);
@@ -83,17 +88,21 @@ export function AdminTabs({ children, defaultTab }: { children: ReactNode; defau
         })}
       </div>
 
-      {panels.map((panel) => (
-        <div
-          key={panel.props.id}
-          id={`admin-panel-${panel.props.id}`}
-          role="tabpanel"
-          hidden={panel.props.id !== active}
-          className="space-y-8"
-        >
-          {panel.props.children}
-        </div>
-      ))}
+      {panels.map((panel) => {
+        const isCurrent = panel.props.id === active;
+        const hasVisited = visited.has(panel.props.id);
+        return (
+          <div
+            key={panel.props.id}
+            id={`admin-panel-${panel.props.id}`}
+            role="tabpanel"
+            hidden={!isCurrent}
+            className="space-y-8"
+          >
+            {hasVisited ? panel.props.children : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

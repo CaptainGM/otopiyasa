@@ -104,41 +104,44 @@ export default async function HomePage({ searchParams }: HomeProps) {
   try {
     await connectDB();
 
-    // Filtre seçenekleri herkes için aynı ve yalnızca taramada değişir → önbellek
-    // (aksi hâlde her sayfa geçişinde 8000 araç üzerinde 3 ağır sorgu koşuyordu).
-    let brandModelData: { brands: string[]; brandFamilies: Record<string, string[]> };
-    [brandModelData, cityOptions, colorOptions] = await Promise.all([
+    // TUM AGIR SORGULAR TEK BIR PROMISE.ALL ICINDE PARALEL KOSAR:
+    // Sirali beklemeler (2.5 sn gecikme ve siyah ekran) tamamen sonlandirildi.
+    const bucket = isFeed ? feedBucket() : 0;
+    if (isFeed) {
+      feedStart = { slot: feedStartSlot(bucket), bucket };
+    }
+
+    const [brandModelData, cities, colors, board, carsResult] = await Promise.all([
       getBrandModelOptions(filters.vehicleClass),
-      cached("home:cities", CACHE_TTL.medium, async () =>
+      cached("home:cities:v2", CACHE_TTL.long, async () =>
         [...new Set(((await Car.distinct("city", PUBLIC_LISTING_FILTER)) as string[])
-          .filter((c) => c && c !== "Türkiye")
+          .filter((c) => c && c !== "Turkiye")
           .map(normalizeCity))]
           .sort((a, b) => a.localeCompare(b, "tr"))
       ),
-      cached("home:colors", CACHE_TTL.medium, () => getColorOptions()),
+      cached("home:colors:v2", CACHE_TTL.long, () => getColorOptions()),
+      getMarketBoard().catch(() => null),
+      isFeed
+        ? findCarsPage({ ...filters, page: 1, slot: feedStart!.slot, bucket: feedStart!.bucket, limit: pageSize })
+        : findCarsPage(filters),
     ]);
+
     brandOptions = brandModelData.brands;
-    // Pano yalnızca filtresiz açılışta görünür; hata verirse sayfa onsuz açılır.
-    boardData = await getMarketBoard().catch(() => null);
-    // Filtrede model aileleri: "Juke" seçilince tüm Juke donanımları gelir.
+    cityOptions = cities;
+    colorOptions = colors;
+    boardData = board;
     brandModelOptions = brandModelData.brandFamilies;
 
     if (isFeed) {
-      total = await countCars(filters);
+      total = board?.total || carsResult.total || 0;
       totalPages = Math.ceil(total / pageSize) || 1;
-      // İlk 24 kart HTML'de: ana sayfa ilk boyamada dolu gelir (eskiden JS yüklenip API'den çekilene kadar boştu).
-      // Dilim ve dönem CDN'de saklanan HTML ile birlikte herkes için aynıdır; kullanıcı yenilediğinde istemci başka dilim seçer.
-      const bucket = feedBucket();
-      feedStart = { slot: feedStartSlot(bucket), bucket };
-      const first = await findCarsPage({ ...filters, page: 1, slot: feedStart.slot, bucket: feedStart.bucket, limit: pageSize });
-      items = attachMarketToCars(first.docs.filter(isLeanCarDoc), new Map());
+      items = attachMarketToCars(carsResult.docs.filter(isLeanCarDoc), new Map());
     } else {
-      const { docs: cars, total: count, limit, correction: fixed } = await findCarsPage(filters);
-      correction = fixed;
-      const docs = cars.filter(isLeanCarDoc);
+      correction = carsResult.correction;
+      const docs = carsResult.docs.filter(isLeanCarDoc);
       items = attachMarketToCars(docs, new Map());
-      total = count;
-      totalPages = Math.ceil(total / limit) || 1;
+      total = carsResult.total;
+      totalPages = Math.ceil(total / (carsResult.limit || pageSize)) || 1;
     }
   } catch (error) {
     console.error("HomePage veri yükleme hatası:", error);

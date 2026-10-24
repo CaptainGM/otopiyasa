@@ -79,6 +79,9 @@ if /i "%secim%"=="N" goto :yeniilan
 if "%secim%"=="21" goto :songun
 if "%secim%"=="22" goto :katalog
 if "%secim%"=="24" goto :mod24
+if "%secim%"=="20" goto :mod20
+if "%secim%"=="6" goto :mod6
+if "%secim%"=="7" goto :mod6
 if /i "%secim%"=="E" goto :envanter
 
 rem Sunucu artik scrape.mjs tarafindan ayri pencere acilmadan, bu terminalin arka planinda baslatilir ve kapatilir.
@@ -148,7 +151,28 @@ echo.
 if "%zmod%"=="11" goto :zamanli11
 if "%zmod%"=="21" goto :zamanli21
 if "%zmod%"=="24" goto :zamanli24
+if "%zmod%"=="20" goto :zamanli20
+if "%zmod%"=="6" goto :zamanli6
+if "%zmod%"=="7" goto :zamanli6
 node scripts\scrape.mjs %zmod% --tur-ilan %zilan% --mola %zmola% --tur %ztur%
+echo.
+pause
+goto :eof
+
+:zamanli20
+echo.
+set /p z20yil="Sadece belirli bir yil ve sonrasi mi? (Orn: 2020, Enter = Tum Yillar): "
+set z20yilarg=
+if not "%z20yil%"=="" set z20yilarg=--minYear %z20yil%
+echo.
+npx tsx scripts\scrape-emsal.ts --tur-ilan %zilan% --mola %zmola% --tur %ztur% %z20yilarg%
+echo.
+pause
+goto :eof
+
+:zamanli6
+echo.
+npx tsx scripts\scrape-emsal.ts --nadir --tur-ilan %zilan% --mola %zmola% --tur %ztur%
 echo.
 pause
 goto :eof
@@ -492,3 +516,51 @@ echo.
 pause
 goto :eof
 
+
+:mod20
+echo.
+echo ====================================================================
+echo   AZ EMSALLI SEGMENT KADEMELI TURBO MOTORU (Marka / Model / Yil)
+echo   - Veritabaninda en az ilanli segmentlerden baslayip kademeli olarak
+echo     seviyeleri artirir (1 olanlari 4 yapar, 3 olanlari 4 yapar; sonra 8, 12...).
+echo   - Filtreli URL ile sadece hedef yil ve en taze ilanlari alir (?minYear=X&maxYear=X).
+echo   - Tum fotograflar, aciklama ve hasar detaylari tek seferde eklenir!
+echo   - Hedefe ulastigi anda beklemeden aninda siradaki eksik modele atlar.
+echo ====================================================================
+echo.
+set /p zilan="Tur basina kac ilan cekilsin? (Varsayilan 1000): "
+if "%zilan%"=="" set zilan=1000
+set /p zmola="Turlar arasi kac dakika mola? (Varsayilan 45): "
+if "%zmola%"=="" set zmola=45
+set /p ztur="Kac tur? (0 = ben durdurana kadar, varsayilan 0): "
+if "%ztur%"=="" set ztur=0
+set /p z20yil="Sadece belirli bir yil ve sonrasi mi? (Orn: 2020, Enter = Tum Yillar): "
+set z20yilarg=
+if not "%z20yil%"=="" set z20yilarg=--minYear %z20yil%
+echo.
+npx tsx scripts\scrape-emsal.ts --tur-ilan %zilan% --mola %zmola% --tur %ztur% %z20yilarg%
+echo.
+pause
+goto :eof
+
+:mod6
+echo.
+echo ====================================================================
+echo   NADIR MODEL KADEMELI TURBO MOTORU
+echo   - Katalogda olup veritabaninda hic olmayan veya en az olan modellerden
+echo     baslayarak kademeli seviye artirimi yapar (0-1 olanlari 4 yapar, sonra 8, 12...).
+echo   - Tum fotograflar, aciklama ve hasar detaylari tek seferde eklenir!
+echo   - Hedefe ulastigi anda beklemeden aninda siradaki nadir modele atlar.
+echo ====================================================================
+echo.
+set /p zilan="Tur basina kac ilan cekilsin? (Varsayilan 1000): "
+if "%zilan%"=="" set zilan=1000
+set /p zmola="Turlar arasi kac dakika mola? (Varsayilan 45): "
+if "%zmola%"=="" set zmola=45
+set /p ztur="Kac tur? (0 = ben durdurana kadar, varsayilan 0): "
+if "%ztur%"=="" set ztur=0
+echo.
+npx tsx scripts\scrape-emsal.ts --nadir --tur-ilan %zilan% --mola %zmola% --tur %ztur%
+echo.
+pause
+goto :eof

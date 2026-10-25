@@ -28,7 +28,7 @@ async function main() {
 
   await connectDB();
 
-  const hb = await DaemonHeartbeat.findOne({ daemonId: "primary-daemon" }).lean() as any;
+  const hb = await DaemonHeartbeat.findOne({ daemonId: "primary-daemon" }).lean() as Record<string, unknown> | null;
   const activeCount = await Car.countDocuments({ status: { $ne: "removed" } });
   const archiveCount = await Car.countDocuments({ status: "removed" });
 

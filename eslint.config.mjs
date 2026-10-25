@@ -23,6 +23,12 @@ const eslintConfig = [
       "react/no-unescaped-entities": "warn",
     },
   },
+  {
+    files: ["scripts/**"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
 ];
 
 export default eslintConfig;

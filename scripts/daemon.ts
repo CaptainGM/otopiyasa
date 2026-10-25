@@ -104,8 +104,8 @@ function updateCodeFromGit(): { changed: boolean; note: string } {
       execSync("npm install --no-audit --no-fund", { cwd: projectRoot, stdio: "inherit", timeout: 15 * 60_000 });
     }
     return { changed: true, note: `${head.slice(0, 7)} → ${remote.slice(0, 7)}` };
-  } catch (err: any) {
-    return { changed: false, note: `Git güncellemesi yapılamadı: ${(err?.message || String(err)).split("\n")[0]}` };
+  } catch (err: unknown) {
+    return { changed: false, note: `Git güncellemesi yapılamadı: ${((err as Error)?.message || String(err)).split("\n")[0]}` };
   }
 }
 
@@ -135,8 +135,8 @@ async function main() {
       await connectDB();
       log("✅ Veritabanı bağlantısı kuruldu.");
       break;
-    } catch (connErr: any) {
-      log(`⚠️ [MongoDB] Bağlantı denemesi #${attempt} başarısız: ${connErr?.message || connErr}`);
+    } catch (connErr: unknown) {
+      log(`⚠️ [MongoDB] Bağlantı denemesi #${attempt} başarısız: ${(connErr as Error)?.message || connErr}`);
       await sleep(attempt < 5 ? 5000 : 30000);
     }
   }
@@ -151,7 +151,7 @@ async function main() {
   }
 
   const initialHb = await DaemonHeartbeat.findOne({ daemonId: "primary-daemon" }).lean();
-  let cycle = Number((initialHb as any)?.cycle) || 0;
+  let cycle = Number((initialHb as Record<string, unknown> | null)?.cycle) || 0;
   let currentPhase = "🚀 Başlatılıyor...";
   let isIdle = false;
   let currentMode: Mode = "hybrid";
@@ -185,8 +185,8 @@ async function main() {
         recentLogs: [...liveLogs],
         host: HOST_LABEL,
       });
-    } catch (err: any) {
-      console.warn(`[HEARTBEAT] ${err?.message || err}`);
+    } catch (err: unknown) {
+      console.warn(`[HEARTBEAT] ${(err as Error)?.message || err}`);
     }
   }
 
@@ -217,8 +217,8 @@ async function main() {
       const { runHealthCheck } = await import("@/lib/health-check");
       const res = await runHealthCheck({ notify: true });
       if (res.notified.length) log(`🩺 [SAĞLIK] Bildirim gönderildi: ${res.notified.join(", ")}`);
-    } catch (err: any) {
-      console.warn(`[SAĞLIK] ${err?.message || err}`);
+    } catch (err: unknown) {
+      console.warn(`[SAĞLIK] ${(err as Error)?.message || err}`);
     }
   };
   setTimeout(() => void runHealth(), 2 * 60 * 1000);
@@ -252,8 +252,8 @@ async function main() {
       const { refreshConsumptionStatsIfStale } = await import("@/lib/fuel-cost-data");
       const consumption = await refreshConsumptionStatsIfStale(50 * 60 * 1000);
       if (consumption) log(`⛽ [TÜKETİM] ${consumption.models} model anahtarı, ${Math.round(consumption.bytes / 1024)} KB, ${Math.round(consumption.ms / 1000)} sn.`);
-    } catch (err: any) {
-      console.warn(`[PİYASA] ${err?.message || err}`);
+    } catch (err: unknown) {
+      console.warn(`[PİYASA] ${(err as Error)?.message || err}`);
     } finally {
       marketRunning = false;
     }
@@ -285,8 +285,8 @@ async function main() {
       const oldest = feedBucket() - 1;
       for (const bucket of [...warmedFeedBuckets]) if (bucket < oldest) warmedFeedBuckets.delete(bucket);
       for (const bucket of [...feedWarmAttempts.keys()]) if (bucket < oldest) feedWarmAttempts.delete(bucket);
-    } catch (err: any) {
-      console.warn(`[ISITMA] ${err?.message || err}`);
+    } catch (err: unknown) {
+      console.warn(`[ISITMA] ${(err as Error)?.message || err}`);
     } finally {
       feedWarming = false;
     }
@@ -428,9 +428,9 @@ async function main() {
       currentPhase = `☕ Dinleniyor (~${Math.round(rest / 60)} dk, sıradaki: Tur #${cycle + 1})`;
       await sendHeartbeat("idle");
       for (let waited = 0; waited < rest && !restartPending; waited += 5) await sleep(5000);
-    } catch (cycleError: any) {
+    } catch (cycleError: unknown) {
       touch();
-      log(`⚠️ [TUR HATASI] Tur #${cycle}: ${cycleError?.message || cycleError}`);
+      log(`⚠️ [TUR HATASI] Tur #${cycle}: ${(cycleError as Error)?.message || cycleError}`);
       await sleep(15000);
     }
   }

@@ -31,7 +31,7 @@ async function main() {
   let before = 0;
   let after = 0;
   let bytesSaved = 0;
-  let ops: any[] = [];
+  let ops: Parameters<typeof Car.bulkWrite>[0] = [];
 
   const flush = async () => {
     if (!apply || ops.length === 0) return;

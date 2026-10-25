@@ -530,8 +530,8 @@ echo ====================================================================
 echo.
 set /p zilan="Tur basina kac ilan cekilsin? (Varsayilan 1000): "
 if "%zilan%"=="" set zilan=1000
-set /p zmola="Turlar arasi kac dakika mola? (Varsayilan 45): "
-if "%zmola%"=="" set zmola=45
+set /p zmola="Turlar arasi kac dakika mola? (Varsayilan 20): "
+if "%zmola%"=="" set zmola=20
 set /p ztur="Kac tur? (0 = ben durdurana kadar, varsayilan 0): "
 if "%ztur%"=="" set ztur=0
 set /p z20yil="Sadece belirli bir yil ve sonrasi mi? (Orn: 2020, Enter = Tum Yillar): "

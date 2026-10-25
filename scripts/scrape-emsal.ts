@@ -27,8 +27,10 @@ import { normalizeCity } from "../src/lib/normalize-city";
 import { arabamBrandSlug, arabamModelSlug } from "../src/lib/scraper/adapters";
 import { outOfScopeReason } from "../src/lib/vehicle-scope";
 import { pauseWatcher } from "./bekci-pause.mjs";
+import { setArabamPace } from "../src/lib/scraper/rate-limit";
 
 pauseWatcher("kademeli emsal ve nadir model taramasi");
+setArabamPace(2800);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -168,7 +170,7 @@ async function fetchPageWithRetry(url: string, maxRetries = 4): Promise<string> 
     try {
       const pageResult = await fetchPageHtml(url);
       if (pageResult.status === 429) {
-        const wait = 14000 + Math.random() * 6000;
+        const wait = 30000 + Math.random() * 15000;
         process.stdout.write(`\n  [!] [429 Hiz Siniri] ${Math.round(wait / 1000)}sn dinleniliyor... `);
         await new Promise((r) => setTimeout(r, wait));
         continue;
@@ -208,6 +210,7 @@ async function main() {
   console.log(`  Mola Suresi      : ${molaDk} dakika`);
   console.log(`  Toplam Tur       : ${toplamTur === 0 ? "Durdurana kadar (Sonsuz)" : `${toplamTur} tur`}`);
   console.log(`  Calisma Modu     : ${nadirMod ? "Nadir Model Odakli" : "Az Emsalli Segment Odakli (Marka/Model/Yil)"}`);
+  console.log(`  Hiz & Koruma     : Ilanlar arasi 3-4 sn | Model gecisleri 4-5 sn (Insansi Pacing)`);
   if (minYearFilter > 0) console.log(`  Yil Siniri       : ${minYearFilter} ve sonrasi`);
   if (filterBrand) console.log(`  Spesifik Filtre  : ${filterBrand} ${filterModel} (${filterYear || "Tum Yillar"})`);
   console.log("====================================================================\n");
@@ -663,10 +666,10 @@ async function main() {
                 lastSyncTime = Date.now();
               }
 
-              await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
+              await new Promise((r) => setTimeout(r, 2800 + Math.random() * 1200));
             }
 
-            await new Promise((r) => setTimeout(r, 800));
+            await new Promise((r) => setTimeout(r, 2000 + Math.random() * 800));
             if (pageNewCount === 0 && listPage.docs.length < 20) break;
           }
 
@@ -709,7 +712,7 @@ async function main() {
           }
         }
 
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 4000 + Math.random() * 1200));
       }
     }
 

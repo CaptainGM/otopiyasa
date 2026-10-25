@@ -143,8 +143,8 @@ set /p zmod="Tarama numarasi (varsayilan 6): "
 if "%zmod%"=="" set zmod=6
 set /p zilan="Tur basina kac ilan? (varsayilan 1200): "
 if "%zilan%"=="" set zilan=1200
-set /p zmola="Turlar arasi kac dakika mola? (varsayilan 60): "
-if "%zmola%"=="" set zmola=60
+set /p zmola="Turlar arasi kac dakika mola? (varsayilan 20): "
+if "%zmola%"=="" set zmola=20
 set /p ztur="Kac tur? (0 = ben durdurana kadar, varsayilan 0): "
 if "%ztur%"=="" set ztur=0
 echo.

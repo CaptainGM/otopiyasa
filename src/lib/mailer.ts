@@ -22,6 +22,10 @@ function getTransporter() {
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_PORT === 465,
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100,
+    socketTimeout: 10_000,
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS,

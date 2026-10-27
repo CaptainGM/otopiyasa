@@ -312,7 +312,15 @@ class ApiService {
 
   /// Marka seçilince o markanın gerçek modelleriyle dolan filtre listesi —
   /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
+  static final _brandModelsCache = <String, Map<String, dynamic>>{};
+
+  /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
+  /// Önbellekli: ekrana her girişte ağ beklemeden anında (0ms) açılır.
   Future<Map<String, dynamic>> fetchBrandModels({String? vehicleClass}) async {
+    final key = vehicleClass ?? 'all';
+    final cached = _brandModelsCache[key];
+    if (cached != null) return cached;
+
     final response = await _http.get(
       _uri('/api/filters/brand-models', {
         'families': '1',
@@ -323,7 +331,9 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Marka/model listesi yüklenemedi');
     }
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    _brandModelsCache[key] = data;
+    return data;
   }
 
   /// Piyasa temposu (benzer ilanların yayında kalma süresi, pazarlık payı); veri yetersizse null.

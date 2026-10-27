@@ -113,13 +113,13 @@ export default async function HomePage({ searchParams }: HomeProps) {
 
     const [brandModelData, cities, colors, board, carsResult] = await Promise.all([
       getBrandModelOptions(filters.vehicleClass),
-      cached("home:cities:v2", CACHE_TTL.long, async () =>
+      cached("home:cities:v2", CACHE_TTL.static, async () =>
         [...new Set(((await Car.distinct("city", PUBLIC_LISTING_FILTER)) as string[])
           .filter((c) => c && c !== "Turkiye")
           .map(normalizeCity))]
           .sort((a, b) => a.localeCompare(b, "tr"))
       ),
-      cached("home:colors:v2", CACHE_TTL.long, () => getColorOptions()),
+      cached("home:colors:v2", CACHE_TTL.static, () => getColorOptions()),
       getMarketBoard().catch(() => null),
       isFeed
         ? findCarsPage({ ...filters, page: 1, slot: feedStart!.slot, bucket: feedStart!.bucket, limit: pageSize })

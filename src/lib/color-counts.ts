@@ -10,7 +10,7 @@ export interface ColorOption {
 }
 
 export async function getColorOptions(): Promise<ColorOption[]> {
-  return cached("filters:colorOptions", CACHE_TTL.long, async () => {
+  return cached("filters:colorOptions", CACHE_TTL.static, async () => {
     await connectDB();
     const rows = await Car.aggregate<{ _id: string; count: number }>([
       {

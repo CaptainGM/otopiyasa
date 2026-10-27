@@ -105,6 +105,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _excludeOutliers = false;
   String _seller = '';
   bool _noDamage = false;
+  final _yearMinController = TextEditingController();
+  final _yearMaxController = TextEditingController();
+  int? get _yearMin => int.tryParse(_yearMinController.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  int? get _yearMax => int.tryParse(_yearMaxController.text.replaceAll(RegExp(r'[^0-9]'), ''));
   final _mileageMinController = TextEditingController();
   final _mileageMaxController = TextEditingController();
   int? get _mileageMin => int.tryParse(_mileageMinController.text.replaceAll(RegExp(r'[^0-9]'), ''));
@@ -133,6 +137,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _excludeOutliers ||
       _noDamage ||
       _seller.isNotEmpty ||
+      _yearMin != null ||
+      _yearMax != null ||
       _mileageMin != null ||
       _mileageMax != null ||
       _priceMin != null ||
@@ -184,6 +190,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _searchController.dispose();
     _scrollController.dispose();
+    _yearMinController.dispose();
+    _yearMaxController.dispose();
     _mileageMinController.dispose();
     _mileageMaxController.dispose();
     _priceMinController.dispose();
@@ -228,6 +236,8 @@ class _HomeScreenState extends State<HomeScreen> {
         vehicleClass: _vehicleClass,
         discountOnly: _discountOnly,
         excludeOutliers: _excludeOutliers,
+        yearMin: _yearMin,
+        yearMax: _yearMax,
         mileageMin: _mileageMin,
         mileageMax: _mileageMax,
         priceMin: _priceMin,
@@ -301,6 +311,8 @@ class _HomeScreenState extends State<HomeScreen> {
       (_excludeOutliers ? 1 : 0) +
       (_noDamage ? 1 : 0) +
       (_seller.isNotEmpty ? 1 : 0) +
+      (_yearMin != null ? 1 : 0) +
+      (_yearMax != null ? 1 : 0) +
       (_mileageMin != null ? 1 : 0) +
       (_mileageMax != null ? 1 : 0) +
       (_priceMin != null ? 1 : 0) +
@@ -453,6 +465,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
+                      Expanded(child: _numberField(_yearMinController, 'Min yıl (örn: 2018)')),
+                      const SizedBox(width: 8),
+                      Expanded(child: _numberField(_yearMaxController, 'Maks yıl (örn: 2024)')),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
                       Expanded(child: _numberField(_mileageMinController, 'Min km')),
                       const SizedBox(width: 8),
                       Expanded(child: _numberField(_mileageMaxController, 'Maks km')),
@@ -559,6 +579,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     _excludeOutliers = false;
                                     _noDamage = false;
                                     _seller = '';
+                                    _yearMinController.clear();
+                                    _yearMaxController.clear();
                                     _mileageMinController.clear();
                                     _mileageMaxController.clear();
                                     _priceMinController.clear();

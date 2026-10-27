@@ -1,3 +1,4 @@
+import { cached, CACHE_TTL } from "@/lib/cache";
 import { Car } from "@/models/Car";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { derivePainted, predictPrice, withPredictionMemo, type Condition } from "@/lib/price-prediction";
@@ -258,8 +259,8 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
 export async function findDealListings(limit: number, skip = 0) {
   const filter = { ...PUBLIC_LISTING_FILTER, "market.deal": true };
   const [docs, total] = await Promise.all([
-    Car.find(filter).sort({ "market.dealScore": -1, _id: 1 }).skip(skip).limit(limit).slice("images", 8).lean(),
-    Car.countDocuments(filter),
+    Car.find(filter).sort({ "market.dealScore": -1, _id: 1 }).skip(skip).limit(limit).slice("images", 2).lean(),
+    cached("count:deals", CACHE_TTL.long, () => Car.countDocuments(filter)),
   ]);
   return { docs, total };
 }

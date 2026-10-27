@@ -15,8 +15,8 @@ declare global {
 const store: Map<string, Entry> = (globalThis as any).__otopiyasa_cache ?? new Map<string, Entry>();
 (globalThis as any).__otopiyasa_cache = store;
 
-const STALE_WINDOW_MS = 15 * 60 * 1000;
-const MAX_ENTRIES = 1000;
+const STALE_WINDOW_MS = 10 * 60 * 1000;
+const MAX_ENTRIES = 500;
 
 function evictIfNeeded(now: number) {
   if (store.size < MAX_ENTRIES) return;

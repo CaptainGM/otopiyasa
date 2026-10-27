@@ -221,24 +221,31 @@ export function CarFilters({
           Daha fazla filtre
           <span className="text-xs font-normal text-[var(--faint)]">sıralama, yıl, fiyat, yakıt, vites, renk, araç tipi</span>
         </summary>
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <div>
-          <label className="label" htmlFor="sort">
-            Sıralama
+          <label className="label" htmlFor="priceMin">
+            Min fiyat
           </label>
-          <select
-            id="sort"
-            name="sort"
-            defaultValue={searchParams.get("sort") || "mixed"}
-            className="select"
-          >
-            <option value="mixed">Karışık (önerilen)</option>
-            <option value="deal">Piyasanın en altında</option>
-            <option value="newest">En yeni</option>
-            <option value="price_asc">Fiyat (artan)</option>
-            <option value="price_desc">Fiyat (azalan)</option>
-            <option value="year_desc">Yıl (yeni → eski)</option>
-          </select>
+          <FormattedNumberInput
+            id="priceMin"
+            name="priceMin"
+            defaultValue={searchParams.get("priceMin") || ""}
+            className="input"
+            placeholder="500.000 ₺"
+          />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="priceMax">
+            Maks fiyat
+          </label>
+          <FormattedNumberInput
+            id="priceMax"
+            name="priceMax"
+            defaultValue={searchParams.get("priceMax") || ""}
+            className="input"
+            placeholder="2.000.000 ₺"
+          />
         </div>
 
         <div>
@@ -257,7 +264,7 @@ export function CarFilters({
 
         <div>
           <label className="label" htmlFor="yearMax">
-            Max yıl
+            Maks yıl
           </label>
           <input
             id="yearMax"
@@ -266,32 +273,6 @@ export function CarFilters({
             defaultValue={searchParams.get("yearMax") || ""}
             className="input"
             placeholder="2024"
-          />
-        </div>
-
-        <div>
-          <label className="label" htmlFor="priceMin">
-            Min fiyat
-          </label>
-          <FormattedNumberInput
-            id="priceMin"
-            name="priceMin"
-            defaultValue={searchParams.get("priceMin") || ""}
-            className="input"
-            placeholder="500.000 ₺"
-          />
-        </div>
-
-        <div>
-          <label className="label" htmlFor="priceMax">
-            Max fiyat
-          </label>
-          <FormattedNumberInput
-            id="priceMax"
-            name="priceMax"
-            defaultValue={searchParams.get("priceMax") || ""}
-            className="input"
-            placeholder="2.000.000 ₺"
           />
         </div>
 
@@ -319,6 +300,25 @@ export function CarFilters({
             className="input"
             placeholder="200.000 km"
           />
+        </div>
+
+        <div>
+          <label className="label" htmlFor="sort">
+            Sıralama
+          </label>
+          <select
+            id="sort"
+            name="sort"
+            defaultValue={searchParams.get("sort") || "mixed"}
+            className="select"
+          >
+            <option value="mixed">Karışık (önerilen)</option>
+            <option value="deal">Piyasanın en altında</option>
+            <option value="newest">En yeni</option>
+            <option value="price_asc">Fiyat (artan)</option>
+            <option value="price_desc">Fiyat (azalan)</option>
+            <option value="year_desc">Yıl (yeni → eski)</option>
+          </select>
         </div>
 
         <div>
@@ -352,25 +352,6 @@ export function CarFilters({
         </div>
 
         <div>
-          <label className="label" htmlFor="vehicleClass">
-            Araç tipi
-          </label>
-          <select
-            id="vehicleClass"
-            name="vehicleClass"
-            defaultValue={searchParams.get("vehicleClass") || ""}
-            className="select"
-          >
-            <option value="">Tümü</option>
-            {VEHICLE_CLASSES.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
           <label className="label" htmlFor="transmission">
             Vites
           </label>
@@ -384,6 +365,25 @@ export function CarFilters({
             {transmissions.map((item) => (
               <option key={item} value={item}>
                 {item}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="vehicleClass">
+            Araç tipi
+          </label>
+          <select
+            id="vehicleClass"
+            name="vehicleClass"
+            defaultValue={searchParams.get("vehicleClass") || ""}
+            className="select"
+          >
+            <option value="">Tümü</option>
+            {VEHICLE_CLASSES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
               </option>
             ))}
           </select>

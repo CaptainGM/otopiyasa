@@ -8,6 +8,7 @@ import 'package:otopiyasa/theme/app_theme.dart';
 import 'package:otopiyasa/utils/relative_time.dart';
 import 'package:otopiyasa/widgets/admin_health_tab.dart';
 import 'package:otopiyasa/widgets/admin_motor_controls.dart';
+import 'package:otopiyasa/widgets/admin_traffic_tab.dart';
 import 'package:otopiyasa/widgets/admin_users_tab.dart';
 import 'package:otopiyasa/widgets/home_watcher_card.dart';
 import 'package:otopiyasa/widgets/sheet_insets.dart';
@@ -62,7 +63,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
     _loadAllData();
     // 25 saniyede bir canlı otomatik yenileme
     // Uygulama arka plandayken istek atılmaz (sunucu fonksiyon çağrısı limiti).
@@ -262,6 +263,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             const Tab(icon: Icon(Icons.home_work_outlined, size: 18), text: 'Bekçi'),
             const Tab(icon: Icon(Icons.tune, size: 18), text: 'Manuel Kontrol'),
             const Tab(icon: Icon(Icons.monitor_heart_outlined, size: 18), text: 'Sağlık'),
+            const Tab(icon: Icon(Icons.analytics_outlined, size: 18), text: 'Trafik & IP'),
             const Tab(icon: Icon(Icons.people_outline, size: 18), text: 'Kullanıcılar'),
             Tab(
               icon: const Icon(Icons.report_problem_outlined, size: 18),
@@ -285,6 +287,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
                     _buildWatcherTab(),
                     _buildControlsTab(),
                     const AdminHealthTab(),
+                    const AdminTrafficTab(),
                     const AdminUsersTab(),
                     _buildReportsTab(),
                     _buildBusinessTab(),

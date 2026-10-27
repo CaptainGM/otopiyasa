@@ -243,6 +243,8 @@ class ApiService {
     // Fiyat aralığı (TL): web'deki priceMin / priceMax ile aynı adlar.
     int? priceMin,
     int? priceMax,
+    int? yearMin,
+    int? yearMax,
   }) async {
     final response = await _http.get(
       _uri('/api/cars', {
@@ -267,6 +269,8 @@ class ApiService {
         if (noDamage) 'noDamage': 'true',
         if (priceMin != null) 'priceMin': '$priceMin',
         if (priceMax != null) 'priceMax': '$priceMax',
+        if (yearMin != null) 'yearMin': '$yearMin',
+        if (yearMax != null) 'yearMax': '$yearMax',
         'page': '$page',
         'compact': '1',
       }),
@@ -1514,6 +1518,41 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   /// 7/24 Daemon bot durumu, kalp atışı, bellek ve sayaç istatistikleri.
+  /// Canlı ziyaretçi trafiği, ülke ve IP istatistikleri (yalnızca yönetici).
+  Future<Map<String, dynamic>> fetchTrafficStats({String range = '24h'}) async {
+    final response = await _http.get(
+      _uri('/api/admin/traffic', {'range': range}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Trafik istatistikleri alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Belirli bir IP adresinin tüm detaylı gezinti geçmişi (yalnızca yönetici).
+  Future<Map<String, dynamic>> fetchIpDetail(String ip) async {
+    final response = await _http.get(
+      _uri('/api/admin/traffic', {'ip': ip}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'IP gezinti geçmişi alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Mobil sayfa/ekran ziyareti loglama.
+  Future<void> logVisit(String path) async {
+    try {
+      await _http.post(
+        _uri('/api/stats/visit'),
+        headers: _headers,
+        body: jsonEncode({'path': path}),
+      );
+    } catch (_) {}
+  }
+
   Future<Map<String, dynamic>> fetchDaemonStats() async {
     final response = await _http.get(
       _uri('/api/admin/daemon-stats'),

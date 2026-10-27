@@ -275,13 +275,6 @@ async function searchCarsPage(filters: CarFilters): Promise<CarsPage> {
   // Rastgele akış her tohumda farklıdır; önbelleğe alınırsa kayıtlar boşuna birikir ve herkes
   // aynı sırayı görürdü. Sorgu zaten indeksli ve milisaniyeler sürüyor.
   if (isDefaultHome || (isMixedSort(filters.sort) && !filters.q?.trim())) {
-    // Keşfet akışının ilk sayfası (slot + bucket + limit + sınıf):
-    // 45 sn bellekte tutulur (stale-while-revalidate). Böylece F5 atıldığında veya
-    // yeni ziyaretçi geldiğinde 27 bin kaydı taramaz, 0ms'de anında ekrana basar!
-    if ((filters.page || 1) === 1 && isValidFeedSlot(filters.slot)) {
-      const feedKey = `feed:p1:s${filters.slot}:b${filters.bucket}:l${filters.limit || 12}:vc${filters.vehicleClass || "all"}`;
-      return cached(feedKey, CACHE_TTL.page, () => findCarsPageUncached(filters));
-    }
     return findCarsPageUncached(filters);
   }
 

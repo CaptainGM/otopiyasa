@@ -75,6 +75,4 @@ export const CACHE_TTL = {
   short: 60 * 1000, // 1 dk
   medium: 5 * 60 * 1000, // 5 dk
   long: 15 * 60 * 1000, // 15 dk
-  static: 2 * 60 * 60 * 1000, // 2 saat (marka, model, renk, şehir gibi sabit filtreler)
-  page: 45 * 1000, // 45 sn (ana sayfa ilk dilim önbelleği)
 } as const;

@@ -108,12 +108,7 @@ export async function POST(request: Request) {
       const verifyUrl = buildVerifyUrl(appUrl, user.email, verifyToken);
       let mailSent = true;
       try {
-        // Hızlı yanıt: SMTP bağlantısı gecikse bile kullanıcıyı saniyelerce bekletmiyoruz;
-        // e-posta gönderimi arka planda havuza alınarak tamamlanır.
-        await Promise.race([
-          sendVerifyEmail(user.email, verifyUrl),
-          new Promise((resolve) => setTimeout(resolve, 800)),
-        ]);
+        await sendVerifyEmail(user.email, verifyUrl);
       } catch (err) {
         mailSent = false;
         console.warn("sendVerifyEmail failed:", err);

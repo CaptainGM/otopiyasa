@@ -18,7 +18,7 @@ export async function getBrandModelOptions(vehicleClass?: string | null): Promis
   const classFilter = vehicleClass
     ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass }
     : {};
-  return cached(`filters:brandModels:v6:${vehicleClass || "all"}`, CACHE_TTL.static, async () => {
+  return cached(`filters:brandModels:v6:${vehicleClass || "all"}`, CACHE_TTL.long, async () => {
     await connectDB();
     const rows = await Car.aggregate<{ _id: string; models: string[] }>([
       { $match: { ...PUBLIC_LISTING_FILTER, ...classFilter, model: { $exists: true, $ne: "" } } },

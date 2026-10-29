@@ -1191,6 +1191,24 @@ class ApiService {
     return body['summary'] as String?;
   }
 
+  /// Donanım kural motorunun "bilinmiyor" bıraktığı öğeler için AI (Gemini) tahmini — araç başına sunucuda
+  /// önbelleklenir. Döner: carId -> itemId -> present (true/false). Tahmin yoksa boş map döner.
+  Future<Map<String, Map<String, bool>>> compareEquipmentAi(List<String> ids) async {
+    final response = await _http.post(
+      _uri('/api/compare/equipment-ai'),
+      timeout: const Duration(seconds: 30),
+      headers: _headers,
+      body: jsonEncode({'ids': ids}),
+    );
+    if (response.statusCode != 200) return {};
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final raw = body['guesses'] as Map<String, dynamic>? ?? {};
+    return raw.map((carId, itemMap) => MapEntry(
+          carId,
+          (itemMap as Map<String, dynamic>? ?? {}).map((itemId, v) => MapEntry(itemId, v == true)),
+        ));
+  }
+
   /// Fotoğraftan otomatik doldurma — Gemini Vision marka/model/yıl/hasar
   /// durumunu tanır. `images`: [{image: base64, mimeType: 'image/jpeg'}].
   Future<Map<String, dynamic>?> analyzeCarPhoto(

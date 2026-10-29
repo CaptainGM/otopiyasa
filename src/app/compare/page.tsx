@@ -42,6 +42,10 @@ function ComparePageInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diffOnly, setDiffOnly] = useState(false);
+  // Kural motorunun "bilinmiyor" bıraktığı donanım öğeleri için AI tahmini (carId -> itemId -> present). Araç başına
+  // önbelleklenir (bkz. /api/compare/equipment-ai); tablo önce boşlukla, birkaç saniye sonra doldurularak render olur.
+  const [aiGuesses, setAiGuesses] = useState<Record<string, Record<string, boolean>>>({});
+  const [aiEquipState, setAiEquipState] = useState<"idle" | "loading" | "done">("idle");
 
   // URL'de ids yoksa localStorage seçimini kullan
   const idsFromUrl = (searchParams.get("ids") || "")
@@ -94,6 +98,30 @@ function ComparePageInner() {
       .then((data) => setItems(data.items || []));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), []);
+
+  useEffect(() => {
+    if (!items || items.length === 0) return;
+    const ids = items.map((c) => c._id);
+    let active = true;
+    setAiEquipState("loading");
+    fetch("/api/compare/equipment-ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    })
+      .then((r) => (r.ok ? r.json() : { guesses: {} }))
+      .then((data) => {
+        if (active) setAiGuesses(data.guesses || {});
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setAiEquipState("done");
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items?.map((c) => c._id).join(",")]);
 
   if (loading) {
     return <p className="py-10 text-center text-slate-400">Karşılaştırma yükleniyor...</p>;
@@ -261,29 +289,47 @@ function ComparePageInner() {
     return items!.every((c) => getVal(c) === first);
   }
 
-  // Donanım durumu: "var" | "yok" | "bilinmiyor". Eski yanıtta status yoksa yalnızca present'a bakılır.
-  const equipmentStatusOf = (c: Car, catId: string, itemId: string): "var" | "yok" | "bilinmiyor" => {
+  // Donanım durumu: kural motoru "var"/"yok" derse aynen kullanılır. "bilinmiyor" ise AI tahmini (varsa) devreye girer;
+  // AI de bilmiyorsa gerçekten bilinmiyor demektir. Eski yanıtta status yoksa yalnızca present'a bakılır.
+  const equipmentStatusOf = (c: Car, catId: string, itemId: string): { status: "var" | "yok" | "bilinmiyor"; aiGuessed: boolean } => {
     const item = c.equipmentCategories?.find((ct) => ct.id === catId)?.items.find((i) => i.id === itemId);
-    return item?.status ?? (item?.present ? "var" : "yok");
+    const ruleStatus: "var" | "yok" | "bilinmiyor" = item?.status ?? (item?.present ? "var" : "yok");
+    if (ruleStatus !== "bilinmiyor") return { status: ruleStatus, aiGuessed: false };
+    const guess = aiGuesses[c._id]?.[itemId];
+    if (guess === undefined) return { status: "bilinmiyor", aiGuessed: false };
+    return { status: guess ? "var" : "yok", aiGuessed: true };
   };
 
-  const renderBadge = (status: "var" | "yok" | "bilinmiyor") => {
-    if (status === "var") {
+  const renderBadge = (status: "var" | "yok" | "bilinmiyor", aiGuessed: boolean) => {
+    if (status === "bilinmiyor") {
+      // Henüz AI yanıtı gelmedi: boşluk yerine soluk "…"; AI yanıt verdi ama bu öğe için tahmin yoksa soluk "–".
       return (
-        <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-400">
-          <CheckIcon />
-          <span>Var</span>
+        <span className="inline-flex rounded bg-white/5 px-2 py-0.5 text-xs text-slate-600">
+          {aiEquipState === "loading" ? "…" : "–"}
         </span>
       );
     }
-    // İlan metninde hiç geçmeyen özellik: yok demek değil, bu yüzden kırmızı "Yok" rozeti kullanılmaz.
-    if (status === "bilinmiyor") {
-      return <span className="inline-flex rounded bg-white/5 px-2 py-0.5 text-xs font-medium text-slate-400">Belirtilmemiş</span>;
+    // AI tahmini: aynı rozet, soluk renk ve "~" ön eki ile (ilan/paketten doğrulanmış değerden ayırt edilir, gizlenmez).
+    if (status === "var") {
+      return (
+        <span
+          className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold ${
+            aiGuessed ? "bg-emerald-500/5 text-emerald-400/60" : "bg-emerald-500/15 text-emerald-400"
+          }`}
+        >
+          <CheckIcon />
+          <span>{aiGuessed ? "~Var" : "Var"}</span>
+        </span>
+      );
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400/80">
+      <span
+        className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
+          aiGuessed ? "bg-rose-500/5 text-rose-400/50" : "bg-rose-500/10 text-rose-400/80"
+        }`}
+      >
         <CrossIcon />
-        <span>Yok</span>
+        <span>{aiGuessed ? "~Yok" : "Yok"}</span>
       </span>
     );
   };
@@ -322,7 +368,7 @@ function ComparePageInner() {
       </p>
 
       <p className="-mt-3 text-xs leading-relaxed text-slate-500">
-        Teknik veriler önünde “~” varsa doğrulanmamış tahminidir (marka resmi kaynağı yoksa). “~” olmayan değer marka resmi sitesinden beygir gücüyle eşleştirilmiş gerçek veridir. Donanımda “Belirtilmemiş”, ilan metninde hiç geçmeyen özelliktir. “Yok” ise paket ya da dönem kuralından veya ilanda açıkça yazılan olumsuz bir ifadeden gelir.
+        Teknik veriler önünde “~” varsa doğrulanmamış tahminidir (marka resmi kaynağı yoksa). “~” olmayan değer marka resmi sitesinden beygir gücüyle eşleştirilmiş gerçek veridir. Donanımda ilan metninden ya da paket kuralından gelen “Var”/“Yok” düz renkli; ilanda hiç geçmeyen ve AI’nın o yıl/pakete göre tahmin ettiği “~Var”/“~Yok” soluk renkli gösterilir. “–” AI’nın da tahmin edemediği, gerçekten bilinmeyen özelliktir.
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-white/10 bg-slate-900/60 shadow-xl backdrop-blur-sm">
@@ -489,7 +535,7 @@ function ComparePageInner() {
 
             const filteredItems = cat.items.filter((itemDef) => {
               if (!diffOnly) return true;
-              return !isRowSame((c) => equipmentStatusOf(c, cat.id, itemDef.id));
+              return !isRowSame((c) => equipmentStatusOf(c, cat.id, itemDef.id).status);
             });
 
             if (filteredItems.length === 0) return null;
@@ -510,9 +556,10 @@ function ComparePageInner() {
                       {itemDef.name}
                     </td>
                     {items.map((c) => {
+                      const { status, aiGuessed } = equipmentStatusOf(c, cat.id, itemDef.id);
                       return (
                         <td key={c._id} className="p-2 align-middle sm:p-3.5">
-                          {renderBadge(equipmentStatusOf(c, cat.id, itemDef.id))}
+                          {renderBadge(status, aiGuessed)}
                         </td>
                       );
                     })}

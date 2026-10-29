@@ -8,7 +8,11 @@ export const AI_LIMITS = {
   chat: { limit: 30, windowMs: 10 * 60 * 1000 },
 
   compare: { limit: 12, windowMs: 10 * 60 * 1000 },
- 
+
+  // Donanım tahmini önbellekli (bkz. CompareEquipmentGuess): yalnızca önbellekte olmayan araç için Gemini çağrılır, bu yüzden
+  // "compare" özetinden ayrı, daha dar bir kovası var.
+  compareEquipment: { limit: 10, windowMs: 10 * 60 * 1000 },
+
   photo: { limit: 8, windowMs: 30 * 60 * 1000 },
 } as const;
 

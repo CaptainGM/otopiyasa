@@ -89,7 +89,7 @@ class _CompareRow {
 TechnicalSpecs? _specsOf(CarListing c) => c.technicalSpecs;
 bool _isVerifiedSpec(CarListing c) => c.technicalSpecs?.specSource == 'web';
 
-/// Donanım durumu: 'var' | 'yok' | 'bilinmiyor'. Eski yanıtta status yoksa yalnızca present'a bakılır.
+/// Kural motorunun ham durumu: 'var' | 'yok' | 'bilinmiyor'. Eski yanıtta status yoksa yalnızca present'a bakılır.
 String _equipmentStatus(CarListing c, String categoryId, String itemId) {
   final category = c.equipmentCategories.firstWhere(
     (ct) => ct.id == categoryId,
@@ -133,6 +133,11 @@ class _CompareScreenState extends State<CompareScreen> {
   bool _aiLoading = false;
   bool _aiExpanded = false;
   bool _diffOnly = false;
+
+  // Donanım kural motorunun "bilinmiyor" bıraktığı öğeler için AI tahmini (carId -> itemId -> present). Sunucuda araç
+  // başına önbelleklenir; tablo önce "…" ile, birkaç saniye sonra doldurularak render olur.
+  Map<String, Map<String, bool>> _aiEquip = {};
+  bool _aiEquipDone = false;
 
   // Aşağı kaydırınca fotoğraflar görünmez olur; o zaman üstte yapışan isim şeridi çıkar.
   final _vScroll = ScrollController();
@@ -184,6 +189,7 @@ class _CompareScreenState extends State<CompareScreen> {
       } else {
         setState(() => _aiSummary = null);
       }
+      if (cars.isNotEmpty) _loadAiEquipment(cars.map((c) => c.id).toList());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -203,6 +209,26 @@ class _CompareScreenState extends State<CompareScreen> {
     setState(() {
       _aiSummary = summary;
       _aiLoading = false;
+    });
+  }
+
+  /// Kural motoru "bilinmiyor" derse AI tahminine bakar: 'ai-var' | 'ai-yok' döner (soluk renkle gösterilir, "Var"/"Yok"
+  /// ile karıştırılmaz). AI de bilmiyorsa (henüz yanıt gelmedi ya da bu öğe için tahmin yok) 'bilinmiyor' kalır.
+  String _equipmentStatusWithAi(CarListing c, String categoryId, String itemId) {
+    final ruleStatus = _equipmentStatus(c, categoryId, itemId);
+    if (ruleStatus != 'bilinmiyor') return ruleStatus;
+    final guess = _aiEquip[c.id]?[itemId];
+    if (guess == null) return 'bilinmiyor';
+    return guess ? 'ai-var' : 'ai-yok';
+  }
+
+  Future<void> _loadAiEquipment(List<String> ids) async {
+    setState(() => _aiEquipDone = false);
+    final guesses = await _api.compareEquipmentAi(ids).catchError((_) => <String, Map<String, bool>>{});
+    if (!mounted) return;
+    setState(() {
+      _aiEquip = guesses;
+      _aiEquipDone = true;
     });
   }
 
@@ -272,7 +298,7 @@ class _CompareScreenState extends State<CompareScreen> {
                                 child: Text(
                                   'Yeşil zemin o satırda en avantajlı olanı gösterir. '
                                   'Teknik verilerde ~ doğrulanmamış tahminidir (marka resmi kaynağı yoksa). '
-                                  '? ilan metninde belirtilmemiş demektir; Yok ise paket kuralından ya da ilanda açıkça yazılan olumsuz bir ifadeden gelir. '
+                                  'Donanımda soluk ~Var/~Yok, ilanda hiç geçmeyen bir özellik için AI\'nın o yıl/pakete göre tahminidir; düz Var/Yok ise ilandan ya da paket kuralından doğrulanmıştır. "–" AI\'nın da tahmin edemediğidir. '
                                   'Fotoğrafa dokunarak ilana gidebilirsin.',
                                   style: TextStyle(fontSize: 12, color: Colors.white54),
                                   textAlign: TextAlign.center,
@@ -504,13 +530,13 @@ class _CompareScreenState extends State<CompareScreen> {
       result.add(_CompareRow(catTitle, [for (var i = 0; i < n; i++) ''], isHeader: true));
 
       for (final item in cat.items) {
-        final statuses = [for (final c in _cars) _equipmentStatus(c, cat.id, item.id)];
+        final statuses = [for (final c in _cars) _equipmentStatusWithAi(c, cat.id, item.id)];
         result.add(
           _CompareRow(
             item.name,
-            [for (final s in statuses) s == 'var' ? 'Var' : (s == 'bilinmiyor' ? 'Belirtilmemiş' : 'Yok')],
+            [for (final s in statuses) s == 'var' || s == 'ai-var' ? 'Var' : (s == 'yok' || s == 'ai-yok' ? 'Yok' : 'Belirtilmemiş')],
             isBoolean: true,
-            boolValues: [for (final s in statuses) s == 'var'],
+            boolValues: [for (final s in statuses) s == 'var' || s == 'ai-var'],
             statuses: statuses,
           ),
         );
@@ -646,39 +672,51 @@ class _CompareScreenState extends State<CompareScreen> {
           );
         }
         if (r.isBoolean && r.boolValues.length > col) {
-          final present = r.boolValues[col];
-          // İlan metninde hiç geçmeyen donanım "Yok" değildir: sütun dar olduğu için soru işaretli nötr rozet, açıklaması tablonun altında.
-          final unknown = r.statuses.length > col && r.statuses[col] == 'bilinmiyor';
-          final accent = present ? const Color(0xFF34D399) : (unknown ? Colors.white54 : const Color(0xFFF87171));
+          final status = r.statuses.length > col ? r.statuses[col] : (r.boolValues[col] ? 'var' : 'yok');
+          final present = status == 'var' || status == 'ai-var';
+          // 'ai-var'/'ai-yok': kural motoru bilmiyor, AI'nın o yıl/pakete göre tahmini (soluk renk + "~", ilan/paketten
+          // doğrulanmış "Var"/"Yok" ile karıştırılmaz). 'bilinmiyor': AI yanıtı henüz gelmedi ("…") ya da hiç tahmin
+          // vermedi ("–") — boş "Belirtilmemiş" duvarı yerine her hücrede bir şey gösterilir.
+          final aiGuessed = status == 'ai-var' || status == 'ai-yok';
+          final unknown = status == 'bilinmiyor';
+          if (unknown) {
+            return Container(
+              height: _rowHeight,
+              width: columnWidth,
+              color: row.isOdd ? stripe : null,
+              alignment: Alignment.center,
+              child: Text(
+                _aiEquipDone ? '–' : '…',
+                style: const TextStyle(fontSize: 12, color: Colors.white38),
+              ),
+            );
+          }
+          final baseColor = present ? const Color(0xFF34D399) : const Color(0xFFF87171);
+          final accent = aiGuessed ? baseColor.withValues(alpha: 0.6) : baseColor;
           final chip = Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
             decoration: BoxDecoration(
-              color: present
-                  ? const Color(0x2034D399)
-                  : (unknown ? const Color(0x14FFFFFF) : const Color(0x18F87171)),
+              color: (present ? const Color(0x2034D399) : const Color(0x18F87171))
+                  .withValues(alpha: aiGuessed ? 0.5 : 1),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  present
-                      ? Icons.check_circle_rounded
-                      : (unknown ? Icons.help_outline_rounded : Icons.cancel_rounded),
+                  present ? Icons.check_circle_rounded : Icons.cancel_rounded,
                   size: 13,
                   color: accent,
                 ),
-                if (!unknown) ...[
-                  const SizedBox(width: 3),
-                  Text(
-                    present ? 'Var' : 'Yok',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: present ? FontWeight.w700 : FontWeight.w500,
-                      color: accent,
-                    ),
+                const SizedBox(width: 3),
+                Text(
+                  '${aiGuessed ? "~" : ""}${present ? "Var" : "Yok"}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: present ? FontWeight.w700 : FontWeight.w500,
+                    color: accent,
                   ),
-                ],
+                ),
               ],
             ),
           );

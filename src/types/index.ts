@@ -24,6 +24,28 @@ export interface PricePoint {
   recordedAt: string;
 }
 
+export interface TechnicalSpecs {
+  acceleration?: number;
+  topSpeed?: number;
+  torque?: number;
+  trunkCapacity?: number;
+  fuelTank?: string;
+  curbWeight?: number;
+  specSource?: "catalog" | "derived" | "listing";
+}
+
+export interface EquipmentItem {
+  id: string;
+  name: string;
+  present: boolean;
+}
+
+export interface EquipmentCategory {
+  id: "safety" | "comfort" | "exterior" | "multimedia";
+  title: string;
+  items: EquipmentItem[];
+}
+
 export interface Car {
   _id: string;
   title: string;
@@ -78,6 +100,10 @@ export interface Car {
   /** Yeni ilan (üç saatten yeni) ve adil değeri henüz hesaplanmadı: kartta "Piyasa verisi az" yerine "Hesaplanıyor" yazılır. */
   marketPending?: boolean;
   priceVsMarket?: number;
+  /** Fabrika teknik verileri (0-100 hızlanma, tork, azami hız, bagaj vb.) */
+  technicalSpecs?: TechnicalSpecs;
+  /** Doğrulanmış donanım karşılaştırma matrisi */
+  equipmentCategories?: EquipmentCategory[];
   priceHistory: PricePoint[];
   createdAt: string;
   updatedAt: string;
@@ -110,6 +136,10 @@ export type CarListItem = Pick<
   model?: string;
   images: string[];
   features: Pick<CarFeatures, "fuelType" | "transmission">;
+  /** Fabrika teknik verileri (0-100 hızlanma, tork, azami hız, bagaj vb.) */
+  technicalSpecs?: TechnicalSpecs;
+  /** Doğrulanmış donanım karşılaştırma matrisi */
+  equipmentCategories?: EquipmentCategory[];
   priceHistory: PricePoint[];
 };
 

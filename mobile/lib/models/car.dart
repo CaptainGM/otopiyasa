@@ -255,6 +255,76 @@ class CompletenessItem {
       );
 }
 
+
+class TechnicalSpecs {
+  const TechnicalSpecs({
+    this.acceleration,
+    this.topSpeed,
+    this.torque,
+    this.trunkCapacity,
+    this.fuelTank,
+    this.curbWeight,
+    this.specSource,
+  });
+
+  final double? acceleration;
+  final int? topSpeed;
+  final int? torque;
+  final int? trunkCapacity;
+  final String? fuelTank;
+  final int? curbWeight;
+  final String? specSource;
+
+  factory TechnicalSpecs.fromJson(Map<String, dynamic> json) => TechnicalSpecs(
+        acceleration: (json['acceleration'] as num?)?.toDouble(),
+        topSpeed: (json['topSpeed'] as num?)?.toInt(),
+        torque: (json['torque'] as num?)?.toInt(),
+        trunkCapacity: (json['trunkCapacity'] as num?)?.toInt(),
+        fuelTank: json['fuelTank']?.toString(),
+        curbWeight: (json['curbWeight'] as num?)?.toInt(),
+        specSource: json['specSource']?.toString(),
+      );
+}
+
+class EquipmentItem {
+  const EquipmentItem({
+    required this.id,
+    required this.name,
+    required this.present,
+  });
+
+  final String id;
+  final String name;
+  final bool present;
+
+  factory EquipmentItem.fromJson(Map<String, dynamic> json) => EquipmentItem(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        present: json['present'] == true,
+      );
+}
+
+class EquipmentCategory {
+  const EquipmentCategory({
+    required this.id,
+    required this.title,
+    required this.items,
+  });
+
+  final String id;
+  final String title;
+  final List<EquipmentItem> items;
+
+  factory EquipmentCategory.fromJson(Map<String, dynamic> json) => EquipmentCategory(
+        id: json['id']?.toString() ?? '',
+        title: json['title']?.toString() ?? '',
+        items: (json['items'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(EquipmentItem.fromJson)
+            .toList(),
+      );
+}
+
 class CarListing {
   CarListing({
     required this.id,
@@ -303,6 +373,8 @@ class CarListing {
     this.similarCars = const [],
     this.mapPoint,
     this.quality,
+    this.technicalSpecs,
+    this.equipmentCategories = const [],
   });
 
   final String id;
@@ -369,6 +441,8 @@ class CarListing {
   final MapPoint? mapPoint;
   /// İlan kalitesi: yalnızca yayındaki ilanın detay yanıtında gelir; liste kartlarında null.
   final ListingCompleteness? quality;
+  final TechnicalSpecs? technicalSpecs;
+  final List<EquipmentCategory> equipmentCategories;
 
   bool get isActive => status == 'active';
 
@@ -457,6 +531,13 @@ class CarListing {
           .toList(),
       mapPoint: MapPoint.fromJson(json['mapPoint']),
       quality: ListingCompleteness.fromJson(json['quality']),
+      technicalSpecs: json['technicalSpecs'] is Map<String, dynamic>
+          ? TechnicalSpecs.fromJson(json['technicalSpecs'] as Map<String, dynamic>)
+          : null,
+      equipmentCategories: (json['equipmentCategories'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(EquipmentCategory.fromJson)
+          .toList(),
     );
   }
 }

@@ -1,4 +1,23 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "cmake.sourceDirectory": "C:/Users/sahin/Desktop/bitirme projesi/mobile/linux"
+  "java.jdt.ls.java.home": "C:/Users/sahin/.jdks/jdk-21.0.12.1+1",
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-21",
+      "path": "C:/Users/sahin/.jdks/jdk-21.0.12.1+1",
+      "default": true
+    }
+  ],
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.project.importOnFirstTimeStartup": "disabled",
+  "java.project.importHint": false,
+  "java.autobuild.enabled": false,
+  "java.server.launchMode": "LightWeight",
+  "java.project.resourceFilters": [
+    "node_modules",
+    ".git",
+    "mobile/android/**"
+  ],
+  "cmake.sourceDirectory": "C:/Users/sahin/Desktop/bitirme projesi/mobile/linux"
 }

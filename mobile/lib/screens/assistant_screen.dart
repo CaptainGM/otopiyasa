@@ -78,9 +78,12 @@ class _AssistantScreenState extends State<AssistantScreen> {
           .take(_messages.length - 1)
           .map((m) => {'role': m.mine ? 'user' : 'bot', 'text': m.text})
           .toList();
-      final result = await _api.chat(text, history: history.length > 8
-          ? history.sublist(history.length - 8)
-          : history);
+      final compareIds = await CompareStore.ids();
+      final result = await _api.chat(
+        text,
+        history: history.length > 8 ? history.sublist(history.length - 8) : history,
+        context: compareIds.isNotEmpty ? {'compareIds': compareIds} : null,
+      );
 
       final reply = result['reply']?.toString() ?? 'Yanıt alınamadı.';
       final link = result['link'] as Map<String, dynamic>?;

@@ -49,6 +49,9 @@ class _CompareRow {
     this.best = const {},
     this.worst = const {},
     this.warn = const {},
+    this.isHeader = false,
+    this.isBoolean = false,
+    this.boolValues = const [],
   });
 
   final String label;
@@ -63,8 +66,18 @@ class _CompareRow {
   /// Dikkat çeken değerler (kırmızı, ör. hasar kaydı).
   final Set<int> warn;
 
+  final bool isHeader;
+  final bool isBoolean;
+  final List<bool> boolValues;
+
   /// Bütün araçlarda aynı mı? ("Sadece farkları göster" bunları gizler.)
-  bool get allSame => values.toSet().length <= 1;
+  bool get allSame {
+    if (isHeader) return false;
+    if (isBoolean) {
+      return boolValues.toSet().length <= 1;
+    }
+    return values.toSet().length <= 1;
+  }
 }
 
 /// KARŞILAŞTIRMA — web'deki `/compare` sayfasının mobil karşılığı.
@@ -82,7 +95,7 @@ class CompareScreen extends StatefulWidget {
 }
 
 class _CompareScreenState extends State<CompareScreen> {
-  static const _labelWidth = 58.0;
+  static const _labelWidth = 72.0;
   static const _pagePadding = 8.0;
   static const _rowHeight = 44.0;
   static const _accent = Color(0xFFF5B942);
@@ -367,7 +380,11 @@ class _CompareScreenState extends State<CompareScreen> {
     final mileages = [for (final c in _cars) c.mileage];
     final years = [for (final c in _cars) c.year];
 
-    return [
+    final result = <_CompareRow>[];
+
+    // --- BÖLÜM 1: GENEL BİLGİLER ---
+    result.add(_CompareRow('📌 GENEL', [for (var i = 0; i < n; i++) ''], isHeader: true));
+    result.addAll([
       _CompareRow('Fiyat ₺', [for (final c in _cars) _money.format(c.price)],
           best: _extremes(prices, lowest: true), worst: worst(prices, highest: true)),
       _CompareRow('Marka/model/yıl ort.', [
@@ -396,7 +413,96 @@ class _CompareScreenState extends State<CompareScreen> {
       _CompareRow('Son kontrol', [for (final c in _cars) lastCheck(c)]),
       _CompareRow('Hasar', [for (final c in _cars) c.damageFlag ? 'Hasarlı' : 'Kayıt yok'],
           warn: {for (var i = 0; i < n; i++) if (_cars[i].damageFlag) i}),
-    ];
+    ]);
+
+    // --- BÖLÜM 2: FABRİKA TEKNİK VERİLERİ ---
+    final hasAnyTech = _cars.any((c) => c.technicalSpecs != null);
+    if (hasAnyTech) {
+      final accs = [for (final c in _cars) c.technicalSpecs?.acceleration ?? 99.0];
+      final speeds = [for (final c in _cars) c.technicalSpecs?.topSpeed ?? 0];
+      final torques = [for (final c in _cars) c.technicalSpecs?.torque ?? 0];
+      final trunks = [for (final c in _cars) c.technicalSpecs?.trunkCapacity ?? 0];
+
+      result.add(_CompareRow('⚡ TEKNİK', [for (var i = 0; i < n; i++) ''], isHeader: true));
+      result.addAll([
+        _CompareRow(
+          '0-100 km/s',
+          [for (final c in _cars) c.technicalSpecs?.acceleration != null ? '${c.technicalSpecs!.acceleration} sn' : '-'],
+          best: _extremes(accs, lowest: true),
+          worst: worst(accs, highest: true),
+        ),
+        _CompareRow(
+          'Azami Hız',
+          [for (final c in _cars) c.technicalSpecs?.topSpeed != null ? '${c.technicalSpecs!.topSpeed} km/s' : '-'],
+          best: _extremes(speeds, lowest: false),
+          worst: worst(speeds, highest: false),
+        ),
+        _CompareRow(
+          'Tork',
+          [for (final c in _cars) c.technicalSpecs?.torque != null ? '${c.technicalSpecs!.torque} Nm' : '-'],
+          best: _extremes(torques, lowest: false),
+          worst: worst(torques, highest: false),
+        ),
+        _CompareRow(
+          'Bagaj',
+          [for (final c in _cars) c.technicalSpecs?.trunkCapacity != null ? '${c.technicalSpecs!.trunkCapacity} L' : '-'],
+          best: _extremes(trunks, lowest: false),
+          worst: worst(trunks, highest: false),
+        ),
+        _CompareRow(
+          'Depo/Bat.',
+          [for (final c in _cars) _text(c.technicalSpecs?.fuelTank ?? '-')],
+        ),
+        _CompareRow(
+          'Boş Ağırlık',
+          [for (final c in _cars) c.technicalSpecs?.curbWeight != null ? '${c.technicalSpecs!.curbWeight} kg' : '-'],
+        ),
+      ]);
+    }
+
+    // --- BÖLÜM 3: DONANIM MATRİSİ ---
+    final templateCats = _cars.isNotEmpty ? _cars.first.equipmentCategories : <EquipmentCategory>[];
+    for (final cat in templateCats) {
+      String catTitle = cat.title;
+      if (cat.id == 'safety') {
+        catTitle = '🛡️ GÜVENLİK';
+      } else if (cat.id == 'comfort') {
+        catTitle = '🛋️ KONFOR';
+      } else if (cat.id == 'exterior') {
+        catTitle = '🚗 DIŞ DONANIM';
+      } else if (cat.id == 'multimedia') {
+        catTitle = '📱 MULTİMEDYA';
+      }
+
+      result.add(_CompareRow(catTitle, [for (var i = 0; i < n; i++) ''], isHeader: true));
+
+      for (final item in cat.items) {
+        final bools = [
+          for (final c in _cars)
+            c.equipmentCategories
+                .firstWhere(
+                  (ct) => ct.id == cat.id,
+                  orElse: () => const EquipmentCategory(id: '', title: '', items: []),
+                )
+                .items
+                .firstWhere(
+                  (i) => i.id == item.id,
+                  orElse: () => const EquipmentItem(id: '', name: '', present: false),
+                )
+                .present
+        ];
+        result.add(
+          _CompareRow(
+            item.name,
+            [for (final b in bools) b ? 'Var' : 'Yok'],
+            isBoolean: true,
+            boolValues: bools,
+          ),
+        );
+      }
+    }
+
+    return result;
   }
 
   /// Tek araçta yanına boş "araç ekle" sütunu gelir; sütun genişliği iki araçlık düzenle aynı kalsın diye iki sayılır.
@@ -457,7 +563,23 @@ class _CompareScreenState extends State<CompareScreen> {
 
   Widget _table() {
     final allRows = _rows();
-    final rows = _diffOnly && _cars.length >= 2 ? allRows.where((r) => !r.allSame).toList() : allRows;
+    List<_CompareRow> rows;
+    if (_diffOnly && _cars.length >= 2) {
+      final nonHeaderDiff = allRows.where((r) => !r.allSame).toList();
+      final cleanRows = <_CompareRow>[];
+      for (var i = 0; i < nonHeaderDiff.length; i++) {
+        final current = nonHeaderDiff[i];
+        if (current.isHeader) {
+          final nextIsRow = i + 1 < nonHeaderDiff.length && !nonHeaderDiff[i + 1].isHeader;
+          if (nextIsRow) cleanRows.add(current);
+        } else {
+          cleanRows.add(current);
+        }
+      }
+      rows = cleanRows;
+    } else {
+      rows = allRows;
+    }
 
     return LayoutBuilder(builder: (context, constraints) {
       final columnWidth = _columnWidth(constraints.maxWidth);
@@ -465,21 +587,86 @@ class _CompareScreenState extends State<CompareScreen> {
       final imageHeight = imageWidth * 0.72;
       final headerHeight = imageHeight + 4 + 30 + 6;
       final stripe = Colors.white.withValues(alpha: 0.04);
+      const headerBg = Color(0xFF1E293B);
 
-      Widget labelCell(int i) => Container(
-            height: _rowHeight,
+      Widget labelCell(int i) {
+        final r = rows[i];
+        if (r.isHeader) {
+          return Container(
+            height: 32,
             width: _labelWidth,
             alignment: Alignment.centerLeft,
             padding: const EdgeInsets.only(left: 4, right: 2),
-            color: i.isOdd ? stripe : null,
-            child: Text(rows[i].label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white54, fontSize: 11, height: 1.15)),
+            color: headerBg,
+            child: Text(
+              r.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _accent, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
           );
+        }
+        return Container(
+          height: _rowHeight,
+          width: _labelWidth,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 4, right: 2),
+          color: i.isOdd ? stripe : null,
+          child: Text(
+            r.label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Colors.white54, fontSize: 10.5, height: 1.15),
+          ),
+        );
+      }
 
       Widget valueCell(int row, int col) {
         final r = rows[row];
+        if (r.isHeader) {
+          return Container(
+            height: 32,
+            width: columnWidth,
+            color: headerBg,
+          );
+        }
+        if (r.isBoolean && r.boolValues.length > col) {
+          final present = r.boolValues[col];
+          return Container(
+            height: _rowHeight,
+            width: columnWidth,
+            color: row.isOdd ? stripe : null,
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: present ? const Color(0x2034D399) : const Color(0x18F87171),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      present ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                      size: 13,
+                      color: present ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      present ? 'Var' : 'Yok',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: present ? FontWeight.w700 : FontWeight.w500,
+                        color: present ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
         final isBest = r.best.contains(col);
         final isWorst = r.worst.contains(col);
         final isWarn = r.warn.contains(col);
@@ -594,9 +781,9 @@ class _CompareScreenState extends State<CompareScreen> {
                 ),
                 for (var r = 0; r < rows.length; r++)
                   Container(
-                    height: _rowHeight,
+                    height: rows[r].isHeader ? 32 : _rowHeight,
                     width: columnWidth,
-                    color: r.isOdd ? stripe : null,
+                    color: rows[r].isHeader ? headerBg : (r.isOdd ? stripe : null),
                   ),
               ],
             ),

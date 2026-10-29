@@ -324,4 +324,137 @@ describe("car-equipment with trim packages", () => {
     expect(frExt.items.find((i) => i.id === "sunroof")!.present).toBe(true);
     expect(frExt.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
   });
+
+  it("detects trim package from listing description when omitted from title", () => {
+    const focusTitanium = evaluateCarEquipment({
+      brand: "Ford",
+      model: "Focus",
+      year: 2021,
+      title: "Sahibinden Ford Focus 1.5 EcoBlue 2021 Model İzmir",
+      description: "Aracımız Titanium pakettir, hatasız boyasız ilk sahibinden.",
+    });
+
+    const com = focusTitanium.find((c) => c.id === "comfort")!;
+    const mul = focusTitanium.find((c) => c.id === "multimedia")!;
+
+    expect(com.items.find((i) => i.id === "keylessGo")!.present).toBe(true);
+    expect(com.items.find((i) => i.id === "digitalClimate")!.present).toBe(true);
+    expect(mul.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+  });
+
+  it("rejects false package matches when description mentions 'görünümlü' (lookalike)", () => {
+    const golfTrendlineWithRLineLook = evaluateCarEquipment({
+      brand: "Volkswagen",
+      model: "Golf",
+      year: 2020,
+      title: "Volkswagen Golf 1.0 TSI Trendline",
+      description: "Aracımız Trendline olup dıştan R-Line görünümlü body kit takılmıştır.",
+    });
+
+    const ext = golfTrendlineWithRLineLook.find((c) => c.id === "exterior")!;
+    const com = golfTrendlineWithRLineLook.find((c) => c.id === "comfort")!;
+
+    // Trendline olduğu için sunroof ve hayalet ekran FALSE olmalı (R-Line sanılmamalı)
+    expect(ext.items.find((i) => i.id === "sunroof")!.present).toBe(false);
+    expect(com.items.find((i) => i.id === "digitalCockpit")!.present).toBe(false);
+  });
+
+  it("distinguishes Togg T10X V1 vs V2 packages", () => {
+    const toggV1 = evaluateCarEquipment({
+      brand: "Togg",
+      model: "T10X",
+      year: 2024,
+      title: "Togg T10X V1 Standart Menzil 2024",
+    });
+    const toggV2 = evaluateCarEquipment({
+      brand: "Togg",
+      model: "T10X",
+      year: 2024,
+      title: "Togg T10X V2 Uzun Menzil 2024",
+    });
+
+    const v1Ext = toggV1.find((c) => c.id === "exterior")!;
+    const v2Ext = toggV2.find((c) => c.id === "exterior")!;
+    const v2Com = toggV2.find((c) => c.id === "comfort")!;
+    const v2Saf = toggV2.find((c) => c.id === "safety")!;
+
+    expect(v1Ext.items.find((i) => i.id === "camera360")!.present).toBe(false);
+    expect(v1Ext.items.find((i) => i.id === "sunroof")!.present).toBe(false);
+
+    expect(v2Ext.items.find((i) => i.id === "camera360")!.present).toBe(true);
+    expect(v2Ext.items.find((i) => i.id === "sunroof")!.present).toBe(true);
+    expect(v2Com.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
+    expect(v2Saf.items.find((i) => i.id === "blindSpot")!.present).toBe(true);
+  });
+
+  it("distinguishes Suzuki Vitara GL vs GLX Premium", () => {
+    const vitaraGL = evaluateCarEquipment({
+      brand: "Suzuki",
+      model: "Vitara",
+      year: 2022,
+      title: "Suzuki Vitara 1.4 Boosterjet GL Elegance 2022",
+    });
+    const vitaraGLX = evaluateCarEquipment({
+      brand: "Suzuki",
+      model: "Vitara",
+      year: 2022,
+      title: "Suzuki Vitara 1.4 Boosterjet GLX Premium 2022",
+    });
+
+    const glExt = vitaraGL.find((c) => c.id === "exterior")!;
+    const glxExt = vitaraGLX.find((c) => c.id === "exterior")!;
+    const glxCom = vitaraGLX.find((c) => c.id === "comfort")!;
+    const glxSaf = vitaraGLX.find((c) => c.id === "safety")!;
+
+    expect(glExt.items.find((i) => i.id === "sunroof")!.present).toBe(false);
+    expect(glxExt.items.find((i) => i.id === "sunroof")!.present).toBe(true);
+    expect(glxCom.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
+    expect(glxSaf.items.find((i) => i.id === "blindSpot")!.present).toBe(true);
+  });
+
+  it("distinguishes MG HS Comfort vs Luxury", () => {
+    const hsComfort = evaluateCarEquipment({
+      brand: "MG",
+      model: "HS",
+      year: 2023,
+      title: "MG HS 1.5 T-GDI Comfort 2023",
+    });
+    const hsLuxury = evaluateCarEquipment({
+      brand: "MG",
+      model: "HS",
+      year: 2023,
+      title: "MG HS 1.5 T-GDI Luxury 2023",
+    });
+
+    const comExt = hsComfort.find((c) => c.id === "exterior")!;
+    const luxExt = hsLuxury.find((c) => c.id === "exterior")!;
+    const luxCom = hsLuxury.find((c) => c.id === "comfort")!;
+    const luxSaf = hsLuxury.find((c) => c.id === "safety")!;
+
+    expect(comExt.items.find((i) => i.id === "camera360")!.present).toBe(false);
+    expect(comExt.items.find((i) => i.id === "sunroof")!.present).toBe(false);
+
+    expect(luxExt.items.find((i) => i.id === "camera360")!.present).toBe(true);
+    expect(luxExt.items.find((i) => i.id === "sunroof")!.present).toBe(true);
+    expect(luxCom.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
+    expect(luxSaf.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
+  });
+
+  it("distinguishes Cupra Formentor VZ top performance spec", () => {
+    const formentor = evaluateCarEquipment({
+      brand: "Cupra",
+      model: "Formentor",
+      year: 2023,
+      title: "Cupra Formentor 2.0 TSI VZ 310 HP 4Drive",
+    });
+
+    const ext = formentor.find((c) => c.id === "exterior")!;
+    const com = formentor.find((c) => c.id === "comfort")!;
+    const saf = formentor.find((c) => c.id === "safety")!;
+
+    expect(ext.items.find((i) => i.id === "sunroof")!.present).toBe(true);
+    expect(ext.items.find((i) => i.id === "electricTailgate")!.present).toBe(true);
+    expect(com.items.find((i) => i.id === "digitalCockpit")!.present).toBe(true);
+    expect(saf.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
+  });
 });

@@ -495,6 +495,7 @@ export function evaluateCarEquipment(car: EvaluatedCarInfo): EquipmentCategory[]
     brand: car.brand,
     model: car.model,
     title: car.title,
+    description: car.description,
     year: car.year,
   });
 

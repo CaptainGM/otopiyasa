@@ -247,4 +247,81 @@ describe("car-equipment with trim packages", () => {
     expect(comfort.items.find((i) => i.id === "seatCooling")!.present).toBe(false);
     expect(exterior.items.find((i) => i.id === "electricTailgate")!.present).toBe(false);
   });
+
+  it("distinguishes Dacia Duster Essential (base) vs Prestige/Journey (top)", () => {
+    const dusterBase = evaluateCarEquipment({
+      brand: "Dacia",
+      model: "Duster",
+      year: 2023,
+      title: "Dacia Duster 1.0 Tce Essential 2023",
+    });
+    const dusterTop = evaluateCarEquipment({
+      brand: "Dacia",
+      model: "Duster",
+      year: 2023,
+      title: "Dacia Duster 1.3 Tce 150 hp Prestige Plus 2023",
+    });
+
+    const baseMul = dusterBase.find((c) => c.id === "multimedia")!;
+    const topMul = dusterTop.find((c) => c.id === "multimedia")!;
+    const topExt = dusterTop.find((c) => c.id === "exterior")!;
+    const topSaf = dusterTop.find((c) => c.id === "safety")!;
+
+    expect(baseMul.items.find((i) => i.id === "touchScreen")!.present).toBe(false);
+    expect(topMul.items.find((i) => i.id === "touchScreen")!.present).toBe(true);
+    expect(topMul.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+    expect(topExt.items.find((i) => i.id === "rearCamera")!.present).toBe(true);
+    expect(topSaf.items.find((i) => i.id === "blindSpot")!.present).toBe(true);
+  });
+
+  it("distinguishes Nissan Qashqai Visia (base) vs Platinum (top)", () => {
+    const qashqaiVisia = evaluateCarEquipment({
+      brand: "Nissan",
+      model: "Qashqai",
+      year: 2022,
+      title: "Nissan Qashqai 1.3 DIG-T Visia 2022",
+    });
+    const qashqaiPlat = evaluateCarEquipment({
+      brand: "Nissan",
+      model: "Qashqai",
+      year: 2022,
+      title: "Nissan Qashqai 1.3 DIG-T Platinum Premium 2022",
+    });
+
+    const visiaExt = qashqaiVisia.find((c) => c.id === "exterior")!;
+    const platExt = qashqaiPlat.find((c) => c.id === "exterior")!;
+    const platCom = qashqaiPlat.find((c) => c.id === "comfort")!;
+
+    expect(visiaExt.items.find((i) => i.id === "camera360")!.present).toBe(false);
+    expect(visiaExt.items.find((i) => i.id === "sunroof")!.present).toBe(false);
+
+    expect(platExt.items.find((i) => i.id === "camera360")!.present).toBe(true);
+    expect(platExt.items.find((i) => i.id === "sunroof")!.present).toBe(true);
+    expect(platCom.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
+  });
+
+  it("distinguishes Seat Leon Reference (base) vs FR (top)", () => {
+    const leonRef = evaluateCarEquipment({
+      brand: "Seat",
+      model: "Leon",
+      year: 2021,
+      title: "Seat Leon 1.0 TSI Reference 2021",
+    });
+    const leonFR = evaluateCarEquipment({
+      brand: "Seat",
+      model: "Leon",
+      year: 2021,
+      title: "Seat Leon 1.5 eTSI FR 2021",
+    });
+
+    const refCom = leonRef.find((c) => c.id === "comfort")!;
+    const frCom = leonFR.find((c) => c.id === "comfort")!;
+    const frExt = leonFR.find((c) => c.id === "exterior")!;
+
+    expect(refCom.items.find((i) => i.id === "digitalCockpit")!.present).toBe(false);
+    expect(frCom.items.find((i) => i.id === "digitalCockpit")!.present).toBe(true);
+    expect(frCom.items.find((i) => i.id === "ambientLighting")!.present).toBe(true);
+    expect(frExt.items.find((i) => i.id === "sunroof")!.present).toBe(true);
+    expect(frExt.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
+  });
 });

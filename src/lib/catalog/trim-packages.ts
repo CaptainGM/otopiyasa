@@ -531,6 +531,257 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
       ],
     },
   },
+
+  // ==========================================
+  // OPEL (Astra, Corsa, Mokka, Grandland, Crossland, Insignia)
+  // ==========================================
+  {
+    brandRegex: /opel/i,
+    packageName: "Essentia / Edition",
+    packageRegex: /\b(essentia|edition)\b/i,
+    rules: {
+      standardFeatures: ["absEsp", "airbags", "isofix", "tirePressure", "bluetooth"],
+      excludedFeatures: ["sunroof", "seatHeating", "seatCooling", "digitalCockpit", "camera360", "wirelessCharging", "leatherSeats"],
+    },
+  },
+  {
+    brandRegex: /opel/i,
+    packageName: "Enjoy / Elegance",
+    packageRegex: /\b(enjoy|elegance)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rainSensor", "digitalClimate", "foldingMirrors"
+      ],
+      excludedFeatures: ["seatCooling", "camera360"],
+    },
+  },
+  {
+    brandRegex: /opel/i,
+    packageName: "GS / GS Line / Ultimate / Cosmo",
+    packageRegex: /\b(gs|gs\s*line|gsline|ultimate|cosmo)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "rainSensor", "digitalClimate", "keylessGo",
+        "digitalCockpit", "foldingMirrors", "ambientLighting", "ledMatrixHeadlights",
+        "carplayAndroidAuto"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
+
+  // ==========================================
+  // NISSAN (Qashqai, Juke, X-Trail, Micra)
+  // ==========================================
+  {
+    brandRegex: /nissan/i,
+    packageName: "Visia",
+    packageRegex: /\bvisia\b/i,
+    rules: {
+      standardFeatures: ["absEsp", "airbags", "isofix", "tirePressure", "bluetooth"],
+      excludedFeatures: ["sunroof", "seatHeating", "seatCooling", "digitalCockpit", "camera360", "rearCamera", "touchScreen", "digitalClimate"],
+    },
+  },
+  {
+    brandRegex: /nissan/i,
+    packageName: "Tekna / Design Pack",
+    packageRegex: /\b(tekna|design\s*pack)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "rearCamera", "parkingSensors", "digitalClimate", "rainSensor", "foldingMirrors",
+        "keylessGo", "carplayAndroidAuto"
+      ],
+      excludedFeatures: ["seatCooling", "camera360"],
+    },
+  },
+  {
+    brandRegex: /nissan/i,
+    packageName: "Platinum / Platinum Premium",
+    packageRegex: /\bplatinum\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "rearCamera", "camera360", "parkingSensors", "digitalClimate", "rainSensor",
+        "foldingMirrors", "keylessGo", "sunroof", "leatherSeats", "seatHeating",
+        "ledMatrixHeadlights", "carplayAndroidAuto", "blindSpot", "digitalCockpit"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
+
+  // ==========================================
+  // SEAT & CUPRA (Leon, Ibiza, Ateca, Arona, Formentor)
+  // ==========================================
+  {
+    brandRegex: /seat|cupra/i,
+    packageName: "Reference",
+    packageRegex: /\breference\b/i,
+    rules: {
+      standardFeatures: ["absEsp", "airbags", "isofix", "tirePressure", "bluetooth"],
+      excludedFeatures: ["sunroof", "seatHeating", "seatCooling", "digitalCockpit", "camera360", "digitalClimate", "touchScreen"],
+    },
+  },
+  {
+    brandRegex: /seat|cupra/i,
+    packageName: "Style",
+    packageRegex: /\bstyle\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rainSensor", "digitalClimate", "foldingMirrors"
+      ],
+      excludedFeatures: ["seatCooling", "camera360", "leatherSeats"],
+    },
+  },
+  {
+    brandRegex: /seat|cupra/i,
+    packageName: "FR / Xcellence / Cupra VZ",
+    packageRegex: /\b(fr|xcellence|vz|formentor)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "rainSensor", "digitalClimate", "keylessGo",
+        "digitalCockpit", "foldingMirrors", "ambientLighting", "ledMatrixHeadlights",
+        "carplayAndroidAuto", "sunroof"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
+
+  // ==========================================
+  // DACIA (Duster, Sandero, Jogger, Lodgy)
+  // ==========================================
+  {
+    brandRegex: /dacia/i,
+    packageName: "Ambiance / Essential",
+    packageRegex: /\b(ambiance|essential)\b/i,
+    rules: {
+      standardFeatures: ["absEsp", "airbags", "isofix", "tirePressure"],
+      excludedFeatures: ["sunroof", "seatHeating", "seatCooling", "digitalCockpit", "camera360", "touchScreen", "rearCamera", "digitalClimate", "navigation"],
+    },
+  },
+  {
+    brandRegex: /dacia/i,
+    packageName: "Laureate / Comfort",
+    packageRegex: /\b(laureate|comfort)\b/i,
+    rules: {
+      standardFeatures: ["absEsp", "airbags", "isofix", "tirePressure", "bluetooth"],
+      excludedFeatures: ["sunroof", "seatHeating", "seatCooling", "digitalCockpit", "camera360", "leatherSeats"],
+    },
+  },
+  {
+    brandRegex: /dacia/i,
+    packageName: "Prestige / Journey / Extreme",
+    packageRegex: /\b(prestige|prestige\s*plus|journey|extreme)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "navigation", "rearCamera", "parkingSensors", "digitalClimate", "carplayAndroidAuto",
+        "blindSpot"
+      ],
+      excludedFeatures: ["seatCooling", "sunroof", "digitalCockpit"],
+    },
+  },
+
+  // ==========================================
+  // KIA (Sportage, Ceed, Stonic, Rio, Cerato)
+  // ==========================================
+  {
+    brandRegex: /kia/i,
+    packageName: "Cool / Concept",
+    packageRegex: /\b(cool|concept)\b/i,
+    rules: {
+      standardFeatures: ["absEsp", "airbags", "isofix", "tirePressure", "bluetooth"],
+      excludedFeatures: ["sunroof", "seatHeating", "seatCooling", "digitalCockpit", "camera360", "touchScreen"],
+    },
+  },
+  {
+    brandRegex: /kia/i,
+    packageName: "Elegance",
+    packageRegex: /\belegance\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "carplayAndroidAuto", "rainSensor"
+      ],
+      excludedFeatures: ["seatCooling", "camera360", "leatherSeats"],
+    },
+  },
+  {
+    brandRegex: /kia/i,
+    packageName: "Prestige / GT-Line",
+    packageRegex: /\b(prestige|gt-line|gtline)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "digitalCockpit",
+        "foldingMirrors", "rainSensor", "ambientLighting", "ledMatrixHeadlights",
+        "carplayAndroidAuto", "sunroof", "seatHeating", "leatherSeats"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
+
+  // ==========================================
+  // CITROEN (C3, C4, C5 Aircross, C-Elysee)
+  // ==========================================
+  {
+    brandRegex: /citroen/i,
+    packageName: "Live / Feel",
+    packageRegex: /\b(live|feel)\b/i,
+    rules: {
+      standardFeatures: ["absEsp", "airbags", "isofix", "tirePressure", "bluetooth"],
+      excludedFeatures: ["sunroof", "seatHeating", "seatCooling", "digitalCockpit", "camera360", "leatherSeats"],
+    },
+  },
+  {
+    brandRegex: /citroen/i,
+    packageName: "Shine / Shine Bold",
+    packageRegex: /\b(shine|shine\s*bold)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "digitalCockpit",
+        "foldingMirrors", "rainSensor", "ambientLighting", "ledMatrixHeadlights",
+        "carplayAndroidAuto", "blindSpot"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
+
+  // ==========================================
+  // VOLVO (XC40, XC60, XC90, S60, S90)
+  // ==========================================
+  {
+    brandRegex: /volvo/i,
+    packageName: "Momentum / Core / Kinetic",
+    packageRegex: /\b(momentum|core|kinetic)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "digitalCockpit",
+        "foldingMirrors", "rainSensor", "ledMatrixHeadlights", "carplayAndroidAuto"
+      ],
+      excludedFeatures: ["seatCooling", "camera360"],
+    },
+  },
+  {
+    brandRegex: /volvo/i,
+    packageName: "Inscription / Plus / Ultimate / R-Design",
+    packageRegex: /\b(inscription|ultimate|plus|r-design|rdesign)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "digitalCockpit",
+        "foldingMirrors", "rainSensor", "ambientLighting", "ledMatrixHeadlights",
+        "carplayAndroidAuto", "sunroof", "leatherSeats", "electricSeats", "seatHeating",
+        "electricTailgate", "blindSpot", "premiumAudio"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
 ];
 
 /**

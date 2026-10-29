@@ -1,4 +1,5 @@
 {
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "cmake.sourceDirectory": "C:/Users/sahin/Desktop/bitirme projesi/mobile/linux"
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "java.import.gradle.enabled": false,
+  "cmake.sourceDirectory": "C:/Users/sahin/Desktop/bitirme projesi/mobile/linux"
 }

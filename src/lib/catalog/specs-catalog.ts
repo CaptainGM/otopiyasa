@@ -1,12 +1,18 @@
 /**
  * Fabrika Teknik Verileri Kataloğu & Araç Dinamiği Tahmincisi
  *
- * Bu modül, Türkiye pazarındaki popüler marka ve modellerin fabrika çıkış
- * teknik verilerini (0-100 hızlanma, azami hız, maksimum tork, bagaj hacmi,
- * depo/batarya kapasitesi ve boş ağırlık) deterministik olarak çözer.
- * Katalogda tam eşleşmeyen nadir araçlar için fizik tabanlı gerçekçi
- * mühendislik yaklaşımları uygular.
+ * Bu modül bir aracın teknik verilerini (0-100 hızlanma, azami hız, maksimum tork, bagaj hacmi,
+ * depo/batarya kapasitesi ve boş ağırlık) dört kademeli öncelikle çözer:
+ *  1. "listing": ilanın kendi bildirdiği değer.
+ *  2. "web": marka resmi Türkiye sitesinden otomatik çekilmiş, beygir gücüyle eşleştirilmiş gerçek veri
+ *     (bkz. official-specs.ts / scripts/official-specs.ts). Kaynağı sourceUrl ile birlikte gelir.
+ *  3. "catalog": elle girilmiş fabrika broşür değerleri (doğrulanmamış, kaynak gösterilmez).
+ *  4. "derived": katalogda da eşleşme yoksa fizik tabanlı tahmin (ağırlık/güç oranından).
+ * 3 ve 4 doğrulanmamıştır; ekranda "tahmini" olarak işaretlenmelidir (bkz. karşılaştırma sayfası).
  */
+
+import { findOfficialSpec } from "./official-specs";
+import { OFFICIAL_SPECS } from "./official-specs-data";
 
 export interface TechnicalSpecs {
   /** 0-100 km/s Hızlanma (saniye) */
@@ -21,8 +27,10 @@ export interface TechnicalSpecs {
   fuelTank?: string;
   /** Boş Ağırlık (kg) */
   curbWeight?: number;
-  /** Veri kaynağı: "catalog" (fabrika broşürü) | "derived" (araç dinamiği tahmini) | "listing" */
-  specSource: "catalog" | "derived" | "listing";
+  /** Veri kaynağı: "web" (internetten doğrulanmış) | "listing" | "catalog"/"derived" (doğrulanmamış, tahmini) */
+  specSource: "web" | "catalog" | "derived" | "listing";
+  /** Yalnızca specSource "web" iken dolu: verinin alındığı resmi sayfa. */
+  sourceUrl?: string;
 }
 
 interface CatalogEntry {
@@ -629,7 +637,22 @@ export function resolveTechnicalSpecs(car: {
     };
   }
 
-  // 2. Fabrika broşür kataloğunda eşleştir
+  // 2. İnternetten doğrulanmış resmi veri (marka + model + beygir gücü BİREBİR eşleşirse).
+  const official = findOfficialSpec(OFFICIAL_SPECS, { brand, model, title, horsepower: feat.horsepower, fuelType: feat.fuelType });
+  if (official) {
+    return {
+      acceleration: feat.acceleration || official.acceleration,
+      topSpeed: feat.topSpeed || official.topSpeed,
+      torque: feat.torque || official.torque,
+      trunkCapacity: official.trunkCapacity,
+      fuelTank: normalizeFuelTank(feat.fuelTank) ?? official.fuelTank,
+      curbWeight: official.curbWeight,
+      specSource: "web",
+      sourceUrl: official.sourceUrl,
+    };
+  }
+
+  // 3. Fabrika broşür kataloğunda eşleştir (doğrulanmamış, elle girilmiş değerler)
   for (const entry of CATALOG_DATABASE) {
     if (entry.brandRegex.test(brand) || entry.brandRegex.test(hay)) {
       if (entry.modelRegex.test(model) || entry.modelRegex.test(hay)) {
@@ -648,7 +671,7 @@ export function resolveTechnicalSpecs(car: {
     }
   }
 
-  // 3. Eşleşme yoksa fizik/dinamik modelinden türet
+  // 4. Eşleşme yoksa fizik/dinamik modelinden türet (tahmini, doğrulanmamış)
   const derived = estimateSpecsFromDynamics({
     brand,
     model,

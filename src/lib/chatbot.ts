@@ -8,6 +8,7 @@ import { topicLinkFor } from "@/lib/chat-topics";
 import { modelFamilyRegex } from "@/lib/model-family";
 import { Types } from "mongoose";
 import { evaluateCarEquipment, EquipmentCategory } from "@/lib/catalog/car-equipment";
+import { resolveTechnicalSpecs } from "@/lib/catalog/specs-catalog";
 import type { TechnicalSpecs } from "@/types";
 
 /**
@@ -67,7 +68,7 @@ export interface CompareCarDetail {
   fuelType?: string;
   transmission?: string;
   horsepower?: number;
-  specs?: TechnicalSpecs;
+  specs: TechnicalSpecs;
   equipment: EquipmentCategory[];
 }
 
@@ -94,6 +95,15 @@ export async function getCompareDetailsForAssistant(ids: string[]): Promise<Comp
       const c = carMap.get(id);
       if (!c) continue;
 
+      const specs = resolveTechnicalSpecs({
+        brand: c.brand,
+        model: c.model,
+        year: c.year,
+        vehicleClass: c.vehicleClass,
+        title: c.title,
+        features: c.features,
+      });
+
       const equipment = evaluateCarEquipment({
         brand: c.brand,
         model: c.model,
@@ -115,6 +125,7 @@ export async function getCompareDetailsForAssistant(ids: string[]): Promise<Comp
         fuelType: c.features?.fuelType || c.fuelType,
         transmission: c.features?.transmission || c.transmission,
         horsepower: c.features?.horsepower || c.horsepower,
+        specs,
         equipment,
       });
     }
@@ -154,9 +165,7 @@ export function buildCompareSummaryText(cars: CompareCarDetail[]): string {
         `Araç ${i + 1}: ${c.year} ${c.brand} ${c.model} (${c.title})`,
         `  Fiyat: ${formatPrice(c.price)} | KM: ${c.km.toLocaleString("tr-TR")} km`,
         `  Motor/Güç: ${c.horsepower ? `${c.horsepower} HP` : ""} ${c.fuelType || ""} ${c.transmission || ""}`,
-        c.specs?.specSource === "web"
-          ? `  Teknik: 0-100: ${c.specs.acceleration ?? "-"}s | Hız: ${c.specs.topSpeed ?? "-"} km/s | Tork: ${c.specs.torque ?? "-"} Nm | Bagaj: ${c.specs.trunkCapacity ?? "-"} L`
-          : `  Teknik: veri yok`,
+        `  Teknik${c.specs.specSource === "web" ? "" : " (tahmini)"}: 0-100: ${c.specs.acceleration ?? "-"}s | Hız: ${c.specs.topSpeed ?? "-"} km/s | Tork: ${c.specs.torque ?? "-"} Nm | Bagaj: ${c.specs.trunkCapacity ?? "-"} L`,
         `  Donanımlar (ilan metni ve paket standardı):`,
         safetyYes ? `    Güvenlik: ${safetyYes}` : "",
         comfortYes ? `    Konfor: ${comfortYes}` : "",
@@ -282,7 +291,7 @@ export function generateDeterministicCompareAnswer(rawMessage: string, cars: Com
       `\n\n💡 **Hızlı Değerlendirme:**\n` +
       `- En bütçe dostu seçenek: **${cheapest.year} ${cheapest.brand} ${cheapest.model}** (${formatPrice(cheapest.price)})\n` +
       (mostPowerful.horsepower
-        ? `- En yüksek performans: **${mostPowerful.year} ${mostPowerful.brand} ${mostPowerful.model}** (${mostPowerful.horsepower} HP${mostPowerful.specs?.specSource === "web" && mostPowerful.specs.acceleration ? `, 0-100: ${mostPowerful.specs.acceleration} sn` : ""})\n`
+        ? `- En yüksek performans: **${mostPowerful.year} ${mostPowerful.brand} ${mostPowerful.model}** (${mostPowerful.horsepower} HP${mostPowerful.specs.acceleration ? `, 0-100: ${mostPowerful.specs.acceleration} sn${mostPowerful.specs.specSource === "web" ? "" : " (tahmini)"}` : ""})\n`
         : "") +
       `\nKullanım amacına ve bütçene göre hangi aracı daha yakından incelemek istersin?`,
   };

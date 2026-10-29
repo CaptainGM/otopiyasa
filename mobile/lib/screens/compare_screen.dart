@@ -85,8 +85,9 @@ class _CompareRow {
   }
 }
 
-/// Yalnızca internetten doğrulanmış değerler (specSource 'web') gösterilir; katalog ve tahmin değerleri kaynaksız olduğu için gizlenir.
-TechnicalSpecs? _factorySpecs(CarListing c) => c.technicalSpecs?.specSource == 'web' ? c.technicalSpecs : null;
+/// Tüm kaynaklar gösterilir (web/katalog/tahmin); doğrulanmamış (web dışı) değerler "~" ile işaretlenir, gizlenmez.
+TechnicalSpecs? _specsOf(CarListing c) => c.technicalSpecs;
+bool _isVerifiedSpec(CarListing c) => c.technicalSpecs?.specSource == 'web';
 
 /// Donanım durumu: 'var' | 'yok' | 'bilinmiyor'. Eski yanıtta status yoksa yalnızca present'a bakılır.
 String _equipmentStatus(CarListing c, String categoryId, String itemId) {
@@ -270,6 +271,7 @@ class _CompareScreenState extends State<CompareScreen> {
                                 padding: EdgeInsets.symmetric(vertical: 12),
                                 child: Text(
                                   'Yeşil zemin o satırda en avantajlı olanı gösterir. '
+                                  'Teknik verilerde ~ doğrulanmamış tahminidir (marka resmi kaynağı yoksa). '
                                   '? ilan metninde belirtilmemiş demektir; Yok ise paket kuralından ya da ilanda açıkça yazılan olumsuz bir ifadeden gelir. '
                                   'Fotoğrafa dokunarak ilana gidebilirsin.',
                                   style: TextStyle(fontSize: 12, color: Colors.white54),
@@ -437,47 +439,50 @@ class _CompareScreenState extends State<CompareScreen> {
           warn: {for (var i = 0; i < n; i++) if (_cars[i].damageFlag) i}),
     ]);
 
-    // --- BÖLÜM 2: FABRİKA TEKNİK VERİLERİ ---
-    final hasAnyTech = _cars.any((c) => _factorySpecs(c) != null);
+    // --- BÖLÜM 2: TEKNİK VERİLER ---
+    // Doğrulanmamış (katalog/tahmin, specSource != 'web') değerler "~" ile işaretlenir ama gösterilir; "en iyi/en kötü"
+    // yarışına girmez (sentinel değerle dışarıda bırakılır), çünkü doğruluğu garanti edilmiyor.
+    final hasAnyTech = _cars.any((c) => _specsOf(c) != null);
     if (hasAnyTech) {
-      final accs = [for (final c in _cars) _factorySpecs(c)?.acceleration ?? 99.0];
-      final speeds = [for (final c in _cars) _factorySpecs(c)?.topSpeed ?? 0];
-      final torques = [for (final c in _cars) _factorySpecs(c)?.torque ?? 0];
-      final trunks = [for (final c in _cars) _factorySpecs(c)?.trunkCapacity ?? 0];
+      String mark(CarListing c, String text) => _isVerifiedSpec(c) ? text : '~$text';
+      final accs = [for (final c in _cars) _isVerifiedSpec(c) ? (_specsOf(c)?.acceleration ?? 99.0) : 99.0];
+      final speeds = [for (final c in _cars) _isVerifiedSpec(c) ? (_specsOf(c)?.topSpeed ?? 0) : 0];
+      final torques = [for (final c in _cars) _isVerifiedSpec(c) ? (_specsOf(c)?.torque ?? 0) : 0];
+      final trunks = [for (final c in _cars) _isVerifiedSpec(c) ? (_specsOf(c)?.trunkCapacity ?? 0) : 0];
 
       result.add(_CompareRow('⚡ TEKNİK', [for (var i = 0; i < n; i++) ''], isHeader: true));
       result.addAll([
         _CompareRow(
           '0-100 km/s',
-          [for (final c in _cars) _factorySpecs(c)?.acceleration != null ? '${_factorySpecs(c)!.acceleration} sn' : '-'],
+          [for (final c in _cars) _specsOf(c)?.acceleration != null ? mark(c, '${_specsOf(c)!.acceleration} sn') : '-'],
           best: _extremes(accs, lowest: true),
           worst: worst(accs, highest: true),
         ),
         _CompareRow(
           'Azami Hız',
-          [for (final c in _cars) _factorySpecs(c)?.topSpeed != null ? '${_factorySpecs(c)!.topSpeed} km/s' : '-'],
+          [for (final c in _cars) _specsOf(c)?.topSpeed != null ? mark(c, '${_specsOf(c)!.topSpeed} km/s') : '-'],
           best: _extremes(speeds, lowest: false),
           worst: worst(speeds, highest: false),
         ),
         _CompareRow(
           'Tork',
-          [for (final c in _cars) _factorySpecs(c)?.torque != null ? '${_factorySpecs(c)!.torque} Nm' : '-'],
+          [for (final c in _cars) _specsOf(c)?.torque != null ? mark(c, '${_specsOf(c)!.torque} Nm') : '-'],
           best: _extremes(torques, lowest: false),
           worst: worst(torques, highest: false),
         ),
         _CompareRow(
           'Bagaj',
-          [for (final c in _cars) _factorySpecs(c)?.trunkCapacity != null ? '${_factorySpecs(c)!.trunkCapacity} L' : '-'],
+          [for (final c in _cars) _specsOf(c)?.trunkCapacity != null ? mark(c, '${_specsOf(c)!.trunkCapacity} L') : '-'],
           best: _extremes(trunks, lowest: false),
           worst: worst(trunks, highest: false),
         ),
         _CompareRow(
           'Depo/Bat.',
-          [for (final c in _cars) _text(_factorySpecs(c)?.fuelTank ?? '-')],
+          [for (final c in _cars) _specsOf(c)?.fuelTank != null ? mark(c, _specsOf(c)!.fuelTank!) : '-'],
         ),
         _CompareRow(
           'Boş Ağırlık',
-          [for (final c in _cars) _factorySpecs(c)?.curbWeight != null ? '${_factorySpecs(c)!.curbWeight} kg' : '-'],
+          [for (final c in _cars) _specsOf(c)?.curbWeight != null ? mark(c, '${_specsOf(c)!.curbWeight} kg') : '-'],
         ),
       ]);
     }

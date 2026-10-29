@@ -152,5 +152,40 @@ describe("specs-catalog", () => {
     const e220Cdi = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "E", title: "Mercedes-Benz E 220 CDI Avantgarde", year: 2019 });
     expect(e220Cdi.acceleration).toBe(7.3);
   });
+
+  it("önceliği doğrular: web (resmi kaynak) > catalog (elle girilmiş) > derived (tahmin)", () => {
+    // Renault Austral hem official-specs-data.ts'de (150 hp, beygir eşleşirse) hem CATALOG_DATABASE'de (beygirsiz, her zaman
+    // eşleşir) var; aynı beygirle web verisi kazanmalı, catalog'un sabit değerleri dönmemeli.
+    const web = resolveTechnicalSpecs({
+      brand: "Renault",
+      model: "Austral",
+      title: "Renault Austral 1.3 TCe Icon",
+      year: 2024,
+      features: { horsepower: 150, fuelType: "Benzin" },
+    });
+    expect(web.specSource).toBe("web");
+    expect(web.sourceUrl).toBeTruthy();
+    expect(web.trunkCapacity).toBe(555); // official-specs-data.ts değeri; catalog'un sabiti 500
+
+    // Beygir uyuşmazsa web eşleşmez, catalog'a düşer (yıl aralığı yok, beygirsiz her zaman eşleşir).
+    const catalog = resolveTechnicalSpecs({
+      brand: "Renault",
+      model: "Austral",
+      title: "Renault Austral 1.3 TCe Icon",
+      year: 2024,
+      features: { horsepower: 999, fuelType: "Benzin" },
+    });
+    expect(catalog.specSource).toBe("catalog");
+    expect(catalog.trunkCapacity).toBe(500);
+
+    // Hem web hem catalogda hiç karşılığı olmayan marka/model: tahmine düşer.
+    const derived = resolveTechnicalSpecs({
+      brand: "BYD",
+      model: "Seal U",
+      year: 2025,
+      features: { horsepower: 218, fuelType: "Elektrik" },
+    });
+    expect(derived.specSource).toBe("derived");
+  });
 });
 

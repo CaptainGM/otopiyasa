@@ -183,20 +183,31 @@ function ComparePageInner() {
     },
   ];
 
-  // --- Fabrika Teknik Verileri Satırları ---
-  // Yalnızca internetten doğrulanmış değerler (specSource "web") gösterilir. Katalog ve tahmin değerleri kaynaksız olduğu için
-  // gösterilmez ve "en iyi" karşılaştırmasına girmez.
-  const factorySpecs = (c: Car) => (c.technicalSpecs?.specSource === "web" ? c.technicalSpecs : undefined);
-  const hasFactorySpecs = items.some((c) => factorySpecs(c) !== undefined);
-  const accelerations = items.map((c) => factorySpecs(c)?.acceleration).filter((v): v is number => typeof v === "number");
-  const topSpeeds = items.map((c) => factorySpecs(c)?.topSpeed).filter((v): v is number => typeof v === "number");
-  const torques = items.map((c) => factorySpecs(c)?.torque).filter((v): v is number => typeof v === "number");
-  const trunks = items.map((c) => factorySpecs(c)?.trunkCapacity).filter((v): v is number => typeof v === "number");
+  // --- Teknik Veri Satırları ---
+  // specSource "web" = marka resmi sitesinden beygir gücüyle eşleştirilmiş gerçek veri. "catalog"/"derived" doğrulanmamış,
+  // tahminidir (rows aşağıda "~" ile işaretlenir) ve "en iyi" karşılaştırmasına girmez; yalnızca "web" girer.
+  const specsOf = (c: Car) => c.technicalSpecs;
+  const isVerified = (c: Car) => specsOf(c)?.specSource === "web";
+  const accelerations = items.filter(isVerified).map((c) => specsOf(c)?.acceleration).filter((v): v is number => typeof v === "number");
+  const topSpeeds = items.filter(isVerified).map((c) => specsOf(c)?.topSpeed).filter((v): v is number => typeof v === "number");
+  const torques = items.filter(isVerified).map((c) => specsOf(c)?.torque).filter((v): v is number => typeof v === "number");
+  const trunks = items.filter(isVerified).map((c) => specsOf(c)?.trunkCapacity).filter((v): v is number => typeof v === "number");
 
   const minAcc = accelerations.length > 0 ? Math.min(...accelerations) : undefined;
   const maxSpeed = topSpeeds.length > 0 ? Math.max(...topSpeeds) : undefined;
   const maxTorque = torques.length > 0 ? Math.max(...torques) : undefined;
   const maxTrunk = trunks.length > 0 ? Math.max(...trunks) : undefined;
+
+  // Doğrulanmamış (katalog/tahmin) değer "~" ile işaretlenir, "-" ile gizlenmez (kullanıcı tercihi: boş olmaktansa tahmini göster).
+  const specCell = (c: Car, value: number | undefined, unit: string) => {
+    if (value === undefined) return "-";
+    const text = `${value} ${unit}`;
+    return isVerified(c) ? text : <span className="text-slate-500">~{text}</span>;
+  };
+  const specCellText = (c: Car, text: string | undefined) => {
+    if (!text) return "-";
+    return isVerified(c) ? text : <span className="text-slate-500">~{text}</span>;
+  };
 
   const techRows: {
     label: string;
@@ -206,37 +217,37 @@ function ComparePageInner() {
   }[] = [
     {
       label: "0-100 km/s Hızlanma",
-      render: (c) => (factorySpecs(c)?.acceleration ? `${factorySpecs(c)?.acceleration} sn` : "-"),
-      best: (c) => Boolean(factorySpecs(c)?.acceleration && minAcc !== undefined && factorySpecs(c)?.acceleration === minAcc),
-      getRawValue: (c) => factorySpecs(c)?.acceleration,
+      render: (c) => specCell(c, specsOf(c)?.acceleration, "sn"),
+      best: (c) => Boolean(isVerified(c) && minAcc !== undefined && specsOf(c)?.acceleration === minAcc),
+      getRawValue: (c) => specsOf(c)?.acceleration,
     },
     {
       label: "Azami Hız",
-      render: (c) => (factorySpecs(c)?.topSpeed ? `${factorySpecs(c)?.topSpeed} km/s` : "-"),
-      best: (c) => Boolean(factorySpecs(c)?.topSpeed && maxSpeed !== undefined && factorySpecs(c)?.topSpeed === maxSpeed),
-      getRawValue: (c) => factorySpecs(c)?.topSpeed,
+      render: (c) => specCell(c, specsOf(c)?.topSpeed, "km/s"),
+      best: (c) => Boolean(isVerified(c) && maxSpeed !== undefined && specsOf(c)?.topSpeed === maxSpeed),
+      getRawValue: (c) => specsOf(c)?.topSpeed,
     },
     {
       label: "Maksimum Tork",
-      render: (c) => (factorySpecs(c)?.torque ? `${factorySpecs(c)?.torque} Nm` : "-"),
-      best: (c) => Boolean(factorySpecs(c)?.torque && maxTorque !== undefined && factorySpecs(c)?.torque === maxTorque),
-      getRawValue: (c) => factorySpecs(c)?.torque,
+      render: (c) => specCell(c, specsOf(c)?.torque, "Nm"),
+      best: (c) => Boolean(isVerified(c) && maxTorque !== undefined && specsOf(c)?.torque === maxTorque),
+      getRawValue: (c) => specsOf(c)?.torque,
     },
     {
       label: "Bagaj Hacmi",
-      render: (c) => (factorySpecs(c)?.trunkCapacity ? `${factorySpecs(c)?.trunkCapacity} L` : "-"),
-      best: (c) => Boolean(factorySpecs(c)?.trunkCapacity && maxTrunk !== undefined && factorySpecs(c)?.trunkCapacity === maxTrunk),
-      getRawValue: (c) => factorySpecs(c)?.trunkCapacity,
+      render: (c) => specCell(c, specsOf(c)?.trunkCapacity, "L"),
+      best: (c) => Boolean(isVerified(c) && maxTrunk !== undefined && specsOf(c)?.trunkCapacity === maxTrunk),
+      getRawValue: (c) => specsOf(c)?.trunkCapacity,
     },
     {
       label: "Depo / Batarya",
-      render: (c) => factorySpecs(c)?.fuelTank || "-",
-      getRawValue: (c) => factorySpecs(c)?.fuelTank,
+      render: (c) => specCellText(c, specsOf(c)?.fuelTank),
+      getRawValue: (c) => specsOf(c)?.fuelTank,
     },
     {
       label: "Boş Ağırlık",
-      render: (c) => (factorySpecs(c)?.curbWeight ? `${factorySpecs(c)?.curbWeight} kg` : "-"),
-      getRawValue: (c) => factorySpecs(c)?.curbWeight,
+      render: (c) => specCell(c, specsOf(c)?.curbWeight, "kg"),
+      getRawValue: (c) => specsOf(c)?.curbWeight,
     },
   ];
 
@@ -283,7 +294,7 @@ function ComparePageInner() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Araç Karşılaştırma</h1>
           <p className="text-xs text-slate-400">
-            Temel özellikler, fabrika teknik verileri ve donanım matrisi
+            Temel özellikler, teknik veriler ve donanım matrisi
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -311,7 +322,7 @@ function ComparePageInner() {
       </p>
 
       <p className="-mt-3 text-xs leading-relaxed text-slate-500">
-        Fabrika teknik verileri yalnızca katalogdan ya da ilanın kendi bildirdiği değerden gösterilir; katalogda olmayan araçlarda tahmin yazılmaz (“-”). Donanımda “Belirtilmemiş”, ilan metninde hiç geçmeyen özelliktir. “Yok” ise paket ya da dönem kuralından veya ilanda açıkça yazılan olumsuz bir ifadeden gelir.
+        Teknik veriler önünde “~” varsa doğrulanmamış tahminidir (marka resmi kaynağı yoksa). “~” olmayan değer marka resmi sitesinden beygir gücüyle eşleştirilmiş gerçek veridir. Donanımda “Belirtilmemiş”, ilan metninde hiç geçmeyen özelliktir. “Yok” ise paket ya da dönem kuralından veya ilanda açıkça yazılan olumsuz bir ifadeden gelir.
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-white/10 bg-slate-900/60 shadow-xl backdrop-blur-sm">
@@ -417,15 +428,14 @@ function ComparePageInner() {
               ))}
           </tbody>
 
-          {/* SECTION 2: FABRİKA TEKNİK VERİLERİ (yalnızca doğrulanmış veri varsa) */}
-          {hasFactorySpecs && (
+          {/* SECTION 2: TEKNİK VERİLER */}
           <tbody>
             <tr className="bg-slate-800/60">
               <td
                 colSpan={items.length + (items.length === 1 ? 2 : 1)}
                 className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-sky-400 sm:px-4"
               >
-                ⚡ Fabrika Teknik Verileri (Performans & Kapasite)
+                ⚡ Teknik Veriler (Performans & Kapasite)
               </td>
             </tr>
             {techRows
@@ -459,7 +469,6 @@ function ComparePageInner() {
                 </tr>
               ))}
           </tbody>
-          )}
 
           {/* SECTION 3..6: DONANIM KATEGORİLERİ */}
           {templateCategories.map((cat) => {

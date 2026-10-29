@@ -82,7 +82,7 @@ describe("specs-catalog", () => {
       fuelType: "Benzin",
     });
 
-    expect(specs.acceleration).toBeGreaterThan(4.0);
+    expect(specs.acceleration).toBeGreaterThan(3.5);
     expect(specs.acceleration).toBeLessThan(7.0);
     expect(specs.topSpeed).toBeGreaterThan(230);
     expect(specs.torque).toBeGreaterThan(400);

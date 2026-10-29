@@ -163,81 +163,37 @@ function isStandardFactoryEquipment(featureId: string, car: EvaluatedCarInfo): b
   const year = car.year || 2020;
   const hay = `${brand} ${model} ${title}`;
 
-  const isPorsche = /porsche/i.test(brand) || /porsche/i.test(title);
-  const isPorscheMacanTurbo = isPorsche && /macan/i.test(hay) && /turbo|elek/i.test(hay);
-  const isPorscheTaycan = isPorsche && /taycan/i.test(hay);
-  const isPorschePanamera = isPorsche && /panamera/i.test(hay);
+  const isLuxuryBrand =
+    /porsche|mercedes|bmw|audi|volvo|lexus|land\s*rover|range\s*rover|jaguar|maserati|alfa\s*romeo/i.test(brand) ||
+    /porsche|mercedes|bmw|audi|volvo|lexus/i.test(title);
 
-  const isUltraLuxury =
-    isPorscheMacanTurbo ||
-    isPorscheTaycan ||
-    isPorschePanamera ||
-    /eqs|eqe|s-class|s\s*serisi|bmw\s*7|i7|bmw\s*8|audi\s*e-tron|audi\s*a8|model\s*s|model\s*x/i.test(hay);
+  const isCommercialVan =
+    /tourneo|connect|courier|custom|transit|doblo|fiorino|caddy|transporter|crafter|boxer|ducato|combo|vivaro|partner|berlingo/i.test(hay);
 
-  const isModernLuxury =
-    year >= 2019 && /porsche|mercedes|bmw|audi|volvo|lexus/i.test(brand);
-  const isModernMainstream =
-    year >= 2020 && !/tourneo|connect|courier|doblo|fiorino/i.test(hay);
-
-  // ABS & ESP: 2004 sonrası çoğu araçta yasal standarttır
+  // 1. ABS & ESP: 2004 sonrası yasal standart
   if (featureId === "absEsp") return year >= 2004;
 
-  // En az 6 hava yastığı
-  if (featureId === "airbags") {
-    if (isUltraLuxury || isModernLuxury) return true;
-    if (isModernMainstream && year >= 2021) return true;
-    return false;
-  }
-
-  // ISOFIX: 2012 sonrası
+  // 2. ISOFIX: 2012 sonrası yasal standart
   if (featureId === "isofix") return year >= 2012;
 
-  // Lastik basınç: 2015 sonrası
-  if (featureId === "tirePressure") return year >= 2015;
+  // 3. Lastik Basınç Uyarı Sistemi (TPMS): 2014 sonrası yasal standart
+  if (featureId === "tirePressure") return year >= 2014;
 
-  // Yokuş kalkış desteği
-  if (featureId === "hillHolder") {
-    if (isUltraLuxury || isModernLuxury) return true;
-    if (year >= 2016) return true;
-    return false;
+  // 4. Yokuş Kalkış Desteği: 2017 sonrası tüm bineklerde veya lüks markalarda
+  if (featureId === "hillHolder") return year >= 2017 || isLuxuryBrand;
+
+  // 5. En az 6 Hava Yastığı: Tüm lüks araçlarda veya 2019+ modern bineklerde
+  if (featureId === "airbags") return isLuxuryBrand || year >= 2019;
+
+  // 6. GSR II Yasal Güvenlik Regülasyonu (Avrupa & Türkiye 2024+):
+  // 2024 ve sonrası üretilen tüm binek araçlarda Şerit Takip ve Otonom Acil Fren YASAL ZORUNLULUKTUR!
+  if (year >= 2024 && !isCommercialVan) {
+    if (featureId === "laneAssist") return true;
+    if (featureId === "emergencyBrake") return true;
   }
 
-  // PORSCHE MACAN TURBO / TURBO ELEKTRİK RESMİ BROŞÜR STANDARTLARI:
-  if (isPorscheMacanTurbo) {
-    switch (featureId) {
-      case "laneAssist":          // Porsche Lane Keeping Assist standart
-      case "blindSpot":           // Lane Change Assist (Kör Nokta) standart
-      case "emergencyBrake":      // Warn and Brake Assist standart
-      case "adaptiveCruise":      // Adaptive Cruise / InnoDrive standart
-      case "seatHeating":         // Ön ve Arka Koltuk Isıtma standart
-      case "electricSeats":       // 18 kademeli Adaptif Hafızalı Spor Koltuklar standart
-      case "leatherSeats":        // Tam Deri Döşeme Paketi standart
-      case "digitalClimate":      // Gelişmiş Çok Bölgeli Otomatik Klima standart
-      case "keylessGo":           // Porsche Comfort Access (Anahtarsız Giriş) standart
-      case "digitalCockpit":      // 12.6 inç Kavisli Dijital Gösterge Paneli standart
-      case "heatedSteering":      // GT Spor Isıtmalı Fonksiyonel Direksiyon standart
-      case "ambientLighting":     // İç Ambiyans Aydınlatma standart
-      case "camera360":           // Aktif Park & Çevre Görüş Sistemi standart
-      case "parkingSensors":      // Ön ve Arka Park Sensörleri standart
-      case "rearCamera":          // Geri Görüş Kamerası standart
-      case "ledMatrixHeadlights": // PDLS Plus Matrix LED Farlar standart
-      case "electricTailgate":    // Elektrikli Otomatik Bagaj Kapağı standart
-      case "foldingMirrors":      // Elektrikli Katlanır Aynalar standart
-      case "rainSensor":          // Yağmur & Far Sensörü standart
-      case "carplayAndroidAuto":  // Kablosuz Apple CarPlay standart
-      case "wirelessCharging":    // Kablosuz Şarj standart
-      case "touchScreen":         // 10.9 inç PCM Dokunmatik Ekran standart
-      case "navigation":          // Dahili PCM Navigasyon standart
-      case "bluetooth":           // Bluetooth standart
-      case "premiumAudio":        // BOSE Surround Sound Sistemi standart
-        return true;
-      default:
-        break;
-    }
-  }
-
-  // ULTRA LÜKS AMİRAL GEMİSİ STANDARTLARI (Mercedes EQS, BMW i7 vb.)
-  if (isUltraLuxury) {
+  // 7. TESLA & TOGG Standartları
+  if (/tesla|togg/i.test(hay)) {
     switch (featureId) {
       case "laneAssist":
       case "blindSpot":
@@ -245,47 +201,95 @@ function isStandardFactoryEquipment(featureId: string, car: EvaluatedCarInfo): b
       case "adaptiveCruise":
       case "seatHeating":
       case "electricSeats":
-      case "leatherSeats":
-      case "digitalClimate":
-      case "keylessGo":
-      case "digitalCockpit":
-      case "ambientLighting":
-      case "camera360":
-      case "parkingSensors":
-      case "rearCamera":
-      case "ledMatrixHeadlights":
       case "electricTailgate":
+      case "camera360":
+      case "sunroof":
+      case "wirelessCharging":
+      case "navigation":
+      case "touchScreen":
+      case "keylessGo":
+      case "digitalClimate":
+      case "digitalCockpit":
       case "foldingMirrors":
       case "rainSensor":
-      case "carplayAndroidAuto":
-      case "wirelessCharging":
-      case "touchScreen":
-      case "navigation":
-      case "bluetooth":
+      case "ledMatrixHeadlights":
+      case "ambientLighting":
         return true;
       default:
         break;
     }
   }
 
-  // MODERN LÜKS (2019+ BMW 3/5, Mercedes C/E, Audi A4/A6, Porsche)
-  if (isModernLuxury) {
-    switch (featureId) {
-      case "digitalClimate":
-      case "keylessGo":
-      case "digitalCockpit":
-      case "parkingSensors":
-      case "rearCamera":
-      case "foldingMirrors":
-      case "rainSensor":
-      case "carplayAndroidAuto":
-      case "touchScreen":
-      case "bluetooth":
-      case "electricTailgate":
-        return isPorsche || /suv|wagon|station/i.test(hay);
-      default:
-        break;
+  // 8. LÜKS & PREMIUM MARKA STANDARTLARI (Mercedes, BMW, Audi, Porsche, Volvo, Land Rover, Lexus)
+  if (isLuxuryBrand) {
+    // 2018+ Temel Konfor ve Multimedya
+    if (year >= 2018) {
+      if (featureId === "touchScreen") return true;
+      if (featureId === "bluetooth") return true;
+      if (featureId === "rainSensor") return true;
+      if (featureId === "digitalClimate") return true;
+      if (featureId === "keylessGo") return true;
     }
+
+    // 2020+ Dijital Kokpit, LED Farlar, Katlanır Aynalar, CarPlay, Ön/Arka Park Sensörü
+    if (year >= 2020) {
+      if (featureId === "digitalCockpit") return true;
+      if (featureId === "ledMatrixHeadlights") return true;
+      if (featureId === "foldingMirrors") return true;
+      if (featureId === "carplayAndroidAuto") return true;
+      if (featureId === "parkingSensors") return true;
+    }
+
+    // 2021+ Geri Görüş Kamerası, Şerit Takip, Çarpışma Önleme
+    if (year >= 2021) {
+      if (featureId === "rearCamera") return true;
+      if (featureId === "laneAssist") return true;
+      if (featureId === "emergencyBrake") return true;
+    }
+  }
+
+  // 9. D / E / F SEGMENT VE LÜKS SUV MODELLERİ (Mercedes GLC, GLE, E, S, EQS; BMW X3, X5, 5, 7; Audi Q5, Q7, A6; Porsche Macan, Cayenne, Taycan; Volvo XC60, XC90)
+  const isMidOrFullLuxury =
+    isLuxuryBrand &&
+    (
+      /glc|gle|gls|e-class|e\s*serisi|e\s*180|e\s*200|e\s*220|e\s*250|e\s*300|s-class|s\s*serisi|eqs|eqe|g-class|g\s*serisi|amg\s*gt/i.test(hay) ||
+      /x3|x4|x5|x6|x7|5\s*serisi|520|525|530|7\s*serisi|8\s*serisi|ix|ix3|i5|i7/i.test(hay) ||
+      /q5|q7|q8|a6|a7|a8|e-tron/i.test(hay) ||
+      /porsche|macan|cayenne|panamera|taycan/i.test(hay) ||
+      /xc60|xc90|s90|v90/i.test(hay) ||
+      /range\s*rover|velar|defender|discovery/i.test(hay)
+    );
+
+  if (isMidOrFullLuxury && year >= 2018) {
+    if (featureId === "electricTailgate") return true; // Elektrikli bagaj standarttır
+    if (featureId === "electricSeats") return true;    // Elektrikli ve hafızalı koltuklar standarttır
+    if (featureId === "seatHeating") return true;     // Ön koltuk ısıtma standarttır
+    if (featureId === "leatherSeats") return true;    // Deri veya Deri/Artico döşeme standarttır
+    if (featureId === "ambientLighting") return true; // İç ambiyans aydınlatma standarttır
+    if (year >= 2020 && featureId === "blindSpot") return true; // Kör nokta standarttır
+    if (year >= 2020 && featureId === "sunroof") return true;   // Cam tavan standarttır
+  }
+
+  // 10. YÜKSEK PERFORMANS / EN ÜST SERİLER (Mercedes AMG, BMW M, Audi RS, Porsche Turbo / GTS)
+  const isPerformanceHalo =
+    /(?:amg\s*(?:35|43|45|53|63)|(?:35|43|45|53|63)\s*amg)|c\s*63|e\s*63|s\s*63|g\s*63|glc.*(?:43|63)|gle.*(?:53|63)/i.test(hay) ||
+    /(?:m\s*(?:135|140|235|240|340|440|550|850)|(?:135|140|235|240|340|440|550|850)\s*m|\bm[23458]\b|x[3456]m|m\s*competition|m\s*power)/i.test(hay) ||
+    /\b(?:rs[34567]|rsq[38]|audi\s*s[345678])\b/i.test(hay) ||
+    /porsche.*(?:turbo|gts|gt3|gt4)|macan\s*turbo|cayenne\s*turbo|taycan\s*turbo|eqs/i.test(hay);
+
+  if (isPerformanceHalo && year >= 2020) {
+    if (featureId === "adaptiveCruise") return true; // ACC / Distronic standart
+    if (featureId === "camera360") return true;      // 360 Çevre Görüş kamerası standart
+    if (featureId === "sunroof") return true;        // Cam tavan standart
+    if (featureId === "seatHeating") return true;    // Koltuk ısıtma standart
+    if (featureId === "electricSeats") return true;  // Elektrikli spor koltuklar standart
+    if (featureId === "leatherSeats") return true;   // Nappa/Spor deri döşeme standart
+    if (featureId === "electricTailgate") return true;
+    if (featureId === "ambientLighting") return true;
+    if (featureId === "blindSpot") return true;
+    if (featureId === "laneAssist") return true;
+    if (featureId === "emergencyBrake") return true;
+    if (year >= 2023 && featureId === "heatedSteering") return true; // Isıtmalı direksiyon
   }
 
   return false;

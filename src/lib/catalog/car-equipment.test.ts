@@ -154,4 +154,89 @@ describe("car-equipment with trim packages", () => {
     expect(comfort.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
     expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
   });
+
+  it("verifies 2024 Mercedes GLC 43 AMG standard equipment even with empty seller description", () => {
+    const glc = evaluateCarEquipment({
+      brand: "Mercedes-Benz",
+      model: "GLC Coupe 43 AMG",
+      year: 2024,
+      vehicleClass: "suv",
+      title: "Galeriden Mercedes - Benz GLC Coupe 43 AMG 2024 Model İstanbul 26.500 KM",
+      description: "Arabam ilanı",
+    });
+
+    const safety = glc.find((c) => c.id === "safety")!;
+    const comfort = glc.find((c) => c.id === "comfort")!;
+    const exterior = glc.find((c) => c.id === "exterior")!;
+    const multimedia = glc.find((c) => c.id === "multimedia")!;
+
+    // 2024 AMG SUV: GSR II zorunlu şerit takip ve acil fren, AMG ve D-SUV fabrika standartları
+    expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
+    expect(safety.items.find((i) => i.id === "emergencyBrake")!.present).toBe(true);
+    expect(safety.items.find((i) => i.id === "blindSpot")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "electricSeats")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "digitalCockpit")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "ambientLighting")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "digitalClimate")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "keylessGo")!.present).toBe(true);
+    expect(exterior.items.find((i) => i.id === "camera360")!.present).toBe(true);
+    expect(exterior.items.find((i) => i.id === "electricTailgate")!.present).toBe(true);
+    expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
+    expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+  });
+
+  it("verifies 2024 Audi Q3 35 TFSI Advanced package equipment", () => {
+    const q3 = evaluateCarEquipment({
+      brand: "Audi",
+      model: "Q3 35 TFSI Advanced",
+      year: 2024,
+      vehicleClass: "suv",
+      title: "Galeriden Audi Q3 35 TFSI Advanced 2024 Model Malatya 47.000 KM Siyah",
+      description: "",
+    });
+
+    const safety = q3.find((c) => c.id === "safety")!;
+    const comfort = q3.find((c) => c.id === "comfort")!;
+    const exterior = q3.find((c) => c.id === "exterior")!;
+    const multimedia = q3.find((c) => c.id === "multimedia")!;
+
+    // Audi Advanced + 2024 GSR II
+    expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
+    expect(safety.items.find((i) => i.id === "emergencyBrake")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "digitalCockpit")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "digitalClimate")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "keylessGo")!.present).toBe(true);
+    expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
+    expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+    // Koltuk soğutma Q3 standartında yoktur
+    expect(comfort.items.find((i) => i.id === "seatCooling")!.present).toBe(false);
+  });
+
+  it("verifies 2021 BMW 118i Sport Line equipment", () => {
+    const bmw = evaluateCarEquipment({
+      brand: "BMW",
+      model: "1 Serisi 118i Sport Line",
+      year: 2021,
+      vehicleClass: "hatchback",
+      title: "Galeriden BMW 1 Serisi 118i Sport Line 2021 Model İzmir 43.980 KM",
+      description: "",
+    });
+
+    const safety = bmw.find((c) => c.id === "safety")!;
+    const comfort = bmw.find((c) => c.id === "comfort")!;
+    const exterior = bmw.find((c) => c.id === "exterior")!;
+    const multimedia = bmw.find((c) => c.id === "multimedia")!;
+
+    // 2021 BMW 1 Serisi Sport Line: Dijital kokpit, LED, CarPlay, park sensörü var
+    expect(comfort.items.find((i) => i.id === "digitalCockpit")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "digitalClimate")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "keylessGo")!.present).toBe(true);
+    expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
+    expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+    // C-segment hatchback Sport Line: 360 kamera, koltuk soğutma, elektrikli bagaj standart DEĞİLDİR
+    expect(exterior.items.find((i) => i.id === "camera360")!.present).toBe(false);
+    expect(comfort.items.find((i) => i.id === "seatCooling")!.present).toBe(false);
+    expect(exterior.items.find((i) => i.id === "electricTailgate")!.present).toBe(false);
+  });
 });

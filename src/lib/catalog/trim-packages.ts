@@ -394,8 +394,22 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
   },
 
   // ==========================================
-  // BMW (M Sport, Luxury Line)
+  // BMW (Sport Line, M Sport, Luxury Line)
   // ==========================================
+  {
+    brandRegex: /bmw/i,
+    packageName: "BMW Sport Line",
+    packageRegex: /\b(sport\s*line|sportline)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
+        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "digitalCockpit",
+        "carplayAndroidAuto", "laneAssist", "emergencyBrake"
+      ],
+      excludedFeatures: ["seatCooling", "camera360", "heatedSteering", "electricTailgate"],
+    },
+  },
   {
     brandRegex: /bmw/i,
     packageName: "M Sport / M Sport Pro",
@@ -404,14 +418,46 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
       standardFeatures: [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
         "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
-        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "sunroof"
+        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "sunroof", "digitalCockpit",
+        "carplayAndroidAuto", "laneAssist", "emergencyBrake"
       ],
-      excludedFeatures: ["seatCooling"], // 3 serisinde soğutma opsiyoneldir, standart değildir
+      excludedFeatures: ["seatCooling", "camera360", "heatedSteering"],
     },
   },
 
   // ==========================================
-  // MERCEDES-BENZ (AMG Line, Heritage Edition)
+  // AUDI (Advanced, S line)
+  // ==========================================
+  {
+    brandRegex: /audi/i,
+    packageName: "Audi Advanced",
+    packageRegex: /\b(advanced|design)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "digitalClimate", "keylessGo", "foldingMirrors", "rainSensor",
+        "ledMatrixHeadlights", "digitalCockpit", "carplayAndroidAuto", "laneAssist", "emergencyBrake"
+      ],
+      excludedFeatures: ["seatCooling", "heatedSteering"],
+    },
+  },
+  {
+    brandRegex: /audi/i,
+    packageName: "Audi S line",
+    packageRegex: /\b(s\s*line|s-line|sline)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
+        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "digitalCockpit",
+        "carplayAndroidAuto", "laneAssist", "emergencyBrake", "sunroof"
+      ],
+      excludedFeatures: ["seatCooling", "heatedSteering"],
+    },
+  },
+
+  // ==========================================
+  // MERCEDES-BENZ (AMG Line, Exclusive, Progressive, Heritage)
   // ==========================================
   {
     brandRegex: /mercedes/i,
@@ -421,7 +467,21 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
       standardFeatures: [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
         "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
-        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "sunroof"
+        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "sunroof", "digitalCockpit",
+        "carplayAndroidAuto", "laneAssist", "emergencyBrake", "leatherSeats"
+      ],
+    },
+  },
+  {
+    brandRegex: /mercedes/i,
+    packageName: "Exclusive / Progressive",
+    packageRegex: /\b(exclusive|progressive)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
+        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "digitalCockpit",
+        "carplayAndroidAuto", "laneAssist", "emergencyBrake", "leatherSeats"
       ],
     },
   },

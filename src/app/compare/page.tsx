@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { displayTransmission } from "@/lib/transmission-label";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Car } from "@/types";
 import { formatNumber, formatPrice, formatRelativeTr } from "@/lib/utils";
 import { removeFromCompare, subscribeCompare, getCompareIds } from "@/lib/compare-store";
@@ -36,6 +36,7 @@ function CrossIcon() {
 }
 
 function ComparePageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [items, setItems] = useState<Car[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,6 +48,24 @@ function ComparePageInner() {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+
+  function handleRemoveCar(carId: string) {
+    removeFromCompare(carId);
+    // Tablodan anında çıkararak görsel kilitlenmeyi önle
+    setItems((prev) => (prev ? prev.filter((c) => c._id !== carId) : []));
+
+    // URL'deki ?ids= parametresini güncelle
+    const urlIds = (searchParams.get("ids") || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && s !== carId);
+
+    if (urlIds.length > 0) {
+      router.replace(`/compare?ids=${encodeURIComponent(urlIds.join(","))}`, { scroll: false });
+    } else if (searchParams.get("ids")) {
+      router.replace("/compare", { scroll: false });
+    }
+  }
 
   useEffect(() => {
     const ids = idsFromUrl.length > 0 ? idsFromUrl : getCompareIds();
@@ -65,10 +84,12 @@ function ComparePageInner() {
 
   // localStorage seçimi değişirse (araç çıkarılırsa) listeyi güncelle
   useEffect(() => subscribeCompare(() => {
-    if (idsFromUrl.length > 0) return; // URL modundaysak dokunma
-    const ids = getCompareIds();
-    if (ids.length < 1) return setItems([]);
-    fetch(`/api/compare?ids=${encodeURIComponent(ids.join(","))}`)
+    const storedIds = getCompareIds();
+    // Eğer depodan çıkarılmışsa anında tablodan da düşür
+    setItems((prev) => (prev ? prev.filter((c) => storedIds.includes(c._id)) : []));
+    if (idsFromUrl.length > 0) return; // URL modundaysak fetch atma
+    if (storedIds.length < 1) return setItems([]);
+    fetch(`/api/compare?ids=${encodeURIComponent(storedIds.join(","))}`)
       .then((r) => r.json())
       .then((data) => setItems(data.items || []));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -308,7 +329,7 @@ function ComparePageInner() {
                       </Link>
                       <button
                         type="button"
-                        onClick={() => removeFromCompare(c._id)}
+                        onClick={() => handleRemoveCar(c._id)}
                         className="text-xs text-slate-500 transition hover:text-red-400"
                       >
                         Çıkar

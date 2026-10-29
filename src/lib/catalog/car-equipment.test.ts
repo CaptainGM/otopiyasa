@@ -145,14 +145,17 @@ describe("car-equipment with trim packages", () => {
     const safety = equipment.find((c) => c.id === "safety")!;
     const multimedia = equipment.find((c) => c.id === "multimedia")!;
 
-    // Panoramik cam tavan ve Matrix LED, hasar kaydı yoktur yazısına rağmen 'true' olmalı
+    // İlan metninde geçen Panoramik cam tavan, Matrix LED ve 360 Çevre Görüş kamerası,
+    // açıklamada 'HASAR KAYDI : YOKTUR' yazmasına rağmen doğru şekilde 'true' olmalı
     expect(exterior.items.find((i) => i.id === "sunroof")!.present).toBe(true);
     expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
     expect(exterior.items.find((i) => i.id === "camera360")!.present).toBe(true);
     expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
-    expect(safety.items.find((i) => i.id === "blindSpot")!.present).toBe(true);
     expect(comfort.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
     expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+    // İlanda ve baz pakette belirtilmeyen opsiyonel donanımlar (Kör Nokta, Koltuk Soğutma) 'false' kalmalı
+    expect(safety.items.find((i) => i.id === "blindSpot")!.present).toBe(false);
+    expect(comfort.items.find((i) => i.id === "seatCooling")!.present).toBe(false);
   });
 
   it("verifies 2024 Mercedes GLC 43 AMG standard equipment even with empty seller description", () => {
@@ -170,9 +173,7 @@ describe("car-equipment with trim packages", () => {
     const exterior = glc.find((c) => c.id === "exterior")!;
     const multimedia = glc.find((c) => c.id === "multimedia")!;
 
-    // 2024 AMG SUV: GSR II zorunlu şerit takip ve acil fren, AMG ve D-SUV fabrika standartları
-    expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
-    expect(safety.items.find((i) => i.id === "emergencyBrake")!.present).toBe(true);
+    // AMG Performance paketi standartları (Kör nokta, 360 kamera, spor koltuk ısıtma, elektrikli bagaj, kokpit)
     expect(safety.items.find((i) => i.id === "blindSpot")!.present).toBe(true);
     expect(comfort.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
     expect(comfort.items.find((i) => i.id === "electricSeats")!.present).toBe(true);
@@ -184,9 +185,11 @@ describe("car-equipment with trim packages", () => {
     expect(exterior.items.find((i) => i.id === "electricTailgate")!.present).toBe(true);
     expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
     expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+    // Koltuk soğutma opsiyoneldir, standart değildir
+    expect(comfort.items.find((i) => i.id === "seatCooling")!.present).toBe(false);
   });
 
-  it("verifies 2024 Audi Q3 35 TFSI Advanced package equipment", () => {
+  it("verifies 2024 Audi Q3 35 TFSI Advanced package equipment (TR spec without driving assistance pack)", () => {
     const q3 = evaluateCarEquipment({
       brand: "Audi",
       model: "Q3 35 TFSI Advanced",
@@ -201,19 +204,21 @@ describe("car-equipment with trim packages", () => {
     const exterior = q3.find((c) => c.id === "exterior")!;
     const multimedia = q3.find((c) => c.id === "multimedia")!;
 
-    // Audi Advanced + 2024 GSR II
-    expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
-    expect(safety.items.find((i) => i.id === "emergencyBrake")!.present).toBe(true);
+    // Audi Advanced standartları (Virtual Cockpit, LED, Dijital Klima, CarPlay)
     expect(comfort.items.find((i) => i.id === "digitalCockpit")!.present).toBe(true);
     expect(comfort.items.find((i) => i.id === "digitalClimate")!.present).toBe(true);
     expect(comfort.items.find((i) => i.id === "keylessGo")!.present).toBe(true);
     expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
     expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
-    // Koltuk soğutma Q3 standartında yoktur
+
+    // TR pazarında Doğuş Otomotiv opsiyonları: İlanda açıkça yazmıyorsa Şerit Takip, Kör Nokta, Koltuk Soğutma YOKTUR
+    expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(false);
+    expect(safety.items.find((i) => i.id === "blindSpot")!.present).toBe(false);
     expect(comfort.items.find((i) => i.id === "seatCooling")!.present).toBe(false);
+    expect(exterior.items.find((i) => i.id === "camera360")!.present).toBe(false);
   });
 
-  it("verifies 2021 BMW 118i Sport Line equipment", () => {
+  it("verifies 2021 BMW 118i Sport Line equipment (TR spec without driving assistance pack)", () => {
     const bmw = evaluateCarEquipment({
       brand: "BMW",
       model: "1 Serisi 118i Sport Line",
@@ -228,13 +233,16 @@ describe("car-equipment with trim packages", () => {
     const exterior = bmw.find((c) => c.id === "exterior")!;
     const multimedia = bmw.find((c) => c.id === "multimedia")!;
 
-    // 2021 BMW 1 Serisi Sport Line: Dijital kokpit, LED, CarPlay, park sensörü var
+    // 2021 BMW 1 Serisi Sport Line: Dijital kokpit, LED, CarPlay, dijital klima standart
     expect(comfort.items.find((i) => i.id === "digitalCockpit")!.present).toBe(true);
     expect(comfort.items.find((i) => i.id === "digitalClimate")!.present).toBe(true);
     expect(comfort.items.find((i) => i.id === "keylessGo")!.present).toBe(true);
     expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
     expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
-    // C-segment hatchback Sport Line: 360 kamera, koltuk soğutma, elektrikli bagaj standart DEĞİLDİR
+
+    // TR pazarında Borusan opsiyonları: İlanda açıkça yazmıyorsa Şerit Takip, Kör Nokta, 360 kamera, koltuk soğutma, elektrikli bagaj YOKTUR
+    expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(false);
+    expect(safety.items.find((i) => i.id === "blindSpot")!.present).toBe(false);
     expect(exterior.items.find((i) => i.id === "camera360")!.present).toBe(false);
     expect(comfort.items.find((i) => i.id === "seatCooling")!.present).toBe(false);
     expect(exterior.items.find((i) => i.id === "electricTailgate")!.present).toBe(false);

@@ -403,11 +403,11 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
     rules: {
       standardFeatures: [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
-        "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
+        "parkingSensors", "digitalClimate", "keylessGo", "foldingMirrors",
         "rainSensor", "ambientLighting", "ledMatrixHeadlights", "digitalCockpit",
-        "carplayAndroidAuto", "laneAssist", "emergencyBrake"
+        "carplayAndroidAuto"
       ],
-      excludedFeatures: ["seatCooling", "camera360", "heatedSteering", "electricTailgate"],
+      excludedFeatures: ["seatCooling", "camera360", "heatedSteering", "electricTailgate", "laneAssist", "blindSpot"],
     },
   },
   {
@@ -419,7 +419,7 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
         "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
         "rainSensor", "ambientLighting", "ledMatrixHeadlights", "sunroof", "digitalCockpit",
-        "carplayAndroidAuto", "laneAssist", "emergencyBrake"
+        "carplayAndroidAuto"
       ],
       excludedFeatures: ["seatCooling", "camera360", "heatedSteering"],
     },
@@ -436,9 +436,9 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
       standardFeatures: [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
         "parkingSensors", "digitalClimate", "keylessGo", "foldingMirrors", "rainSensor",
-        "ledMatrixHeadlights", "digitalCockpit", "carplayAndroidAuto", "laneAssist", "emergencyBrake"
+        "ledMatrixHeadlights", "digitalCockpit", "carplayAndroidAuto"
       ],
-      excludedFeatures: ["seatCooling", "heatedSteering"],
+      excludedFeatures: ["seatCooling", "heatedSteering", "camera360", "laneAssist", "blindSpot"],
     },
   },
   {
@@ -450,25 +450,54 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
         "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
         "rainSensor", "ambientLighting", "ledMatrixHeadlights", "digitalCockpit",
-        "carplayAndroidAuto", "laneAssist", "emergencyBrake", "sunroof"
+        "carplayAndroidAuto", "sunroof"
       ],
-      excludedFeatures: ["seatCooling", "heatedSteering"],
+      excludedFeatures: ["seatCooling", "heatedSteering", "camera360"],
     },
   },
 
   // ==========================================
-  // MERCEDES-BENZ (AMG Line, Exclusive, Progressive, Heritage)
+  // PORSCHE (Macan, Cayenne, Taycan, Panamera - Turbo & GTS)
   // ==========================================
   {
+    brandRegex: /porsche/i,
+    packageName: "Porsche Turbo / Turbo S / GTS",
+    packageRegex: /\b(turbo|turbo\s*s|gts)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "hillHolder",
+        "touchScreen", "bluetooth", "parkingSensors", "rearCamera", "camera360",
+        "digitalClimate", "keylessGo", "foldingMirrors", "rainSensor", "ambientLighting",
+        "ledMatrixHeadlights", "sunroof", "digitalCockpit", "carplayAndroidAuto",
+        "leatherSeats", "electricSeats", "seatHeating", "electricTailgate", "laneAssist"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
+  {
     brandRegex: /mercedes/i,
-    packageName: "AMG / AMG Line",
-    packageRegex: /\b(amg|amg\s*line|amg\s*sport)\b/i,
+    packageName: "Mercedes-AMG Performance (43 / 45 / 53 / 63)",
+    packageRegex: /\b(?:amg\s*(?:35|43|45|53|63)|(?:35|43|45|53|63)\s*amg|glc.*(?:43|63)|gle.*(?:53|63)|c\s*63|e\s*63)\b/i,
+    rules: {
+      standardFeatures: [
+        "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
+        "parkingSensors", "rearCamera", "camera360", "digitalClimate", "keylessGo", "foldingMirrors",
+        "rainSensor", "ambientLighting", "ledMatrixHeadlights", "digitalCockpit",
+        "carplayAndroidAuto", "electricSeats", "electricTailgate", "seatHeating", "blindSpot"
+      ],
+      excludedFeatures: ["seatCooling"],
+    },
+  },
+  {
+    brandRegex: /mercedes/i,
+    packageName: "AMG Line",
+    packageRegex: /\b(amg\s*line|amg\s*paket|amg\s*sport)\b/i,
     rules: {
       standardFeatures: [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
         "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
         "rainSensor", "ambientLighting", "ledMatrixHeadlights", "sunroof", "digitalCockpit",
-        "carplayAndroidAuto", "laneAssist", "emergencyBrake", "leatherSeats"
+        "carplayAndroidAuto", "leatherSeats"
       ],
     },
   },
@@ -481,7 +510,7 @@ export const TRIM_PACKAGES_CATALOG: PackageDefinition[] = [
         "absEsp", "airbags", "isofix", "tirePressure", "touchScreen", "bluetooth",
         "parkingSensors", "rearCamera", "digitalClimate", "keylessGo", "foldingMirrors",
         "rainSensor", "ambientLighting", "ledMatrixHeadlights", "digitalCockpit",
-        "carplayAndroidAuto", "laneAssist", "emergencyBrake", "leatherSeats"
+        "carplayAndroidAuto", "leatherSeats"
       ],
     },
   },

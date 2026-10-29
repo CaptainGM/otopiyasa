@@ -11,11 +11,36 @@ import { CompareAiSummary } from "@/components/CompareAiSummary";
 import { CarThumbPlaceholder } from "@/components/CarThumb";
 import { FallbackImage } from "@/components/FallbackImage";
 
+function CheckIcon() {
+  return (
+    <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+      <path
+        fillRule="evenodd"
+        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+function CrossIcon() {
+  return (
+    <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+      <path
+        fillRule="evenodd"
+        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
 function ComparePageInner() {
   const searchParams = useSearchParams();
   const [items, setItems] = useState<Car[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diffOnly, setDiffOnly] = useState(false);
 
   // URL'de ids yoksa localStorage seçimini kullan
   const idsFromUrl = (searchParams.get("ids") || "")
@@ -79,8 +104,14 @@ function ComparePageInner() {
   const minMileage = Math.min(...mileages);
   const maxYear = Math.max(...items.map((c) => c.year));
 
-  const rows: { label: string; render: (c: Car) => React.ReactNode; best?: (c: Car) => boolean }[] = [
-    { label: "Fiyat", render: (c) => formatPrice(c.price), best: (c) => c.price === minPrice },
+  // --- Temel Bilgiler Satırları ---
+  const basicRows: {
+    label: string;
+    render: (c: Car) => React.ReactNode;
+    best?: (c: Car) => boolean;
+    getRawValue?: (c: Car) => unknown;
+  }[] = [
+    { label: "Fiyat", render: (c) => formatPrice(c.price), best: (c) => c.price === minPrice, getRawValue: (c) => c.price },
     {
       label: "Marka/model/yıl ort.",
       render: (c) =>
@@ -97,26 +128,27 @@ function ComparePageInner() {
             Yeterli veri yok ({c.marketListingCount ?? 0}/3)
           </span>
         ),
+      getRawValue: (c) => c.marketAvgPrice,
     },
-    { label: "Yıl", render: (c) => c.year, best: (c) => c.year === maxYear },
+    { label: "Yıl", render: (c) => c.year, best: (c) => c.year === maxYear, getRawValue: (c) => c.year },
     {
       label: "Kilometre",
       render: (c) => `${formatNumber(c.mileage)} km`,
       best: (c) => c.mileage === minMileage,
+      getRawValue: (c) => c.mileage,
     },
-    { label: "Yakıt", render: (c) => c.features.fuelType },
-    { label: "Vites", render: (c) => displayTransmission(c.features.transmission) },
-    { label: "Kasa", render: (c) => c.features.bodyType },
-    { label: "Renk", render: (c) => c.features.color },
-    { label: "Motor", render: (c) => (c.features.engineSize ? `${c.features.engineSize} L` : "-") },
-    { label: "Güç", render: (c) => (c.features.horsepower ? `${c.features.horsepower} HP` : "-") },
-    { label: "Çekiş", render: (c) => c.features.drivetrain || "-" },
-    { label: "Ort. tüketim", render: (c) => c.features.avgFuelConsumption || "-" },
-    { label: "Şehir", render: (c) => c.city },
-    { label: "İlan tarihi", render: (c) => c.listingDate || "-" },
+    { label: "Yakıt", render: (c) => c.features.fuelType, getRawValue: (c) => c.features.fuelType },
+    { label: "Vites", render: (c) => displayTransmission(c.features.transmission), getRawValue: (c) => c.features.transmission },
+    { label: "Kasa", render: (c) => c.features.bodyType, getRawValue: (c) => c.features.bodyType },
+    { label: "Renk", render: (c) => c.features.color, getRawValue: (c) => c.features.color },
+    { label: "Motor", render: (c) => (c.features.engineSize ? `${c.features.engineSize} L` : "-"), getRawValue: (c) => c.features.engineSize },
+    { label: "Güç", render: (c) => (c.features.horsepower ? `${c.features.horsepower} HP` : "-"), getRawValue: (c) => c.features.horsepower },
+    { label: "Çekiş", render: (c) => c.features.drivetrain || "-", getRawValue: (c) => c.features.drivetrain },
+    { label: "Ort. tüketim", render: (c) => c.features.avgFuelConsumption || "-", getRawValue: (c) => c.features.avgFuelConsumption },
+    { label: "Şehir", render: (c) => c.city, getRawValue: (c) => c.city },
+    { label: "İlan tarihi", render: (c) => c.listingDate || "-", getRawValue: (c) => c.listingDate },
     {
       label: "Son kontrol",
-      // Hiç yeniden doğrulanmamış ilanda son kontrol, ilanın kaynakta ilk görüldüğü andır.
       render: (c) => {
         const checked = c.lastVerifiedAt || c.createdAt;
         return c.sourceSite === "user" || (c.status && c.status !== "active") || !checked ? "-" : formatRelativeTr(checked);
@@ -126,33 +158,139 @@ function ComparePageInner() {
       label: "Hasar",
       render: (c) =>
         c.damageFlag ? <span className="text-red-400">Hasar kaydı</span> : "Belirtilmemiş",
+      getRawValue: (c) => c.damageFlag,
     },
   ];
 
+  // --- Fabrika Teknik Verileri Satırları ---
+  const accelerations = items.map((c) => c.technicalSpecs?.acceleration).filter((v): v is number => typeof v === "number");
+  const topSpeeds = items.map((c) => c.technicalSpecs?.topSpeed).filter((v): v is number => typeof v === "number");
+  const torques = items.map((c) => c.technicalSpecs?.torque).filter((v): v is number => typeof v === "number");
+  const trunks = items.map((c) => c.technicalSpecs?.trunkCapacity).filter((v): v is number => typeof v === "number");
+
+  const minAcc = accelerations.length > 0 ? Math.min(...accelerations) : undefined;
+  const maxSpeed = topSpeeds.length > 0 ? Math.max(...topSpeeds) : undefined;
+  const maxTorque = torques.length > 0 ? Math.max(...torques) : undefined;
+  const maxTrunk = trunks.length > 0 ? Math.max(...trunks) : undefined;
+
+  const techRows: {
+    label: string;
+    render: (c: Car) => React.ReactNode;
+    best?: (c: Car) => boolean;
+    getRawValue?: (c: Car) => unknown;
+  }[] = [
+    {
+      label: "0-100 km/s Hızlanma",
+      render: (c) => (c.technicalSpecs?.acceleration ? `${c.technicalSpecs.acceleration} sn` : "-"),
+      best: (c) => Boolean(c.technicalSpecs?.acceleration && minAcc !== undefined && c.technicalSpecs.acceleration === minAcc),
+      getRawValue: (c) => c.technicalSpecs?.acceleration,
+    },
+    {
+      label: "Azami Hız",
+      render: (c) => (c.technicalSpecs?.topSpeed ? `${c.technicalSpecs.topSpeed} km/s` : "-"),
+      best: (c) => Boolean(c.technicalSpecs?.topSpeed && maxSpeed !== undefined && c.technicalSpecs.topSpeed === maxSpeed),
+      getRawValue: (c) => c.technicalSpecs?.topSpeed,
+    },
+    {
+      label: "Maksimum Tork",
+      render: (c) => (c.technicalSpecs?.torque ? `${c.technicalSpecs.torque} Nm` : "-"),
+      best: (c) => Boolean(c.technicalSpecs?.torque && maxTorque !== undefined && c.technicalSpecs.torque === maxTorque),
+      getRawValue: (c) => c.technicalSpecs?.torque,
+    },
+    {
+      label: "Bagaj Hacmi",
+      render: (c) => (c.technicalSpecs?.trunkCapacity ? `${c.technicalSpecs.trunkCapacity} L` : "-"),
+      best: (c) => Boolean(c.technicalSpecs?.trunkCapacity && maxTrunk !== undefined && c.technicalSpecs.trunkCapacity === maxTrunk),
+      getRawValue: (c) => c.technicalSpecs?.trunkCapacity,
+    },
+    {
+      label: "Depo / Batarya",
+      render: (c) => c.technicalSpecs?.fuelTank || "-",
+      getRawValue: (c) => c.technicalSpecs?.fuelTank,
+    },
+    {
+      label: "Boş Ağırlık",
+      render: (c) => (c.technicalSpecs?.curbWeight ? `${c.technicalSpecs.curbWeight} kg` : "-"),
+      getRawValue: (c) => c.technicalSpecs?.curbWeight,
+    },
+  ];
+
+  // --- Donanım Matrisi Kategorileri ---
+  // İlk aracın equipmentCategories'inden kategori ve feature şablonunu alıyoruz
+  const templateCategories = items[0]?.equipmentCategories || [];
+
+  function isRowSame(getVal: (c: Car) => unknown): boolean {
+    if (items!.length < 2) return false;
+    const first = getVal(items![0]);
+    return items!.every((c) => getVal(c) === first);
+  }
+
+  const renderBadge = (present: boolean) => {
+    if (present) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-400">
+          <CheckIcon />
+          <span>Var</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400/80">
+        <CrossIcon />
+        <span>Yok</span>
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6 py-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Araç Karşılaştırma</h1>
-        <span className="text-sm text-slate-500">{items.length} araç</span>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Araç Karşılaştırma</h1>
+          <p className="text-xs text-slate-400">
+            Temel özellikler, fabrika teknik verileri ve doğrulanmış donanım matrisi
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setDiffOnly(!diffOnly)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              diffOnly
+                ? "bg-amber-400 text-slate-950 shadow-md shadow-amber-400/20"
+                : "border border-white/10 bg-slate-800/80 text-slate-300 hover:bg-slate-700/80"
+            }`}
+          >
+            {diffOnly ? "✓ Sadece Farkları Göster" : "Sadece Farkları Göster"}
+          </button>
+          <span className="rounded-md bg-white/5 px-2.5 py-1 text-xs text-slate-400">
+            {items.length} araç
+          </span>
+        </div>
       </div>
 
       {items.length >= 2 && <CompareAiSummary items={items} />}
-
 
       <p className="-mt-3 text-xs leading-relaxed text-slate-500">
         Ortalama, karşılaştırdığın araçlar hariç aktif ilanlardan hesaplanır. Donanım ve kilometre farkları bu ortalamaya dahil değildir; en az 3 ilan yoksa gösterilmez.
       </p>
 
-      <div className="overflow-x-auto">
-        <table className="w-full table-fixed border-collapse sm:min-w-[640px]">
+      <div className="overflow-x-auto rounded-xl border border-white/10 bg-slate-900/60 shadow-xl backdrop-blur-sm">
+        <table className="w-full table-fixed border-collapse sm:min-w-[700px]">
+          {/* HEADER ROW WITH VEHICLE CARDS */}
           <thead>
-            <tr>
-              <th className="w-12 p-1 text-left align-bottom text-[10px] text-slate-500 sm:w-32 sm:p-3 sm:text-sm">Özellik</th>
+            <tr className="border-b border-white/10 bg-slate-950/40">
+              <th className="w-28 p-2 text-left align-bottom text-xs font-semibold text-slate-400 sm:w-44 sm:p-4 sm:text-sm">
+                Özellik
+              </th>
               {items.map((c) => (
-                <th key={c._id} className="p-0.5 align-bottom sm:p-3">
+                <th key={c._id} className="p-1 align-bottom sm:p-3">
                   <div className="card overflow-hidden">
-                    {/* Kaynak fotoğraflar 16:9; aynı oran kullanılınca araç kırpılmadan tam görünür */}
-                    <Link href={`/cars/${c._id}`} aria-label={`${c.title} ilanına git`} className="relative block aspect-video w-full bg-black/30">
+                    <Link
+                      href={`/cars/${c._id}`}
+                      aria-label={`${c.title} ilanına git`}
+                      className="relative block aspect-video w-full bg-black/30"
+                    >
                       <FallbackImage
                         src={c.imageUrl}
                         fallbacks={c.images}
@@ -161,7 +299,7 @@ function ComparePageInner() {
                         fallback={<CarThumbPlaceholder />}
                       />
                     </Link>
-                    <div className="space-y-0.5 p-1.5 text-left sm:space-y-1 sm:p-3">
+                    <div className="space-y-0.5 p-2 text-left sm:space-y-1 sm:p-3">
                       <Link
                         href={`/cars/${c._id}`}
                         className="line-clamp-2 text-[11px] font-semibold leading-snug hover:text-amber-300 sm:text-sm"
@@ -180,47 +318,165 @@ function ComparePageInner() {
                 </th>
               ))}
               {items.length === 1 && (
-                <th className="p-0.5 align-bottom sm:p-3">
-                  <Link href="/" className="flex min-h-[14rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/50 bg-amber-400/5 p-4 text-center transition hover:bg-amber-400/10">
+                <th className="p-1 align-bottom sm:p-3">
+                  <Link
+                    href="/"
+                    className="flex min-h-[14rem] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/50 bg-amber-400/5 p-4 text-center transition hover:bg-amber-400/10"
+                  >
                     <span className="text-2xl leading-none text-amber-300" aria-hidden>
                       +
                     </span>
                     <span className="text-sm font-semibold text-amber-200">Sağ tarafa bir araç daha ekle</span>
-                    <span className="text-xs text-slate-400">Karşılaştırmak için en az 2 araç gerekli. İlan kartındaki karşılaştır ikonuna dokun.</span>
+                    <span className="text-xs text-slate-400">
+                      Karşılaştırmak için en az 2 araç gerekli. İlan kartındaki karşılaştır ikonuna dokun.
+                    </span>
                   </Link>
                 </th>
               )}
             </tr>
           </thead>
+
+          {/* SECTION 1: TEMEL BİLGİLER */}
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.label} className="border-t border-white/5">
-                <td className="p-1 text-[10px] leading-tight text-slate-500 sm:p-3 sm:text-sm">{row.label}</td>
-                {items.map((c) => {
-                  // Tek araçta karşılaştırma yok: "en iyi" işareti anlamsız olur.
-                  const isBest = items.length >= 2 && row.best?.(c);
-                  return (
-                    <td
-                      key={c._id}
-                      className={`break-words p-1 text-[11px] font-medium sm:p-3 sm:text-sm ${
-                        isBest ? "bg-emerald-500/10 text-emerald-300 sm:bg-transparent" : "text-slate-100"
-                      }`}
-                    >
-                      <span className="inline-flex flex-wrap items-center gap-1.5">
-                        {row.render(c)}
-                        {isBest && (
-                          <span className="hidden rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-300 sm:inline">
-                            en iyi
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                  );
-                })}
-                {items.length === 1 && <td className="p-1 sm:p-3" aria-hidden />}
-              </tr>
-            ))}
+            <tr className="bg-slate-800/60">
+              <td
+                colSpan={items.length + (items.length === 1 ? 2 : 1)}
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-400 sm:px-4"
+              >
+                📌 Genel İlan & Araç Bilgileri
+              </td>
+            </tr>
+            {basicRows
+              .filter((row) => !diffOnly || !row.getRawValue || !isRowSame(row.getRawValue))
+              .map((row) => (
+                <tr key={row.label} className="border-t border-white/5 transition hover:bg-white/[0.02]">
+                  <td className="p-2 text-xs leading-tight text-slate-400 sm:p-3.5 sm:text-sm">
+                    {row.label}
+                  </td>
+                  {items.map((c) => {
+                    const isBest = items.length >= 2 && row.best?.(c);
+                    return (
+                      <td
+                        key={c._id}
+                        className={`break-words p-2 text-xs font-medium sm:p-3.5 sm:text-sm ${
+                          isBest ? "bg-emerald-500/10 text-emerald-300 sm:bg-transparent" : "text-slate-100"
+                        }`}
+                      >
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {row.render(c)}
+                          {isBest && (
+                            <span className="hidden rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-300 sm:inline">
+                              en iyi
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                    );
+                  })}
+                  {items.length === 1 && <td className="p-2 sm:p-3.5" aria-hidden />}
+                </tr>
+              ))}
           </tbody>
+
+          {/* SECTION 2: FABRİKA TEKNİK VERİLERİ */}
+          <tbody>
+            <tr className="bg-slate-800/60">
+              <td
+                colSpan={items.length + (items.length === 1 ? 2 : 1)}
+                className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-sky-400 sm:px-4"
+              >
+                ⚡ Fabrika Teknik Verileri (Performans & Kapasite)
+              </td>
+            </tr>
+            {techRows
+              .filter((row) => !diffOnly || !row.getRawValue || !isRowSame(row.getRawValue))
+              .map((row) => (
+                <tr key={row.label} className="border-t border-white/5 transition hover:bg-white/[0.02]">
+                  <td className="p-2 text-xs leading-tight text-slate-400 sm:p-3.5 sm:text-sm">
+                    {row.label}
+                  </td>
+                  {items.map((c) => {
+                    const isBest = items.length >= 2 && row.best?.(c);
+                    return (
+                      <td
+                        key={c._id}
+                        className={`break-words p-2 text-xs font-medium sm:p-3.5 sm:text-sm ${
+                          isBest ? "bg-emerald-500/10 text-emerald-300 sm:bg-transparent" : "text-slate-100"
+                        }`}
+                      >
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {row.render(c)}
+                          {isBest && (
+                            <span className="hidden rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-300 sm:inline">
+                              en iyi
+                            </span>
+                          )}
+                        </span>
+                      </td>
+                    );
+                  })}
+                  {items.length === 1 && <td className="p-2 sm:p-3.5" aria-hidden />}
+                </tr>
+              ))}
+          </tbody>
+
+          {/* SECTION 3..6: DONANIM KATEGORİLERİ */}
+          {templateCategories.map((cat) => {
+            const getCatIcon = () => {
+              switch (cat.id) {
+                case "safety":
+                  return "🛡️";
+                case "comfort":
+                  return "🛋️";
+                case "exterior":
+                  return "🚗";
+                case "multimedia":
+                  return "📱";
+                default:
+                  return "✨";
+              }
+            };
+
+            const filteredItems = cat.items.filter((itemDef) => {
+              if (!diffOnly) return true;
+              return !isRowSame((c) => {
+                const cCat = c.equipmentCategories?.find((ct) => ct.id === cat.id);
+                return Boolean(cCat?.items.find((i) => i.id === itemDef.id)?.present);
+              });
+            });
+
+            if (filteredItems.length === 0) return null;
+
+            return (
+              <tbody key={cat.id}>
+                <tr className="bg-slate-800/60">
+                  <td
+                    colSpan={items.length + (items.length === 1 ? 2 : 1)}
+                    className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-emerald-400 sm:px-4"
+                  >
+                    {getCatIcon()} {cat.title}
+                  </td>
+                </tr>
+                {filteredItems.map((itemDef) => (
+                  <tr key={itemDef.id} className="border-t border-white/5 transition hover:bg-white/[0.02]">
+                    <td className="p-2 text-xs leading-tight text-slate-400 sm:p-3.5 sm:text-sm">
+                      {itemDef.name}
+                    </td>
+                    {items.map((c) => {
+                      const cCat = c.equipmentCategories?.find((ct) => ct.id === cat.id);
+                      const isPresent = Boolean(cCat?.items.find((i) => i.id === itemDef.id)?.present);
+                      return (
+                        <td key={c._id} className="p-2 align-middle sm:p-3.5">
+                          {renderBadge(isPresent)}
+                        </td>
+                      );
+                    })}
+                    {items.length === 1 && <td className="p-2 sm:p-3.5" aria-hidden />}
+                  </tr>
+                ))}
+              </tbody>
+            );
+          })}
         </table>
       </div>
     </div>

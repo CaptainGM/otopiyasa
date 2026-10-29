@@ -123,4 +123,35 @@ describe("car-equipment with trim packages", () => {
     expect(exterior.items.find((i) => i.id === "sunroof")!.present).toBe(false);
     expect(comfort.items.find((i) => i.id === "seatHeating")!.present).toBe(false);
   });
+
+  it("does not let 'HASAR KAYDI : YOKTUR' negate features across distant text in 2025 Porsche Macan Turbo", () => {
+    const equipment = evaluateCarEquipment({
+      brand: "Porsche",
+      model: "Macan 3.6 Turbo",
+      year: 2025,
+      vehicleClass: "suv",
+      title: "VOSMER 2025 PORSCHE MACAN TURBO ELEKTRİK 639 HP 4X4",
+      description:
+        "EK DONANIM :KARŞILAMA IŞIĞI + AKTİF PARK - ÇEVRE GÖRÜŞ SİSTEMİ + SPORT CHRONO PAKET + LED MATRİX - DYNAMİC FARLAR + PANORAMİK CAM TAVAN HASAR KAYDI : YOKTUR",
+      features: {
+        fuelType: "Elektrik",
+        transmission: "Otomatik",
+        bodyType: "SUV",
+      },
+    });
+
+    const exterior = equipment.find((c) => c.id === "exterior")!;
+    const comfort = equipment.find((c) => c.id === "comfort")!;
+    const safety = equipment.find((c) => c.id === "safety")!;
+    const multimedia = equipment.find((c) => c.id === "multimedia")!;
+
+    // Panoramik cam tavan ve Matrix LED, hasar kaydı yoktur yazısına rağmen 'true' olmalı
+    expect(exterior.items.find((i) => i.id === "sunroof")!.present).toBe(true);
+    expect(exterior.items.find((i) => i.id === "ledMatrixHeadlights")!.present).toBe(true);
+    expect(exterior.items.find((i) => i.id === "camera360")!.present).toBe(true);
+    expect(safety.items.find((i) => i.id === "laneAssist")!.present).toBe(true);
+    expect(safety.items.find((i) => i.id === "blindSpot")!.present).toBe(true);
+    expect(comfort.items.find((i) => i.id === "seatHeating")!.present).toBe(true);
+    expect(multimedia.items.find((i) => i.id === "carplayAndroidAuto")!.present).toBe(true);
+  });
 });

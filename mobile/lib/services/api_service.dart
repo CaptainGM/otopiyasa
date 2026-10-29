@@ -1213,12 +1213,18 @@ class ApiService {
   Future<Map<String, dynamic>> chat(
     String message, {
     List<Map<String, String>>? history,
+    Map<String, dynamic>? context,
   }) async {
+    final payload = <String, dynamic>{
+      'message': message,
+      'history': history ?? [],
+    };
+    if (context != null) payload['context'] = context;
     final response = await _http.post(
       _uri('/api/chatbot'),
       timeout: const Duration(seconds: 60),
       headers: _headers,
-      body: jsonEncode({'message': message, 'history': history ?? []}),
+      body: jsonEncode(payload),
     );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Asistan yanıt veremedi'));

@@ -6,6 +6,9 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { ABSOLUTE_PRICE_FLOOR } from "@/lib/listing-validation";
 import { topicLinkFor } from "@/lib/chat-topics";
 import { modelFamilyRegex } from "@/lib/model-family";
+import { Types } from "mongoose";
+import { evaluateCarEquipment, EquipmentCategory } from "@/lib/catalog/car-equipment";
+import { resolveTechnicalSpecs, TechnicalSpecs } from "@/lib/catalog/specs-catalog";
 
 /**
  * Asistanın gösterebileceği ilanlar: yalnızca herkese açık (aktif, onaylı) ve makul fiyatlı olanlar.
@@ -18,6 +21,8 @@ const VISIBLE = { ...PUBLIC_LISTING_FILTER, price: { $gte: ABSOLUTE_PRICE_FLOOR 
 export interface ChatContext {
   carId?: string;
   brand?: string;
+  compareIds?: string[];
+  pageUrl?: string;
 }
 
 export interface ChatLink {
@@ -48,6 +53,247 @@ export interface ChatReply {
   cards?: ChatCard[];
   
   context?: ChatContext;
+}
+
+
+export interface CompareCarDetail {
+  id: string;
+  title: string;
+  brand: string;
+  model: string;
+  year: number;
+  price: number;
+  km: number;
+  fuelType?: string;
+  transmission?: string;
+  horsepower?: number;
+  specs: TechnicalSpecs;
+  equipment: EquipmentCategory[];
+}
+
+export async function getCompareDetailsForAssistant(ids: string[]): Promise<CompareCarDetail[]> {
+  try {
+    const validIds = ids
+      .map((id) => id.trim())
+      .filter((id) => Types.ObjectId.isValid(id))
+      .slice(0, 4);
+    if (validIds.length === 0) return [];
+
+    const objectIds = validIds.map((id) => new Types.ObjectId(id));
+    const rawCars = (await Car.find({ _id: { $in: objectIds } }).lean()) as any[];
+
+    const carMap = new Map<string, any>();
+    for (const c of rawCars) {
+      if (c && c._id) {
+        carMap.set(c._id.toString(), c);
+      }
+    }
+
+    const result: CompareCarDetail[] = [];
+    for (const id of validIds) {
+      const c = carMap.get(id);
+      if (!c) continue;
+
+      const specs = resolveTechnicalSpecs({
+        brand: c.brand,
+        model: c.model,
+        year: c.year,
+        vehicleClass: c.vehicleClass,
+        title: c.title,
+        features: c.features,
+      });
+
+      const equipment = evaluateCarEquipment({
+        brand: c.brand,
+        model: c.model,
+        year: c.year,
+        vehicleClass: c.vehicleClass,
+        title: c.title,
+        description: c.description,
+        features: c.features,
+      });
+
+      result.push({
+        id: c._id.toString(),
+        title: c.title || `${c.brand} ${c.model}`,
+        brand: c.brand || "",
+        model: c.model || "",
+        year: c.year || 2020,
+        price: c.price || 0,
+        km: c.km || 0,
+        fuelType: c.features?.fuelType || c.fuelType,
+        transmission: c.features?.transmission || c.transmission,
+        horsepower: c.features?.horsepower || c.horsepower,
+        specs,
+        equipment,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error("getCompareDetailsForAssistant error:", error);
+    return [];
+  }
+}
+
+export function buildCompareSummaryText(cars: CompareCarDetail[]): string {
+  return cars
+    .map((c, i) => {
+      const safetyYes = c.equipment
+        .find((cat) => cat.id === "safety")
+        ?.items.filter((it) => it.present)
+        .map((it) => it.name)
+        .join(", ");
+      const comfortYes = c.equipment
+        .find((cat) => cat.id === "comfort")
+        ?.items.filter((it) => it.present)
+        .map((it) => it.name)
+        .join(", ");
+      const extYes = c.equipment
+        .find((cat) => cat.id === "exterior")
+        ?.items.filter((it) => it.present)
+        .map((it) => it.name)
+        .join(", ");
+      const mulYes = c.equipment
+        .find((cat) => cat.id === "multimedia")
+        ?.items.filter((it) => it.present)
+        .map((it) => it.name)
+        .join(", ");
+
+      return [
+        `Araç ${i + 1}: ${c.year} ${c.brand} ${c.model} (${c.title})`,
+        `  Fiyat: ${formatPrice(c.price)} | KM: ${c.km.toLocaleString("tr-TR")} km`,
+        `  Motor/Güç: ${c.horsepower ? `${c.horsepower} HP` : ""} ${c.fuelType || ""} ${c.transmission || ""}`,
+        `  Teknik: 0-100: ${c.specs.acceleration}s | Hız: ${c.specs.topSpeed} km/s | Tork: ${c.specs.torque} Nm | Bagaj: ${c.specs.trunkCapacity} L`,
+        `  Doğrulanmış Donanımlar:`,
+        safetyYes ? `    Güvenlik: ${safetyYes}` : "",
+        comfortYes ? `    Konfor: ${comfortYes}` : "",
+        extYes ? `    Dış: ${extYes}` : "",
+        mulYes ? `    Teknoloji: ${mulYes}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n\n");
+}
+
+export function isCompareRelatedQuery(
+  message: string,
+  cars: CompareCarDetail[],
+  context?: ChatContext
+): boolean {
+  const norm = message.toLowerCase();
+
+  const compareTerms = [
+    "karşılaştır",
+    "karsilastir",
+    "kıyas",
+    "kiyas",
+    "özellik",
+    "ozellik",
+    "donanım",
+    "donanim",
+    "doğru mu",
+    "dogru mu",
+    "görüyor musun",
+    "görüyormusun",
+    "goruyor musun",
+    "goruyormusun",
+    "görüyor",
+    "hangisi",
+    "hangisini",
+    "önerirsin",
+    "onerirsin",
+    "tavsiye",
+    "mantıklı",
+    "mantikli",
+    "fark",
+    "farkı",
+    "farklar",
+    "bu araç",
+    "bu 3",
+    "bu üç",
+    "bu 2",
+    "bu iki",
+    "üç araç",
+    "iki araç",
+    "ekrandaki",
+    "şu anki",
+    "su anki",
+  ];
+
+  if (compareTerms.some((term) => norm.includes(term))) {
+    return true;
+  }
+
+  for (const car of cars) {
+    if (car.brand && car.brand.length > 2 && norm.includes(car.brand.toLowerCase())) return true;
+    if (car.model && car.model.length > 2 && norm.includes(car.model.toLowerCase())) return true;
+  }
+
+  if (context?.pageUrl?.startsWith("/compare")) {
+    return true;
+  }
+
+  return false;
+}
+
+export function generateDeterministicCompareAnswer(rawMessage: string, cars: CompareCarDetail[]): ChatReply {
+  const norm = rawMessage.toLowerCase();
+  const isAccuracyQuestion =
+    norm.includes("doğru") ||
+    norm.includes("dogru") ||
+    norm.includes("özellik") ||
+    norm.includes("ozellik") ||
+    norm.includes("donanım") ||
+    norm.includes("donanim") ||
+    norm.includes("gör") ||
+    norm.includes("gor");
+
+  if (isAccuracyQuestion) {
+    const list = cars
+      .map((c) => {
+        const topFeatures = c.equipment
+          .flatMap((cat) => cat.items)
+          .filter((it) => it.present)
+          .slice(0, 5)
+          .map((it) => it.name)
+          .join(", ");
+        return `• **${c.year} ${c.brand} ${c.model}** (${formatPrice(c.price)} - ${c.horsepower ? `${c.horsepower} HP` : ""}): ${topFeatures}...`;
+      })
+      .join("\n");
+
+    return {
+      reply:
+        `Şu an ekranındaki ${cars.length} aracı görüyorum:\n` +
+        cars.map((c, i) => `${i + 1}. **${c.year} ${c.brand} ${c.model}** (${formatPrice(c.price)})`).join("\n") +
+        `\n\nEvet! Karşılaştırma matrisindeki teknik veriler ve donanımlar iki kademeli akıllı doğrulama sistemiyle hazırlanmıştır:\n\n` +
+        `1. **Resmi Paket & Fabrika Broşür Doğrulaması:** Her aracın model yılı ve donanım paketine ait standart fabrika donanımları uygulanmıştır (örneğin Porsche Macan Turbo ve Mercedes Heritage Edition standart donanımları, Ford GLX standartları vb.).\n` +
+        `2. **İlan Açıklaması & Ek Donanım Teyidi:** Satıcının ilan açıklamasına yazdığı ek donanımlar kelime analiziyle taranmış ve "hasar kaydı yoktur" gibi ifadelerle karıştırılmadan doğrulanmıştır.\n\n` +
+        `**Araçların Doğrulanmış Öne Çıkan Donanımları:**\n${list}\n\n` +
+        `Bu araçların performansı, yakıt tüketimi veya fiyat/fayda dengesi hakkında merak ettiğin başka bir detay var mı?`,
+    };
+  }
+
+  const cheapest = [...cars].sort((a, b) => a.price - b.price)[0];
+  const mostPowerful = [...cars].sort((a, b) => (b.horsepower || 0) - (a.horsepower || 0))[0];
+
+  return {
+    reply:
+      `Şu an karşılaştırdığın ${cars.length} aracın özet kıyaslaması:\n\n` +
+      cars
+        .map(
+          (c) =>
+            `• **${c.year} ${c.brand} ${c.model}**: ${formatPrice(c.price)} | ${c.km.toLocaleString("tr-TR")} km | ${c.horsepower || "?"} HP (${c.fuelType || ""})`
+        )
+        .join("\n") +
+      `\n\n💡 **Hızlı Değerlendirme:**\n` +
+      `- En bütçe dostu seçenek: **${cheapest.year} ${cheapest.brand} ${cheapest.model}** (${formatPrice(cheapest.price)})\n` +
+      (mostPowerful.horsepower
+        ? `- En yüksek performans: **${mostPowerful.year} ${mostPowerful.brand} ${mostPowerful.model}** (${mostPowerful.horsepower} HP, 0-100: ${mostPowerful.specs.acceleration} sn)\n`
+        : "") +
+      `\nKullanım amacına ve bütçene göre hangi aracı daha yakından incelemek istersin?`,
+  };
 }
 
 interface FaqEntry {
@@ -654,9 +900,12 @@ async function tryDataQuery(
   return null;
 }
 
-function matchFaq(message: string): string | null {
+function matchFaq(message: string, hasCompareContext: boolean = false): string | null {
   let best: { answer: string; score: number } | null = null;
   for (const entry of FAQ) {
+    if (hasCompareContext && entry.keywords.includes("karşılaştır")) {
+      continue;
+    }
     const score = entry.keywords.filter((keyword) => message.includes(keyword)).length;
     if (score > 0 && (!best || score > best.score)) {
       best = { answer: entry.answer, score };
@@ -871,6 +1120,37 @@ async function answerQueryInner(
   }
 
  
+  // Aktif karşılaştırma bağlamı varsa (kullanıcı /compare sayfasında veya ekranda karşılaştırılan araçlar varken soru soruyorsa)
+  let compareContextText: string | undefined;
+  const hasCompareIds = Boolean(context?.compareIds && context.compareIds.length > 0);
+  if (hasCompareIds && context?.compareIds) {
+    const compareCars = await getCompareDetailsForAssistant(context.compareIds);
+    if (compareCars.length > 0) {
+      compareContextText = buildCompareSummaryText(compareCars);
+
+      if (isCompareRelatedQuery(message, compareCars, context)) {
+        if (isGeminiConfigured()) {
+          try {
+            const siteContext = await buildSiteContext();
+            const intent = await classifyIntent(
+              rawMessage,
+              siteContext,
+              context?.brand,
+              history,
+              compareContextText
+            );
+            if (intent && intent.action === "answer" && intent.reply) {
+              return { reply: intent.reply };
+            }
+          } catch {
+            // Gemini kota veya hata durumunda deterministik uzmana düşer
+          }
+        }
+        return generateDeterministicCompareAnswer(rawMessage, compareCars);
+      }
+    }
+  }
+
   const fast = await fastReply(message, context);
   if (fast) return fast;
 
@@ -878,7 +1158,7 @@ async function answerQueryInner(
   if (isGeminiConfigured()) {
     try {
       const siteContext = await buildSiteContext();
-      const intent = await classifyIntent(rawMessage, siteContext, context?.brand, history);
+      const intent = await classifyIntent(rawMessage, siteContext, context?.brand, history, compareContextText);
       if (intent) {
         const handled = await handleIntent(intent, context, rawMessage);
         if (handled) return handled;
@@ -889,7 +1169,7 @@ async function answerQueryInner(
   }
 
   
-  const faqAnswer = matchFaq(message);
+  const faqAnswer = matchFaq(message, hasCompareIds);
   if (faqAnswer) return { reply: faqAnswer };
 
   const redirectAnswer = await tryDataQuery(message, context);

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatPrice } from "@/lib/utils";
+import { getCompareIds } from "@/lib/compare-store";
 import { Icon } from "@/components/Icon";
 import {
   availableChatSize,
@@ -26,6 +27,8 @@ interface ChatCard {
 interface ChatContext {
   carId?: string;
   brand?: string;
+  compareIds?: string[];
+  pageUrl?: string;
 }
 interface Message {
   role: "user" | "bot";
@@ -181,13 +184,32 @@ export function ChatWidget() {
     setLoading(true);
 
     try {
+      const currentCompareIds = (() => {
+        if (typeof window === "undefined") return [];
+        if (window.location.pathname.startsWith("/compare")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const fromUrl = urlParams
+            .get("ids")
+            ?.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (fromUrl && fromUrl.length > 0) return fromUrl;
+        }
+        return getCompareIds();
+      })();
+
+      const activeContext: ChatContext = {
+        ...lastContext.current,
+        compareIds: currentCompareIds.length > 0 ? currentCompareIds.slice(0, 4) : undefined,
+        pageUrl: typeof window !== "undefined" ? window.location.pathname : undefined,
+      };
+
       const res = await fetch("/api/chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: trimmed,
-          context: lastContext.current,
-          
+          context: activeContext,
           history: messages.map((m) => ({ role: m.role, text: m.text })),
         }),
       });

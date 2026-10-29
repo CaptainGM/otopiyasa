@@ -5,8 +5,8 @@
  * - Dönem/Yıl kısıtlamaları (Era feasibility rules)
  * - Segment/Kasa kısıtlamaları (Gatekeeper rules)
  * - Resmi Donanım Paketleri Broşür Kuralları (Volkswagen Trendline vs Highline, Egea Easy vs Lounge, Chery Luxury vs Excellence vb.)
- * - Olumsuzluk / Negation filtreleri ("...hariç", "...yok", "...bulunmamaktadır")
- * - Fabrika standart baz donanım kuralları (Ultra-lüks/Modern amiral gemisi doğrulaması)
+ * - Bounded Negation Filtreleri ("...hariç", "...yok", "...bulunmamaktadır" - hasar kaydı ile karışmaz!)
+ * - Fabrika standart baz donanım kuralları (Porsche Macan Turbo, Mercedes EQS, BMW M Sport vb.)
  * birlikte işletilir.
  */
 
@@ -56,29 +56,22 @@ function isFeatureFeasible(featureId: string, car: EvaluatedCarInfo): boolean {
 
   switch (featureId) {
     case "camera360":
-      // 360 kamera seri üretimde 2012 öncesinde yoktu.
       if (year < 2013) return false;
-      // Ticari hafif araçlarda (Tourneo, Doblo, Fiorino vb.) ve bütçe araçlarda fabrika 360 kamera yoktur
       if (isCommercialVan && year < 2024) return false;
       if (isBudgetEconomy) return false;
-      // 2013-2017 arası yalnızca lüks üst segmentte vardı
       if (year < 2018 && !isLuxuryBrand && !/tiggo|omoda/i.test(hay)) return false;
       return true;
 
     case "seatCooling":
-      // Koltuk soğutma yüksek segment lüks donanımdır.
       if (isCommercialVan || isBudgetEconomy) return false;
-      // Normal bineklerde bile yalnızca E segment / üst SUV ve amiral gemilerinde bulunur (Chery Excellence, Skoda L&K, Tucson Elite vb.)
       if (!isLuxuryBrand && !/tiggo.*excellence|laurin|l&k|tucson|sportage prestige/i.test(hay) && year < 2022) return false;
       return true;
 
     case "carplayAndroidAuto":
-      // Apple CarPlay ve Android Auto 2015 yılı öncesinde fabrikasyon olarak mevcut değildi.
       if (year < 2015) return false;
       return true;
 
     case "digitalCockpit":
-      // Dijital kokpit/hayalet ekran 2014 öncesinde yoktu (Audi TT 2014 / S-Class 2013).
       if (year < 2014) return false;
       if (isCommercialVan && year < 2022) return false;
       if (isBudgetEconomy && year < 2022) return false;
@@ -88,7 +81,6 @@ function isFeatureFeasible(featureId: string, car: EvaluatedCarInfo): boolean {
     case "laneAssist":
     case "blindSpot":
     case "emergencyBrake":
-      // ADAS sistemleri 2012 öncesi kitle araçlarında bulunmaz
       if (year < 2012) return false;
       if (isCommercialVan && year < 2020) return false;
       if (isBudgetEconomy && year < 2021) return false;
@@ -102,12 +94,10 @@ function isFeatureFeasible(featureId: string, car: EvaluatedCarInfo): boolean {
       return true;
 
     case "wirelessCharging":
-      // Otomotivde Qi kablosuz şarj 2016 öncesinde mevcut değildi
       if (year < 2016) return false;
       return true;
 
     case "ledMatrixHeadlights":
-      // Matrix LED farlar (Audi Matrix 2014+) 2014 öncesi üretilmedi
       if (year < 2014) return false;
       if (isCommercialVan && year < 2023) return false;
       if (isBudgetEconomy && year < 2024) return false;
@@ -115,7 +105,7 @@ function isFeatureFeasible(featureId: string, car: EvaluatedCarInfo): boolean {
 
     case "electricTailgate":
       if (year < 2010) return false;
-      if (isCommercialVan) return false; // Tourneo/Doblo gibi ticari araçlar elle açılan tek parça bagaja sahiptir
+      if (isCommercialVan) return false;
       if (isBudgetEconomy) return false;
       return true;
 
@@ -131,56 +121,78 @@ function isFeatureFeasible(featureId: string, car: EvaluatedCarInfo): boolean {
 }
 
 /**
- * Açıklamadan özellik ararken olumsuzluk kontrolü
- * (Örn: "koltuk ısıtma yok", "cam tavan hariç", "sunroof yoktur", "360 hariç")
+ * Açıklamadan özellik ararken KESİNLİKLE SINIRLI (bounded) olumsuzluk kontrolü
+ * ÖNEMLİ: Hasar, tramer, boya, değişen ve kaza disclaimers'ları ("HASAR KAYDI : YOKTUR")
+ * temizlenir, böylece donanım var/yok kontrolü ile hasar raporu ASLA birbirine karışmaz.
  */
-function hasFeatureInText(text: string, positivePatterns: RegExp[], negativePatterns: RegExp[]): boolean {
-  const lower = text.toLowerCase();
+function cleanDescriptionForEquipment(text: string): string {
+  return text
+    .replace(
+      /(?:hasar|tramer|boya|değişen|degisen|hata|kusur|kaza|lokal|şasi|podye|direk)(?:\s+(?:kaydı|kaydi|durumu|bilgisi))?\s*[:=-]?\s*(?:yoktur|yok|bulunmamaktadır|bulunmuyor|0\s*tl)/gi,
+      " "
+    )
+    .replace(/hata\s*kusur(?:\s+\S+)?\s*(?:yoktur|yok)/gi, " ")
+    .replace(/çizik(?:\s+dahi)?\s*(?:yoktur|yok)/gi, " ");
+}
 
-  // Olumsuz bir ifade var mı?
+function hasFeatureInText(text: string, positivePatterns: RegExp[], negativePatterns: RegExp[]): boolean {
+  const cleaned = cleanDescriptionForEquipment(text).toLowerCase();
+
+  // Olumsuz bir ifade var mı? (Sadece kelimenin hemen yakınındaki olumsuzluk arar)
   for (const neg of negativePatterns) {
-    if (neg.test(lower)) return false;
+    if (neg.test(cleaned)) return false;
   }
 
   // Olumlu bir eşleşme var mı?
   for (const pos of positivePatterns) {
-    if (pos.test(lower)) return true;
+    if (pos.test(cleaned)) return true;
   }
 
   return false;
 }
 
 /**
- * Fabrika Çıkışı Standart Donanım Belirleme
- * Ultra lüks elektrikli veya modern amiral gemisi araçlarda ilanda açıklama olmasa dahi
- * fabrikasyon standart gelen temel özellikleri doğrular.
+ * Fabrika Çıkışı Standart Donanım Belirleme (Resmi Katalog Standartları)
+ * Ultra lüks veya modern amiral gemisi araçlarda (Porsche Macan Turbo, Mercedes EQS, BMW M Sport vb.)
+ * satıcı tek kelime açıklama yazmamış olsa dahi fabrikasyon standart gelen temel özellikleri doğrular.
  */
 function isStandardFactoryEquipment(featureId: string, car: EvaluatedCarInfo): boolean {
   const brand = (car.brand || "").toLowerCase();
   const model = (car.model || "").toLowerCase();
+  const title = (car.title || "").toLowerCase();
   const year = car.year || 2020;
+  const hay = `${brand} ${model} ${title}`;
+
+  const isPorsche = /porsche/i.test(brand) || /porsche/i.test(title);
+  const isPorscheMacanTurbo = isPorsche && /macan/i.test(hay) && /turbo|elek/i.test(hay);
+  const isPorscheTaycan = isPorsche && /taycan/i.test(hay);
+  const isPorschePanamera = isPorsche && /panamera/i.test(hay);
 
   const isUltraLuxury =
-    /eqs|eqe|s-class|s serisi|taycan|panamera|macan.*elek|bmw 7|i7|bmw 8|audi e-tron|audi a8|model s|model x/i.test(`${brand} ${model}`);
+    isPorscheMacanTurbo ||
+    isPorscheTaycan ||
+    isPorschePanamera ||
+    /eqs|eqe|s-class|s\s*serisi|bmw\s*7|i7|bmw\s*8|audi\s*e-tron|audi\s*a8|model\s*s|model\s*x/i.test(hay);
+
   const isModernLuxury =
     year >= 2019 && /porsche|mercedes|bmw|audi|volvo|lexus/i.test(brand);
   const isModernMainstream =
-    year >= 2020 && !/tourneo|connect|courier|doblo|fiorino/i.test(`${brand} ${model}`);
+    year >= 2020 && !/tourneo|connect|courier|doblo|fiorino/i.test(hay);
 
-  // ABS & ESP: 2004 sonrası çoğu araçta, 2014 sonrası Avrupa'da tüm onaylı araçlarda yasal standarttır
+  // ABS & ESP: 2004 sonrası çoğu araçta yasal standarttır
   if (featureId === "absEsp") return year >= 2004;
 
-  // En az 6 hava yastığı: Lüks araçlarda standart, modern bineklerde standart
+  // En az 6 hava yastığı
   if (featureId === "airbags") {
     if (isUltraLuxury || isModernLuxury) return true;
     if (isModernMainstream && year >= 2021) return true;
     return false;
   }
 
-  // ISOFIX: 2007 sonrası binek araçlarda ve hafif ticarilerde standart
+  // ISOFIX: 2012 sonrası
   if (featureId === "isofix") return year >= 2012;
 
-  // Lastik basınç: 2014 sonrası Avrupa tipi tüm onaylı araçlarda standart
+  // Lastik basınç: 2015 sonrası
   if (featureId === "tirePressure") return year >= 2015;
 
   // Yokuş kalkış desteği
@@ -190,7 +202,41 @@ function isStandardFactoryEquipment(featureId: string, car: EvaluatedCarInfo): b
     return false;
   }
 
-  // Ultra Lüks Amiral Gemisi Standartları (EQS, Macan Electric vb.)
+  // PORSCHE MACAN TURBO / TURBO ELEKTRİK RESMİ BROŞÜR STANDARTLARI:
+  if (isPorscheMacanTurbo) {
+    switch (featureId) {
+      case "laneAssist":          // Porsche Lane Keeping Assist standart
+      case "blindSpot":           // Lane Change Assist (Kör Nokta) standart
+      case "emergencyBrake":      // Warn and Brake Assist standart
+      case "adaptiveCruise":      // Adaptive Cruise / InnoDrive standart
+      case "seatHeating":         // Ön ve Arka Koltuk Isıtma standart
+      case "electricSeats":       // 18 kademeli Adaptif Hafızalı Spor Koltuklar standart
+      case "leatherSeats":        // Tam Deri Döşeme Paketi standart
+      case "digitalClimate":      // Gelişmiş Çok Bölgeli Otomatik Klima standart
+      case "keylessGo":           // Porsche Comfort Access (Anahtarsız Giriş) standart
+      case "digitalCockpit":      // 12.6 inç Kavisli Dijital Gösterge Paneli standart
+      case "heatedSteering":      // GT Spor Isıtmalı Fonksiyonel Direksiyon standart
+      case "ambientLighting":     // İç Ambiyans Aydınlatma standart
+      case "camera360":           // Aktif Park & Çevre Görüş Sistemi standart
+      case "parkingSensors":      // Ön ve Arka Park Sensörleri standart
+      case "rearCamera":          // Geri Görüş Kamerası standart
+      case "ledMatrixHeadlights": // PDLS Plus Matrix LED Farlar standart
+      case "electricTailgate":    // Elektrikli Otomatik Bagaj Kapağı standart
+      case "foldingMirrors":      // Elektrikli Katlanır Aynalar standart
+      case "rainSensor":          // Yağmur & Far Sensörü standart
+      case "carplayAndroidAuto":  // Kablosuz Apple CarPlay standart
+      case "wirelessCharging":    // Kablosuz Şarj standart
+      case "touchScreen":         // 10.9 inç PCM Dokunmatik Ekran standart
+      case "navigation":          // Dahili PCM Navigasyon standart
+      case "bluetooth":           // Bluetooth standart
+      case "premiumAudio":        // BOSE Surround Sound Sistemi standart
+        return true;
+      default:
+        break;
+    }
+  }
+
+  // ULTRA LÜKS AMİRAL GEMİSİ STANDARTLARI (Mercedes EQS, BMW i7 vb.)
   if (isUltraLuxury) {
     switch (featureId) {
       case "laneAssist":
@@ -222,7 +268,7 @@ function isStandardFactoryEquipment(featureId: string, car: EvaluatedCarInfo): b
     }
   }
 
-  // Modern Lüks (2019+ BMW 3/5, Mercedes C/E, Audi A4/A6)
+  // MODERN LÜKS (2019+ BMW 3/5, Mercedes C/E, Audi A4/A6, Porsche)
   if (isModernLuxury) {
     switch (featureId) {
       case "digitalClimate":
@@ -235,7 +281,8 @@ function isStandardFactoryEquipment(featureId: string, car: EvaluatedCarInfo): b
       case "carplayAndroidAuto":
       case "touchScreen":
       case "bluetooth":
-        return true;
+      case "electricTailgate":
+        return isPorsche || /suv|wagon|station/i.test(hay);
       default:
         break;
     }
@@ -246,6 +293,7 @@ function isStandardFactoryEquipment(featureId: string, car: EvaluatedCarInfo): b
 
 /**
  * Donanım Özellikleri Sözlüğü ve Doğrulama Kuralları
+ * (Negatif kurallarda kesinlikle açgözlü .* yoktur; 1-3 kelimelik lokal olumsuzluk arar!)
  */
 interface FeatureDefinition {
   id: string;
@@ -259,55 +307,55 @@ const SAFETY_FEATURES: FeatureDefinition[] = [
     id: "absEsp",
     name: "ABS & ESP (Elektronik Denge)",
     positive: [/\b(abs|esp|asr|edl|ebd|stabilite)\b/i, /denge kontrol/i],
-    negative: [/abs.*yok/i, /esp.*yok/i],
+    negative: [/\b(?:abs|esp)\s*(?:yok|hariç|bulunm)/i],
   },
   {
     id: "hillHolder",
     name: "Yokuş Kalkış Desteği",
     positive: [/yokuş kalkış/i, /hill holder/i, /hill assist/i, /auto hold/i],
-    negative: [/yokuş kalkış.*yok/i, /hill.*yok/i],
+    negative: [/yokuş kalkış(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "laneAssist",
     name: "Şerit Takip Sistemi",
     positive: [/şerit takip/i, /şerit koruma/i, /lane assist/i, /lane keeping/i, /şeritte kalma/i],
-    negative: [/şerit takip.*yok/i, /şerit takip hariç/i],
+    negative: [/şerit takip(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "blindSpot",
     name: "Kör Nokta Uyarı Sistemi",
-    positive: [/kör nokta/i, /blind spot/i, /kör nokta asistanı/i, /side assist/i],
-    negative: [/kör nokta.*yok/i, /kör nokta hariç/i],
+    positive: [/kör nokta/i, /blind spot/i, /kör nokta asistanı/i, /side assist/i, /lane change assist/i],
+    negative: [/kör nokta(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "emergencyBrake",
     name: "Çarpışma Önleme & Acil Fren",
-    positive: [/çarpışma önle/i, /front assist/i, /acil fren/i, /pre-safe/i, /acil durum.*asistanı/i, /yaya koruma/i, /active brake assist/i],
-    negative: [/çarpışma.*yok/i],
+    positive: [/çarpışma önle/i, /front assist/i, /acil fren/i, /pre-safe/i, /acil durum.*asistanı/i, /yaya koruma/i, /active brake assist/i, /warn and brake/i],
+    negative: [/çarpışma(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "adaptiveCruise",
     name: "Adaptif Hız Sabitleyici (ACC)",
-    positive: [/adaptif (hız|cruise)/i, /acc\b/i, /distronic/i, /otonom sürüş/i, /mesafe takip/i],
-    negative: [/adaptif.*yok/i, /acc.*yok/i, /distronic.*yok/i],
+    positive: [/adaptif (hız|cruise)/i, /acc\b/i, /distronic/i, /otonom sürüş/i, /mesafe takip/i, /innodrive/i],
+    negative: [/\b(?:acc|distronic|adaptif)\s*(?:yok|hariç)/i],
   },
   {
     id: "airbags",
     name: "Hava Yastığı (En Az 6 Airbag)",
     positive: [/\b(6|8|10|12)\s*(hava yastığı|airbag)/i, /perde hava yastık/i, /yan hava yastık/i, /çoklu airbag/i],
-    negative: [/airbag.*yok/i],
+    negative: [/airbag(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "isofix",
     name: "ISOFIX Çocuk Koltuğu",
     positive: [/isofix/i, /çocuk koltuğu sabitleme/i],
-    negative: [/isofix.*yok/i],
+    negative: [/isofix(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "tirePressure",
     name: "Lastik Basınç Uyarı Sistemi",
     positive: [/lastik basınç/i, /tpms/i, /tire pressure/i, /lastik arıza/i],
-    negative: [/lastik basınç.*yok/i],
+    negative: [/lastik basınç(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
 ];
 
@@ -316,55 +364,55 @@ const COMFORT_FEATURES: FeatureDefinition[] = [
     id: "seatHeating",
     name: "Koltuk Isıtma (Ön/Arka)",
     positive: [/koltuk.*ısıtma/i, /ısıtmalı.*koltuk/i, /seat heating/i, /ısıtmalı ön koltuk/i, /ön koltuk ısıtma/i],
-    negative: [/koltuk ısıtma.*yok/i, /koltuk ısıtma.*hariç/i, /ısıtma.*yok/i],
+    negative: [/(?:koltuk\s*ısıtma|ısıtmalı\s*koltuk)(?:\s+\S+){0,3}\s+(?:yok|hariç|bulunm)/i],
   },
   {
     id: "seatCooling",
     name: "Koltuk Soğutma / Havalandırma",
     positive: [/koltuk.*soğutma/i, /soğutmalı.*koltuk/i, /koltuk havalandırma/i, /seat ventilation/i],
-    negative: [/koltuk soğutma.*yok/i, /koltuk soğutma.*hariç/i, /soğutma.*yok/i],
+    negative: [/(?:koltuk\s*soğutma|soğutmalı\s*koltuk)(?:\s+\S+){0,3}\s+(?:yok|hariç|bulunm)/i],
   },
   {
     id: "electricSeats",
     name: "Elektrikli & Hafızalı Koltuklar",
-    positive: [/hafızalı koltuk/i, /elektrikli koltuk/i, /memory seat/i, /elektrikli.*hafızalı/i],
-    negative: [/hafızalı.*yok/i, /elektrikli koltuk.*yok/i],
+    positive: [/hafızalı koltuk/i, /elektrikli koltuk/i, /memory seat/i, /elektrikli.*hafızalı/i, /spor koltuk/i],
+    negative: [/(?:elektrikli|hafızalı)\s*koltuk(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "leatherSeats",
     name: "Deri Koltuk Döşeme",
     positive: [/deri koltuk/i, /deri döşeme/i, /leather/i, /alcantara/i, /nappa/i, /artico/i],
-    negative: [/deri koltuk.*yok/i, /kumaş döşeme/i],
+    negative: [/deri koltuk(?:\s+\S+){0,3}\s+(?:yok|hariç)/i, /kumaş döşeme/i],
   },
   {
     id: "digitalClimate",
     name: "Çok Bölgeli Dijital Klima",
     positive: [/dijital klima/i, /çift bölge/i, /dört bölge/i, /climatronic/i, /thermotronic/i, /otomatik klima/i],
-    negative: [/dijital klima.*yok/i, /manuel klima/i],
+    negative: [/dijital klima(?:\s+\S+){0,3}\s+(?:yok|hariç)/i, /manuel klima/i],
   },
   {
     id: "keylessGo",
     name: "Anahtarsız Giriş & Çalıştırma",
-    positive: [/anahtarsız/i, /keyless/i, /start.*stop tuş/i, /start-stop düğme/i, /eller serbest giriş/i],
-    negative: [/anahtarsız.*yok/i, /keyless.*yok/i],
+    positive: [/anahtarsız/i, /keyless/i, /start.*stop tuş/i, /start-stop düğme/i, /eller serbest giriş/i, /comfort access/i],
+    negative: [/anahtarsız(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "digitalCockpit",
     name: "Hayalet Gösterge (Dijital Kokpit)",
-    positive: [/hayalet (ekran|gösterge)/i, /dijital (gösterge|kokpit)/i, /virtual cockpit/i, /hyperscreen/i, /live cockpit/i],
-    negative: [/hayalet.*yok/i, /dijital gösterge.*yok/i],
+    positive: [/hayalet (ekran|gösterge)/i, /dijital (gösterge|kokpit)/i, /virtual cockpit/i, /hyperscreen/i, /live cockpit/i, /kavisli ekran/i],
+    negative: [/(?:hayalet|dijital\s*gösterge)(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "heatedSteering",
     name: "Isıtmalı Direksiyon",
     positive: [/ısıtmalı direksiyon/i, /direksiyon ısıtma/i, /heated steering/i],
-    negative: [/direksiyon ısıtma.*yok/i, /ısıtmalı direksiyon.*hariç/i],
+    negative: [/direksiyon ısıtma(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "ambientLighting",
     name: "İç Ambiyans Aydınlatma",
     positive: [/ambiyans/i, /ortam aydınlatma/i, /ambient lighting/i, /64 renk/i, /iç ışık paketi/i],
-    negative: [/ambiyans.*yok/i],
+    negative: [/ambiyans(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
 ];
 
@@ -372,50 +420,84 @@ const EXTERIOR_FEATURES: FeatureDefinition[] = [
   {
     id: "camera360",
     name: "360° Çevre Görüş Kamerası",
-    positive: [/360.*(kamera|derece|görüş)/i, /çevre görüş/i, /surround view/i, /kuşbakışı kamera/i, /area view/i],
-    negative: [/360.*kamera.*yok/i, /360.*hariç/i, /360 derece.*hariç/i],
+    positive: [
+      /360.*(kamera|derece|görüş)/i,
+      /çevre görüş/i,
+      /surround view/i,
+      /kuşbakışı kamera/i,
+      /area view/i,
+      /aktif park.*çevre görüş/i,
+    ],
+    negative: [/(?:360|çevre\s*görüş)(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "rearCamera",
     name: "Geri Görüş Kamerası",
     positive: [/geri görüş/i, /rear camera/i, /park kamerası/i, /arka kamera/i],
-    negative: [/geri görüş.*yok/i, /kamera.*yok/i],
+    negative: [/geri görüş(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "parkingSensors",
     name: "Ön & Arka Park Sensörü",
-    positive: [/park sensör/i, /ön.*arka park/i, /parktronik/i, /parktronic/i, /park pilot/i],
-    negative: [/park sensör.*yok/i],
+    positive: [/park sensör/i, /ön.*arka park/i, /parktronik/i, /parktronic/i, /park pilot/i, /aktif park/i],
+    negative: [/park sensör(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "sunroof",
     name: "Panoramik Cam Tavan / Sunroof",
-    positive: [/cam tavan/i, /panoramik/i, /sunroof/i, /panoroma/i, /açılır tavan/i],
-    negative: [/cam tavan.*yok/i, /sunroof.*yok/i, /cam tavan hariç/i, /sunroof hariç/i],
+    positive: [
+      /panoramik(?:\s+cam)?\s*tavan/i,
+      /cam tavan/i,
+      /sunroof/i,
+      /panoroma/i,
+      /açılır tavan/i,
+    ],
+    negative: [
+      /(?:cam\s*tavan|sunroof|panoramik)(?:\s+\S+){0,3}\s+(?:yok|hariç|bulunm)/i,
+      /(?:hariç|olmayan)\s*:\s*(?:cam\s*tavan|sunroof)/i,
+    ],
   },
   {
     id: "ledMatrixHeadlights",
     name: "LED / Matrix LED Farlar",
-    positive: [/matrix led/i, /digital light/i, /multibeam/i, /laser light/i, /iq\.light/i, /led far/i, /bi-xenon/i],
-    negative: [/led far.*yok/i, /halojen far/i],
+    positive: [
+      /matrix\s*led/i,
+      /led\s*matrix/i,
+      /digital\s*light/i,
+      /multibeam/i,
+      /laser\s*light/i,
+      /iq\.light/i,
+      /led\s*far/i,
+      /bi-xenon/i,
+      /dynamic\s*far/i,
+      /pdls/i,
+    ],
+    negative: [/(?:matrix|led\s*far)(?:\s+\S+){0,3}\s+(?:yok|hariç)/i, /halojen far/i],
   },
   {
     id: "electricTailgate",
     name: "Elektrikli / Eller Serbest Bagaj",
-    positive: [/elektrikli bagaj/i, /otomatik bagaj/i, /eller serbest bagaj/i, /ayakla açılan bagaj/i, /power tailgate/i, /easy open/i],
-    negative: [/elektrikli bagaj.*yok/i],
+    positive: [
+      /elektrikli bagaj/i,
+      /otomatik bagaj/i,
+      /eller serbest bagaj/i,
+      /ayakla açılan bagaj/i,
+      /power tailgate/i,
+      /easy open/i,
+    ],
+    negative: [/elektrikli bagaj(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "foldingMirrors",
     name: "Elektrikli Katlanır Yan Aynalar",
     positive: [/katlanır ayna/i, /otomatik katlanan ayna/i, /elektrikli katlanır/i],
-    negative: [/katlanır ayna.*yok/i],
+    negative: [/katlanır ayna(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "rainSensor",
     name: "Yağmur & Far Sensörü",
     positive: [/yağmur sensör/i, /far sensör/i, /otomatik yanan far/i, /ışık sensör/i],
-    negative: [/yağmur sensör.*yok/i],
+    negative: [/yağmur sensör(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
 ];
 
@@ -424,37 +506,57 @@ const MULTIMEDIA_FEATURES: FeatureDefinition[] = [
     id: "carplayAndroidAuto",
     name: "Apple CarPlay & Android Auto",
     positive: [/carplay/i, /android auto/i, /akıllı telefon entegrasyon/i, /mirrorlink/i, /smartlink/i],
-    negative: [/carplay.*yok/i, /android auto.*yok/i],
+    negative: [/(?:carplay|android\s*auto)(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "wirelessCharging",
     name: "Kablosuz Şarj (Wireless Charge)",
     positive: [/kablosuz şarj/i, /wireless charg/i, /kablosuz telefon şarj/i, /indüksiyon şarj/i],
-    negative: [/kablosuz şarj.*yok/i],
+    negative: [/kablosuz şarj(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "touchScreen",
     name: "Dokunmatik Multimedya Ekranı",
-    positive: [/dokunmatik ekran/i, /multimedya ekran/i, /touchscreen/i, /büyük ekran/i, /merkezi ekran/i, /hyperscreen/i, /tablet ekran/i],
-    negative: [/ekran.*yok/i],
+    positive: [
+      /dokunmatik ekran/i,
+      /multimedya ekran/i,
+      /touchscreen/i,
+      /büyük ekran/i,
+      /merkezi ekran/i,
+      /hyperscreen/i,
+      /tablet ekran/i,
+      /yolcu ekranı/i,
+    ],
+    negative: [/dokunmatik\s*ekran(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "navigation",
     name: "Dahili Navigasyon Sistemi",
-    positive: [/navigasyon/i, /harita sistemi/i, /gps/i, /mbux navigasyon/i],
-    negative: [/navigasyon.*yok/i, /navigasyon hariç/i],
+    positive: [/navigasyon/i, /harita sistemi/i, /gps/i, /mbux navigasyon/i, /pcm/i],
+    negative: [/navigasyon(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "bluetooth",
     name: "Bluetooth & Eller Serbest",
     positive: [/bluetooth/i, /eller serbest konuşma/i, /handsfree/i, /telefon bağlantı/i],
-    negative: [/bluetooth.*yok/i],
+    negative: [/bluetooth(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
   {
     id: "premiumAudio",
     name: "Premium Ses Sistemi",
-    positive: [/burmester/i, /harman kardon/i, /bose\b/i, /bang & olufsen/i, /meridian/i, /focal/i, /jbl/i, /dynaudio/i, /ses sistemi/i],
-    negative: [/ses sistemi.*yok/i],
+    positive: [
+      /burmester/i,
+      /harman kardon/i,
+      /bose\b/i,
+      /bang & olufsen/i,
+      /meridian/i,
+      /focal/i,
+      /jbl/i,
+      /dynaudio/i,
+      /ses sistemi/i,
+      /elektronik spor ses/i,
+    ],
+    negative: [/ses sistemi(?:\s+\S+){0,3}\s+(?:yok|hariç)/i],
   },
 ];
 
@@ -490,7 +592,7 @@ export function evaluateCarEquipment(car: EvaluatedCarInfo): EquipmentCategory[]
         }
       }
 
-      // 4. Fabrika çıkışı standart donanım teyidi (Amiral gemisi / lüks)
+      // 4. Fabrika çıkışı standart donanım teyidi (Porsche Macan Turbo, Mercedes EQS vb.)
       if (isStandardFactoryEquipment(def.id, car)) {
         return { id: def.id, name: def.name, present: true };
       }

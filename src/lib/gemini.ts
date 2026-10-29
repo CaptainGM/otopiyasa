@@ -405,7 +405,8 @@ export async function classifyIntent(
   message: string,
   siteContext?: string,
   contextBrand?: string,
-  history?: HistoryItem[]
+  history?: HistoryItem[],
+  compareContext?: string
 ): Promise<GeminiIntent | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
@@ -419,6 +420,9 @@ export async function classifyIntent(
     let systemText = SYSTEM_PROMPT;
     if (siteContext) systemText += `\n\nGüncel envanter:\n${siteContext}`;
     if (contextBrand) systemText += `\n\nSon bahsedilen araç markası: ${contextBrand} (kullanıcı "ilana git/onu aç" derse action=open).`;
+    if (compareContext) {
+      systemText += `\n\nKULLANICININ ŞU AN EKRANDA İNCELEDİĞİ KARŞILAŞTIRMA ARAÇLARI:\n${compareContext}\n\nÖNEMLİ KURAL: Kullanıcı bu araçlar, ekrandaki karşılaştırma, özelliklerin doğruluğu veya hangi aracı seçeceği hakkında konuştuğunda action="answer" olarak cevap ver. Bu araçların teknik özelliklerini, donanımlarını ve fiyatlarını bilerek uzman bir otomotiv editörü gibi net, samimi ve güven veren bir dille yanıtla. Kullanıcıya asla 'karşılaştırma sayfasına git' deme çünkü zaten o sayfada.`;
+    }
 
     
     const priorTurns = (history || []).slice(-6).map((h) => ({

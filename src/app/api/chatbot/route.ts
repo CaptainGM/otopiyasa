@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const message = typeof body.message === "string" ? body.message.slice(0, 500) : "";
 
-    // İstemciden gelen kısa bağlam (son bahsedilen araç) — takip sorularında kullanılır
+    // İstemciden gelen bağlam (araç, aktif karşılaştırma veya sayfa) — asistanın neye baktığını bilmesini sağlar
     const rawContext = body.context;
     const context: ChatContext | undefined =
       rawContext && typeof rawContext === "object"
@@ -33,6 +33,17 @@ export async function POST(request: Request) {
             brand:
               typeof rawContext.brand === "string"
                 ? rawContext.brand.slice(0, 64)
+                : undefined,
+            compareIds:
+              Array.isArray(rawContext.compareIds)
+                ? rawContext.compareIds
+                    .filter((x: unknown): x is string => typeof x === "string" && Boolean(x.trim()))
+                    .map((x: string) => x.trim().slice(0, 64))
+                    .slice(0, 4)
+                : undefined,
+            pageUrl:
+              typeof rawContext.pageUrl === "string"
+                ? rawContext.pageUrl.slice(0, 128)
                 : undefined,
           }
         : undefined;

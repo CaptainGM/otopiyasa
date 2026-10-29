@@ -122,20 +122,27 @@ export function InfiniteCarList({
     // bu) istemci başka bir dilim seçip yükler; böylece her yenileme farklı ilanları gösterir.
     // Sunucudan dolu gelen ilk sayfa: ekrandaki ilanlari bosaltip tekrar ag istegi atmiyoruz.
     // Bu sayede Kesfet veya sayfa gecislerinde ekran asla bosalmaz, gecikme (delay) yasanmaz.
-    if (initialItemsRef.current && initialItemsRef.current.length > 0) {
-      if (feedStartSlot !== undefined) {
-        rememberSlot(feedStartSlot);
-        activeQueryRef.current = feedSliceQuery(query, feedStartSlot, feedStartBucket ?? feedBucket());
-      }
+    const previousSlot = readPreviousSlot();
+
+    // Sunucudan gelen dilim daha önce gördüğümüz dilimden farklıysa (ilk ziyaret veya sunucu yeni rastgele dilim verdiyse):
+    // HTML'deki ilk 24 ilanı doğrudan gösterir, fazladan ağ isteği atmaz (0ms açılış).
+    if (
+      feedStartSlot !== undefined &&
+      previousSlot !== feedStartSlot &&
+      initialItemsRef.current &&
+      initialItemsRef.current.length > 0
+    ) {
+      rememberSlot(feedStartSlot);
+      activeQueryRef.current = feedSliceQuery(query, feedStartSlot, feedStartBucket ?? feedBucket());
       setItems(initialItemsRef.current);
       setPage(initialPage || 1);
       setLoading(false);
       return;
     }
 
-    const previousSlot = readPreviousSlot();
-
-    const slot = randomFeedSlot(previousSlot);
+    // Kullanıcı F5 ile sayfayı yenilediğinde veya aynı dilim önbellekten geldiğinde:
+    // Hemen bir önceki dilimden farklı rastgele yeni bir dilim seçilir ve farklı ilanlar anında ekrana gelir!
+    const slot = randomFeedSlot(previousSlot ?? feedStartSlot);
     rememberSlot(slot);
     activeQueryRef.current = feedSliceQuery(query, slot, feedBucket());
 

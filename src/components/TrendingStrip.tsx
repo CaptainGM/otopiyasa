@@ -8,12 +8,12 @@ import { cached, CACHE_TTL } from "@/lib/cache";
 import { Car as CarType } from "@/types";
 
 function findTrending(): Promise<CarType[]> {
-  return cached("home:trending:v2", CACHE_TTL.medium, async () => {
+  return cached("home:trending:v2", CACHE_TTL.long, async () => {
     try {
       await connectDB();
       const docs = ((await Car.find({ ...PUBLIC_LISTING_FILTER, viewCount: { $gt: 0 } })
         .sort({ viewCount: -1 })
-        .limit(100)
+        .limit(24)
         .slice("images", 2)
         .lean()) as unknown[]).filter(isLeanCarDoc);
 
@@ -21,7 +21,7 @@ function findTrending(): Promise<CarType[]> {
       // never rendered here and caused an unnecessary multi-segment DB scan.
       const cars = attachMarketToCars(docs, new Map());
 
-      return pickTrending(cars, 30);
+      return pickTrending(cars, 16);
     } catch {
       return [];
     }

@@ -275,6 +275,11 @@ async function searchCarsPage(filters: CarFilters): Promise<CarsPage> {
   // Rastgele akış her tohumda farklıdır; önbelleğe alınırsa kayıtlar boşuna birikir ve herkes
   // aynı sırayı görürdü. Sorgu zaten indeksli ve milisaniyeler sürüyor.
   if (isDefaultHome || (isMixedSort(filters.sort) && !filters.q?.trim())) {
+    if ((filters.page || 1) === 1 && isValidFeedSlot(filters.slot)) {
+      const bucket = resolveFeedBucket(filters.bucket);
+      const slotKey = `feed:s${filters.slot}:b${bucket}:l${filters.limit || 24}:vc${filters.vehicleClass || "all"}`;
+      return cached(slotKey, 15 * 60 * 1000, () => findCarsPageUncached(filters));
+    }
     return findCarsPageUncached(filters);
   }
 

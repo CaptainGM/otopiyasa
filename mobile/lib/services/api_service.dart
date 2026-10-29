@@ -243,6 +243,8 @@ class ApiService {
     // Fiyat aralığı (TL): web'deki priceMin / priceMax ile aynı adlar.
     int? priceMin,
     int? priceMax,
+    int? yearMin,
+    int? yearMax,
   }) async {
     final response = await _http.get(
       _uri('/api/cars', {
@@ -267,6 +269,8 @@ class ApiService {
         if (noDamage) 'noDamage': 'true',
         if (priceMin != null) 'priceMin': '$priceMin',
         if (priceMax != null) 'priceMax': '$priceMax',
+        if (yearMin != null) 'yearMin': '$yearMin',
+        if (yearMax != null) 'yearMax': '$yearMax',
         'page': '$page',
         'compact': '1',
       }),
@@ -308,7 +312,15 @@ class ApiService {
 
   /// Marka seçilince o markanın gerçek modelleriyle dolan filtre listesi —
   /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
+  static final _brandModelsCache = <String, Map<String, dynamic>>{};
+
+  /// web'deki CarFilters ile aynı kaynağı (`getBrandModelOptions`) kullanır.
+  /// Önbellekli: ekrana her girişte ağ beklemeden anında (0ms) açılır.
   Future<Map<String, dynamic>> fetchBrandModels({String? vehicleClass}) async {
+    final key = vehicleClass ?? 'all';
+    final cached = _brandModelsCache[key];
+    if (cached != null) return cached;
+
     final response = await _http.get(
       _uri('/api/filters/brand-models', {
         'families': '1',
@@ -319,7 +331,9 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Marka/model listesi yüklenemedi');
     }
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    _brandModelsCache[key] = data;
+    return data;
   }
 
   /// Piyasa temposu (benzer ilanların yayında kalma süresi, pazarlık payı); veri yetersizse null.
@@ -1199,12 +1213,18 @@ class ApiService {
   Future<Map<String, dynamic>> chat(
     String message, {
     List<Map<String, String>>? history,
+    Map<String, dynamic>? context,
   }) async {
+    final payload = <String, dynamic>{
+      'message': message,
+      'history': history ?? [],
+    };
+    if (context != null) payload['context'] = context;
     final response = await _http.post(
       _uri('/api/chatbot'),
       timeout: const Duration(seconds: 60),
       headers: _headers,
-      body: jsonEncode({'message': message, 'history': history ?? []}),
+      body: jsonEncode(payload),
     );
     if (response.statusCode != 200) {
       throw Exception(_errorOf(response, 'Asistan yanıt veremedi'));
@@ -1514,6 +1534,41 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   /// 7/24 Daemon bot durumu, kalp atışı, bellek ve sayaç istatistikleri.
+  /// Canlı ziyaretçi trafiği, ülke ve IP istatistikleri (yalnızca yönetici).
+  Future<Map<String, dynamic>> fetchTrafficStats({String range = '24h'}) async {
+    final response = await _http.get(
+      _uri('/api/admin/traffic', {'range': range}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'Trafik istatistikleri alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Belirli bir IP adresinin tüm detaylı gezinti geçmişi (yalnızca yönetici).
+  Future<Map<String, dynamic>> fetchIpDetail(String ip) async {
+    final response = await _http.get(
+      _uri('/api/admin/traffic', {'ip': ip}),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception(_errorOf(response, 'IP gezinti geçmişi alınamadı'));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Mobil sayfa/ekran ziyareti loglama.
+  Future<void> logVisit(String path) async {
+    try {
+      await _http.post(
+        _uri('/api/stats/visit'),
+        headers: _headers,
+        body: jsonEncode({'path': path}),
+      );
+    } catch (_) {}
+  }
+
   Future<Map<String, dynamic>> fetchDaemonStats() async {
     final response = await _http.get(
       _uri('/api/admin/daemon-stats'),

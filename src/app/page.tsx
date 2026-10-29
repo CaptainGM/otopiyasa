@@ -18,7 +18,7 @@ import { getColorOptions, type ColorOption } from "@/lib/color-counts";
 import { cached, CACHE_TTL } from "@/lib/cache";
 import { getBrandModelOptions } from "@/lib/brand-models";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { feedBucket, feedStartSlot, isMixedSort } from "@/lib/car-mix";
+import { feedBucket, feedStartSlot, isMixedSort, randomFeedSlot } from "@/lib/car-mix";
 import { normalizeCity } from "@/lib/normalize-city";
 import { serializeCarListItem } from "@/lib/serialize-car-list-item";
 import { getMarketBoard, type MarketBoard } from "@/lib/market-board";
@@ -108,7 +108,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
     // Sirali beklemeler (2.5 sn gecikme ve siyah ekran) tamamen sonlandirildi.
     const bucket = isFeed ? feedBucket() : 0;
     if (isFeed) {
-      feedStart = { slot: feedStartSlot(bucket), bucket };
+      feedStart = { slot: randomFeedSlot(), bucket };
     }
 
     const [brandModelData, cities, colors, board, carsResult] = await Promise.all([

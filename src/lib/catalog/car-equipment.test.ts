@@ -1141,4 +1141,52 @@ describe("car-equipment comprehensive test suite (100+ tests)", () => {
       expect(hasFeature(leon, "exterior", "parkingSensors")).toBe(true);
     });
   });
+
+  // ==========================================
+  // 10. DONANIM DURUMU (var / yok / bilinmiyor)
+  // ==========================================
+  describe("donanım durumu (var / yok / bilinmiyor)", () => {
+    function itemOf(car: Parameters<typeof evaluateCarEquipment>[0], categoryId: string, name: string) {
+      const cat = evaluateCarEquipment(car).find((c) => c.id === categoryId);
+      const item = cat?.items.find((i) => i.name === name);
+      if (!item) throw new Error(`${name} bulunamadı`);
+      return item;
+    }
+
+    it("ilan metninde hiç geçmeyen donanım 'bilinmiyor' olur, 'yok' sayılmaz", () => {
+      const car = { brand: "Dacia", model: "Duster", year: 2023, title: "Dacia Duster 1.0 TCe 2023", description: "Temiz araç, 1 el." };
+      const seat = itemOf(car, "comfort", "Koltuk Isıtma (Ön/Arka)");
+      expect(seat.present).toBe(false);
+      expect(seat.status).toBe("bilinmiyor");
+    });
+
+    it("ilan metninde açıkça geçen donanım 'var' olur", () => {
+      const car = { brand: "Dacia", model: "Duster", year: 2023, title: "Dacia Duster 1.0 TCe 2023", description: "Koltuk ısıtma mevcut." };
+      const seat = itemOf(car, "comfort", "Koltuk Isıtma (Ön/Arka)");
+      expect(seat.present).toBe(true);
+      expect(seat.status).toBe("var");
+    });
+
+    it("dönem kuralı: 2022 öncesi lüks olmayan markada koltuk ısıtma ilan metninde geçse bile 'yok' kalır", () => {
+      const car = { brand: "Toyota", model: "Corolla", year: 2015, title: "Toyota Corolla 1.6 Dream", description: "Koltuk ısıtma mevcut." };
+      const seat = itemOf(car, "comfort", "Koltuk Isıtma (Ön/Arka)");
+      expect(seat.status).toBe("yok");
+    });
+
+    it("virgül ya da nokta sonrasındaki 'yok' komşu donanımı yok saymaz", () => {
+      const car = { brand: "Dacia", model: "Duster", year: 2023, title: "Dacia Duster 1.0 TCe 2023", description: "Koltuk ısıtma var, sunroof yok." };
+      const seat = itemOf(car, "comfort", "Koltuk Isıtma (Ön/Arka)");
+      expect(seat.status).toBe("var");
+    });
+
+    it("her donanım öğesi geçerli bir durum taşır ve present ile tutarlıdır", () => {
+      const car = { brand: "Toyota", model: "Corolla", year: 2015, title: "Toyota Corolla 1.6 Dream", description: "Temiz araç." };
+      for (const cat of evaluateCarEquipment(car)) {
+        for (const item of cat.items) {
+          expect(["var", "yok", "bilinmiyor"]).toContain(item.status);
+          expect(item.present).toBe(item.status === "var");
+        }
+      }
+    });
+  });
 });

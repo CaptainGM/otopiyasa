@@ -109,29 +109,30 @@ const CATALOG_DATABASE: CatalogEntry[] = [
   },
   {
     brandRegex: /mercedes/i,
-    modelRegex: /c.*200.*4matic|c.*200/i,
+    // Kısa sınıf kodları (C 200, E 200, A 180) yalnızca kelime başında eşleşir: "mercedes", "glc 200", "cla 180" içindeki harfler eşleşmez.
+    modelRegex: /\bc(?:[\s-]?serisi)?[\s-]?200(?!\d)/i,
     yearRange: [2021, 2030],
     specs: { acceleration: 7.1, topSpeed: 241, torque: 300, trunkCapacity: 455, fuelTank: "66 L", curbWeight: 1650 },
   },
   {
     brandRegex: /mercedes/i,
-    modelRegex: /c.*180/i,
+    modelRegex: /\bc(?:[\s-]?serisi)?[\s-]?180(?!\d)/i,
     yearRange: [2014, 2021],
     specs: { acceleration: 8.2, topSpeed: 225, torque: 250, trunkCapacity: 480, fuelTank: "66 L", curbWeight: 1425 },
   },
   {
     brandRegex: /mercedes/i,
-    modelRegex: /e.*200/i,
+    modelRegex: /\be(?:[\s-]?serisi)?[\s-]?200(?!\d)/i,
     specs: { acceleration: 7.5, topSpeed: 240, torque: 320, trunkCapacity: 540, fuelTank: "66 L", curbWeight: 1700 },
   },
   {
     brandRegex: /mercedes/i,
-    modelRegex: /e.*220.*d/i,
+    modelRegex: /\be(?:[\s-]?serisi)?[\s-]?220(?!\d).*d/i,
     specs: { acceleration: 7.3, topSpeed: 240, torque: 400, trunkCapacity: 540, fuelTank: "66 L", curbWeight: 1780 },
   },
   {
     brandRegex: /mercedes/i,
-    modelRegex: /a.*180/i,
+    modelRegex: /\ba(?:[\s-]?serisi)?[\s-]?180(?!\d)/i,
     specs: { acceleration: 8.8, topSpeed: 215, torque: 230, trunkCapacity: 370, fuelTank: "43 L", curbWeight: 1365 },
   },
   {
@@ -581,6 +582,13 @@ export function estimateSpecsFromDynamics(car: {
   };
 }
 
+/** İlanın yakıt deposu metnini tek biçime getirir ("62 lt" → "62 L"); kWh değerlerine dokunmaz. */
+function normalizeFuelTank(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  if (!text) return undefined;
+  return text.replace(/\s*(?:lt|litre|l)\.?$/i, " L");
+}
+
 /**
  * Bir araç için fabrika teknik verilerini çözer.
  * Varsa ilanın kendi teknik alanlarını korur, eksikleri katalogdan veya dinamik tahminciden tamamlar.
@@ -609,14 +617,14 @@ export function resolveTechnicalSpecs(car: {
   const hay = `${brand} ${model} ${title}`.toLowerCase();
   const feat = car.features || {};
 
-  // 1. Doğrudan ilanda tanımlı fabrika alanları var mı?
+  // 1. Doğrudan ilanda tanımlı fabrika alanları var mı? Yalnızca ilanın kendi değerleri döner; eksikler katalog ya da tahminle
+  // doldurulmaz (eskiden bagaj 450 L ve depo 50 L sabitleri uyduruluyordu).
   if (feat.acceleration && feat.topSpeed && feat.torque) {
     return {
       acceleration: feat.acceleration,
       topSpeed: feat.topSpeed,
       torque: feat.torque,
-      trunkCapacity: 450,
-      fuelTank: feat.fuelTank || "50 L",
+      fuelTank: normalizeFuelTank(feat.fuelTank),
       specSource: "listing",
     };
   }
@@ -631,7 +639,7 @@ export function resolveTechnicalSpecs(car: {
             topSpeed: feat.topSpeed || entry.specs.topSpeed,
             torque: feat.torque || entry.specs.torque,
             trunkCapacity: entry.specs.trunkCapacity,
-            fuelTank: feat.fuelTank || entry.specs.fuelTank,
+            fuelTank: normalizeFuelTank(feat.fuelTank) ?? entry.specs.fuelTank,
             curbWeight: entry.specs.curbWeight,
             specSource: "catalog",
           };
@@ -657,7 +665,7 @@ export function resolveTechnicalSpecs(car: {
     topSpeed: feat.topSpeed || derived.topSpeed,
     torque: feat.torque || derived.torque,
     trunkCapacity: derived.trunkCapacity,
-    fuelTank: feat.fuelTank || derived.fuelTank,
+    fuelTank: normalizeFuelTank(feat.fuelTank) ?? derived.fuelTank,
     curbWeight: derived.curbWeight,
     specSource: "derived",
   };

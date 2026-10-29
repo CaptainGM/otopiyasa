@@ -8,7 +8,7 @@ import { topicLinkFor } from "@/lib/chat-topics";
 import { modelFamilyRegex } from "@/lib/model-family";
 import { Types } from "mongoose";
 import { evaluateCarEquipment, EquipmentCategory } from "@/lib/catalog/car-equipment";
-import { resolveTechnicalSpecs, TechnicalSpecs } from "@/lib/catalog/specs-catalog";
+import type { TechnicalSpecs } from "@/types";
 
 /**
  * Asistanın gösterebileceği ilanlar: yalnızca herkese açık (aktif, onaylı) ve makul fiyatlı olanlar.
@@ -67,7 +67,7 @@ export interface CompareCarDetail {
   fuelType?: string;
   transmission?: string;
   horsepower?: number;
-  specs: TechnicalSpecs;
+  specs?: TechnicalSpecs;
   equipment: EquipmentCategory[];
 }
 
@@ -94,15 +94,6 @@ export async function getCompareDetailsForAssistant(ids: string[]): Promise<Comp
       const c = carMap.get(id);
       if (!c) continue;
 
-      const specs = resolveTechnicalSpecs({
-        brand: c.brand,
-        model: c.model,
-        year: c.year,
-        vehicleClass: c.vehicleClass,
-        title: c.title,
-        features: c.features,
-      });
-
       const equipment = evaluateCarEquipment({
         brand: c.brand,
         model: c.model,
@@ -124,7 +115,6 @@ export async function getCompareDetailsForAssistant(ids: string[]): Promise<Comp
         fuelType: c.features?.fuelType || c.fuelType,
         transmission: c.features?.transmission || c.transmission,
         horsepower: c.features?.horsepower || c.horsepower,
-        specs,
         equipment,
       });
     }
@@ -164,8 +154,10 @@ export function buildCompareSummaryText(cars: CompareCarDetail[]): string {
         `Araç ${i + 1}: ${c.year} ${c.brand} ${c.model} (${c.title})`,
         `  Fiyat: ${formatPrice(c.price)} | KM: ${c.km.toLocaleString("tr-TR")} km`,
         `  Motor/Güç: ${c.horsepower ? `${c.horsepower} HP` : ""} ${c.fuelType || ""} ${c.transmission || ""}`,
-        `  Teknik: 0-100: ${c.specs.acceleration}s | Hız: ${c.specs.topSpeed} km/s | Tork: ${c.specs.torque} Nm | Bagaj: ${c.specs.trunkCapacity} L`,
-        `  Doğrulanmış Donanımlar:`,
+        c.specs?.specSource === "web"
+          ? `  Teknik: 0-100: ${c.specs.acceleration ?? "-"}s | Hız: ${c.specs.topSpeed ?? "-"} km/s | Tork: ${c.specs.torque ?? "-"} Nm | Bagaj: ${c.specs.trunkCapacity ?? "-"} L`
+          : `  Teknik: veri yok`,
+        `  Donanımlar (ilan metni ve paket standardı):`,
         safetyYes ? `    Güvenlik: ${safetyYes}` : "",
         comfortYes ? `    Konfor: ${comfortYes}` : "",
         extYes ? `    Dış: ${extYes}` : "",
@@ -259,7 +251,7 @@ export function generateDeterministicCompareAnswer(rawMessage: string, cars: Com
           .slice(0, 5)
           .map((it) => it.name)
           .join(", ");
-        return `• **${c.year} ${c.brand} ${c.model}** (${formatPrice(c.price)} - ${c.horsepower ? `${c.horsepower} HP` : ""}): ${topFeatures}...`;
+        return `• **${c.year} ${c.brand} ${c.model}** (${formatPrice(c.price)} - ${c.horsepower ? `${c.horsepower} HP` : ""}): ${topFeatures}`;
       })
       .join("\n");
 
@@ -267,10 +259,10 @@ export function generateDeterministicCompareAnswer(rawMessage: string, cars: Com
       reply:
         `Şu an ekranındaki ${cars.length} aracı görüyorum:\n` +
         cars.map((c, i) => `${i + 1}. **${c.year} ${c.brand} ${c.model}** (${formatPrice(c.price)})`).join("\n") +
-        `\n\nEvet! Karşılaştırma matrisindeki teknik veriler ve donanımlar iki kademeli akıllı doğrulama sistemiyle hazırlanmıştır:\n\n` +
-        `1. **Resmi Paket & Fabrika Broşür Doğrulaması:** Her aracın model yılı ve donanım paketine ait standart fabrika donanımları uygulanmıştır (örneğin Porsche Macan Turbo ve Mercedes Heritage Edition standart donanımları, Ford GLX standartları vb.).\n` +
-        `2. **İlan Açıklaması & Ek Donanım Teyidi:** Satıcının ilan açıklamasına yazdığı ek donanımlar kelime analiziyle taranmış ve "hasar kaydı yoktur" gibi ifadelerle karıştırılmadan doğrulanmıştır.\n\n` +
-        `**Araçların Doğrulanmış Öne Çıkan Donanımları:**\n${list}\n\n` +
+        `\n\nKarşılaştırma matrisindeki donanımlar iki kaynaktan çıkarılır; katalogda olmayan teknik veriler ise gösterilmez:\n\n` +
+        `1. **Paket & Fabrika Standardı:** Model yılı ve donanım paketine ait standart donanımlar işaretlenir (örneğin Porsche Macan Turbo ve Mercedes Heritage Edition standart donanımları, Ford GLX standartları vb.).\n` +
+        `2. **İlan Açıklaması:** Satıcının ilan açıklamasındaki donanımlar kelime analiziyle taranır; "hasar kaydı yoktur" gibi ifadeler donanım sanılmaz. İlanda hiç geçmeyen donanım "Belirtilmemiş" sayılır, yok sayılmaz.\n\n` +
+        `**Araçların Öne Çıkan Donanımları:**\n${list}\n\n` +
         `Bu araçların performansı, yakıt tüketimi veya fiyat/fayda dengesi hakkında merak ettiğin başka bir detay var mı?`,
     };
   }
@@ -290,7 +282,7 @@ export function generateDeterministicCompareAnswer(rawMessage: string, cars: Com
       `\n\n💡 **Hızlı Değerlendirme:**\n` +
       `- En bütçe dostu seçenek: **${cheapest.year} ${cheapest.brand} ${cheapest.model}** (${formatPrice(cheapest.price)})\n` +
       (mostPowerful.horsepower
-        ? `- En yüksek performans: **${mostPowerful.year} ${mostPowerful.brand} ${mostPowerful.model}** (${mostPowerful.horsepower} HP, 0-100: ${mostPowerful.specs.acceleration} sn)\n`
+        ? `- En yüksek performans: **${mostPowerful.year} ${mostPowerful.brand} ${mostPowerful.model}** (${mostPowerful.horsepower} HP${mostPowerful.specs?.specSource === "web" && mostPowerful.specs.acceleration ? `, 0-100: ${mostPowerful.specs.acceleration} sn` : ""})\n`
         : "") +
       `\nKullanım amacına ve bütçene göre hangi aracı daha yakından incelemek istersin?`,
   };

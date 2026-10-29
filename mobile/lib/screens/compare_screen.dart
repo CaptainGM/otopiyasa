@@ -52,6 +52,7 @@ class _CompareRow {
     this.isHeader = false,
     this.isBoolean = false,
     this.boolValues = const [],
+    this.statuses = const [],
   });
 
   final String label;
@@ -70,14 +71,34 @@ class _CompareRow {
   final bool isBoolean;
   final List<bool> boolValues;
 
+  /// Donanım satırlarında her araç için 'var' | 'yok' | 'bilinmiyor' (ilan metninde hiç geçmiyor: "Yok" değildir).
+  final List<String> statuses;
+
   /// Bütün araçlarda aynı mı? ("Sadece farkları göster" bunları gizler.)
   bool get allSame {
     if (isHeader) return false;
     if (isBoolean) {
+      if (statuses.isNotEmpty) return statuses.toSet().length <= 1;
       return boolValues.toSet().length <= 1;
     }
     return values.toSet().length <= 1;
   }
+}
+
+/// Yalnızca internetten doğrulanmış değerler (specSource 'web') gösterilir; katalog ve tahmin değerleri kaynaksız olduğu için gizlenir.
+TechnicalSpecs? _factorySpecs(CarListing c) => c.technicalSpecs?.specSource == 'web' ? c.technicalSpecs : null;
+
+/// Donanım durumu: 'var' | 'yok' | 'bilinmiyor'. Eski yanıtta status yoksa yalnızca present'a bakılır.
+String _equipmentStatus(CarListing c, String categoryId, String itemId) {
+  final category = c.equipmentCategories.firstWhere(
+    (ct) => ct.id == categoryId,
+    orElse: () => const EquipmentCategory(id: '', title: '', items: []),
+  );
+  final found = category.items.firstWhere(
+    (i) => i.id == itemId,
+    orElse: () => const EquipmentItem(id: '', name: '', present: false),
+  );
+  return found.status ?? (found.present ? 'var' : 'yok');
 }
 
 /// KARŞILAŞTIRMA — web'deki `/compare` sayfasının mobil karşılığı.
@@ -249,6 +270,7 @@ class _CompareScreenState extends State<CompareScreen> {
                                 padding: EdgeInsets.symmetric(vertical: 12),
                                 child: Text(
                                   'Yeşil zemin o satırda en avantajlı olanı gösterir. '
+                                  '? ilan metninde belirtilmemiş demektir; Yok ise paket kuralından ya da ilanda açıkça yazılan olumsuz bir ifadeden gelir. '
                                   'Fotoğrafa dokunarak ilana gidebilirsin.',
                                   style: TextStyle(fontSize: 12, color: Colors.white54),
                                   textAlign: TextAlign.center,
@@ -416,46 +438,46 @@ class _CompareScreenState extends State<CompareScreen> {
     ]);
 
     // --- BÖLÜM 2: FABRİKA TEKNİK VERİLERİ ---
-    final hasAnyTech = _cars.any((c) => c.technicalSpecs != null);
+    final hasAnyTech = _cars.any((c) => _factorySpecs(c) != null);
     if (hasAnyTech) {
-      final accs = [for (final c in _cars) c.technicalSpecs?.acceleration ?? 99.0];
-      final speeds = [for (final c in _cars) c.technicalSpecs?.topSpeed ?? 0];
-      final torques = [for (final c in _cars) c.technicalSpecs?.torque ?? 0];
-      final trunks = [for (final c in _cars) c.technicalSpecs?.trunkCapacity ?? 0];
+      final accs = [for (final c in _cars) _factorySpecs(c)?.acceleration ?? 99.0];
+      final speeds = [for (final c in _cars) _factorySpecs(c)?.topSpeed ?? 0];
+      final torques = [for (final c in _cars) _factorySpecs(c)?.torque ?? 0];
+      final trunks = [for (final c in _cars) _factorySpecs(c)?.trunkCapacity ?? 0];
 
       result.add(_CompareRow('⚡ TEKNİK', [for (var i = 0; i < n; i++) ''], isHeader: true));
       result.addAll([
         _CompareRow(
           '0-100 km/s',
-          [for (final c in _cars) c.technicalSpecs?.acceleration != null ? '${c.technicalSpecs!.acceleration} sn' : '-'],
+          [for (final c in _cars) _factorySpecs(c)?.acceleration != null ? '${_factorySpecs(c)!.acceleration} sn' : '-'],
           best: _extremes(accs, lowest: true),
           worst: worst(accs, highest: true),
         ),
         _CompareRow(
           'Azami Hız',
-          [for (final c in _cars) c.technicalSpecs?.topSpeed != null ? '${c.technicalSpecs!.topSpeed} km/s' : '-'],
+          [for (final c in _cars) _factorySpecs(c)?.topSpeed != null ? '${_factorySpecs(c)!.topSpeed} km/s' : '-'],
           best: _extremes(speeds, lowest: false),
           worst: worst(speeds, highest: false),
         ),
         _CompareRow(
           'Tork',
-          [for (final c in _cars) c.technicalSpecs?.torque != null ? '${c.technicalSpecs!.torque} Nm' : '-'],
+          [for (final c in _cars) _factorySpecs(c)?.torque != null ? '${_factorySpecs(c)!.torque} Nm' : '-'],
           best: _extremes(torques, lowest: false),
           worst: worst(torques, highest: false),
         ),
         _CompareRow(
           'Bagaj',
-          [for (final c in _cars) c.technicalSpecs?.trunkCapacity != null ? '${c.technicalSpecs!.trunkCapacity} L' : '-'],
+          [for (final c in _cars) _factorySpecs(c)?.trunkCapacity != null ? '${_factorySpecs(c)!.trunkCapacity} L' : '-'],
           best: _extremes(trunks, lowest: false),
           worst: worst(trunks, highest: false),
         ),
         _CompareRow(
           'Depo/Bat.',
-          [for (final c in _cars) _text(c.technicalSpecs?.fuelTank ?? '-')],
+          [for (final c in _cars) _text(_factorySpecs(c)?.fuelTank ?? '-')],
         ),
         _CompareRow(
           'Boş Ağırlık',
-          [for (final c in _cars) c.technicalSpecs?.curbWeight != null ? '${c.technicalSpecs!.curbWeight} kg' : '-'],
+          [for (final c in _cars) _factorySpecs(c)?.curbWeight != null ? '${_factorySpecs(c)!.curbWeight} kg' : '-'],
         ),
       ]);
     }
@@ -477,26 +499,14 @@ class _CompareScreenState extends State<CompareScreen> {
       result.add(_CompareRow(catTitle, [for (var i = 0; i < n; i++) ''], isHeader: true));
 
       for (final item in cat.items) {
-        final bools = [
-          for (final c in _cars)
-            c.equipmentCategories
-                .firstWhere(
-                  (ct) => ct.id == cat.id,
-                  orElse: () => const EquipmentCategory(id: '', title: '', items: []),
-                )
-                .items
-                .firstWhere(
-                  (i) => i.id == item.id,
-                  orElse: () => const EquipmentItem(id: '', name: '', present: false),
-                )
-                .present
-        ];
+        final statuses = [for (final c in _cars) _equipmentStatus(c, cat.id, item.id)];
         result.add(
           _CompareRow(
             item.name,
-            [for (final b in bools) b ? 'Var' : 'Yok'],
+            [for (final s in statuses) s == 'var' ? 'Var' : (s == 'bilinmiyor' ? 'Belirtilmemiş' : 'Yok')],
             isBoolean: true,
-            boolValues: bools,
+            boolValues: [for (final s in statuses) s == 'var'],
+            statuses: statuses,
           ),
         );
       }
@@ -632,38 +642,48 @@ class _CompareScreenState extends State<CompareScreen> {
         }
         if (r.isBoolean && r.boolValues.length > col) {
           final present = r.boolValues[col];
+          // İlan metninde hiç geçmeyen donanım "Yok" değildir: sütun dar olduğu için soru işaretli nötr rozet, açıklaması tablonun altında.
+          final unknown = r.statuses.length > col && r.statuses[col] == 'bilinmiyor';
+          final accent = present ? const Color(0xFF34D399) : (unknown ? Colors.white54 : const Color(0xFFF87171));
+          final chip = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+            decoration: BoxDecoration(
+              color: present
+                  ? const Color(0x2034D399)
+                  : (unknown ? const Color(0x14FFFFFF) : const Color(0x18F87171)),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  present
+                      ? Icons.check_circle_rounded
+                      : (unknown ? Icons.help_outline_rounded : Icons.cancel_rounded),
+                  size: 13,
+                  color: accent,
+                ),
+                if (!unknown) ...[
+                  const SizedBox(width: 3),
+                  Text(
+                    present ? 'Var' : 'Yok',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: present ? FontWeight.w700 : FontWeight.w500,
+                      color: accent,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
           return Container(
             height: _rowHeight,
             width: columnWidth,
             color: row.isOdd ? stripe : null,
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
-                decoration: BoxDecoration(
-                  color: present ? const Color(0x2034D399) : const Color(0x18F87171),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      present ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                      size: 13,
-                      color: present ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      present ? 'Var' : 'Yok',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: present ? FontWeight.w700 : FontWeight.w500,
-                        color: present ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              child: chip,
             ),
           );
         }

@@ -89,5 +89,68 @@ describe("specs-catalog", () => {
     expect(specs.trunkCapacity).toBe(500);
     expect(specs.specSource).toBe("derived");
   });
+
+  it("does not map GLC, CLA, CLS or EQE listings onto C-Class or E-Class rows", () => {
+    const glc = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "GLC", title: "Mercedes-Benz GLC 200 AMG", year: 2022 });
+    expect(glc.specSource).toBe("catalog");
+    expect(glc.trunkCapacity).toBe(620);
+
+    const cla = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "CLA", title: "Mercedes-Benz CLA 180", year: 2020 });
+    expect(cla.specSource).toBe("derived");
+
+    const cls = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "CLS", title: "Mercedes-Benz CLS 200", year: 2022 });
+    expect(cls.specSource).toBe("derived");
+
+    const eqe = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "EQE", title: "Mercedes-Benz EQE 200", year: 2023 });
+    expect(eqe.specSource).toBe("derived");
+  });
+
+  it("keeps A 180, E 200 and C 200 on their own factory rows, including when the model field holds only the family letter", () => {
+    const a180 = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "A", title: "Mercedes-Benz A 180 Style", year: 2020 });
+    expect(a180.acceleration).toBe(8.8);
+    expect(a180.trunkCapacity).toBe(370);
+
+    const e200 = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "E", title: "Mercedes-Benz E 200 Exclusive", year: 2019 });
+    expect(e200.acceleration).toBe(7.5);
+    expect(e200.trunkCapacity).toBe(540);
+
+    const c200 = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "C", title: "Mercedes-Benz C 200 AMG", year: 2022 });
+    expect(c200.acceleration).toBe(7.1);
+
+    const numericModel = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "200", title: "Mercedes-Benz C 200 Avantgarde", year: 2022 });
+    expect(numericModel.acceleration).toBe(7.1);
+  });
+
+  it("does not invent trunk or fuel values when the listing only carries performance fields", () => {
+    const specs = resolveTechnicalSpecs({
+      brand: "Maserati",
+      model: "Ghibli",
+      year: 2021,
+      features: { acceleration: 5.1, topSpeed: 280, torque: 600 },
+    });
+
+    expect(specs.specSource).toBe("listing");
+    expect(specs.trunkCapacity).toBeUndefined();
+    expect(specs.fuelTank).toBeUndefined();
+  });
+
+  it("normalizes listing fuel tank units to liters", () => {
+    const specs = resolveTechnicalSpecs({
+      brand: "Renault",
+      model: "Megane",
+      year: 2022,
+      features: { acceleration: 9.0, topSpeed: 210, torque: 260, fuelTank: "50 lt" },
+    });
+
+    expect(specs.fuelTank).toBe("50 L");
+  });
+
+  it("keeps diesel and CDI spellings on their factory rows", () => {
+    const c200d = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "C", title: "Mercedes-Benz C200d AMG", year: 2022 });
+    expect(c200d.acceleration).toBe(7.1);
+
+    const e220Cdi = resolveTechnicalSpecs({ brand: "Mercedes-Benz", model: "E", title: "Mercedes-Benz E 220 CDI Avantgarde", year: 2019 });
+    expect(e220Cdi.acceleration).toBe(7.3);
+  });
 });
 

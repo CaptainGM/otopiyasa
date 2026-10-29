@@ -184,10 +184,14 @@ function ComparePageInner() {
   ];
 
   // --- Fabrika Teknik Verileri Satırları ---
-  const accelerations = items.map((c) => c.technicalSpecs?.acceleration).filter((v): v is number => typeof v === "number");
-  const topSpeeds = items.map((c) => c.technicalSpecs?.topSpeed).filter((v): v is number => typeof v === "number");
-  const torques = items.map((c) => c.technicalSpecs?.torque).filter((v): v is number => typeof v === "number");
-  const trunks = items.map((c) => c.technicalSpecs?.trunkCapacity).filter((v): v is number => typeof v === "number");
+  // Yalnızca internetten doğrulanmış değerler (specSource "web") gösterilir. Katalog ve tahmin değerleri kaynaksız olduğu için
+  // gösterilmez ve "en iyi" karşılaştırmasına girmez.
+  const factorySpecs = (c: Car) => (c.technicalSpecs?.specSource === "web" ? c.technicalSpecs : undefined);
+  const hasFactorySpecs = items.some((c) => factorySpecs(c) !== undefined);
+  const accelerations = items.map((c) => factorySpecs(c)?.acceleration).filter((v): v is number => typeof v === "number");
+  const topSpeeds = items.map((c) => factorySpecs(c)?.topSpeed).filter((v): v is number => typeof v === "number");
+  const torques = items.map((c) => factorySpecs(c)?.torque).filter((v): v is number => typeof v === "number");
+  const trunks = items.map((c) => factorySpecs(c)?.trunkCapacity).filter((v): v is number => typeof v === "number");
 
   const minAcc = accelerations.length > 0 ? Math.min(...accelerations) : undefined;
   const maxSpeed = topSpeeds.length > 0 ? Math.max(...topSpeeds) : undefined;
@@ -202,37 +206,37 @@ function ComparePageInner() {
   }[] = [
     {
       label: "0-100 km/s Hızlanma",
-      render: (c) => (c.technicalSpecs?.acceleration ? `${c.technicalSpecs.acceleration} sn` : "-"),
-      best: (c) => Boolean(c.technicalSpecs?.acceleration && minAcc !== undefined && c.technicalSpecs.acceleration === minAcc),
-      getRawValue: (c) => c.technicalSpecs?.acceleration,
+      render: (c) => (factorySpecs(c)?.acceleration ? `${factorySpecs(c)?.acceleration} sn` : "-"),
+      best: (c) => Boolean(factorySpecs(c)?.acceleration && minAcc !== undefined && factorySpecs(c)?.acceleration === minAcc),
+      getRawValue: (c) => factorySpecs(c)?.acceleration,
     },
     {
       label: "Azami Hız",
-      render: (c) => (c.technicalSpecs?.topSpeed ? `${c.technicalSpecs.topSpeed} km/s` : "-"),
-      best: (c) => Boolean(c.technicalSpecs?.topSpeed && maxSpeed !== undefined && c.technicalSpecs.topSpeed === maxSpeed),
-      getRawValue: (c) => c.technicalSpecs?.topSpeed,
+      render: (c) => (factorySpecs(c)?.topSpeed ? `${factorySpecs(c)?.topSpeed} km/s` : "-"),
+      best: (c) => Boolean(factorySpecs(c)?.topSpeed && maxSpeed !== undefined && factorySpecs(c)?.topSpeed === maxSpeed),
+      getRawValue: (c) => factorySpecs(c)?.topSpeed,
     },
     {
       label: "Maksimum Tork",
-      render: (c) => (c.technicalSpecs?.torque ? `${c.technicalSpecs.torque} Nm` : "-"),
-      best: (c) => Boolean(c.technicalSpecs?.torque && maxTorque !== undefined && c.technicalSpecs.torque === maxTorque),
-      getRawValue: (c) => c.technicalSpecs?.torque,
+      render: (c) => (factorySpecs(c)?.torque ? `${factorySpecs(c)?.torque} Nm` : "-"),
+      best: (c) => Boolean(factorySpecs(c)?.torque && maxTorque !== undefined && factorySpecs(c)?.torque === maxTorque),
+      getRawValue: (c) => factorySpecs(c)?.torque,
     },
     {
       label: "Bagaj Hacmi",
-      render: (c) => (c.technicalSpecs?.trunkCapacity ? `${c.technicalSpecs.trunkCapacity} L` : "-"),
-      best: (c) => Boolean(c.technicalSpecs?.trunkCapacity && maxTrunk !== undefined && c.technicalSpecs.trunkCapacity === maxTrunk),
-      getRawValue: (c) => c.technicalSpecs?.trunkCapacity,
+      render: (c) => (factorySpecs(c)?.trunkCapacity ? `${factorySpecs(c)?.trunkCapacity} L` : "-"),
+      best: (c) => Boolean(factorySpecs(c)?.trunkCapacity && maxTrunk !== undefined && factorySpecs(c)?.trunkCapacity === maxTrunk),
+      getRawValue: (c) => factorySpecs(c)?.trunkCapacity,
     },
     {
       label: "Depo / Batarya",
-      render: (c) => c.technicalSpecs?.fuelTank || "-",
-      getRawValue: (c) => c.technicalSpecs?.fuelTank,
+      render: (c) => factorySpecs(c)?.fuelTank || "-",
+      getRawValue: (c) => factorySpecs(c)?.fuelTank,
     },
     {
       label: "Boş Ağırlık",
-      render: (c) => (c.technicalSpecs?.curbWeight ? `${c.technicalSpecs.curbWeight} kg` : "-"),
-      getRawValue: (c) => c.technicalSpecs?.curbWeight,
+      render: (c) => (factorySpecs(c)?.curbWeight ? `${factorySpecs(c)?.curbWeight} kg` : "-"),
+      getRawValue: (c) => factorySpecs(c)?.curbWeight,
     },
   ];
 
@@ -246,14 +250,24 @@ function ComparePageInner() {
     return items!.every((c) => getVal(c) === first);
   }
 
-  const renderBadge = (present: boolean) => {
-    if (present) {
+  // Donanım durumu: "var" | "yok" | "bilinmiyor". Eski yanıtta status yoksa yalnızca present'a bakılır.
+  const equipmentStatusOf = (c: Car, catId: string, itemId: string): "var" | "yok" | "bilinmiyor" => {
+    const item = c.equipmentCategories?.find((ct) => ct.id === catId)?.items.find((i) => i.id === itemId);
+    return item?.status ?? (item?.present ? "var" : "yok");
+  };
+
+  const renderBadge = (status: "var" | "yok" | "bilinmiyor") => {
+    if (status === "var") {
       return (
         <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-400">
           <CheckIcon />
           <span>Var</span>
         </span>
       );
+    }
+    // İlan metninde hiç geçmeyen özellik: yok demek değil, bu yüzden kırmızı "Yok" rozeti kullanılmaz.
+    if (status === "bilinmiyor") {
+      return <span className="inline-flex rounded bg-white/5 px-2 py-0.5 text-xs font-medium text-slate-400">Belirtilmemiş</span>;
     }
     return (
       <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-400/80">
@@ -269,7 +283,7 @@ function ComparePageInner() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Araç Karşılaştırma</h1>
           <p className="text-xs text-slate-400">
-            Temel özellikler, fabrika teknik verileri ve doğrulanmış donanım matrisi
+            Temel özellikler, fabrika teknik verileri ve donanım matrisi
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -294,6 +308,10 @@ function ComparePageInner() {
 
       <p className="-mt-3 text-xs leading-relaxed text-slate-500">
         Ortalama, karşılaştırdığın araçlar hariç aktif ilanlardan hesaplanır. Donanım ve kilometre farkları bu ortalamaya dahil değildir; en az 3 ilan yoksa gösterilmez.
+      </p>
+
+      <p className="-mt-3 text-xs leading-relaxed text-slate-500">
+        Fabrika teknik verileri yalnızca katalogdan ya da ilanın kendi bildirdiği değerden gösterilir; katalogda olmayan araçlarda tahmin yazılmaz (“-”). Donanımda “Belirtilmemiş”, ilan metninde hiç geçmeyen özelliktir. “Yok” ise paket ya da dönem kuralından veya ilanda açıkça yazılan olumsuz bir ifadeden gelir.
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-white/10 bg-slate-900/60 shadow-xl backdrop-blur-sm">
@@ -323,7 +341,7 @@ function ComparePageInner() {
                     <div className="space-y-0.5 p-2 text-left sm:space-y-1 sm:p-3">
                       <Link
                         href={`/cars/${c._id}`}
-                        className="line-clamp-2 text-[11px] font-semibold leading-snug hover:text-amber-300 sm:text-sm"
+                        className="break-words text-[11px] font-semibold leading-snug hover:text-amber-300 sm:text-sm"
                       >
                         {c.title}
                       </Link>
@@ -399,7 +417,8 @@ function ComparePageInner() {
               ))}
           </tbody>
 
-          {/* SECTION 2: FABRİKA TEKNİK VERİLERİ */}
+          {/* SECTION 2: FABRİKA TEKNİK VERİLERİ (yalnızca doğrulanmış veri varsa) */}
+          {hasFactorySpecs && (
           <tbody>
             <tr className="bg-slate-800/60">
               <td
@@ -440,6 +459,7 @@ function ComparePageInner() {
                 </tr>
               ))}
           </tbody>
+          )}
 
           {/* SECTION 3..6: DONANIM KATEGORİLERİ */}
           {templateCategories.map((cat) => {
@@ -460,10 +480,7 @@ function ComparePageInner() {
 
             const filteredItems = cat.items.filter((itemDef) => {
               if (!diffOnly) return true;
-              return !isRowSame((c) => {
-                const cCat = c.equipmentCategories?.find((ct) => ct.id === cat.id);
-                return Boolean(cCat?.items.find((i) => i.id === itemDef.id)?.present);
-              });
+              return !isRowSame((c) => equipmentStatusOf(c, cat.id, itemDef.id));
             });
 
             if (filteredItems.length === 0) return null;
@@ -484,11 +501,9 @@ function ComparePageInner() {
                       {itemDef.name}
                     </td>
                     {items.map((c) => {
-                      const cCat = c.equipmentCategories?.find((ct) => ct.id === cat.id);
-                      const isPresent = Boolean(cCat?.items.find((i) => i.id === itemDef.id)?.present);
                       return (
                         <td key={c._id} className="p-2 align-middle sm:p-3.5">
-                          {renderBadge(isPresent)}
+                          {renderBadge(equipmentStatusOf(c, cat.id, itemDef.id))}
                         </td>
                       );
                     })}

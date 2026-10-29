@@ -5,7 +5,6 @@ import { Car } from "@/models/Car";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
 import { isLeanCarDoc, serializeCarPublic } from "@/lib/serialize-car";
 import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
-import { resolveTechnicalSpecs } from "@/lib/catalog/specs-catalog";
 import { evaluateCarEquipment } from "@/lib/catalog/car-equipment";
 
 export async function GET(request: Request) {
@@ -39,14 +38,7 @@ export async function GET(request: Request) {
     );
     const serialized = docs.map((d) => {
       const publicCar = serializeCarPublic(d, marketMap.get(segmentKey(d.brand, d.model, d.year, d.vehicleClass)));
-      const technicalSpecs = resolveTechnicalSpecs({
-        brand: d.brand,
-        model: d.model,
-        year: d.year,
-        vehicleClass: d.vehicleClass,
-        title: d.title,
-        features: d.features,
-      });
+      // Teknik veriler burada hesaplanmaz: yalnızca internetten doğrulanmış kaynak eklendiğinde dolar (bkz. karşılaştırma sayfası).
       const equipmentCategories = evaluateCarEquipment({
         brand: d.brand,
         model: d.model,
@@ -59,7 +51,6 @@ export async function GET(request: Request) {
 
       return {
         ...publicCar,
-        technicalSpecs,
         equipmentCategories,
       };
     });

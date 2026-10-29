@@ -31,13 +31,17 @@ export interface TechnicalSpecs {
   trunkCapacity?: number;
   fuelTank?: string;
   curbWeight?: number;
-  specSource?: "catalog" | "derived" | "listing";
+  /** "web": internetten doğrulanmış motor varyantı değeri (sourceUrl). Diğerleri gösterilmez. */
+  specSource?: "web" | "catalog" | "derived" | "listing";
+  sourceUrl?: string;
 }
 
 export interface EquipmentItem {
   id: string;
   name: string;
   present: boolean;
+  /** "var" | "yok" | "bilinmiyor" (ilan metninde hiç geçmiyor; "yok" değildir). Eski istemciler yalnızca `present` okur. */
+  status?: "var" | "yok" | "bilinmiyor";
 }
 
 export interface EquipmentCategory {

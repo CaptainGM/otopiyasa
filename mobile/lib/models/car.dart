@@ -291,16 +291,21 @@ class EquipmentItem {
     required this.id,
     required this.name,
     required this.present,
+    this.status,
   });
 
   final String id;
   final String name;
   final bool present;
 
+  /// 'var' | 'yok' | 'bilinmiyor' (ilan metninde hiç geçmiyor). Eski yanıtlarda yoktur; yalnızca [present] kullanılır.
+  final String? status;
+
   factory EquipmentItem.fromJson(Map<String, dynamic> json) => EquipmentItem(
         id: json['id']?.toString() ?? '',
         name: json['name']?.toString() ?? '',
         present: json['present'] == true,
+        status: json['status']?.toString(),
       );
 }
 

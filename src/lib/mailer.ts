@@ -8,38 +8,51 @@ interface SendOptions {
 }
 
 const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
 
+function getInitialPort(): number {
+  if (process.env.SMTP_PORT) {
+    const p = Number(process.env.SMTP_PORT);
+    // Render ücretsiz planda 587 portunu bloke eder; Brevo ise 2525 portunu destekler.
+    if (process.env.RENDER && p === 587 && (SMTP_HOST || "").includes("brevo")) {
+      return 2525;
+    }
+    return p;
+  }
+  // Brevo kullanıldığında bulut engellerine takılmayan 2525 portu tercih edilir.
+  if ((SMTP_HOST || "").includes("brevo")) return 2525;
+  return 587;
+}
+
+let activePort = getInitialPort();
 let transporter: Transporter | null = null;
 
-function getTransporter() {
-  if (transporter) return transporter;
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
+function createTransporter(port: number): Transporter | null {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
 
-  transporter = nodemailer.createTransport({
+  return nodemailer.createTransport({
     host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
+    port,
+    secure: port === 465,
     pool: true,
     maxConnections: 3,
     maxMessages: 100,
+    connectionTimeout: 8_000,
     socketTimeout: 10_000,
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS,
     },
   });
+}
 
+function getTransporter(): Transporter | null {
+  if (transporter) return transporter;
+  transporter = createTransporter(activePort);
   return transporter;
 }
 
-/**
- * E-postaya giren HER değer kaçışlanır: yorum metni, kullanıcı adı, ilan başlığı, işletme adı kullanıcıdan ya da
- * kaynak sitelerden gelir. Eskiden bazı şablonlar ham HTML ekliyordu; yorumuna `<a href=...>` yazan biri ilan
- * sahibine OtoPiyasa adına oltalama bağlantısı gönderebiliyordu.
- */
 export function escapeHtml(value: unknown): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -58,19 +71,83 @@ export function safeUrl(value: string): string {
 const e = escapeHtml;
 
 export async function sendEmail({ to, subject, html, text }: SendOptions) {
-  const t = getTransporter();
+  // 1. Resend REST API (varsa HTTPS / Port 443 üzerinden gönderir, port engeline takılmaz)
+  if (process.env.RESEND_API_KEY) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.EMAIL_FROM || "OtoPiyasa <bilgi@otopiyasa.app>",
+        to: [to],
+        subject: subject.replace(/[\r\n]+/g, " ").slice(0, 200),
+        html,
+        text,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`Resend API hatası: ${(err && typeof err === "object" && "message" in err ? String(err.message) : "") || res.statusText}`);
+    }
+    return;
+  }
+
+  // 2. Brevo REST API (varsa HTTPS / Port 443 üzerinden gönderir)
+  if (process.env.BREVO_API_KEY) {
+    const fromAddr = process.env.EMAIL_FROM || SMTP_USER || "bilgi@otopiyasa.app";
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": process.env.BREVO_API_KEY,
+        "Content-Type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender: { email: fromAddr, name: "OtoPiyasa" },
+        to: [{ email: to }],
+        subject: subject.replace(/[\r\n]+/g, " ").slice(0, 200),
+        htmlContent: html,
+        textContent: text,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`Brevo API hatası: ${(err && typeof err === "object" && "message" in err ? String(err.message) : "") || res.statusText}`);
+    }
+    return;
+  }
+
+  // 3. SMTP (Nodemailer)
+  let t = getTransporter();
   if (!t) {
     throw new Error("SMTP configuration missing (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)");
   }
 
-  return t.sendMail({
+  const mailOptions = {
     from: process.env.EMAIL_FROM || SMTP_USER,
     to,
-    // Konu satırına satır sonu sızmasın (başlık enjeksiyonu).
     subject: subject.replace(/[\r\n]+/g, " ").slice(0, 200),
     text,
     html,
-  });
+  };
+
+  try {
+    return await t.sendMail(mailOptions);
+  } catch (error) {
+    // Port 587 bulut / Render güvenlik duvarına takıldıysa 2525 portuyla hemen tekrar dene
+    if (activePort === 587 && (SMTP_HOST || "").includes("brevo")) {
+      const fallback = createTransporter(2525);
+      if (fallback) {
+        const result = await fallback.sendMail(mailOptions);
+        transporter = fallback;
+        activePort = 2525;
+        return result;
+      }
+    }
+    throw error;
+  }
 }
 
 export async function sendResetEmail(to: string, resetUrl: string) {
@@ -94,23 +171,62 @@ export async function sendResetCodeEmail(to: string, code: string) {
 }
 
 export function isMailerConfigured() {
-  return getTransporter() !== null;
+  return Boolean(
+    process.env.RESEND_API_KEY ||
+    process.env.BREVO_API_KEY ||
+    (SMTP_HOST && SMTP_USER && SMTP_PASS)
+  );
 }
 
 /** SMTP sunucusuna bağlanıp kimlik doğrular; e-posta GÖNDERMEZ (günlük kotayı harcamaz). */
-export async function verifyMailerConnection(timeoutMs = 4000): Promise<void> {
-  const t = getTransporter();
+export async function verifyMailerConnection(timeoutMs = 8000): Promise<void> {
+  if (process.env.RESEND_API_KEY) {
+    const res = await fetch("https://api.resend.com/api-keys", {
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+    });
+    if (!res.ok && res.status !== 403) throw new Error(`Resend API hatası: HTTP ${res.status}`);
+    return;
+  }
+
+  if (process.env.BREVO_API_KEY) {
+    const res = await fetch("https://api.brevo.com/v3/account", {
+      headers: { "api-key": process.env.BREVO_API_KEY, accept: "application/json" },
+    });
+    if (!res.ok) throw new Error(`Brevo API hatası: HTTP ${res.status}`);
+    return;
+  }
+
+  let t = getTransporter();
   if (!t) throw new Error("SMTP ayarları yok");
-  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  async function tryVerify(current: Transporter, ms: number) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        current.verify(),
+        new Promise<void>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`${Math.round(ms / 1000)} sn içinde yanıt vermedi`)), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   try {
-    await Promise.race([
-      t.verify(),
-      new Promise<void>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("SMTP sunucusu 4 sn içinde yanıt vermedi")), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
+    await tryVerify(t, timeoutMs);
+  } catch (error) {
+    // Port 587 bulut / Render engeline takıldıysa Brevo port 2525 alternatifini dene
+    if (activePort === 587 && (SMTP_HOST || "").includes("brevo")) {
+      const fallback = createTransporter(2525);
+      if (fallback) {
+        await tryVerify(fallback, timeoutMs);
+        transporter = fallback;
+        activePort = 2525;
+        return;
+      }
+    }
+    throw error;
   }
 }
 

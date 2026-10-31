@@ -126,7 +126,7 @@ export function setArabamPageGap(minMs: number, spreadMs: number): void {
     { key: ARABAM_RATE_GATE },
     {
       $set: {
-        configuredGapMs: ARABAM_PAGE_GAP_MS.min + ARABAM_PAGE_GAP_MS.spread / 2,
+        configuredGapMs: ARABAM_PAGE_GAP_MS.min,
         configUntil: new Date(Date.now() + 30 * 60_000),
       },
       $setOnInsert: { key: ARABAM_RATE_GATE },
@@ -139,7 +139,7 @@ export function setArabamPageGap(minMs: number, spreadMs: number): void {
         { key: ARABAM_RATE_GATE },
         {
           $set: {
-            configuredGapMs: ARABAM_PAGE_GAP_MS.min + ARABAM_PAGE_GAP_MS.spread / 2,
+            configuredGapMs: ARABAM_PAGE_GAP_MS.min,
             configUntil: new Date(Date.now() + 30 * 60_000),
           },
         },

@@ -141,7 +141,7 @@ async function main() {
   process.on("exit", releaseLock);
   const { sweepAndCleanDeadListings, setArabamPageGap } = await import("@/lib/scraper/verify-listing");
   const { closeSharedBrowser } = await import("@/lib/scraper/browser-scrape");
-  const { PACING, planNextStep, ChangeWindow, discoveryShare, DISCOVERY_SHARE } = await import("@/lib/scraper/arabam-pacing");
+  const { PACING, planNextStep, ChangeWindow, discoveryShare, DISCOVERY_SHARE, getArabamPacingConfig } = await import("@/lib/scraper/arabam-pacing");
   const { runSitemapDiscovery } = await import("@/lib/scraper/arabam-discovery");
   const { isSitemapSyncDue, syncArabamSitemap } = await import("@/lib/scraper/arabam-sitemap");
   const { SleepMeter } = await import("@/lib/scraper/sleep-meter");
@@ -150,7 +150,8 @@ async function main() {
   const sleepMeter = new SleepMeter();
   sleepMeter.start();
 
-  const baseGap = Number.isFinite(configuredGap) && configuredGap >= 3 ? configuredGap : PACING.baseGapSeconds;
+  const initialPacing = getArabamPacingConfig();
+  const baseGap = Number.isFinite(configuredGap) && configuredGap >= 3 ? configuredGap : initialPacing.baseGapSeconds;
   const maxDiscoveryCreditMs = PACING.maxGapSeconds * 2_000;
   /** İlan sayfası süresine göre liste taramasına ayrılan pay (ilan:liste ≈ 55:45). */
   const LIST_SHARE = 0.8;
@@ -171,7 +172,7 @@ async function main() {
   let manualLogged = false;
   let day = new Date().toDateString();
 
-  log(`Arabam bekçisi başladı (parti ${batchSize} ilan, ilanlar arası ~${baseGap} sn).`);
+  log(`Arabam bekçisi başladı (parti ${batchSize} ilan, ${initialPacing.isWeekend ? "hafta sonu 10-14" : "hafta içi 8-11.5"} sn dinamik aralık).`);
   await setBeat("running", "Başladı", baseGap);
   // Uzun beklemelerde (engel molası, sırada ilan yok) de "yaşıyorum" sinyali gitsin.
   const timer = setInterval(() => void heartbeat(), 60 * 1000);
@@ -226,8 +227,14 @@ async function main() {
       }
 
       // Aralık ±%25 oynar: sabit ritim bot izi bırakır.
-      setArabamPageGap(state.gapSeconds * 750, state.gapSeconds * 500);
-      await setBeat("running", `Doğrulanıyor (${batchSize} ilanlık parti, ilanlar arası ~${Math.round(state.gapSeconds)} sn)`, state.gapSeconds);
+      const pacing = getArabamPacingConfig();
+      const currentBase = Number.isFinite(configuredGap) && configuredGap >= 3 ? configuredGap : pacing.baseGapSeconds;
+      setArabamPageGap(pacing.minMs, pacing.spreadMs);
+      await setBeat(
+        "running",
+        `Doğrulanıyor (${batchSize} ilanlık parti, ${pacing.isWeekend ? "hafta sonu 10-14" : "hafta içi 8-11.5"} sn dinamik)`,
+        state.gapSeconds
+      );
       const batchStarted = Date.now();
       const sleptBefore = sleepMeter.total();
       const res = await sweepAndCleanDeadListings({
@@ -251,12 +258,16 @@ async function main() {
       }
 
       const blocked = res.details.filter((d) => d.status === "blocked").length;
-      const plan = planNextStep(state, {
-        checked: res.checked,
-        blocked,
-        errors: res.errors - blocked,
-        paused: res.pausedSources.includes("arabam"),
-      });
+      const plan = planNextStep(
+        state,
+        {
+          checked: res.checked,
+          blocked,
+          errors: res.errors - blocked,
+          paused: res.pausedSources.includes("arabam"),
+        },
+        currentBase
+      );
 
       if (res.checked > 0) {
         const unverified = rounds % 5 === 1
@@ -264,7 +275,7 @@ async function main() {
           : -1;
         log(
           `${res.checked} ilan: ${res.active} canlı, ${res.archived} arşive, ${res.errors} belirsiz (${blocked} engel) | ` +
-            `bugün ${todayChecked} kontrol, ${todayArchived} arşiv | aralık ${plan.gapSeconds} sn` +
+            `bugün ${todayChecked} kontrol, ${todayArchived} arşiv | aralık ~${pacing.minSec}-${pacing.maxSec} sn (${pacing.isWeekend ? "hafta sonu" : "hafta içi"})` +
             (unverified >= 0 ? ` | hiç doğrulanmamış kalan: ${unverified.toLocaleString("tr-TR")}` : "")
         );
       }

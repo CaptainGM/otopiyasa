@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface PendingBusiness {
   _id: string;
@@ -10,10 +10,21 @@ interface PendingBusiness {
   businessPhone: string;
 }
 
-
-export function BusinessApprovals({ initial }: { initial: PendingBusiness[] }) {
-  const [items, setItems] = useState(initial);
+export function BusinessApprovals({ initial }: { initial?: PendingBusiness[] }) {
+  const [items, setItems] = useState<PendingBusiness[]>(initial || []);
+  const [loading, setLoading] = useState(!initial);
   const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initial) {
+      fetch("/api/admin/business")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.items) setItems(data.items);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [initial]);
 
   async function decide(userId: string, approve: boolean) {
     let reason = "";
@@ -45,7 +56,11 @@ export function BusinessApprovals({ initial }: { initial: PendingBusiness[] }) {
         )}
       </h2>
 
-      {items.length === 0 ? (
+      {loading ? (
+        <div className="space-y-3 animate-pulse">
+          <div className="h-14 rounded-xl bg-white/5" />
+        </div>
+      ) : items.length === 0 ? (
         <p className="text-sm text-slate-500">Bekleyen işletme başvurusu yok.</p>
       ) : (
         <div className="space-y-3">

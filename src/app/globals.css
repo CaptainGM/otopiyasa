@@ -1127,13 +1127,13 @@ select option {
 @media print {
   @page {
     size: A4;
-    margin: 12mm 15mm;
+    margin: 10mm 12mm;
   }
 
   body {
     background: #ffffff !important;
     color: #0f172a !important;
-    font-size: 12pt;
+    font-size: 11pt;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -1144,20 +1144,29 @@ select option {
   footer,
   aside,
   .no-print,
+  .chat-fab,
   button:not(.print-allow) {
     display: none !important;
   }
 
-  /* Modal sarmalayıcısını standart doküman akışına al */
-  .fixed.inset-0 {
+  /* Eğer Değerleme Raporu açıksa: sayfadaki ana içerikleri, diğer bölümleri ve butonları gizle */
+  body:has(#valuation-modal-portal) > *:not(#valuation-modal-portal),
+  body:has(#valuation-modal-portal) main,
+  body:has(#valuation-modal-portal) .fixed:not(#valuation-modal-portal) {
+    display: none !important;
+  }
+
+  #valuation-modal-portal {
     position: static !important;
     background: #ffffff !important;
     padding: 0 !important;
+    margin: 0 !important;
     overflow: visible !important;
+    display: block !important;
+    z-index: auto !important;
   }
 
-  .max-w-4xl,
-  .max-h-\[92vh\] {
+  #valuation-modal-portal > div {
     max-width: 100% !important;
     max-height: none !important;
     box-shadow: none !important;
@@ -1166,14 +1175,28 @@ select option {
     color: #0f172a !important;
   }
 
+  #printable-valuation-report {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
   /* Baskıda metin ve arka plan kontrastını optimize et */
   .bg-slate-900,
   .bg-slate-950,
+  .bg-slate-900\/60,
   .bg-slate-900\/50,
-  .bg-slate-800\/50 {
+  .bg-slate-800\/60,
+  .bg-slate-800\/50,
+  .bg-slate-950\/40,
+  .bg-slate-950\/60,
+  .bg-slate-950\/70 {
     background-color: #ffffff !important;
     color: #0f172a !important;
-    border-color: #e2e8f0 !important;
+    border-color: #cbd5e1 !important;
   }
 
   .text-white,
@@ -1194,17 +1217,21 @@ select option {
     border-color: #cbd5e1 !important;
   }
 
-  /* Sayfa bölünmelerini önle */
-  .grid,
-  table,
+  /* Sayfa bolunmelerini dengeli yonet: buyuk konteynerler rahatca bolunsun */
+  #printable-valuation-report,
+  #printable-valuation-report > div,
+  .grid {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  /* Yalnizca kucuk kartlar ve satirlar ortadan ikiye bolunmesin */
   tr,
-  .card,
-  .rounded-xl {
-    break-inside: avoid;
-    page-break-inside: avoid;
+  .print-avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }
-
 
 [data-theme="light"] .grid-paper {
   background-image:

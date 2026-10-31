@@ -41,13 +41,17 @@ export function DamageDiagram({
   paintChange?: string;
   damageFlag?: boolean;
   
-  damageParts?: { name: string; state: string }[];
+  damageParts?: { name: string; state: string }[] | null;
 }) {
+  const safeParts = Array.isArray(damageParts) ? damageParts : [];
   const report = parseDamageReport(paintChange);
-  const tone = TONE[report.level];
+  const hasDamageRecord = Boolean(damageFlag);
+  // Eğer hasar kaydı bildirilmiş ama parça dökümü yazılmamışsa gri "bilgi yok" demek çelişkidir:
+  const effectiveLevel = report.unknown && hasDamageRecord ? "heavy" : report.level;
+  const tone = TONE[effectiveLevel];
 
   
-  const affectedParts = damageParts.filter(
+  const affectedParts = safeParts.filter(
     (p) => p.state === "Değişmiş" || p.state === "Boyanmış" || p.state === "Lokal Boyanmış"
   );
 
@@ -55,15 +59,19 @@ export function DamageDiagram({
     <div className={`card space-y-4 p-5`}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Hasar / boya durumu</h2>
-        <span className={`badge ${tone.badge}`}>{damageLevelLabel(report.level)}</span>
+        <span className={`badge ${tone.badge}`}>{report.unknown && hasDamageRecord ? "Hasar Kaydı Var" : damageLevelLabel(report.level)}</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-6">
       
-        <CarSvg report={report} color={tone.body} affectedParts={affectedParts} />
+        <CarSvg report={report} color={tone.body} affectedParts={affectedParts} hasDamageRecord={hasDamageRecord} />
 
         <div className="min-w-[200px] flex-1 space-y-3">
-          <p className={`text-sm ${tone.text}`}>{report.summary}</p>
+          <p className={`text-sm ${tone.text}`}>
+            {report.unknown && hasDamageRecord
+              ? "Bu araçta tramer / hasar kaydı bildirilmiştir (parça bazlı boya ve değişen detayı satıcı tarafından işaretlenmemiştir)."
+              : report.summary}
+          </p>
 
         
           {!report.unknown && !report.allOriginal && (
@@ -124,8 +132,8 @@ export function DamageDiagram({
           <p className="text-xs text-slate-500">
             Bilgi ilan sahibinin/kaynak sitenin beyanıdır.
             {affectedParts.length === 0 &&
-              (damageParts.length > 0
-                ? ` Kaynak ${damageParts.length} parçayı tek tek kontrol edip işlem görmüş parça bildirmiyor.`
+              (safeParts.length > 0
+                ? ` Kaynak ${safeParts.length} parçayı tek tek kontrol edip işlem görmüş parça bildirmiyor.`
                 : " Bu ilan için parça bazlı ayrıntı kaynakta bulunmadığından yalnızca sayılar gösteriliyor.")}
           </p>
         </div>
@@ -180,10 +188,12 @@ function CarSvg({
   report,
   color,
   affectedParts,
+  hasDamageRecord = false,
 }: {
   report: ReturnType<typeof parseDamageReport>;
   color: string;
   affectedParts: { name: string; state: string }[];
+  hasDamageRecord?: boolean;
 }) {
   if (affectedParts.length > 0) {
     return <PartsCarSvg parts={affectedParts} color={color} level={report.level} />;
@@ -194,7 +204,11 @@ function CarSvg({
   if (report.allOriginal) {
     labels.push({ text: "Tamamı orijinal", tone: "#10b981" });
   } else if (report.unknown) {
-    labels.push({ text: "Bilgi verilmemiş", tone: "#64748b" });
+    if (hasDamageRecord) {
+      labels.push({ text: "Hasar Kayıtlı (Tramer)", tone: "#ef4444" });
+    } else {
+      labels.push({ text: "Bilgi verilmemiş", tone: "#64748b" });
+    }
   } else {
     if (report.changed > 0) labels.push({ text: `${report.changed} değişen`, tone: "#ef4444" });
     if (report.painted > 0) labels.push({ text: `${report.painted} boyalı`, tone: "#f97316" });

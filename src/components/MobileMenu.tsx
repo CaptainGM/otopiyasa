@@ -9,6 +9,7 @@ interface Props {
   isLoggedIn: boolean;
   isAdmin: boolean;
   name?: string;
+  ready?: boolean;
 }
 
 const PUBLIC_LINKS = [
@@ -27,8 +28,7 @@ const MEMBER_LINKS = [
   { href: "/sell", label: "İlan Ver" },
 ];
 
-
-export function MobileMenu({ isLoggedIn, isAdmin, name }: Props) {
+export function MobileMenu({ isLoggedIn, isAdmin, name, ready = true }: Props) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
@@ -60,7 +60,6 @@ export function MobileMenu({ isLoggedIn, isAdmin, name }: Props) {
 
       {open && (
         <>
-          
           <div className="fixed inset-0 top-[var(--nav-h,64px)] z-40 bg-black/40" onClick={close} />
           <nav className="absolute right-0 top-12 z-50 w-64 max-w-[85vw] overflow-hidden rounded-2xl border border-white/10 bg-[var(--menu-bg)] p-2 shadow-2xl backdrop-blur-xl">
             {PUBLIC_LINKS.map((l) => (
@@ -90,7 +89,7 @@ export function MobileMenu({ isLoggedIn, isAdmin, name }: Props) {
                   <LogoutButton />
                 </div>
               </>
-            ) : (
+            ) : ready ? (
               <>
                 <Link href="/login" onClick={close} className={linkCls("/login")}>
                   Giriş
@@ -103,6 +102,8 @@ export function MobileMenu({ isLoggedIn, isAdmin, name }: Props) {
                   Kayıt Ol
                 </Link>
               </>
+            ) : (
+              <div className="h-10 w-full animate-pulse rounded-lg bg-white/5" />
             )}
           </nav>
         </>

@@ -27,6 +27,7 @@ import { MarketTempoCard } from "@/components/MarketTempoCard";
 import { carHeadline } from "@/lib/car-headline";
 import { ShareButton } from "@/components/ShareButton";
 import { ValuationReportModal } from "@/components/ValuationReportModal";
+import { resolveTechnicalSpecs } from "@/lib/catalog/specs-catalog";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { getMarketMap, segmentKey } from "@/lib/market-price";
@@ -82,7 +83,7 @@ async function loadSegmentPrices(
 export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   // Arabam ilanıysa ve henüz tüm fotoğrafları / açıklaması çekilmemişse zenginleştir. Vercel'de çalışmaz:
   // Arabam Cloudflare ile yurt dışı sunucuları engelliyor, istek her seferinde boşa 600 ms bekletiyordu.
-  if (!process.env.VERCEL) void enrichArabamCarIfNeeded(carDoc).catch(() => {});
+  // Arabam zenginleştirmesi web isteğinde bekletilmez (bekçi arka planda yapar)
   const isInactive = carDoc.status === "removed" || carDoc.status === "sold";
   const status = carDoc.moderationStatus;
 
@@ -101,7 +102,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
     cached(`segment:${brand}|${model}|${carDoc.vehicleClass || "otomobil"}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model, carDoc.vehicleClass)),
     User.countDocuments({ favorites: carDoc._id }),
     // Yakıt maliyeti hesaplanamazsa (fiyat kaynağına ulaşılamadı, tüketim bilinmiyor) kart gösterilmez.
-    getFuelCostForCar(carDoc).catch(() => null),
+    Promise.race([getFuelCostForCar(carDoc).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 800))]),
     // Fiyat skalası: emsallerin yıl, km, hasar ve donanım kademelerine göre medyanı. Ortalama satırı bu kademeyi gösterir.
     loadPriceScale(carDoc._id.toString()),
     // Üye ilanına özel: ilanı veren kişinin adı. Derlenen (arabam/otomerkezi) ilanlarda karşılığı yok, sorgu çalıştırılmaz.
@@ -152,6 +153,15 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
     price: point.price,
   }));
 
+  const techSpecs = resolveTechnicalSpecs({
+    brand: car.brand,
+    model: car.model,
+    year: car.year,
+    vehicleClass: carDoc.vehicleClass,
+    title: car.title,
+    features: car.features,
+  });
+
   const f = car.features;
   const specGroups: { title: string; rows: { label: string; value: string }[] }[] = [
     {
@@ -170,14 +180,28 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
       rows: [
         f.engineSize ? { label: "Motor hacmi", value: `${f.engineSize} L` } : null,
         f.horsepower ? { label: "Motor gücü", value: `${f.horsepower} HP` } : null,
-        f.torque ? { label: "Tork", value: `${f.torque} Nm` } : null,
-        f.topSpeed ? { label: "Maksimum hız", value: `${f.topSpeed} km/s` } : null,
-        f.acceleration ? { label: "0-100 km/s", value: `${f.acceleration} sn` } : null,
+        f.torque
+          ? { label: "Tork", value: `${f.torque} Nm` }
+          : techSpecs.torque
+          ? { label: "Tork", value: `${techSpecs.specSource === "web" ? "" : "~"}${techSpecs.torque} Nm` }
+          : null,
+        f.topSpeed
+          ? { label: "Maksimum hız", value: `${f.topSpeed} km/s` }
+          : techSpecs.topSpeed
+          ? { label: "Maksimum hız", value: `${techSpecs.specSource === "web" ? "" : "~"}${techSpecs.topSpeed} km/s` }
+          : null,
+        f.acceleration
+          ? { label: "0-100 km/s", value: `${f.acceleration} sn` }
+          : techSpecs.acceleration
+          ? { label: "0-100 km/s", value: `${techSpecs.specSource === "web" ? "" : "~"}${techSpecs.acceleration} sn` }
+          : null,
         { label: "Yakıt", value: f.fuelType },
         { label: "Vites", value: displayTransmission(f.transmission) },
         f.drivetrain ? { label: "Çekiş", value: f.drivetrain } : null,
         f.avgFuelConsumption ? { label: "Ort. yakıt tüketimi", value: f.avgFuelConsumption } : null,
-        f.fuelTank ? { label: "Yakıt deposu", value: f.fuelTank } : null,
+        f.fuelTank || techSpecs.fuelTank ? { label: "Yakıt deposu", value: f.fuelTank || techSpecs.fuelTank! } : null,
+        techSpecs.trunkCapacity ? { label: "Bagaj hacmi", value: `${techSpecs.trunkCapacity} L` } : null,
+        techSpecs.curbWeight ? { label: "Boş ağırlık", value: `${techSpecs.curbWeight} kg` } : null,
       ].filter((r): r is { label: string; value: string } => r !== null),
     },
     {
@@ -524,6 +548,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
                 year: c.year,
                 mileage: c.mileage,
                 price: c.price,
+                city: c.city,
+                listingUrl: c.listingUrl,
               }))}
             />
           </div>

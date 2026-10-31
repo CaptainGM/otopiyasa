@@ -178,15 +178,15 @@ export default function RootLayout({
             </div>
           </div>
         </footer>
-        <CompareTray />
+        <div className="no-print"><CompareTray /></div>
         <VisitorTracker />
         {/* Her sayfada sol altta sabit (Asistan gibi): şikayet, bildirim ve kişisel veri talepleri, giriş gerekmez.
             Mobilde alt menünün üstünde durur. */}
-        <Link href="/talep" className="chat-fab fixed bottom-20 left-4 z-40 md:bottom-6 md:left-6" aria-label="Talep oluştur">
+        <Link href="/talep" className="chat-fab no-print fixed bottom-20 left-4 z-40 md:bottom-6 md:left-6" aria-label="Talep oluştur">
           Talep oluştur
         </Link>
-        <ChatWidget />
-        <MobileBottomNav />
+        <div className="no-print"><ChatWidget /></div>
+        <div className="no-print"><MobileBottomNav /></div>
         <Analytics />
       </body>
     </html>

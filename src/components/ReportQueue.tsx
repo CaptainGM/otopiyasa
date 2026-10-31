@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const REASON_LABELS: Record<string, string> = {
   satildi: "İlan satılmış",
@@ -27,11 +27,38 @@ export interface PendingReport {
   reportedUserMuteCount: number;
 }
 
-
-export function ReportQueue({ initial }: { initial: PendingReport[] }) {
-  const [items, setItems] = useState(initial);
+export function ReportQueue({ initial }: { initial?: PendingReport[] }) {
+  const [items, setItems] = useState<PendingReport[]>(initial || []);
   const [busy, setBusy] = useState<string | null>(null);
+  const [loading, setLoading] = useState(!initial);
   const [openSnapshot, setOpenSnapshot] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initial) {
+      fetch("/api/admin/reports")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.items) {
+            setItems(
+              data.items.map((r: any): PendingReport => ({
+                _id: String(r._id),
+                carId: r.car?._id ? String(r.car._id) : "",
+                carTitle: r.car?.title || "(silinmiş ilan)",
+                reason: r.reason || "diger",
+                note: r.note || "",
+                reporterName: r.reporter?.name || "Bilinmiyor",
+                createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : "",
+                chatSnapshot: r.chatSnapshot || null,
+                reportedUserId: r.reportedUser?._id ? String(r.reportedUser._id) : null,
+                reportedUserName: r.reportedUser?.name || null,
+                reportedUserMuteCount: Number(r.reportedUser?.muteCount || 0),
+              }))
+            );
+          }
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [initial]);
 
   async function decide(id: string, status: "reviewed" | "dismissed") {
     setBusy(id);
@@ -71,7 +98,12 @@ export function ReportQueue({ initial }: { initial: PendingReport[] }) {
         )}
       </h2>
 
-      {items.length === 0 ? (
+      {loading ? (
+        <div className="space-y-3 animate-pulse">
+          <div className="h-16 rounded-xl bg-white/5" />
+          <div className="h-16 rounded-xl bg-white/5" />
+        </div>
+      ) : items.length === 0 ? (
         <p className="text-sm text-slate-500">Açık şikayet yok.</p>
       ) : (
         <div className="space-y-3">
@@ -91,7 +123,7 @@ export function ReportQueue({ initial }: { initial: PendingReport[] }) {
                     {r.chatSnapshot && <span className="badge border-white/15 bg-white/10 text-slate-300">Sohbet</span>}
                   </div>
                   <p className="text-sm text-slate-400">
-                    {r.reporterName} • {new Date(r.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" })}
+                    {r.reporterName} • {r.createdAt ? new Date(r.createdAt).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" }) : "-"}
                     {r.reportedUserName && ` • Bildirilen: ${r.reportedUserName}`}
                   </p>
                   {r.note && <p className="mt-1 text-xs text-slate-500">&quot;{r.note}&quot;</p>}

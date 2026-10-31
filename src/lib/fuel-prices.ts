@@ -67,7 +67,7 @@ export function averagePrices(cities: FuelPriceCity[]): FuelPriceDoc["average"] 
 async function fetchFromPetrolOfisi(): Promise<FuelPriceCity[]> {
   const res = await fetch("https://www.petrolofisi.com.tr/akaryakit-fiyatlari", {
     headers: { "User-Agent": UA, "Accept-Language": "tr-TR,tr;q=0.9" },
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(2000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return parsePetrolOfisiPrices(await res.text());
@@ -76,7 +76,7 @@ async function fetchFromPetrolOfisi(): Promise<FuelPriceCity[]> {
 async function fetchFromOpet(): Promise<FuelPriceCity[]> {
   const res = await fetch("https://api.opet.com.tr/api/fuelprices/prices?ProvinceCode=34&IncludeAllProducts=true", {
     headers: { "User-Agent": UA },
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(2000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const districts = (await res.json()) as Array<{ prices?: Array<{ productName?: string; amount?: number }> }>;
@@ -123,15 +123,25 @@ export async function refreshFuelPrices(): Promise<FuelPrices | null> {
   return refreshing;
 }
 
-/** Güncel fiyatlar; belirtilen süreden eskiyse (varsayılan 3 saat) yenilemeyi dener, olmazsa son bilinen fiyatı döndürür. */
+/** Güncel fiyatlar; stale-while-revalidate: mevcut fiyat varsa anında döner, eskiyse arka planda yeniler (web isteklerini asla kitlemez). */
 export async function getFuelPrices(maxAgeMs = FUEL_PRICE_MAX_AGE_MS): Promise<FuelPrices | null> {
   const { FuelPrice } = await import("@/models/FuelPrice");
   const stored = await FuelPrice.findOne({ name: "latest" }).lean<FuelPrices | null>();
-  if (stored && Date.now() - new Date(stored.fetchedAt).getTime() < maxAgeMs) return stored;
-  try {
-    return (await refreshFuelPrices()) || stored;
-  } catch {
+  if (stored) {
+    // Fiyat eskiyse arka planda sessizce yenile, kullanıcıyı ve SSR'ı ASLA bekletme
+    if (Date.now() - new Date(stored.fetchedAt).getTime() >= maxAgeMs) {
+      void refreshFuelPrices().catch(() => {});
+    }
     return stored;
+  }
+  // Veritabanında hiç fiyat yoksa maksimum 1.5 sn dene, sayfayı dondurma
+  try {
+    return await Promise.race([
+      refreshFuelPrices(),
+      new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+    ]);
+  } catch {
+    return null;
   }
 }
 

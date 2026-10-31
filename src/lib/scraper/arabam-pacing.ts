@@ -8,10 +8,9 @@
  */
 export const PACING = {
   /**
-   * İlanlar arası hedef bekleme (sn); ±%25 oynar. 8 Eki 2026'da 10'dan 8'e indirildi. Popüler ailelerde 2020 sonrası ilanların
-   * ayrıntısını tamamlamak için 6'ya indirildi; engel görülürse bekleme kendiliğinden uzar, mola verilir. Sık engel olursa 8'e dön.
+   * İlanlar arası hedef bekleme (sn); ±%25 oynar. Gündüz Cloudflare eşiklerine takılmamak ve akıcı gitmek için 9 sn (7-11 sn).
    */
-  baseGapSeconds: 6,
+  baseGapSeconds: 9,
   maxGapSeconds: 40,
   /** İlk engel molası (dk); sonraki her engelde iki katına çıkar. */
   firstPauseMinutes: 15,

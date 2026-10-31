@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 export interface AdminCommentItem {
@@ -22,14 +22,37 @@ export interface AdminCommentItem {
 }
 
 interface AdminCommentsSectionProps {
-  initialComments: AdminCommentItem[];
+  initialComments?: AdminCommentItem[];
 }
 
-export function AdminCommentsSection({ initialComments }: AdminCommentsSectionProps) {
-  const [comments, setComments] = useState<AdminCommentItem[]>(initialComments);
+export function AdminCommentsSection({ initialComments }: AdminCommentsSectionProps = {}) {
+  const [comments, setComments] = useState<AdminCommentItem[]>(initialComments || []);
+  const [loading, setLoading] = useState(!initialComments);
   const [search, setSearch] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialComments) {
+      fetch("/api/admin/comments")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.comments) {
+            setComments(
+              data.comments.map((c: any) => ({
+                _id: String(c._id),
+                text: c.text,
+                rating: c.rating,
+                createdAt: c.createdAt ? new Date(c.createdAt).toISOString() : "",
+                car: c.car,
+                user: c.user,
+              }))
+            );
+          }
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [initialComments]);
 
   const filtered = comments.filter((c) => {
     const q = search.toLowerCase().trim();
@@ -121,7 +144,12 @@ export function AdminCommentsSection({ initialComments }: AdminCommentsSectionPr
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="py-10 space-y-3 animate-pulse">
+          <div className="h-16 rounded-xl bg-white/5" />
+          <div className="h-16 rounded-xl bg-white/5" />
+        </div>
+      ) : filtered.length === 0 ? (
         <div className="py-10 text-center text-slate-500 text-sm">
           {search ? "Arama kriterine uygun yorum bulunamadı." : "Henüz hiç kullanıcı yorumu bulunmuyor."}
         </div>
@@ -146,7 +174,6 @@ export function AdminCommentsSection({ initialComments }: AdminCommentsSectionPr
                 className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row md:items-start justify-between gap-4"
               >
                 <div className="space-y-2 flex-1">
-                  {/* Yorumcu ve İlan Bilgisi */}
                   <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="inline-flex items-center gap-1.5 font-bold text-slate-200">
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 text-[10px] text-amber-300 font-bold border border-slate-700">
@@ -164,12 +191,10 @@ export function AdminCommentsSection({ initialComments }: AdminCommentsSectionPr
                     <span className="text-slate-500 text-[11px]">{dateStr}</span>
                   </div>
 
-                  {/* Yorum Metni */}
                   <div className="rounded-xl bg-slate-900/60 border border-slate-800/80 p-3 text-sm text-slate-200">
                     &ldquo;{item.text}&rdquo;
                   </div>
 
-                  {/* Araç Bilgisi */}
                   {car ? (
                     <div className="flex items-center gap-2 text-xs text-slate-400">
                       <span className="text-slate-500">İlan:</span>
@@ -193,7 +218,6 @@ export function AdminCommentsSection({ initialComments }: AdminCommentsSectionPr
                   )}
                 </div>
 
-                {/* Aksiyonlar */}
                 <div className="flex items-center gap-2 self-end md:self-start pt-1">
                   <button
                     onClick={() => handleDelete(item._id)}

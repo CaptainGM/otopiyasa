@@ -11,25 +11,22 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function Navbar() {
   // Giriş işareti yoksa sunucuya hiç sorulmaz (bkz. useViewer); sayfadaki diğer parçalarla tek istek paylaşılır.
-  const { viewer: user } = useViewer();
+  const { viewer: user, ready } = useViewer();
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[var(--nav-bg)] backdrop-blur-xl">
       <div className="container flex flex-wrap items-center justify-between gap-3 py-3">
         <Link href="/" className="shrink-0">
-         
           <span className="hidden md:block"><Logo /></span>
           <span className="md:hidden"><Logo compact /></span>
         </Link>
 
-        
         <div className="flex items-center gap-2 md:hidden">
           <ThemeToggle />
           {user && <NotificationBell />}
-          <MobileMenu isLoggedIn={!!user} isAdmin={user?.role === "admin"} name={user?.name} />
+          <MobileMenu isLoggedIn={!!user} isAdmin={user?.role === "admin"} name={user?.name} ready={ready} />
         </div>
 
-        
         <form action="/" method="get" className="order-last w-full md:order-none md:w-64 lg:w-80">
           <div className="relative">
             <svg
@@ -50,7 +47,6 @@ export function Navbar() {
           </div>
         </form>
 
-        
         <nav className="hidden flex-wrap items-center gap-1 text-sm md:flex">
           <Link href="/" className="nav-link">
             Keşfet
@@ -105,7 +101,7 @@ export function Navbar() {
               </Link>
               <LogoutButton />
             </>
-          ) : (
+          ) : ready ? (
             <>
               <Link href="/login" className="nav-link">
                 Giriş
@@ -114,6 +110,8 @@ export function Navbar() {
                 Kayıt Ol
               </Link>
             </>
+          ) : (
+            <div className="h-8 w-24 rounded-full bg-white/5 animate-pulse" />
           )}
         </nav>
       </div>

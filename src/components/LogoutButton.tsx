@@ -5,13 +5,17 @@ import { useState } from "react";
 export function LogoutButton() {
   const [busy, setBusy] = useState(false);
 
-
   async function handleLogout() {
     if (busy) return;
     setBusy(true);
 
     try {
       document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      document.cookie = "op_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0";
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("op_viewer_cache");
+        window.sessionStorage.removeItem("op_viewer_checked");
+      }
     } catch {
       // ignore
     }

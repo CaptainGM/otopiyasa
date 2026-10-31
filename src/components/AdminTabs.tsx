@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, isValidElement, type ReactElement, type ReactNode, useEffect, useState } from "react";
+import { Children, isValidElement, type ReactElement, type ReactNode, useEffect, useState, useTransition } from "react";
 
 interface PanelProps {
   id: string;
@@ -11,7 +11,7 @@ interface PanelProps {
 
 /**
  * Yönetim paneli sekmesi. Yalnızca tanımlama taşır: AdminTabs çocuğun props'unu okuyup içeriğini çizer.
- * İçerik sunucuda üretilir; sekme değişince yalnızca gizlenir (hidden), böylece durumu ve grafikleri kaybolmaz.
+ * İçerik sunucuda üretilir; sekme değişince gizlenir (hidden), durumu kaybolmaz.
  */
 export function AdminTabPanel(_props: PanelProps) {
   return null;
@@ -25,11 +25,14 @@ export function AdminTabs({ children, defaultTab }: { children: ReactNode; defau
   const ids = panels.map((panel) => panel.props.id);
   const [active, setActive] = useState(defaultTab);
   const [visited, setVisited] = useState<Set<string>>(() => new Set([defaultTab]));
+  const [, startTransition] = useTransition();
 
   function select(id: string) {
     if (!ids.includes(id)) return;
     setVisited((prev) => new Set(prev).add(id));
-    setActive(id);
+    startTransition(() => {
+      setActive(id);
+    });
     const url = new URL(window.location.href);
     url.searchParams.set("tab", id);
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
@@ -43,7 +46,6 @@ export function AdminTabs({ children, defaultTab }: { children: ReactNode; defau
       setVisited((prev) => new Set(prev).add(start));
     }
     if (hashTab()) {
-      // Sekme görünür olduktan sonra çapaya kaydır (gizli iken kaydırma çalışmaz).
       window.setTimeout(() => document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: "start" }), 0);
     }
     const onHash = () => {
@@ -54,8 +56,26 @@ export function AdminTabs({ children, defaultTab }: { children: ReactNode; defau
       }
     };
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-    // Yalnızca ilk yüklemede ve çapa değişiminde çalışır.
+
+    // İlk sekme açıldıktan sonra kullanıcı Genel sekmesini incelerken,
+    // diğer sekmeleri sırayla arka planda hazırlar. Böylece tıklandığında ANINDA açılır.
+    const queue = ids.filter((id) => id !== start);
+    let queueIdx = 0;
+    let timer: number | undefined;
+
+    function prewarmNext() {
+      if (queueIdx >= queue.length) return;
+      const nextId = queue[queueIdx++];
+      setVisited((prev) => new Set(prev).add(nextId));
+      timer = window.setTimeout(prewarmNext, 450);
+    }
+
+    timer = window.setTimeout(prewarmNext, 800);
+
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      if (timer) window.clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -75,7 +95,7 @@ export function AdminTabs({ children, defaultTab }: { children: ReactNode; defau
               onClick={() => select(id)}
               className={`shrink-0 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
                 selected
-                  ? "border-amber-400/60 bg-amber-400/15 text-amber-200"
+                  ? "border-amber-400/60 bg-amber-400/15 text-amber-200 shadow-sm"
                   : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-amber-400/40 hover:text-amber-200"
               }`}
             >

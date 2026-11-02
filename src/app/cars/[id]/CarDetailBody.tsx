@@ -96,7 +96,8 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   // Tek ölçü: üstteki gösterge, fiyat analizi ve listelerdeki kart aynı adil değere bakar (bkz. lib/market-fair.ts;
   // anlık sonuç kayıttan farklıysa ilanın üstüne yazılır).
   // Fiyat skalası ve ilan sahibi de aynı grupta: ardışık beklemek soğuk sunucuda saniyeleri ekliyordu.
-  const [marketMap, { prediction, fields: fair }, segment, favoriteCount, fuelCost, priceScale, owner] = await Promise.all([
+  const targetPrice = carDoc.market?.fair || price;
+  const [marketMap, { prediction, fields: fair }, segment, favoriteCount, fuelCost, priceScale, owner, similarCars] = await Promise.all([
     getMarketMap([{ brand, model, year, vehicleClass: carDoc.vehicleClass }]),
     liveFairValue(carDoc),
     cached(`segment:${brand}|${model}|${carDoc.vehicleClass || "otomobil"}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model, carDoc.vehicleClass)),
@@ -107,14 +108,12 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
     loadPriceScale(carDoc._id.toString()),
     // Üye ilanına özel: ilanı veren kişinin adı. Derlenen (arabam/otomerkezi) ilanlarda karşılığı yok, sorgu çalıştırılmaz.
     carDoc.sourceSite === "user" && carDoc.ownerId ? User.findById(carDoc.ownerId).select("name").lean<{ name?: string }>() : Promise.resolve(null),
+    cached(
+      `similar:${carDoc._id.toString()}|${brand}|${model}|${year}|${carDoc.mileage}|${Math.round(targetPrice / 50000)}`,
+      CACHE_TTL.medium,
+      () => getSimilarCars(carDoc._id.toString(), brand, model, price, 12, carDoc.title, carDoc.year, carDoc.mileage, targetPrice, carDoc.vehicleClass, carDoc)
+    ),
   ]);
-
-  const targetPrice = prediction?.predictedPrice || price;
-  const similarCars = await cached(
-    `similar:${carDoc._id.toString()}|${brand}|${model}|${year}|${carDoc.mileage}|${Math.round(targetPrice / 50000)}|${carDoc.title.slice(0, 30)}`,
-    CACHE_TTL.medium,
-    () => getSimilarCars(carDoc._id.toString(), brand, model, price, 12, carDoc.title, carDoc.year, carDoc.mileage, targetPrice, carDoc.vehicleClass, carDoc)
-  );
 
   const market = marketMap.get(segmentKey(brand, model, year, carDoc.vehicleClass));
   // Ortalama yalnızca dar bir kademeden (aynı yıl, km, hasar ya da donanım) gösterilir; aile genelinden gösterilmez.

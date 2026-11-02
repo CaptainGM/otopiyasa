@@ -556,7 +556,7 @@ export function ValuationReportModal({
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
                     {comparables.slice(0, 12).map((comp) => {
-                      const compUrl = comp.listingUrl || `https://otopiyasa.app/cars/${comp._id}`;
+                      const compUrl = `https://otopiyasa.app/cars/${comp._id}`;
                       return (
                         <tr key={comp._id} className="hover:bg-slate-900/50 transition">
                           <td className="px-3.5 py-2.5 font-medium text-slate-200 max-w-[280px]">

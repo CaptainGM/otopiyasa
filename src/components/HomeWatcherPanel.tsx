@@ -62,22 +62,23 @@ function Tile({ label, value, tone = "" }: { label: string; value: string; tone?
 export function HomeWatcherPanel() {
   const [data, setData] = useState<WatcherData | null>(null);
   const [error, setError] = useState("");
+  const [daysCount, setDaysCount] = useState<number>(14);
   const [openDate, setOpenDate] = useState<string | null>(null);
   const [hours, setHours] = useState<HourSlot[] | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [detailKey, setDetailKey] = useState<string | null>(null);
   const [detailItems, setDetailItems] = useState<WatcherItem[] | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (days = daysCount) => {
     try {
-      const res = await fetch("/api/admin/home-watcher", { cache: "no-store" });
+      const res = await fetch(`/api/admin/home-watcher?days=${days}`, { cache: "no-store" });
       if (!res.ok) throw new Error();
       setData(await res.json());
       setError("");
     } catch {
       setError("Bekçi durumu alınamadı.");
     }
-  }, []);
+  }, [daysCount]);
 
   useEffect(() => {
     void load();
@@ -201,7 +202,34 @@ export function HomeWatcherPanel() {
           </div>
 
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-300">Günlük özet (güne tıkla → saat saat)</h3>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-300">Günlük özet (güne tıkla → saat saat)</h3>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-slate-500 mr-1 text-[11px]">Geçmiş:</span>
+                {[
+                  { label: "14 Gün", value: 14 },
+                  { label: "30 Gün (1 Ay)", value: 30 },
+                  { label: "60 Gün (2 Ay)", value: 60 },
+                  { label: "90 Gün (3 Ay)", value: 90 },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      setDaysCount(opt.value);
+                      void load(opt.value);
+                    }}
+                    className={`rounded px-2.5 py-1 text-[11px] font-medium transition ${
+                      daysCount === opt.value
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold"
+                        : "border border-white/10 bg-white/[0.03] text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {data.days.length === 0 ? (
               <p className="text-sm text-slate-500">Henüz kayıt yok.</p>
             ) : (

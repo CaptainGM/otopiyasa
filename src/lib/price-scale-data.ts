@@ -38,12 +38,12 @@ export function toScaleCar(doc: {
  * İlanın fiyat skalası. Emsaller yalnızca yayındaki ilanlardan (PUBLIC_LISTING_FILTER: bayraklı fiyatlar dâhil değil) ve aynı
  * model ailesinden (familyQuery, emsal kuralının tek yeri) ±3 yıl içinde seçilir. İlan yoksa ya da yayında değilse null.
  */
-export async function loadPriceScale(carId: string): Promise<PriceScale | null> {
+export async function loadPriceScale(carId: string, preloadedSubject?: any): Promise<PriceScale | null> {
   return cached(`pricescale:${carId}`, CACHE_TTL.medium, async () => {
     await connectDB();
-    const subject = (await Car.findOne({ _id: carId, ...PUBLIC_LISTING_FILTER })
+    const subject = (preloadedSubject || (await Car.findOne({ _id: carId, ...PUBLIC_LISTING_FILTER })
       .select("brand model title year mileage price vehicleClass damageFlag city features")
-      .lean()) as unknown as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
+      .lean())) as unknown as Parameters<typeof toScaleCar>[0] & { _id: unknown; brand: string; model: string; vehicleClass?: string };
     if (!subject) return null;
 
     const candidates = (await Car.find({

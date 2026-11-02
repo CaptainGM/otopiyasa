@@ -15,14 +15,16 @@ export interface DealStripItem {
 }
 
 /**
- * "Haftanın fırsatları" şeridi: TÜM aktif ilanlar arasından adil değerinin en çok altında olan 12 fırsat ve toplam
- * fırsat sayısı. Hesap Oracle'da hazır (market.deal, market.disc); burada yalnızca indeksli sorgu var.
+ * "Haftanın fırsatları" şeridi: TÜM aktif ilanlar arasından en yüksek indirimli fırsatlar havuzundan
+ * (en iyi 36 fırsat) ana sayfa için değişken / rotasyonlu 12 araç sunar. Böylece kullanıcılar her ana sayfayı
+ * ziyaret ettiğinde ya da yenilediğinde sürekli tıpatıp aynı 12 arabayı görmez, vitrin canlı kalır.
+ * "Tümünü gör" dendiğinde ise tüm liste indirim oranına göre azalan sırada (`market.disc: -1`) açılır.
  */
-export function getDealStrip(): Promise<{ items: DealStripItem[]; total: number }> {
-  return cached("home:deal-strip", CACHE_TTL.medium, async () => {
+export async function getDealStrip(): Promise<{ items: DealStripItem[]; total: number }> {
+  const poolData = await cached("home:deal-strip-pool", CACHE_TTL.short, async () => {
     await connectDB();
-    const { docs, total } = await findDealListings(DEAL_STRIP_LIMIT);
-    const items = (docs as unknown[]).filter(isLeanCarDoc).map((doc) => {
+    const { docs, total } = await findDealListings(36);
+    const pool = (docs as unknown[]).filter(isLeanCarDoc).map((doc) => {
       const disc = (doc as unknown as { market?: { disc?: number } }).market?.disc ?? 0;
       return {
         car: serializeCarPublicForList(doc),
@@ -30,6 +32,18 @@ export function getDealStrip(): Promise<{ items: DealStripItem[]; total: number 
         score: disc,
       };
     });
-    return { items, total };
+    return { pool, total };
   });
+
+  if (!poolData || poolData.pool.length === 0) return { items: [], total: 0 };
+
+  // Ana sayfada sürekli aynı arabalar kilitli kalmasın: havuzdan karıştırılmış 12'lik dinamik vitrin sunulur.
+  const shuffled = [...poolData.pool];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  const items = shuffled.slice(0, DEAL_STRIP_LIMIT);
+  return { items, total: poolData.total };
 }

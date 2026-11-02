@@ -43,6 +43,22 @@ describe("isDealCandidate", () => {
     expect(isDealCandidate({ ...base, year: 2005 }, 0.18, 12)).toBe(false);
   });
 
+  it("boya + değişen parça toplamı en fazla 4 olabilir (4 veya daha küçük)", () => {
+    // 4 veya daha az parça -> Fırsat olabilir
+    expect(isDealCandidate({ ...base, paintChange: "1 değişen, 3 boyalı" }, 0.18, 12)).toBe(true);
+    expect(isDealCandidate({ ...base, paintChange: "4 boyalı" }, 0.18, 12)).toBe(true);
+    expect(isDealCandidate({ ...base, paintChange: "Boyasız" }, 0.18, 12)).toBe(true);
+
+    // 4'ten fazla parça -> Fırsat olamaz
+    expect(isDealCandidate({ ...base, paintChange: "4 değişen, 8 boyalı" }, 0.18, 12)).toBe(false);
+    expect(isDealCandidate({ ...base, paintChange: "2 değişen, 3 boyalı" }, 0.18, 12)).toBe(false);
+    expect(isDealCandidate({ ...base, paintChange: "5 boyalı" }, 0.18, 12)).toBe(false);
+    expect(isDealCandidate({ ...base, paintChange: "Tamamı boyalı" }, 0.18, 12)).toBe(false);
+
+    // Airbag değişimi / açılması -> Fırsat olamaz
+    expect(isDealCandidate({ ...base, description: "perde airbag değişmiş" }, 0.18, 12)).toBe(false);
+  });
+
   it("en az 12 emsal, en az 500 bin TL ve motosiklet/karavan dışarıda", () => {
     expect(isDealCandidate(base, 0.18, 11)).toBe(false);
     expect(isDealCandidate({ ...base, price: 499_000 }, 0.18, 12)).toBe(false);

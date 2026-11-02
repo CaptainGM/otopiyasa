@@ -4,6 +4,7 @@ import { PUBLIC_LISTING_FILTER } from "@/lib/listing-visibility";
 import { derivePainted, predictPrice, withPredictionMemo, type Condition } from "@/lib/price-prediction";
 import { DEAL_MAX_MILEAGE, DEAL_MIN_YEAR, SUSPICIOUS_DISCOUNT } from "@/lib/deals";
 import { MIN_MARKET_COMPARABLES } from "@/lib/market-position";
+import { parseDamageReport } from "@/lib/damage-report";
 
 /**
  * ADİL PİYASA DEĞERİ: her ilan için ilan sayfasındaki fiyat analiziyle AYNI hesap (predictPrice: model yılı, km,
@@ -42,7 +43,7 @@ const DEAL_EXCLUDED_CLASSES = new Set(["motosiklet", "karavan"]);
 // (JavaScript'in büyük/küçük harf duyarsız araması İ ile i'yi eşlemiyor).
 const trFold = (text: string) => text.toLocaleLowerCase("tr").replace(/ı/g, "i");
 const HEAVY_DAMAGE = new RegExp(
-  ["ağır hasar", "pert kayıt", "pertli", "tam ziyan", "çekme belge", "hurda belge", "ihale", "airbag aç", "şase hasar", "taksi çıkma"]
+  ["ağır hasar", "pert kayıt", "pertli", "tam ziyan", "çekme belge", "hurda belge", "ihale", "airbag aç", "airbag değiş", "hava yastığı aç", "hava yastığı değiş", "şase hasar", "taksi çıkma"]
     .map(trFold)
     .join("|")
 );
@@ -61,12 +62,14 @@ interface DealInput {
   title?: string;
   description?: string;
   paintChange?: string;
+  damageParts?: Array<{ name: string; state: string }> | null;
 }
 
 /**
  * "Haftanın fırsatları" ölçütü: adil değerin %10–%40 altında, en az 12 emsal, en az 500 bin TL, 2015 ve sonrası, en fazla
- * 150 bin km, hasar kaydı ve ağır hasar/pert ifadesi yok, motosiklet ve karavan değil. %40'tan fazla altı fırsat değil
- * uyarıdır (hatalı fiyat ya da kapora dolandırıcılığı).
+ * 150 bin km, hasar kaydı ve ağır hasar/pert/airbag ifadesi yok, motosiklet ve karavan değil.
+ * Toplamda boya + değişen parça sayısı en fazla 4 olabilir (4 veya daha küçük).
+ * %40'tan fazla altı fırsat değil uyarıdır (hatalı fiyat ya da kapora dolandırıcılığı).
  */
 export function isDealCandidate(car: DealInput, disc: number, fairN: number): boolean {
   if (fairN < DEAL_MIN_COMPARABLES) return false;
@@ -75,6 +78,21 @@ export function isDealCandidate(car: DealInput, disc: number, fairN: number): bo
   if (pct < Math.round(DEAL_MIN_FAIR_DISCOUNT * 100) || pct >= Math.round(SUSPICIOUS_DISCOUNT * 100)) return false;
   if (car.year < DEAL_MIN_YEAR || car.mileage > DEAL_MAX_MILEAGE || car.damageFlag || car.price < DEAL_MIN_PRICE) return false;
   if (car.vehicleClass && DEAL_EXCLUDED_CLASSES.has(car.vehicleClass)) return false;
+
+  // Hasar / boya kuralı: Toplamda boya + değişen parça sayısı 4'ü geçemez (4 veya daha küçük olmalı).
+  if (car.paintChange) {
+    const report = parseDamageReport(car.paintChange);
+    if (report.level === "heavy") return false;
+    const totalAffected = (report.changed || 0) + (report.painted || 0) + (report.localPainted || 0);
+    if (totalAffected > 4) return false;
+  }
+  if (Array.isArray(car.damageParts) && car.damageParts.length > 0) {
+    const affectedPartsCount = car.damageParts.filter((p) =>
+      p && (p.state === "Değişmiş" || p.state === "Boyanmış" || p.state === "Lokal Boyanmış")
+    ).length;
+    if (affectedPartsCount > 4) return false;
+  }
+
   return !HEAVY_DAMAGE.test(trFold(`${car.title ?? ""} ${car.description ?? ""} ${car.paintChange ?? ""}`));
 }
 
@@ -121,7 +139,7 @@ type FairCandidate = DealInput & {
  * her markadan sonra boşalır.
  */
 const LISTING_FAIR_SELECT =
-  "brand model year mileage price vehicleClass damageFlag paintChange title description features";
+  "brand model year mileage price vehicleClass damageFlag paintChange damageParts title description features";
 
 type ListingFairDoc = DealInput & {
   brand?: string;
@@ -255,11 +273,16 @@ export async function refreshFairValues(limit = 8000): Promise<{ scanned: number
   return { scanned: candidates.length, updated, cleared, failed, ms: Date.now() - started };
 }
 
-/** "Haftanın fırsatları": adil değerin en çok altında olan fırsat ilanlar ve toplam fırsat sayısı. */
+/** "Haftanın fırsatları": adil değerin en çok altında olan fırsat ilanlar ve toplam fırsat sayısı (en yüksek indirim oranı ilk sırada). */
 export async function findDealListings(limit: number, skip = 0) {
   const filter = { ...PUBLIC_LISTING_FILTER, "market.deal": true };
   const [docs, total] = await Promise.all([
-    Car.find(filter).sort({ "market.dealScore": -1, _id: 1 }).skip(skip).limit(limit).slice("images", 2).lean(),
+    Car.find(filter)
+      .sort({ "market.disc": -1, "market.dealScore": -1, _id: 1 })
+      .skip(skip)
+      .limit(limit)
+      .slice("images", 2)
+      .lean(),
     cached("count:deals", CACHE_TTL.long, () => Car.countDocuments(filter)),
   ]);
   return { docs, total };
@@ -326,7 +349,7 @@ export async function liveFairValue(car: LiveFairInput) {
  */
 export async function recomputeDealFlags(): Promise<{ scanned: number; changed: number }> {
   const cursor = Car.find({ ...PUBLIC_LISTING_FILTER, "market.fair": { $gt: 0 } })
-    .select("year mileage price vehicleClass damageFlag title description paintChange market.disc market.fairN market.deal")
+    .select("year mileage price vehicleClass damageFlag title description paintChange damageParts market.disc market.fairN market.deal")
     .lean<Array<DealInput & { _id: unknown; market?: { disc?: number; fairN?: number; deal?: boolean } }>>()
     .cursor({ batchSize: 1000 });
   let scanned = 0;

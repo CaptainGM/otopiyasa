@@ -179,7 +179,7 @@ export function isMailerConfigured() {
 }
 
 /** SMTP sunucusuna bağlanıp kimlik doğrular; e-posta GÖNDERMEZ (günlük kotayı harcamaz). */
-export async function verifyMailerConnection(timeoutMs = 8000): Promise<void> {
+export async function verifyMailerConnection(timeoutMs = 15_000): Promise<void> {
   if (process.env.RESEND_API_KEY) {
     const res = await fetch("https://api.resend.com/api-keys", {
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
@@ -216,14 +216,19 @@ export async function verifyMailerConnection(timeoutMs = 8000): Promise<void> {
   try {
     await tryVerify(t, timeoutMs);
   } catch (error) {
-    // Port 587 bulut / Render engeline takıldıysa Brevo port 2525 alternatifini dene
-    if (activePort === 587 && (SMTP_HOST || "").includes("brevo")) {
-      const fallback = createTransporter(2525);
+    // Port 587 engellendiyse 2525, 2525 engellendiyse 587 alternatifini hemen dene
+    if ((SMTP_HOST || "").includes("brevo")) {
+      const altPort = activePort === 587 ? 2525 : 587;
+      const fallback = createTransporter(altPort);
       if (fallback) {
-        await tryVerify(fallback, timeoutMs);
-        transporter = fallback;
-        activePort = 2525;
-        return;
+        try {
+          await tryVerify(fallback, timeoutMs);
+          transporter = fallback;
+          activePort = altPort;
+          return;
+        } catch {
+          // asıl hatayı fırlat
+        }
       }
     }
     throw error;

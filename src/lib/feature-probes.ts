@@ -278,7 +278,7 @@ export const PROBES: ProbeDefinition[] = [
       if (!isMailerConfigured()) problems.push("e-posta (SMTP) ayarı yok: doğrulama bağlantısı gönderilemez");
       else {
         try {
-          await verifyMailerConnection();
+          await verifyMailerConnection(15_000);
         } catch (error) {
           problems.push(`e-posta sunucusuna bağlanılamadı (${error instanceof Error ? error.message.slice(0, 60) : "hata"})`);
         }
@@ -390,7 +390,12 @@ export async function runProbes(options: { force?: boolean; probes?: ProbeDefini
     const batchResults = await Promise.all(
       batch.map(async (probe): Promise<ProbeResult> => {
         const previous = byKey.get(probe.key);
-        const ttl = options.force ? (probe.ai ? 2 * MINUTE : CHEAP_TTL_MS) : probe.ttlMs;
+        // Başarılı kontroller kotayı korumak için normal ttl süresince önbellekte tutulur.
+        // Başarısız olan kontroller ise anlık bir ağ/kota dalgalanması sonrası gereksiz yere yarım saat kırmızı
+        // kalmasın diye en fazla 60 saniye sonra kendiliğinden yeniden denenir.
+        const failureTtl = Math.min(probe.ttlMs || CHEAP_TTL_MS, 60_000);
+        const effectiveTtl = previous && !previous.ok ? failureTtl : probe.ttlMs;
+        const ttl = options.force ? (probe.ai ? 2 * MINUTE : CHEAP_TTL_MS) : effectiveTtl;
         const base = { key: probe.key, label: probe.label, group: probe.group, informational: Boolean(probe.informational), ai: Boolean(probe.ai) };
 
         if (previous && isFresh(previous.checkedAt, ttl, now)) {

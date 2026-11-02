@@ -95,14 +95,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ date: dateParam, hours: fillDayHours(dateParam, rows) }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const since = new Date(Date.now() - (DAYS_SHOWN + 1) * 24 * 60 * 60 * 1000);
+    const daysRequested = Number(url.searchParams.get("days")) || DAYS_SHOWN;
+    const daysShown = Math.min(Math.max(daysRequested, 7), 180);
+
+    const since = new Date(Date.now() - (daysShown + 1) * 24 * 60 * 60 * 1000);
     const [stateDoc, rows, queue] = await Promise.all([
       HomeWatcherState.findOne({ watcherId: HOME_WATCHER_ID }).lean(),
       HomeWatcherHour.find({ watcherId: HOME_WATCHER_ID, timestamp: { $gte: since } }).lean<HourRow[]>(),
       queueCounts(),
     ]);
 
-    const days = summarizeDays(rows).slice(0, DAYS_SHOWN);
+    const days = summarizeDays(rows).slice(0, daysShown);
     const todayStr = getTurkeyDateStr();
     const today = days.find((d) => d.dateStr === todayStr) || {
       dateStr: todayStr,

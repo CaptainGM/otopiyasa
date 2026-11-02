@@ -3,29 +3,29 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
+import { cached, CACHE_TTL } from "@/lib/cache";
 import { isLeanCarDoc } from "@/lib/serialize-car";
 import { formatPrice } from "@/lib/utils";
 import { CarDetailBody } from "./CarDetailBody";
 import { RestrictedListingGate } from "@/components/ListingViewerIslands";
 
 /**
- * İlan sayfası her istekte çizilir (ISR yok). 30 dakikalık ISR'da her ilan her yenilemede ~37 yazma birimi
- * (HTML + RSC ≈ 300 KB) harcıyordu; botların 26 bin ilanı gezmesiyle Vercel ücretsiz planın aylık 200 bin ISR
- * yazma limiti bir günde %75 doldu (2026-10-06). İlan sayfaları artık arama motorlarına ve botlara kapalı (robots.ts,
- * middleware.ts); yalnızca gerçek ziyaretçiler sayfa çizdirir ve her zaman güncel fiyatı görür.
- * Giriş yapmış kişiye/ilan sahibine göre değişen parçalar tarayıcıda yüklenir (ListingViewerIslands).
- * Herkese açık olmayan ilanlar (arşiv, satıldı, onay bekleyen) burada gösterilmez; sahibi ve yönetici
- * /cars/[id]/onizleme adresinden görür.
+ * İlan sayfası ISR ile 3 dakika (180 sn) önbellekte tutulur.
+ * Yeni sekmede veya tekrarlayan açılışlarda sunucu veritabanına sorgu atmadan
+ * doğrudan önbellekten 0-5 ms içinde anında yanıt verir.
+ * Kullanıcıya özel durumlar (favori, teklifler, sorular) istemci adalarında yüklenir.
  */
-export const dynamic = "force-dynamic";
+export const revalidate = 180;
 
 interface CarDetailPageProps {
   params: Promise<{ id: string }>;
 }
 
 const getCachedCar = cache(async (id: string) => {
-  await connectDB();
-  return Car.findById(id).lean();
+  return cached(`car-doc:${id}`, CACHE_TTL.short, async () => {
+    await connectDB();
+    return Car.findById(id).lean();
+  });
 });
 
 /** Herkese açık mı: aktif ve (üye ilanıysa) onaylı. */

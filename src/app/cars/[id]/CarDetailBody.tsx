@@ -19,7 +19,6 @@ import { SourceBadge } from "@/components/SourceBadge";
 import { Icon } from "@/components/Icon";
 import { MarketGauge } from "@/components/MarketGauge";
 import { PriceScaleCard } from "@/components/PriceScaleCard";
-import { getNavbarUser } from "@/lib/auth";
 import { ListingQualityBadge } from "@/components/ListingQualityBadge";
 import { listingCompleteness, showsListingQuality } from "@/lib/listing-completeness";
 import { loadPriceScale } from "@/lib/price-scale-data";
@@ -45,6 +44,7 @@ import { assignColumns, FUEL_CARD, leftBaseHeight, MAP_BLOCK, rightBaseHeight, s
 import { getFuelCostForCar } from "@/lib/fuel-cost-data";
 import { resolvePlacement } from "@/lib/district-coords";
 import {
+  AdminPriceScaleIsland,
   FavoriteOrLogin,
   SellerPhoneNote,
   ViewCounter,
@@ -89,8 +89,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
 
   const { brand, model, year, price } = carDoc;
   // Fiyat skalası kartı yalnızca yöneticiye gösterilir (kullanıcı için bilgi katmaz); fiyat analizindeki emsal medyanı herkese açık kalır.
-  const viewer = await getNavbarUser();
-  const isAdmin = viewer?.role === "admin";
+
 
 
   // Tek ölçü: üstteki gösterge, fiyat analizi ve listelerdeki kart aynı adil değere bakar (bkz. lib/market-fair.ts;
@@ -101,11 +100,11 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
     getMarketMap([{ brand, model, year, vehicleClass: carDoc.vehicleClass }]),
     liveFairValue(carDoc),
     cached(`segment:${brand}|${model}|${carDoc.vehicleClass || "otomobil"}`, CACHE_TTL.medium, () => loadSegmentPrices(brand, model, carDoc.vehicleClass)),
-    User.countDocuments({ favorites: carDoc._id }),
+    cached(`favCount:${carDoc._id}`, CACHE_TTL.short, () => Promise.race([User.countDocuments({ favorites: carDoc._id }), new Promise<number>((r) => setTimeout(() => r(0), 400))])),
     // Yakıt maliyeti hesaplanamazsa (fiyat kaynağına ulaşılamadı, tüketim bilinmiyor) kart gösterilmez.
     Promise.race([getFuelCostForCar(carDoc).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 800))]),
     // Fiyat skalası: emsallerin yıl, km, hasar ve donanım kademelerine göre medyanı. Ortalama satırı bu kademeyi gösterir.
-    loadPriceScale(carDoc._id.toString()),
+    loadPriceScale(carDoc._id.toString(), carDoc),
     // Üye ilanına özel: ilanı veren kişinin adı. Derlenen (arabam/otomerkezi) ilanlarda karşılığı yok, sorgu çalıştırılmaz.
     carDoc.sourceSite === "user" && carDoc.ownerId ? User.findById(carDoc.ownerId).select("name").lean<{ name?: string }>() : Promise.resolve(null),
     cached(
@@ -282,7 +281,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   const columns = assignColumns(
     movable.map(({ key, height }) => ({ key, height })),
     leftBaseHeight(car.images && car.images.length > 0 ? car.images.length : 1, (formatListingDescription(car.description) ?? "").length),
-    rightBaseHeight(isUserListing, isAdmin && Boolean(priceScale))
+    rightBaseHeight(isUserListing, Boolean(priceScale))
   );
   // Sütunun son bloğu (çoğunlukla harita) kalan boyu doldurur: iki sütun aynı çizgide biter. Telefonda tek sütun, uygulanmaz.
   const placed = (keys: string[]) =>
@@ -295,7 +294,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
   return (
     <div className="space-y-8 pb-10">
       <ScrollToTop id={car._id} />
-      <RecentlyViewedTracker carId={car._id} owner={viewer?.userId ?? "guest"} />
+      <RecentlyViewedTracker carId={car._id} />
       <ViewCounter carId={car._id} />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <Link href="/" className="btn btn-ghost -ml-2 text-sm">
@@ -431,7 +430,7 @@ export async function CarDetailBody({ carDoc }: { carDoc: any }) {
             marketBasisLabel={scaleTier ? scaleTier.label : undefined}
           />
 
-          {priceScale && isAdmin && <PriceScaleCard scale={priceScale} />}
+          {priceScale && <AdminPriceScaleIsland scale={priceScale} />}
 
 
           {(() => {

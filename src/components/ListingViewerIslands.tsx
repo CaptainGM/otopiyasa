@@ -9,6 +9,8 @@ import { FavoriteButton } from "@/components/FavoriteButton";
 import { ReportListingButton } from "@/components/ReportListingButton";
 import { OfferBox } from "@/components/OfferBox";
 import { QuestionsSection } from "@/components/QuestionsSection";
+import { PriceScaleCard } from "@/components/PriceScaleCard";
+import type { PriceScale } from "@/lib/price-scale";
 
 /**
  * İLAN SAYFASININ KİŞİYE ÖZEL PARÇALARI
@@ -145,4 +147,14 @@ export function RestrictedListingGate({ carId }: { carId: string }) {
       </Link>
     </div>
   );
+}
+
+/**
+ * Fiyat skalası kartı yalnızca yöneticiye gösterilir. İlan sayfasını dinamik çerez kontrolünden
+ * kurtarıp tam statik/ISR önbelleğe alınabilmesi için istemci adası olarak çizilir.
+ */
+export function AdminPriceScaleIsland({ scale }: { scale: PriceScale | null }) {
+  const { viewer } = useViewer();
+  if (viewer?.role !== "admin" || !scale) return null;
+  return <PriceScaleCard scale={scale} />;
 }

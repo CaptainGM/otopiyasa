@@ -266,6 +266,41 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           const SizedBox(height: 20),
+          if (_registerMode) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              ),
+              child: GestureDetector(
+                onTap: () => launchUrl(
+                  Uri.parse('https://otopiyasa.app/gizlilik'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Text.rich(
+                  TextSpan(
+                    text: 'Kayıt olarak ',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11, height: 1.4),
+                    children: [
+                      TextSpan(
+                        text: 'KVKK Aydınlatma Metni ve Gizlilik Politikası',
+                        style: TextStyle(
+                          color: AppTheme.accent,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                      const TextSpan(text: "'nı okuduğunuzu ve kabul ettiğinizi onaylamış olursunuz."),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           FilledButton(
             onPressed: _loading ? null : () => _submit(register: _registerMode),
             style: FilledButton.styleFrom(

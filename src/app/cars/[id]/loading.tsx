@@ -3,7 +3,7 @@ import { ScrollToTop } from "@/components/ScrollToTop";
 export default function CarsDetailLoading() {
   return (
     <div className="animate-pulse space-y-6">
-      <ScrollToTop id="yukleniyor" />
+      {/* ScrollToTop kaldırıldı: sayfa geçişinde şiddetli yukarı zıplamayı ve en baştan yükleniyor hissini önler */}
       {/* Geri butonu */}
       <div className="h-5 w-24 rounded bg-white/10" />
 

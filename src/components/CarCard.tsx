@@ -75,7 +75,7 @@ export function CarCard({
             <span className="mx-1.5 text-[var(--faint)]">/</span>
             {car.city}
           </p>
-          <Link href={href} prefetch={false} className="block text-inherit">
+          <Link href={href} className="block text-inherit">
             <h3 className="font-display line-clamp-2 break-words text-[1.02rem] font-semibold leading-snug transition-colors group-hover:text-[var(--accent)]">
               {name}
             </h3>

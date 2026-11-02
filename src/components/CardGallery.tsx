@@ -72,7 +72,7 @@ export function CardGallery({
 
   if (gallery.length === 0) {
     return (
-      <Link href={href} prefetch={false} aria-label={`${alt} ilanını aç`} className="absolute inset-0">
+      <Link href={href} aria-label={`${alt} ilanını aç`} className="absolute inset-0">
         <CarThumb alt={alt} className="object-cover" />
       </Link>
     );
@@ -97,7 +97,6 @@ export function CardGallery({
           <div key={src} className="relative h-full w-full shrink-0 snap-center snap-always">
             <Link
               href={href}
-              prefetch={false}
               tabIndex={i === index ? 0 : -1}
               aria-label={`${alt} ilanını aç${many ? ` (fotoğraf ${i + 1}/${gallery.length})` : ""}`}
               className="absolute inset-0"

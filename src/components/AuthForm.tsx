@@ -248,6 +248,28 @@ export function AuthForm({
         </div>
       )}
 
+      {mode === "register" && !info && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-center text-xs text-slate-400 leading-relaxed">
+          Kayıt olarak{" "}
+          <Link
+            href="/gizlilik"
+            target="_blank"
+            className="font-semibold text-amber-300 hover:underline"
+          >
+            KVKK Aydınlatma Metni
+          </Link>{" "}
+          ve{" "}
+          <Link
+            href="/gizlilik#haklar"
+            target="_blank"
+            className="font-semibold text-amber-300 hover:underline"
+          >
+            Gizlilik Politikası
+          </Link>
+          &apos;nı okuduğunu kabul edersin.
+        </div>
+      )}
+
       {!info && (
         <button type="submit" disabled={loading} className="btn btn-primary w-full">
           {loading ? "Bekleyin..." : mode === "login" ? "Giriş Yap" : "Hesap Oluştur"}

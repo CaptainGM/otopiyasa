@@ -44,6 +44,7 @@ export function AuthForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [email, setEmail] = useState("");
  
@@ -249,29 +250,39 @@ export function AuthForm({
       )}
 
       {mode === "register" && !info && (
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3 text-center text-xs text-slate-400 leading-relaxed">
-          Kayıt olarak{" "}
-          <Link
-            href="/gizlilik"
-            target="_blank"
-            className="font-semibold text-amber-300 hover:underline"
-          >
-            KVKK Aydınlatma Metni
-          </Link>{" "}
-          ve{" "}
-          <Link
-            href="/gizlilik#haklar"
-            target="_blank"
-            className="font-semibold text-amber-300 hover:underline"
-          >
-            Gizlilik Politikası
-          </Link>
-          &apos;nı okuduğunu kabul edersin.
-        </div>
+        <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-xs text-slate-300 cursor-pointer select-none hover:bg-white/[0.04] transition">
+          <input
+            type="checkbox"
+            checked={acceptedTerms}
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-400 accent-amber-500 cursor-pointer"
+            required
+          />
+          <span className="leading-relaxed">
+            <Link
+              href="/gizlilik"
+              target="_blank"
+              className="font-semibold text-amber-300 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              KVKK Aydınlatma Metni
+            </Link>{" "}
+            ve{" "}
+            <Link
+              href="/gizlilik#haklar"
+              target="_blank"
+              className="font-semibold text-amber-300 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Gizlilik Politikası
+            </Link>
+            &apos;nı okudum, kişisel verilerimin bu kapsamda işlenmesini onaylıyorum.
+          </span>
+        </label>
       )}
 
       {!info && (
-        <button type="submit" disabled={loading} className="btn btn-primary w-full">
+        <button type="submit" disabled={loading || (mode === "register" && !acceptedTerms)} className="btn btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed">
           {loading ? "Bekleyin..." : mode === "login" ? "Giriş Yap" : "Hesap Oluştur"}
         </button>
       )}

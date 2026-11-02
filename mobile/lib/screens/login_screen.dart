@@ -32,6 +32,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _registerMode = false;
   /// Sunucuda Google girişi açık mı; yanıt gelene kadar düğme gizli kalır.
   bool _googleEnabled = false;
+  bool _acceptedTerms = false;
 
   @override
   void initState() {
@@ -74,6 +75,14 @@ class _LoginScreenState extends State<LoginScreen> {
       _info = null;
       _needsVerification = false;
     });
+
+    if (register && !_acceptedTerms) {
+      setState(() {
+        _error = 'Kayıt olmak için aydınlatma metnini onaylaman gerekir';
+        _loading = false;
+      });
+      return;
+    }
 
     if (register && _nameController.text.trim().isEmpty) {
       setState(() {
@@ -268,41 +277,52 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 20),
           if (_registerMode) ...[
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.03),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
               ),
-              child: GestureDetector(
-                onTap: () => launchUrl(
-                  Uri.parse('https://otopiyasa.app/gizlilik'),
-                  mode: LaunchMode.externalApplication,
-                ),
-                child: Text.rich(
-                  TextSpan(
-                    text: 'Kayıt olarak ',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11, height: 1.4),
-                    children: [
-                      TextSpan(
-                        text: 'KVKK Aydınlatma Metni ve Gizlilik Politikası',
-                        style: TextStyle(
-                          color: AppTheme.accent,
-                          fontWeight: FontWeight.bold,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                      const TextSpan(text: "'nı okuduğunuzu ve kabul ettiğinizi onaylamış olursunuz."),
-                    ],
+              child: CheckboxListTile(
+                value: _acceptedTerms,
+                onChanged: (val) => setState(() => _acceptedTerms = val ?? false),
+                activeColor: AppTheme.accent,
+                checkColor: const Color(0xFF041018),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                title: GestureDetector(
+                  onTap: () => launchUrl(
+                    Uri.parse('https://otopiyasa.app/gizlilik'),
+                    mode: LaunchMode.externalApplication,
                   ),
-                  textAlign: TextAlign.center,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: 'KVKK Aydınlatma Metni ve Gizlilik Politikası',
+                          style: TextStyle(
+                            color: AppTheme.accent,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                        TextSpan(
+                          text: "'nı okudum, onaylıyorum.",
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 12),
           ],
           FilledButton(
-            onPressed: _loading ? null : () => _submit(register: _registerMode),
+            onPressed: (_loading || (_registerMode && !_acceptedTerms)) ? null : () => _submit(register: _registerMode),
             style: FilledButton.styleFrom(
               backgroundColor: AppTheme.accent,
               foregroundColor: const Color(0xFF041018),

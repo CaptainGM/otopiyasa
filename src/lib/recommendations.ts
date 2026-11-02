@@ -127,7 +127,7 @@ export async function getSimilarCars(
     _id: { $ne: carId },
   })
     .sort({ createdAt: -1 })
-    .limit(300)
+    .limit(80)
     .slice("images", 4)
     .lean();
 

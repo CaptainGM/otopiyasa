@@ -6,7 +6,7 @@ import { buildPriceScale, dedupeCandidates, type PriceScale, type ScaleCar } fro
 import { cached, CACHE_TTL } from "@/lib/cache";
 
 /** Bir kademe için en fazla bu kadar aday okunur; model ailesi ve yıl penceresi zaten dar tutar. */
-const CANDIDATE_LIMIT = 1500;
+const CANDIDATE_LIMIT = 200;
 
 /** Veritabanı belgesini fiyat skalasının girdisine çevirir (hasar bayrağı, donanım alanları). */
 export function toScaleCar(doc: {

@@ -53,6 +53,16 @@ interface ValuationReportModalProps {
   }>;
 }
 
+function formatEngineVolume(size?: number | string | null): string {
+  if (size === undefined || size === null || size === "") return "—";
+  const num = typeof size === "number" ? size : parseFloat(String(size).replace(",", "."));
+  if (isNaN(num) || num <= 0) return "—";
+  if (num >= 50) return `${Math.round(num)} cc`;
+  const l = Number(num).toFixed(1).replace(/\.0$/, "");
+  const cc = Math.round(num * 1000);
+  return `${l} L (${cc} cc)`;
+}
+
 export function ValuationReportModal({
   car,
   predictedPrice,
@@ -398,7 +408,7 @@ export function ValuationReportModal({
                 <div>
                   <span className="text-slate-500 block">Motor Hacmi</span>
                   <span className="font-semibold text-slate-200">
-                    {car.features?.engineSize ? `${car.features.engineSize} cc` : "—"}
+                    {formatEngineVolume(car.features?.engineSize)}
                   </span>
                 </div>
               </div>
@@ -541,46 +551,49 @@ export function ValuationReportModal({
                       <th className="px-3.5 py-2.5 whitespace-nowrap">Kilometre</th>
                       <th className="px-3.5 py-2.5 whitespace-nowrap">Şehir</th>
                       <th className="px-3.5 py-2.5 text-right whitespace-nowrap">Piyasa Fiyatı</th>
-                      <th className="px-3.5 py-2.5 text-right no-print whitespace-nowrap">İlan</th>
+                      <th className="px-3.5 py-2.5 text-right whitespace-nowrap">İlan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                    {comparables.slice(0, 12).map((comp) => (
-                      <tr key={comp._id} className="hover:bg-slate-900/50 transition">
-                        <td className="px-3.5 py-2.5 font-medium text-slate-200 max-w-[280px]">
-                          <a
-                            href={`/cars/${comp._id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:text-amber-300 line-clamp-1 transition"
-                            title={comp.title}
-                          >
-                            {comp.title}
-                          </a>
-                        </td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap">{comp.year}</td>
-                        <td className="px-3.5 py-2.5 whitespace-nowrap">{formatNumber(comp.mileage)} km</td>
-                        <td className="px-3.5 py-2.5 text-slate-400 whitespace-nowrap">{comp.city || "Türkiye"}</td>
-                        <td className="px-3.5 py-2.5 text-right font-bold text-amber-300 whitespace-nowrap">
-                          {formatPrice(comp.price)}
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right no-print whitespace-nowrap">
-                          <a
-                            href={`/cars/${comp._id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25 transition shadow-sm"
-                          >
-                            İlana Git
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                              <polyline points="15 3 21 3 21 9" />
-                              <line x1="10" y1="14" x2="21" y2="3" />
-                            </svg>
-                          </a>
-                        </td>
-                      </tr>
-                    ))}
+                    {comparables.slice(0, 12).map((comp) => {
+                      const compUrl = comp.listingUrl || `https://otopiyasa.app/cars/${comp._id}`;
+                      return (
+                        <tr key={comp._id} className="hover:bg-slate-900/50 transition">
+                          <td className="px-3.5 py-2.5 font-medium text-slate-200 max-w-[280px]">
+                            <a
+                              href={compUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-amber-300 line-clamp-1 transition"
+                              title={comp.title}
+                            >
+                              {comp.title}
+                            </a>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">{comp.year}</td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">{formatNumber(comp.mileage)} km</td>
+                          <td className="px-3.5 py-2.5 text-slate-400 whitespace-nowrap">{comp.city || "Türkiye"}</td>
+                          <td className="px-3.5 py-2.5 text-right font-bold text-amber-300 whitespace-nowrap">
+                            {formatPrice(comp.price)}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
+                            <a
+                              href={compUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-2 py-1 text-[11px] font-bold text-amber-300 hover:bg-amber-500/25 transition shadow-sm print:bg-amber-100 print:text-amber-900 print:border-amber-400"
+                            >
+                              İlana Git
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                              </svg>
+                            </a>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

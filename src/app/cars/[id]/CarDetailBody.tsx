@@ -71,11 +71,11 @@ async function loadSegmentPrices(
 ): Promise<{ label: string; prices: number[] }> {
   const classFilter = vehicleClass ? { vehicleClass: vehicleClass === "otomobil" ? { $in: ["otomobil", null] } : vehicleClass } : {};
   const mm = (
-    await Car.find({ brand, model, ...classFilter, ...PUBLIC_LISTING_FILTER }, { price: 1 }).lean()
+    await Car.find({ brand, model, ...classFilter, ...PUBLIC_LISTING_FILTER }).select("price").limit(200).lean()
   ).map((doc) => doc.price as number);
   if (mm.length >= 5) return { label: `${brand} ${model}`, prices: mm };
   const b = (
-    await Car.find({ brand, ...classFilter, ...PUBLIC_LISTING_FILTER }, { price: 1 }).lean()
+    await Car.find({ brand, ...classFilter, ...PUBLIC_LISTING_FILTER }).select("price").limit(200).lean()
   ).map((doc) => doc.price as number);
   return { label: brand, prices: b };
 }

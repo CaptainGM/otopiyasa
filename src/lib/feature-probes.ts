@@ -199,6 +199,7 @@ export const PROBES: ProbeDefinition[] = [
     label: "Fiyat tahmini",
     group: "Site özellikleri",
     ttlMs: 10 * MINUTE,
+    timeoutMs: 25_000,
     async run() {
       const { predictPrice } = await import("@/lib/price-prediction");
       const result = await predictPrice("Toyota", "Corolla", 2018, 90000, "clean");
@@ -382,32 +383,39 @@ export async function runProbes(options: { force?: boolean; probes?: ProbeDefini
   >();
   const byKey = new Map(stored.map((s) => [s.key, s]));
 
-  return Promise.all(
-    probes.map(async (probe): Promise<ProbeResult> => {
-      const previous = byKey.get(probe.key);
-      const ttl = options.force ? (probe.ai ? 2 * MINUTE : CHEAP_TTL_MS) : probe.ttlMs;
-      const base = { key: probe.key, label: probe.label, group: probe.group, informational: Boolean(probe.informational), ai: Boolean(probe.ai) };
+  const results: ProbeResult[] = [];
+  const chunkSize = 4;
+  for (let i = 0; i < probes.length; i += chunkSize) {
+    const batch = probes.slice(i, i + chunkSize);
+    const batchResults = await Promise.all(
+      batch.map(async (probe): Promise<ProbeResult> => {
+        const previous = byKey.get(probe.key);
+        const ttl = options.force ? (probe.ai ? 2 * MINUTE : CHEAP_TTL_MS) : probe.ttlMs;
+        const base = { key: probe.key, label: probe.label, group: probe.group, informational: Boolean(probe.informational), ai: Boolean(probe.ai) };
 
-      if (previous && isFresh(previous.checkedAt, ttl, now)) {
-        return {
-          ...base,
-          ok: previous.ok,
-          detail: previous.detail,
-          ms: previous.ms,
-          checkedAt: new Date(previous.checkedAt).toISOString(),
-          lastOkAt: previous.lastOkAt ? new Date(previous.lastOkAt).toISOString() : null,
-        };
-      }
+        if (previous && isFresh(previous.checkedAt, ttl, now)) {
+          return {
+            ...base,
+            ok: previous.ok,
+            detail: previous.detail,
+            ms: previous.ms,
+            checkedAt: new Date(previous.checkedAt).toISOString(),
+            lastOkAt: previous.lastOkAt ? new Date(previous.lastOkAt).toISOString() : null,
+          };
+        }
 
-      const outcome = await runGuarded(probe.run, probe.timeoutMs ?? 12_000);
-      const checkedAt = new Date(now);
-      const lastOkAt = outcome.ok ? checkedAt : previous?.lastOkAt ? new Date(previous.lastOkAt) : null;
-      await FeatureProbe.updateOne(
-        { key: probe.key },
-        { $set: { ok: outcome.ok, detail: outcome.detail.slice(0, 300), ms: outcome.ms, checkedAt, lastOkAt } },
-        { upsert: true }
-      ).catch(() => {});
-      return { ...base, ok: outcome.ok, detail: outcome.detail, ms: outcome.ms, checkedAt: checkedAt.toISOString(), lastOkAt: lastOkAt ? lastOkAt.toISOString() : null };
-    })
-  );
+        const outcome = await runGuarded(probe.run, probe.timeoutMs ?? 12_000);
+        const checkedAt = new Date(now);
+        const lastOkAt = outcome.ok ? checkedAt : previous?.lastOkAt ? new Date(previous.lastOkAt) : null;
+        await FeatureProbe.updateOne(
+          { key: probe.key },
+          { $set: { ok: outcome.ok, detail: outcome.detail.slice(0, 300), ms: outcome.ms, checkedAt, lastOkAt } },
+          { upsert: true }
+        ).catch(() => {});
+        return { ...base, ok: outcome.ok, detail: outcome.detail, ms: outcome.ms, checkedAt: checkedAt.toISOString(), lastOkAt: lastOkAt ? lastOkAt.toISOString() : null };
+      })
+    );
+    results.push(...batchResults);
+  }
+  return results;
 }

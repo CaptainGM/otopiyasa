@@ -271,7 +271,7 @@ interface LiveFairInput extends DealInput {
   model: string;
   vehicleClass?: string;
   status?: string;
-  market?: { fair?: number; fp?: number } | null;
+  market?: { fair?: number; fp?: number; fairN?: number; disc?: number; deal?: boolean } | null;
   features?: { engineSize?: number | null; horsepower?: number | null; transmission?: string | null; fuelType?: string | null } | null;
 }
 
@@ -280,6 +280,30 @@ interface LiveFairInput extends DealInput {
  * değerden farklıysa ilanın üstüne yazılır; listelerdeki kart da aynı sayıyı göstersin (beklemeden, hata yutulur).
  */
 export async function liveFairValue(car: LiveFairInput) {
+  // 1. Araçta zaten hesaplanmış ve veritabanına yazılmış adil değer (market.fair) varsa
+  // doğrudan onu kullan; her sayfa açılışında 60 bin kaydı tarayarak regresyon çalıştırma (0ms yanıt)!
+  if (car.market?.fair && car.market.fair > 0) {
+    const fairPrice = car.market.fair;
+    const sampleSize = car.market.fairN ?? 10;
+    return {
+      prediction: {
+        predictedPrice: fairPrice,
+        method: "segment",
+        sampleSize,
+        r2: null,
+        confidence: sampleSize >= 10 ? "high" : "medium",
+        comparables: [],
+        factors: [],
+      } as unknown as import("./price-prediction").PricePrediction,
+      fields: {
+        "market.fair": fairPrice,
+        "market.fairN": sampleSize,
+        "market.disc": car.market.disc ?? 0,
+        "market.fp": car.market.fp ?? car.price,
+      },
+    };
+  }
+
   const { cached, CACHE_TTL } = await import("@/lib/cache");
   const condition = conditionOf(car);
   const prediction = await cached(

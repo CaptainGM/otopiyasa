@@ -10,6 +10,8 @@ import { avatarDescriptor } from "@/lib/avatar";
 import { PushToggle } from "@/components/PushToggle";
 import { DevicesSection } from "@/components/DevicesSection";
 import { BusinessSection } from "@/components/BusinessSection";
+import { UserNotificationsSection } from "@/components/UserNotificationsSection";
+import { Notification } from "@/models/Notification";
 import { stageOf, maskEmail } from "@/lib/email-change";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +54,11 @@ export default async function ProfilePage() {
     codeExpires: user.emailChangeCodeExpires,
   });
 
+  const [unreadNotifCount, totalNotifCount] = await Promise.all([
+    Notification.countDocuments({ user: authUser.userId, read: false }),
+    Notification.countDocuments({ user: authUser.userId }),
+  ]);
+
   const favoriteCount = user.favorites?.length || 0;
   const memberSince = user.createdAt
     ? new Date(user.createdAt).toLocaleDateString("tr-TR", {
@@ -76,13 +83,26 @@ export default async function ProfilePage() {
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
         <div className="stat-tile flex-col items-start">
           <span className="text-xs uppercase tracking-widest text-slate-500">Favoriler</span>
           <strong className="mt-1 text-2xl">{favoriteCount}</strong>
           <Link href="/favorites" className="mt-1 text-xs text-amber-300 hover:underline">
             Favorilere git →
           </Link>
+        </div>
+        <div className="stat-tile flex-col items-start">
+          <span className="text-xs uppercase tracking-widest text-slate-500">Bildirimler</span>
+          <strong className="mt-1 text-2xl">
+            {unreadNotifCount > 0 ? (
+              <span className="text-amber-400">{unreadNotifCount} yeni</span>
+            ) : (
+              totalNotifCount
+            )}
+          </strong>
+          <a href="#bildirimler" className="mt-1 text-xs text-amber-300 hover:underline">
+            Bildirimlere git ↓
+          </a>
         </div>
         <div className="stat-tile flex-col items-start">
           <span className="text-xs uppercase tracking-widest text-slate-500">Rol</span>
@@ -138,6 +158,8 @@ export default async function ProfilePage() {
           />
         </div>
       </div>
+
+      <UserNotificationsSection />
 
       <BusinessSection
         status={user.businessStatus || "none"}

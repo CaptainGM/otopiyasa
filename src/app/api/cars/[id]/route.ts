@@ -159,7 +159,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Araç bulunamadı." }, { status: 404 });
     }
 
-    await logAudit({ action: "car_deleted", actor: admin.name, targetLabel: deleted.title });
+    await logAudit({ action: "car_deleted", actor: admin.name, targetLabel: deleted.title, targetId: id });
 
     const { invalidateCache } = await import("@/lib/cache");
     invalidateCache("home:deals");

@@ -294,7 +294,7 @@ interface LiveFairInput extends DealInput {
   model: string;
   vehicleClass?: string;
   status?: string;
-  market?: { fair?: number; fp?: number; fairN?: number; disc?: number; deal?: boolean } | null;
+  market?: { fair?: number; fp?: number; fairN?: number; disc?: number; deal?: boolean; fairAt?: Date | string | null } | null;
   features?: { engineSize?: number | null; horsepower?: number | null; transmission?: string | null; fuelType?: string | null } | null;
 }
 
@@ -327,13 +327,52 @@ export async function liveFairValue(car: LiveFairInput) {
     };
   }
 
+  // Daha önce hesaplanmış ve yeterli emsal bulunamamışsa (market.fairAt kayıtlı)
+  // her sayfa açılışında 60 bin kaydı tarayarak 10-15 saniye bekletme (0ms yanıt)!
+  if (car.market?.fairAt && !car.market.fair) {
+    return {
+      prediction: {
+        predictedPrice: car.price,
+        method: "insufficient_data",
+        sampleSize: 0,
+        r2: null,
+        confidence: "low",
+        comparables: [],
+        factors: [],
+      } as unknown as import("./price-prediction").PricePrediction,
+      fields: null,
+    };
+  }
+
   const { cached, CACHE_TTL } = await import("@/lib/cache");
   const condition = conditionOf(car);
-  const prediction = await cached(
-    `predict:${car.brand}|${car.model}|${car.year}|${Math.round(car.mileage / 20000)}|${condition}|${(car.title ?? "").slice(0, 30)}|${car.features?.engineSize ?? ""}|${car.features?.horsepower ?? ""}|${car.features?.transmission ?? ""}|${car.features?.fuelType ?? ""}`,
-    CACHE_TTL.medium,
-    () => predictPrice(car.brand, car.model, car.year, car.mileage, condition, car.title, { vehicleClass: car.vehicleClass || "otomobil", features: car.features ?? undefined })
-  );
+  let prediction: import("./price-prediction").PricePrediction;
+  try {
+    prediction = await cached(
+      `predict:${car.brand}|${car.model}|${car.year}|${Math.round(car.mileage / 20000)}|${condition}|${(car.title ?? "").slice(0, 30)}|${car.features?.engineSize ?? ""}|${car.features?.horsepower ?? ""}|${car.features?.transmission ?? ""}|${car.features?.fuelType ?? ""}`,
+      CACHE_TTL.medium,
+      () =>
+        Promise.race([
+          predictPrice(car.brand, car.model, car.year, car.mileage, condition, car.title, {
+            vehicleClass: car.vehicleClass || "otomobil",
+            features: car.features ?? undefined,
+          }),
+          new Promise<import("./price-prediction").PricePrediction>((_, reject) =>
+            setTimeout(() => reject(new Error("predict timeout")), 1500)
+          ),
+        ])
+    );
+  } catch {
+    prediction = {
+      predictedPrice: car.price,
+      method: "insufficient_data",
+      sampleSize: 0,
+      r2: null,
+      confidence: "low",
+      comparables: [],
+      factors: [],
+    } as unknown as import("./price-prediction").PricePrediction;
+  }
   const fields = prediction.sampleSize >= MIN_MARKET_COMPARABLES
     ? fairFields(car, prediction.predictedPrice, prediction.sampleSize)
     : null;

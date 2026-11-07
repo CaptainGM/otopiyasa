@@ -23,6 +23,7 @@ const AuditLogSchema = new Schema(
     
     actor: { type: String, default: "system" },
     targetLabel: { type: String, default: "" },
+    targetId: { type: String, default: "" },
     reason: { type: String, default: "" },
   },
   { timestamps: true }

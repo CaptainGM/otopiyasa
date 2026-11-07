@@ -189,7 +189,7 @@ export async function POST(request: Request) {
     // Yayınlandıysa da haber ver — kullanıcı ilanın gerçekten yayına
     // girdiğini görmek istiyor (önceden yalnızca RED durumunda mail gidiyordu).
     if (outcome.status === "approved") {
-      await logAudit({ action: "listing_approved", targetLabel: car.title });
+      await logAudit({ action: "listing_approved", targetLabel: car.title, targetId: car._id.toString() });
       await createNotification({
         userId: authUser.userId,
         type: "listing",
@@ -207,7 +207,7 @@ export async function POST(request: Request) {
 
     // Reddedildiyse kullanıcıyı bilgilendir (bildirim + e-posta)
     if (outcome.status === "rejected") {
-      await logAudit({ action: "listing_rejected", targetLabel: car.title, reason: outcome.reason });
+      await logAudit({ action: "listing_rejected", targetLabel: car.title, targetId: car._id.toString(), reason: outcome.reason });
       await createNotification({
         userId: authUser.userId,
         type: "listing",

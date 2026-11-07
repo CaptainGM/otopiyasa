@@ -14,7 +14,7 @@ const RETRY_DELAYS_MS = [3000, 10000];
  * Tam envanter ~90 sayfa: tek bir yavaş yanıt eskiden taramanın tamamını "tamamlanamadı"
  * yapıyordu (sunucuda 7. sayfada zaman aşımı) ve satılan ilanlar hiç arşivlenmiyordu.
  */
-async function fetchListPage(pageNum: number): Promise<{ html: string } | { error: string }> {
+async function fetchListPage(pageNum: number): Promise<{ html: string } | { error: string; status?: number }> {
   let lastError = "";
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]));
@@ -31,6 +31,9 @@ async function fetchListPage(pageNum: number): Promise<{ html: string } | { erro
       });
       if (res.ok) return { html: await res.text() };
       lastError = `HTTP ${res.status} (Sf.${pageNum})`;
+      if (res.status === 404) {
+        return { error: lastError, status: 404 };
+      }
       if (res.status !== 429 && res.status < 500) break;
     } catch (err) {
       lastError = `${err instanceof Error ? err.message : "istek hatası"} (Sf.${pageNum})`;
@@ -57,6 +60,12 @@ export async function scrapeOtokocListings(
 
     const page = await fetchListPage(pageNum);
     if ("error" in page) {
+      // Otokoç son sayfanın ötesinde (örn. 82 sayfa varken 83. sayfada) HTTP 404 döner.
+      // Eğer en az 1 sayfa başarıyla taranmışsa, bu bir hata değil doğal listenin sonudur.
+      if (pageNum > 1 && ("status" in page && page.status === 404)) {
+        if (report) report.endedNaturally = true;
+        break;
+      }
       if (report) report.error = page.error;
       break;
     }

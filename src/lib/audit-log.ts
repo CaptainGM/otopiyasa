@@ -5,6 +5,7 @@ export async function logAudit(params: {
   action: AuditAction;
   actor?: string;
   targetLabel?: string;
+  targetId?: string;
   reason?: string;
 }): Promise<void> {
   try {
@@ -12,6 +13,7 @@ export async function logAudit(params: {
       action: params.action,
       actor: params.actor || "system",
       targetLabel: params.targetLabel || "",
+      targetId: params.targetId || "",
       reason: params.reason || "",
     });
   } catch (error) {

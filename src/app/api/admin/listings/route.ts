@@ -3,6 +3,10 @@ import { connectDB } from "@/lib/mongodb";
 import { Car } from "@/models/Car";
 import { User } from "@/models/User";
 import { requireAdmin } from "@/lib/auth";
+import { revalidateListing } from "@/lib/revalidate-listing";
+import { computeListingFair } from "@/lib/market-fair";
+import { logAudit } from "@/lib/audit-log";
+import { createNotification } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +123,44 @@ export async function POST(request: Request) {
     }
 
     await car.save();
+    revalidateListing(car._id);
+
+    if (action === "approve") {
+      // Arka planda adil değeri hesapla ki ilan açılışı 0ms olsun
+      void computeListingFair(car._id).catch(() => {});
+      await logAudit({
+        action: "listing_approved",
+        actor: admin.name,
+        targetLabel: car.title,
+        targetId: car._id.toString(),
+      });
+      if (car.ownerId) {
+        await createNotification({
+          userId: car.ownerId.toString(),
+          type: "listing",
+          title: "İlanın onaylandı ve yayında",
+          body: car.title,
+          link: `/cars/${car._id.toString()}`,
+        }).catch(() => {});
+      }
+    } else {
+      await logAudit({
+        action: "listing_rejected",
+        actor: admin.name,
+        targetLabel: car.title,
+        targetId: car._id.toString(),
+        reason: car.rejectionReason,
+      });
+      if (car.ownerId) {
+        await createNotification({
+          userId: car.ownerId.toString(),
+          type: "listing",
+          title: "İlanın reddedildi",
+          body: `${car.title}: ${car.rejectionReason}`,
+          link: `/listings`,
+        }).catch(() => {});
+      }
+    }
 
     return NextResponse.json({ ok: true, status: car.moderationStatus });
   } catch (error: any) {

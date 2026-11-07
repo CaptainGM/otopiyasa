@@ -114,6 +114,20 @@ export default async function AdminPage() {
     unverifiedCount = unvCount;
     openReportsCount = repCount;
     auditRows = audits || [];
+
+    // İlan onay/red loglarında hedef araç kimliği eksikse başlıktan tamamla (eski loglar için)
+    const missingTitles = auditRows
+      .filter((r) => !r.targetId && r.targetLabel && (r.action === "listing_approved" || r.action === "listing_rejected"))
+      .map((r) => r.targetLabel);
+    if (missingTitles.length > 0) {
+      const matchedCars = await Car.find({ title: { $in: missingTitles } }).select("_id title").lean();
+      const titleToId = new Map(matchedCars.map((c: any) => [c.title, String(c._id)]));
+      for (const row of auditRows) {
+        if (!row.targetId && row.targetLabel && titleToId.has(row.targetLabel)) {
+          row.targetId = titleToId.get(row.targetLabel);
+        }
+      }
+    }
   } catch (err) {
     console.error("AdminPage özet veri yükleme hatası:", err);
   }
@@ -204,12 +218,23 @@ export default async function AdminPage() {
                 {auditRows.map((row) => (
                   <div
                     key={row._id.toString()}
-                    className="flex flex-wrap items-baseline gap-x-2 border-b border-white/5 pb-2"
+                    className="flex flex-wrap items-center gap-x-2 border-b border-white/5 pb-2"
                   >
                     <span className={`font-semibold ${AUDIT_TONE[row.action] || ""}`}>
                       {AUDIT_LABEL[row.action] || row.action}
                     </span>
                     <span className="text-slate-300">{row.targetLabel}</span>
+                    {row.targetId && (row.action === "listing_approved" || row.action === "listing_rejected") && (
+                      <a
+                        href={`/cars/${row.targetId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 transition"
+                        title="İlanı yeni sekmede aç"
+                      >
+                        İlana Git ↗
+                      </a>
+                    )}
                     {row.reason && <span className="text-xs text-slate-500">— {row.reason}</span>}
                     <span className="ml-auto text-xs text-slate-600">
                       {row.actor} • {new Date(row.createdAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}

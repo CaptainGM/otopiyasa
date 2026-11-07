@@ -8,13 +8,20 @@ import { getCurrentUser } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 /** Kullanıcının bildirimleri + okunmamış sayısı. */
-export async function GET() {
+export async function GET(request: Request) {
   const authUser = await getCurrentUser();
   if (!authUser) return NextResponse.json({ items: [], unread: 0 });
 
+  const url = new URL(request.url);
+  const limit = Math.min(Number(url.searchParams.get("limit")) || 30, 100);
+  const unreadOnly = url.searchParams.get("unread") === "1" || url.searchParams.get("unread") === "true";
+
   await connectDB();
+  const filter: Record<string, unknown> = { user: authUser.userId };
+  if (unreadOnly) filter.read = false;
+
   const [items, unread] = await Promise.all([
-    Notification.find({ user: authUser.userId }).sort({ createdAt: -1 }).limit(30).lean(),
+    Notification.find(filter).sort({ createdAt: -1 }).limit(limit).lean(),
     Notification.countDocuments({ user: authUser.userId, read: false }),
   ]);
 
@@ -53,12 +60,34 @@ export async function POST(request: Request) {
   return NextResponse.json({ success: true });
 }
 
-/** Kullanıcının tüm bildirimlerini siler ("Bildirimleri temizle"). */
-export async function DELETE() {
+/** Bildirimi tek tek veya topluca siler. */
+export async function DELETE(request: Request) {
   const authUser = await getCurrentUser();
   if (!authUser) return NextResponse.json({ error: "Giriş yapmalısınız." }, { status: 401 });
 
+  const url = new URL(request.url);
+  let id = url.searchParams.get("id");
+
+  if (!id) {
+    try {
+      const body = await request.json().catch(() => null);
+      if (body?.id) id = String(body.id);
+    } catch {
+      // Body boş olabilir
+    }
+  }
+
   await connectDB();
+
+  if (id) {
+    if (!Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Geçersiz bildirim." }, { status: 400 });
+    }
+    await Notification.deleteOne({ _id: id, user: authUser.userId });
+    return NextResponse.json({ success: true, deletedId: id });
+  }
+
+  // id verilmediyse kullanıcının tüm bildirimlerini temizle
   await Notification.deleteMany({ user: authUser.userId });
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, all: true });
 }

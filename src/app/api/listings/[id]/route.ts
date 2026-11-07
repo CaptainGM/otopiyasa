@@ -190,9 +190,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     revalidateListing(car._id);
 
     if (outcome.status === "approved") {
-      await logAudit({ action: "listing_approved", targetLabel: car.title });
+      await logAudit({ action: "listing_approved", targetLabel: car.title, targetId: car._id.toString() });
     } else if (outcome.status === "rejected") {
-      await logAudit({ action: "listing_rejected", targetLabel: car.title, reason: outcome.reason });
+      await logAudit({ action: "listing_rejected", targetLabel: car.title, targetId: car._id.toString(), reason: outcome.reason });
     }
 
     return NextResponse.json({ status: outcome.status, reason: outcome.reason });

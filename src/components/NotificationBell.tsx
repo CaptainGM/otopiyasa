@@ -70,6 +70,12 @@ export function NotificationBell() {
     setUnread(0);
   }
 
+  async function deleteOne(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setItems((prev) => prev.filter((item) => item._id !== id));
+    await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+  }
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -104,21 +110,55 @@ export function NotificationBell() {
               <p className="px-4 py-6 text-center text-sm text-slate-500">Bildirim yok.</p>
             ) : (
               items.map((n) => (
-                <button
+                <div
                   key={n._id}
                   onClick={() => go(n)}
-                  className={`block w-full border-b border-white/5 px-4 py-3 text-left transition hover:bg-white/5 ${
+                  role="button"
+                  tabIndex={0}
+                  className={`group relative flex items-start justify-between gap-2 w-full border-b border-white/5 px-4 py-3 text-left transition hover:bg-white/5 cursor-pointer ${
                     n.read ? "" : "bg-amber-400/5"
                   }`}
                 >
-                  <p className="text-sm font-medium text-slate-200">{n.title}</p>
-                  {n.body && <p className="mt-0.5 line-clamp-2 text-xs text-slate-400">{n.body}</p>}
-                  <p className="mt-1 text-[10px] text-slate-600">
-                    {new Date(n.createdAt).toLocaleString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" })}
-                  </p>
-                </button>
+                  <div className="flex-1 min-w-0 pr-1">
+                    <p className="text-sm font-medium text-slate-200">{n.title}</p>
+                    {n.body && <p className="mt-0.5 line-clamp-2 text-xs text-slate-400">{n.body}</p>}
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      {new Date(n.createdAt).toLocaleString("tr-TR", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        timeZone: "Europe/Istanbul",
+                      })}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => deleteOne(n._id, e)}
+                    title="Bildirimi sil"
+                    aria-label="Bildirimi sil"
+                    className="shrink-0 mt-0.5 p-1 rounded-md text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
               ))
             )}
+          </div>
+          <div className="border-t border-white/10 p-2 text-center bg-slate-950/40">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                router.push("/profile#bildirimler");
+              }}
+              className="text-xs font-medium text-amber-400 hover:text-amber-300 transition"
+            >
+              Tüm bildirimleri profilde gör →
+            </button>
           </div>
         </div>
       )}

@@ -21,6 +21,9 @@ export const dynamic = "force-dynamic";
 const REPO = "CaptainGM/otopiyasa";
 const CACHE_MS = 10 * 60 * 1000;
 
+const DEFAULT_FALLBACK_VERSION = "1.0.63";
+const DEFAULT_FALLBACK_VERSION_CODE = 64;
+
 /** Yayının ham hâli önbelleklenir; APK seçimi isteğe göre yapılır (abi başına ayrı önbellek gerekmesin). */
 type Release = Parameters<typeof parseRelease>[0];
 
@@ -36,8 +39,8 @@ function fallback(abi?: string): AppVersion {
       ? `https://github.com/${REPO}/releases/latest/download/app-${abi}-release.apk`
       : universal;
   return {
-    version: process.env.APP_LATEST_VERSION || "1.0.2",
-    versionCode: Number(process.env.APP_LATEST_VERSION_CODE || "3"),
+    version: process.env.APP_LATEST_VERSION || DEFAULT_FALLBACK_VERSION,
+    versionCode: Number(process.env.APP_LATEST_VERSION_CODE || DEFAULT_FALLBACK_VERSION_CODE),
     minVersionCode: minVersionCode(),
     apkUrl: split,
     title: "OtoPiyasa güncellemesi hazır",
@@ -49,9 +52,18 @@ function fallback(abi?: string): AppVersion {
 
 async function latestRelease(): Promise<Release | null> {
   if (memo && Date.now() - memo.at < CACHE_MS) return memo.value;
+
+  // 1. Önce GitHub Releases API çağrılır (varsa token ile)
   try {
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "otopiyasa-app-version",
+    };
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "otopiyasa-app-version" },
+      headers,
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
@@ -61,8 +73,50 @@ async function latestRelease(): Promise<Release | null> {
       return release;
     }
   } catch {
-    // GitHub'a ulaşılamadı: son bilinen yayın ya da ortam değişkenleri.
+    // GitHub API başarısız veya kota aşımı (HTTP 403)
   }
+
+  // 2. Yedek yol: GitHub web yönlendirmesi (/releases/latest -> /releases/tag/vX.Y.Z)
+  // Bu uç noktada API saatlik kotası YOKTUR; bulut sunucularında (Render vb.) her zaman 302 döner.
+  try {
+    const res = await fetch(`https://github.com/${REPO}/releases/latest`, {
+      method: "HEAD",
+      redirect: "manual",
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(5000),
+    });
+    const loc = res.headers.get("location") || "";
+    const m = /tag\/v?([0-9]+(?:\.[0-9]+)+)/i.exec(loc);
+    if (m) {
+      const version = m[1];
+      const patch = Number(version.split(".")[2] ?? 0);
+      const code = patch + 1;
+      const release: Release = {
+        tag_name: `v${version}`,
+        body: `<!-- versionCode: ${code} -->\nOtoPiyasa Mobil ${version}`,
+        published_at: new Date().toISOString(),
+        assets: [
+          {
+            name: "otopiyasa-release.apk",
+            browser_download_url: `https://github.com/${REPO}/releases/latest/download/otopiyasa-release.apk`,
+          },
+          {
+            name: "app-arm64-v8a-release.apk",
+            browser_download_url: `https://github.com/${REPO}/releases/latest/download/app-arm64-v8a-release.apk`,
+          },
+          {
+            name: "app-armeabi-v7a-release.apk",
+            browser_download_url: `https://github.com/${REPO}/releases/latest/download/app-armeabi-v7a-release.apk`,
+          },
+        ],
+      };
+      memo = { value: release, at: Date.now() };
+      return release;
+    }
+  } catch {
+    // Web yönlendirmesi de başarısız
+  }
+
   return memo?.value ?? null;
 }
 

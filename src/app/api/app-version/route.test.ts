@@ -83,8 +83,8 @@ describe("GET /api/app-version", () => {
     const res = await GET(request());
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.version).toBe("1.0.2");
-    expect(data.versionCode).toBe(3);
+    expect(data.version).toBe("1.0.63");
+    expect(data.versionCode).toBe(64);
     expect(data.apkUrl).toContain("otopiyasa-release.apk");
     expect(data.forceUpdate).toBe(false);
   });

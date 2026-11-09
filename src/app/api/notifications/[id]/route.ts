@@ -41,3 +41,4 @@ export async function PATCH(
   await Notification.updateOne({ _id: id, user: authUser.userId }, { $set: { read: true } });
   return NextResponse.json({ success: true });
 }
+

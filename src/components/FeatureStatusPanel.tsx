@@ -26,7 +26,18 @@ interface StatusData {
 
 const GROUP_ORDER = ["Veri toplama", "Site özellikleri", "Hesap", "Denetim"];
 
-function Mark({ ok }: { ok: boolean }) {
+function Mark({ ok, checking = false }: { ok: boolean; checking?: boolean }) {
+  if (checking) {
+    return (
+      <span
+        className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black bg-amber-500/20 text-amber-300 animate-pulse"
+        aria-label="denetleniyor"
+        title="Kontrol devam ediyor…"
+      >
+        ⋯
+      </span>
+    );
+  }
   return (
     <span
       className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
@@ -118,19 +129,24 @@ export function FeatureStatusPanel({ fixedOpen = false }: { fixedOpen?: boolean 
               <div key={group}>
                 <h3 className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{group}</h3>
                 <ul className="space-y-2">
-                  {rows.map((r) => (
-                    <li key={r.key} className="flex gap-2.5">
-                      <Mark ok={r.ok} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold leading-tight text-white">
-                          {r.label}
-                          {r.ai && <span className="ml-1.5 rounded bg-violet-500/15 px-1 py-0.5 align-middle text-[9px] font-bold text-violet-300">YZ</span>}
-                        </p>
-                        <p className={`text-[11px] leading-snug ${r.ok ? "text-slate-500" : "text-rose-300/90"}`}>{r.detail}</p>
-                        {r.ai && <p className="text-[10px] text-slate-600">yapay zekâ kotası için 30 dk&apos;da bir denenir · {formatRelativeTr(r.checkedAt)}</p>}
-                      </div>
-                    </li>
-                  ))}
+                  {rows.map((r) => {
+                    const isRetrying = loading && !r.ok;
+                    return (
+                      <li key={r.key} className="flex gap-2.5">
+                        <Mark ok={r.ok} checking={isRetrying} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold leading-tight text-white">
+                            {r.label}
+                            {r.ai && <span className="ml-1.5 rounded bg-violet-500/15 px-1 py-0.5 align-middle text-[9px] font-bold text-violet-300">YZ</span>}
+                          </p>
+                          <p className={`text-[11px] leading-snug ${isRetrying ? "text-amber-300/90 font-medium" : r.ok ? "text-slate-500" : "text-rose-300/90"}`}>
+                            {isRetrying ? "Kontrol devam ediyor (yeniden deneniyor)…" : r.detail}
+                          </p>
+                          {r.ai && <p className="text-[10px] text-slate-600">yapay zekâ kotası için 30 dk&apos;da bir denenir · {formatRelativeTr(r.checkedAt)}</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             );

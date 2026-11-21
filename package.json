@@ -33,7 +33,7 @@
     "jose": "^5.9.6",
     "leaflet": "^1.9.4",
     "mongoose": "^8.24.6",
-    "next": "^15.5.28",
+    "next": "^15.5.29",
     "nodemailer": "^10.2.1",
     "playwright": "^1.64.1",
     "react": "^19.3.1",

@@ -14,14 +14,15 @@ const SMTP_PASS = process.env.SMTP_PASS;
 function getInitialPort(): number {
   if (process.env.SMTP_PORT) {
     const p = Number(process.env.SMTP_PORT);
-    // Render ücretsiz planda 587 portunu bloke eder; Brevo ise 2525 portunu destekler.
-    if (process.env.RENDER && p === 587 && (SMTP_HOST || "").includes("brevo")) {
-      return 2525;
+    // Render ve bulut sunucularda STARTTLS (587 veya 2525) DPI gecikmesi ve TLS zaman aşımına yol açabilir.
+    // Brevo için doğrudan SSL/TLS kullanan 465 portu en kararlı ve hızlı olanıdır.
+    if (process.env.RENDER && (SMTP_HOST || "").includes("brevo")) {
+      return 465;
     }
     return p;
   }
-  // Brevo kullanıldığında bulut engellerine takılmayan 2525 portu tercih edilir.
-  if ((SMTP_HOST || "").includes("brevo")) return 2525;
+  // Brevo kullanıldığında doğrudan güvenli 465 portu tercih edilir (STARTTLS gecikmesi olmaz)
+  if ((SMTP_HOST || "").includes("brevo")) return 465;
   return 587;
 }
 
@@ -35,14 +36,18 @@ function createTransporter(port: number): Transporter | null {
     host: SMTP_HOST,
     port,
     secure: port === 465,
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 100,
-    connectionTimeout: 8_000,
-    socketTimeout: 10_000,
+    pool: false, // Bulut ortamında (Render) boştaki havuz bağlantıları sessizce kopup TLS zaman aşımı yaratmasın
+    connectionTimeout: 6_000,
+    greetingTimeout: 6_000,
+    socketTimeout: 8_000,
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS,
+    },
+    tls: {
+      servername: SMTP_HOST,
+      minVersion: "TLSv1.2",
+      rejectUnauthorized: true,
     },
   });
 }
@@ -120,11 +125,6 @@ export async function sendEmail({ to, subject, html, text }: SendOptions) {
   }
 
   // 3. SMTP (Nodemailer)
-  let t = getTransporter();
-  if (!t) {
-    throw new Error("SMTP configuration missing (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)");
-  }
-
   const mailOptions = {
     from: process.env.EMAIL_FROM || SMTP_USER,
     to,
@@ -133,21 +133,30 @@ export async function sendEmail({ to, subject, html, text }: SendOptions) {
     html,
   };
 
-  try {
-    return await t.sendMail(mailOptions);
-  } catch (error) {
-    // Port 587 bulut / Render güvenlik duvarına takıldıysa 2525 portuyla hemen tekrar dene
-    if (activePort === 587 && (SMTP_HOST || "").includes("brevo")) {
-      const fallback = createTransporter(2525);
-      if (fallback) {
-        const result = await fallback.sendMail(mailOptions);
-        transporter = fallback;
-        activePort = 2525;
-        return result;
-      }
-    }
-    throw error;
+  const isBrevo = (SMTP_HOST || "").includes("brevo");
+  const fallbackOrder = isBrevo ? [465, 2525, 587] : [activePort, 587, 465, 2525];
+  const portsToTry: number[] = [];
+  if (activePort && !portsToTry.includes(activePort)) portsToTry.push(activePort);
+  for (const p of fallbackOrder) {
+    if (!portsToTry.includes(p)) portsToTry.push(p);
   }
+
+  let lastError: unknown;
+  for (const port of portsToTry) {
+    try {
+      const current = port === activePort && transporter ? transporter : createTransporter(port);
+      if (!current) continue;
+      const result = await current.sendMail(mailOptions);
+      activePort = port;
+      transporter = current;
+      return result;
+    } catch (error) {
+      lastError = error;
+      console.warn(`sendEmail port ${port} hatası, alternatif deneniyor:`, error instanceof Error ? error.message : error);
+    }
+  }
+
+  throw lastError;
 }
 
 export async function sendResetEmail(to: string, resetUrl: string) {
@@ -196,43 +205,45 @@ export async function verifyMailerConnection(timeoutMs = 15_000): Promise<void> 
     return;
   }
 
-  let t = getTransporter();
-  if (!t) throw new Error("SMTP ayarları yok");
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+    throw new Error("SMTP ayarları yok");
+  }
 
-  async function tryVerify(current: Transporter, ms: number) {
+  const isBrevo = (SMTP_HOST || "").includes("brevo");
+  const fallbackOrder = isBrevo ? [465, 2525, 587] : [activePort, 587, 465, 2525];
+  const portsToTry: number[] = [];
+  if (activePort && !portsToTry.includes(activePort)) portsToTry.push(activePort);
+  for (const p of fallbackOrder) {
+    if (!portsToTry.includes(p)) portsToTry.push(p);
+  }
+
+  let lastError: Error | null = null;
+  const perPortTimeout = Math.min(Math.floor(timeoutMs / portsToTry.length) + 1500, 6_000);
+
+  for (const port of portsToTry) {
+    const candidate = createTransporter(port);
+    if (!candidate) continue;
+
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        current.verify(),
+        candidate.verify(),
         new Promise<void>((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`${Math.round(ms / 1000)} sn içinde yanıt vermedi`)), ms);
+          timer = setTimeout(() => reject(new Error(`${Math.round(perPortTimeout / 1000)} sn içinde yanıt vermedi (Port ${port})`)), perPortTimeout);
         }),
       ]);
+      // Başarılı portu hatırla ve aktif yap
+      activePort = port;
+      transporter = candidate;
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
     } finally {
       if (timer) clearTimeout(timer);
     }
   }
 
-  try {
-    await tryVerify(t, timeoutMs);
-  } catch (error) {
-    // Port 587 engellendiyse 2525, 2525 engellendiyse 587 alternatifini hemen dene
-    if ((SMTP_HOST || "").includes("brevo")) {
-      const altPort = activePort === 587 ? 2525 : 587;
-      const fallback = createTransporter(altPort);
-      if (fallback) {
-        try {
-          await tryVerify(fallback, timeoutMs);
-          transporter = fallback;
-          activePort = altPort;
-          return;
-        } catch {
-          // asıl hatayı fırlat
-        }
-      }
-    }
-    throw error;
-  }
+  throw lastError || new Error("SMTP sunucusuna bağlanılamadı");
 }
 
 export async function sendVerifyEmail(to: string, verifyUrl: string) {
